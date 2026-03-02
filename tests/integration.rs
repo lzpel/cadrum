@@ -35,7 +35,7 @@ fn shape_to_brep_bytes(shape: &Shape) -> Vec<u8> {
 fn test_t01_union_drop_result_first() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.union(&b);
+	let result = a.union(&b).unwrap();
 	drop(result);
 	drop(a);
 	drop(b);
@@ -45,7 +45,7 @@ fn test_t01_union_drop_result_first() {
 fn test_t01_union_drop_result_last() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.union(&b);
+	let result = a.union(&b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -55,7 +55,7 @@ fn test_t01_union_drop_result_last() {
 fn test_t01_subtract_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.subtract(&b);
+	let result = a.subtract(&b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -65,7 +65,7 @@ fn test_t01_subtract_drop_order() {
 fn test_t01_intersect_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.intersect(&b);
+	let result = a.intersect(&b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -76,8 +76,8 @@ fn test_t01_chained_boolean_drops() {
 	let a = test_box();
 	let b = test_box_2();
 	let c = test_box_3();
-	let r1 = a.union(&b);
-	let r2 = r1.subtract(&c);
+	let r1 = a.union(&b).unwrap();
+	let r2 = r1.subtract(&c).unwrap();
 	drop(r1);
 	drop(r2);
 	drop(a);
@@ -130,7 +130,7 @@ fn test_t04_approximation_tolerance() {
 fn test_t05_translated_compound() {
 	let a = test_box();
 	let b = test_box_2();
-	let compound = a.union(&b);
+	let compound = a.union(&b).unwrap();
 	let v = dvec3(100.0, 0.0, 0.0);
 	let shifted = compound.translated(v);
 
@@ -180,9 +180,9 @@ fn test_t07_stream_api_only() {
 fn test_t08_boolean_returns_shape() {
 	let a = test_box();
 	let b = test_box_2();
-	let _union: Shape = a.union(&b);
-	let _sub: Shape = a.subtract(&b);
-	let _inter: Shape = a.intersect(&b);
+	let _union: Shape = a.union(&b).unwrap();
+	let _sub: Shape = a.subtract(&b).unwrap();
+	let _inter: Shape = a.intersect(&b).unwrap();
 }
 
 // ==================== STEP export ====================
@@ -191,7 +191,7 @@ fn test_t08_boolean_returns_shape() {
 fn test_hollow_cube_write_step() {
 	let outer = Shape::box_from_corners(dvec3(-10.0, -10.0, -10.0), dvec3(10.0, 10.0, 10.0));
 	let inner = Shape::box_from_corners(dvec3(-5.0, -5.0, -5.0), dvec3(5.0, 5.0, 5.0));
-	let hollow_cube = outer.subtract(&inner);
+	let hollow_cube = outer.subtract(&inner).unwrap();
 
 	std::fs::create_dir_all("out").unwrap();
 	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
@@ -238,7 +238,7 @@ fn test_edge_iteration() {
 fn test_face_extrude() {
 	let shape = test_box();
 	let face = shape.faces().next().unwrap();
-	let solid = face.extrude(dvec3(0.0, 0.0, 5.0));
+	let solid = face.extrude(dvec3(0.0, 0.0, 5.0)).unwrap();
 	let extruded: Shape = solid.into();
 	let mesh = extruded.mesh_with_tolerance(0.1).unwrap();
 	assert!(!mesh.vertices.is_empty());
@@ -248,7 +248,7 @@ fn test_face_extrude() {
 fn test_half_space_intersect() {
 	let shape = test_box();
 	let half = Shape::half_space(dvec3(5.0, 0.0, 0.0), dvec3(1.0, 0.0, 0.0));
-	let result = shape.intersect(&half);
+	let result = shape.intersect(&half).unwrap();
 	assert!(!result.is_null());
 }
 

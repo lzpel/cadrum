@@ -180,25 +180,34 @@ impl Shape {
 	/// when shapes are dropped in any order.
 	///
 	/// # T-08: Returns `Shape` directly (no `BooleanShape` intermediate type).
-	pub fn union(&self, other: &Shape) -> Shape {
+	pub fn union(&self, other: &Shape) -> Result<Shape, Error> {
 		let inner = ffi::boolean_fuse(&self.inner, &other.inner);
-		Shape { inner }
+		if inner.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Ok(Shape { inner })
 	}
 
 	/// Boolean subtraction (cut) with another shape.
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
-	pub fn subtract(&self, other: &Shape) -> Shape {
+	pub fn subtract(&self, other: &Shape) -> Result<Shape, Error> {
 		let inner = ffi::boolean_cut(&self.inner, &other.inner);
-		Shape { inner }
+		if inner.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Ok(Shape { inner })
 	}
 
 	/// Boolean intersection (common) with another shape.
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
-	pub fn intersect(&self, other: &Shape) -> Shape {
+	pub fn intersect(&self, other: &Shape) -> Result<Shape, Error> {
 		let inner = ffi::boolean_common(&self.inner, &other.inner);
-		Shape { inner }
+		if inner.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Ok(Shape { inner })
 	}
 }
 
@@ -209,9 +218,12 @@ impl Shape {
 	///
 	/// Uses `ShapeUpgrade_UnifySameDomain` to remove redundant topology
 	/// created by boolean operations.
-	pub fn clean(&self) -> Shape {
+	pub fn clean(&self) -> Result<Shape, Error> {
 		let inner = ffi::clean_shape(&self.inner);
-		Shape { inner }
+		if inner.is_null() {
+			return Err(Error::CleanFailed);
+		}
+		Ok(Shape { inner })
 	}
 
 	/// Create a new shape translated by the given vector.

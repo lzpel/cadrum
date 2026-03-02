@@ -269,47 +269,63 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape) {
 std::unique_ptr<TopoDS_Shape> boolean_fuse(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
-    BRepAlgoAPI_Fuse fuse(a, b);
-    fuse.Build();
-    if (!fuse.IsDone()) {
-        return make_empty();
+    try {
+        BRepAlgoAPI_Fuse fuse(a, b);
+        fuse.Build();
+        if (!fuse.IsDone()) {
+            return nullptr;
+        }
+        // Deep copy to sever shared Handle references (Bug 1 fix)
+        BRepBuilderAPI_Copy copier(fuse.Shape(), Standard_True, Standard_False);
+        return std::make_unique<TopoDS_Shape>(copier.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
     }
-    // Deep copy to sever shared Handle references (Bug 1 fix)
-    BRepBuilderAPI_Copy copier(fuse.Shape(), Standard_True, Standard_False);
-    return std::make_unique<TopoDS_Shape>(copier.Shape());
 }
 
 std::unique_ptr<TopoDS_Shape> boolean_cut(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
-    BRepAlgoAPI_Cut cut(a, b);
-    cut.Build();
-    if (!cut.IsDone()) {
-        return make_empty();
+    try {
+        BRepAlgoAPI_Cut cut(a, b);
+        cut.Build();
+        if (!cut.IsDone()) {
+            return nullptr;
+        }
+        BRepBuilderAPI_Copy copier(cut.Shape(), Standard_True, Standard_False);
+        return std::make_unique<TopoDS_Shape>(copier.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
     }
-    BRepBuilderAPI_Copy copier(cut.Shape(), Standard_True, Standard_False);
-    return std::make_unique<TopoDS_Shape>(copier.Shape());
 }
 
 std::unique_ptr<TopoDS_Shape> boolean_common(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
-    BRepAlgoAPI_Common common(a, b);
-    common.Build();
-    if (!common.IsDone()) {
-        return make_empty();
+    try {
+        BRepAlgoAPI_Common common(a, b);
+        common.Build();
+        if (!common.IsDone()) {
+            return nullptr;
+        }
+        BRepBuilderAPI_Copy copier(common.Shape(), Standard_True, Standard_False);
+        return std::make_unique<TopoDS_Shape>(copier.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
     }
-    BRepBuilderAPI_Copy copier(common.Shape(), Standard_True, Standard_False);
-    return std::make_unique<TopoDS_Shape>(copier.Shape());
 }
 
 // ==================== Shape Methods ====================
 
 std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape) {
-    ShapeUpgrade_UnifySameDomain unifier(shape, Standard_True, Standard_True, Standard_True);
-    unifier.AllowInternalEdges(Standard_False);
-    unifier.Build();
-    return std::make_unique<TopoDS_Shape>(unifier.Shape());
+    try {
+        ShapeUpgrade_UnifySameDomain unifier(shape, Standard_True, Standard_True, Standard_True);
+        unifier.AllowInternalEdges(Standard_False);
+        unifier.Build();
+        return std::make_unique<TopoDS_Shape>(unifier.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 std::unique_ptr<TopoDS_Shape> translate_shape(
@@ -480,50 +496,68 @@ std::unique_ptr<TopoDS_Edge> explorer_current_edge(const TopExp_Explorer& explor
 void face_center_of_mass(const TopoDS_Face& face,
     double& cx, double& cy, double& cz)
 {
-    GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
-    gp_Pnt center = props.CentreOfMass();
-    cx = center.X();
-    cy = center.Y();
-    cz = center.Z();
+    try {
+        GProp_GProps props;
+        BRepGProp::SurfaceProperties(face, props);
+        gp_Pnt center = props.CentreOfMass();
+        cx = center.X();
+        cy = center.Y();
+        cz = center.Z();
+    } catch (const Standard_Failure&) {
+        cx = cy = cz = 0.0;
+    }
 }
 
 void face_normal_at_center(const TopoDS_Face& face,
     double& nx, double& ny, double& nz)
 {
-    // Step 1: Get center of mass
-    GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
-    gp_Pnt center = props.CentreOfMass();
+    try {
+        // Step 1: Get center of mass
+        GProp_GProps props;
+        BRepGProp::SurfaceProperties(face, props);
+        gp_Pnt center = props.CentreOfMass();
 
-    // Step 2: Get surface and project center point onto it
-    Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
-    GeomAPI_ProjectPointOnSurf projector(center, surface);
+        // Step 2: Get surface and project center point onto it
+        Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+        GeomAPI_ProjectPointOnSurf projector(center, surface);
 
-    double u, v;
-    projector.LowerDistanceParameters(u, v);
+        // LowerDistanceParameters throws StdFail_NotDone when NbPoints == 0
+        if (projector.NbPoints() == 0) {
+            nx = ny = nz = 0.0;
+            return;
+        }
 
-    // Step 3: Get normal at (u, v)
-    BRepGProp_Face gprop_face(face);
-    gp_Pnt point;
-    gp_Vec normal;
-    gprop_face.Normal(u, v, point, normal);
+        double u, v;
+        projector.LowerDistanceParameters(u, v);
 
-    if (normal.Magnitude() > 1e-10) {
-        normal.Normalize();
+        // Step 3: Get normal at (u, v)
+        BRepGProp_Face gprop_face(face);
+        gp_Pnt point;
+        gp_Vec normal;
+        gprop_face.Normal(u, v, point, normal);
+
+        if (normal.Magnitude() > 1e-10) {
+            normal.Normalize();
+        }
+
+        nx = normal.X();
+        ny = normal.Y();
+        nz = normal.Z();
+    } catch (const Standard_Failure&) {
+        nx = ny = nz = 0.0;
     }
-
-    nx = normal.X();
-    ny = normal.Y();
-    nz = normal.Z();
 }
 
 std::unique_ptr<TopoDS_Shape> face_extrude(const TopoDS_Face& face,
     double dx, double dy, double dz)
 {
-    gp_Vec prism_vec(dx, dy, dz);
-    BRepPrimAPI_MakePrism maker(face, prism_vec, Standard_False, Standard_True);
-    return std::make_unique<TopoDS_Shape>(maker.Shape());
+    try {
+        gp_Vec prism_vec(dx, dy, dz);
+        BRepPrimAPI_MakePrism maker(face, prism_vec, Standard_False, Standard_True);
+        return std::make_unique<TopoDS_Shape>(maker.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 std::unique_ptr<TopoDS_Shape> face_to_shape(const TopoDS_Face& face) {
@@ -538,17 +572,22 @@ ApproxPoints edge_approximation_segments_ex(
     ApproxPoints result;
     result.count = 0;
 
-    BRepAdaptor_Curve curve(edge);
-    GCPnts_TangentialDeflection approx(curve, angular, chord);
+    try {
+        BRepAdaptor_Curve curve(edge);
+        GCPnts_TangentialDeflection approx(curve, angular, chord);
 
-    int nb_points = approx.NbPoints();
-    result.count = static_cast<uint32_t>(nb_points);
+        int nb_points = approx.NbPoints();
+        result.count = static_cast<uint32_t>(nb_points);
 
-    for (int i = 1; i <= nb_points; i++) {
-        gp_Pnt p = approx.Value(i);
-        result.coords.push_back(p.X());
-        result.coords.push_back(p.Y());
-        result.coords.push_back(p.Z());
+        for (int i = 1; i <= nb_points; i++) {
+            gp_Pnt p = approx.Value(i);
+            result.coords.push_back(p.X());
+            result.coords.push_back(p.Y());
+            result.coords.push_back(p.Z());
+        }
+    } catch (const Standard_Failure&) {
+        result.count = 0;
+        result.coords.clear();
     }
 
     return result;

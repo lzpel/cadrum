@@ -1,4 +1,9 @@
-use chijin::Shape;
+// 目的: ランダムに中心点を変えながら引き延ばし処理を多数実行し、
+// 実行時エラー(C++例外・パニック)が生じるパラメータの組み合わせを探索して
+// out/map_ok.csv に書き出す。テスト自体はエラーが生じても継続し、
+// 最終的に全試行の成功・失敗をCSVで記録することを目的とする。
+
+use chijin::{Error, Shape};
 use glam::DVec3;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
@@ -10,7 +15,7 @@ const COORD_TOLERANCE: f64 = 0.5;
 
 /// 指定された
 /// 座標でカットされた面を押し出し、切断面を塞ぐための形状（フィラー）を生成します。
-fn extrude_cut_faces(shape: &Shape, origin: DVec3, delta: DVec3) -> Shape {
+fn extrude_cut_faces(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
 	let plane_normal = delta.normalize();
 	let extrude_dir = delta;
 	let mut filler: Option<Shape> = None;
@@ -20,53 +25,56 @@ fn extrude_cut_faces(shape: &Shape, origin: DVec3, delta: DVec3) -> Shape {
 		if normal.dot(plane_normal).abs() > NORMAL_THRESHOLD
 			&& (center - origin).dot(plane_normal).abs() < COORD_TOLERANCE
 		{
-			let extruded = Shape::from(face.extrude(extrude_dir));
+			let extruded = Shape::from(face.extrude(extrude_dir)?);
 			filler = Some(match filler {
 				None => extruded,
-				Some(f) => f.union(&extruded),
+				Some(f) => f.union(&extruded)?,
 			});
 		}
 	}
-	filler.unwrap_or_else(Shape::empty)
+	Ok(filler.unwrap_or_else(Shape::empty))
 }
 
 /// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
-fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Shape {
+fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
 	let plane_normal = delta.normalize();
 	let half = Shape::half_space(origin, plane_normal);
 
-	let part_neg = shape.intersect(&half);
-	let part_pos = shape.subtract(&half).translated(delta);
+	let part_neg = shape.intersect(&half)?;
+	let part_pos = shape.subtract(&half)?.translated(delta);
 
-	let filler = extrude_cut_faces(&part_neg, origin, delta);
-	part_neg.union(&filler).union(&part_pos)
+	let filler = extrude_cut_faces(&part_neg, origin, delta)?;
+	part_neg.union(&filler)?.union(&part_pos)
 }
 
 /// 形状をX, Y, Zの各軸方向に順番に引き伸ばします。
-fn stretch(shape: &Shape, cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -> Shape {
+fn stretch(shape: &Shape, cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -> Result<Shape, Error> {
 	let eps = 1e-10;
 	let origin = DVec3::new(cx, cy, cz);
 
-	let x = if dx > eps {
-		Some(stretch_vector(shape, origin, DVec3::new(dx, 0.0, 0.0)))
+	let x;
+	let after_x: &Shape = if dx > eps {
+		x = stretch_vector(shape, origin, DVec3::new(dx, 0.0, 0.0))?;
+		&x
 	} else {
-		None
+		shape
 	};
-	let after_x = x.as_ref().unwrap_or(shape);
 
-	let y = if dy > eps {
-		Some(stretch_vector(after_x, origin, DVec3::new(0.0, dy, 0.0)))
+	let y;
+	let after_y: &Shape = if dy > eps {
+		y = stretch_vector(after_x, origin, DVec3::new(0.0, dy, 0.0))?;
+		&y
 	} else {
-		None
+		after_x
 	};
-	let after_y = y.as_ref().unwrap_or(after_x);
 
-	let z = if dz > eps {
-		Some(stretch_vector(after_y, origin, DVec3::new(0.0, 0.0, dz)))
+	let z;
+	let after_z: &Shape = if dz > eps {
+		z = stretch_vector(after_y, origin, DVec3::new(0.0, 0.0, dz))?;
+		&z
 	} else {
-		None
+		after_y
 	};
-	let after_z = z.as_ref().unwrap_or(after_y);
 
 	after_z.clean()
 }
@@ -92,20 +100,17 @@ pub fn stretch_ok(
 	dy: f64,
 	dz: f64,
 ) -> Result<Shape, String> {
+	// C++ exceptions are caught at the FFI boundary and returned as Err.
+	// panic::catch_unwind is kept as a safety net for unexpected Rust panics.
 	let result = panic::catch_unwind(AssertUnwindSafe(|| stretch(shape, cx, cy, cz, dx, dy, dz)));
 
 	match result {
-		Ok(s) => {
-			if s.is_null() {
-				Err("Result shape is null".to_string())
-			} else {
-				Ok(s)
-			}
-		}
-		Err(err) => {
-			let msg = if let Some(s) = err.downcast_ref::<&str>() {
+		Ok(Ok(s)) => Ok(s),
+		Ok(Err(e)) => Err(e.to_string()),
+		Err(payload) => {
+			let msg = if let Some(s) = payload.downcast_ref::<&str>() {
 				(*s).to_string()
-			} else if let Some(s) = err.downcast_ref::<String>() {
+			} else if let Some(s) = payload.downcast_ref::<String>() {
 				s.clone()
 			} else {
 				"Unknown panic in shape operations".to_string()
@@ -177,4 +182,44 @@ fn map_ok() {
 		total_attempts * 3,
 		success_count
 	);
+}
+
+// ── STEP 出力ユーティリティ ──────────────────────────────────────
+
+/// 形状を `out/<name>.step` に書き出し、頂点数・三角形数を標準出力に表示します。
+/// `out/` ディレクトリが存在しない場合は自動作成します。
+fn write_step(shape: &Shape, name: &str) {
+	std::fs::create_dir_all("out").unwrap();
+	let path = format!("out/{name}.step");
+	let mut file = std::fs::File::create(&path).unwrap();
+	shape.write_step(&mut file).expect("STEP write failed");
+	let mesh = shape.mesh_with_tolerance(0.1).expect("meshing failed");
+	assert!(!mesh.vertices.is_empty(), "result shape has no vertices");
+	println!(
+		"{name}: {} vertices, {} triangles → {path}",
+		mesh.vertices.len(),
+		mesh.indices.len() / 3,
+	);
+}
+
+// ── 既知バグの再現・修正確認テスト ───────────────────────────────
+
+#[test]
+/// 旧バージョンで Standard_OutOfRange によりテストランナーごとクラッシュしていた
+/// 既知パラメーター (cx=1.0, cy=0.0, cz=1.0, dx=1.0, dy=1.0, dz=1.0) の確認テスト。
+/// 現在は正常に処理され、out/stretch_known_error_case_1_0_1.step に形状を出力する。
+fn stretch_known_error_case_1_0_1() {
+	let shape = lambda360box();
+	let (cx, cy, cz) = (1.0, 0.0, 1.0);
+	let (dx, dy, dz) = (1.0, 1.0, 1.0);
+
+	let result = stretch_ok(&shape, cx, cy, cz, dx, dy, dz);
+
+	match &result {
+		Ok(s) => write_step(s, "stretch_known_error_case_1_0_1"),
+		Err(e) => println!("Error: {e}"),
+	}
+	if let Err(e) = result {
+		panic!("stretch failed: {e}");
+	}
 }
