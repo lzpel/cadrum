@@ -14,6 +14,11 @@ pub struct Shape {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 }
 
+// `Shape` is `Send` because `UniquePtr<TopoDS_Shape>` is `Send`
+// (see ffi.rs — `unsafe impl Send for TopoDS_Shape`).
+// `Sync` is intentionally NOT implemented: OCC Handle<> ref-counts are
+// non-atomic, making concurrent `&Shape` access from multiple threads unsound.
+
 // ==================== Constructors ====================
 
 impl Shape {

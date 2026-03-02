@@ -180,5 +180,7 @@ std::unique_ptr<TopoDS_Shape> face_to_shape(const TopoDS_Face& face);
 
 ApproxPoints edge_approximation_segments(
     const TopoDS_Edge& edge, double tolerance);
+ApproxPoints edge_approximation_segments_ex(
+    const TopoDS_Edge& edge, double angular, double chord);
 
 } // namespace chijin

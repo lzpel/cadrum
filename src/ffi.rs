@@ -1,5 +1,5 @@
+use crate::stream::{rust_reader_read, rust_writer_flush, rust_writer_write};
 use crate::stream::{RustReader, RustWriter};
-use crate::stream::{rust_reader_read, rust_writer_write, rust_writer_flush};
 
 #[cxx::bridge(namespace = "chijin")]
 mod ffi_bridge {
@@ -124,8 +124,29 @@ mod ffi_bridge {
 		// ==================== Edge Methods ====================
 
 		fn edge_approximation_segments(edge: &TopoDS_Edge, tolerance: f64) -> ApproxPoints;
+		fn edge_approximation_segments_ex(
+			edge: &TopoDS_Edge,
+			angular: f64,
+			chord: f64,
+		) -> ApproxPoints;
 	}
 }
 
 // Re-export all bridge items so other modules can use `crate::ffi::TopoDS_Shape` etc.
 pub use ffi_bridge::*;
+
+// cxx opaque types default to `!Send + !Sync`. We mark them `Send` here so
+// that `UniquePtr<TopoDS_Shape>` (and friends) become `Send`, which in turn
+// makes our wrapper types (`Shape`, `Solid`, `Face`, `Edge`) auto-Send.
+//
+// Safety rationale:
+//   - `UniquePtr` gives exclusive ownership — no aliasing is possible.
+//   - These values are never shared across threads simultaneously; they are
+//     only *moved* to another thread, which is what `Send` permits.
+//   - `Sync` is intentionally NOT implemented: OCC's `Handle<Geom_XXX>`
+//     reference counts are non-atomic, so concurrent `&T` access across
+//     threads would be unsound.
+unsafe impl Send for TopoDS_Shape {}
+unsafe impl Send for TopoDS_Face {}
+unsafe impl Send for TopoDS_Edge {}
+unsafe impl Send for TopExp_Explorer {}

@@ -483,15 +483,14 @@ std::unique_ptr<TopoDS_Shape> face_to_shape(const TopoDS_Face& face) {
 
 // ==================== Edge Methods ====================
 
-ApproxPoints edge_approximation_segments(
-    const TopoDS_Edge& edge, double tolerance)
+ApproxPoints edge_approximation_segments_ex(
+    const TopoDS_Edge& edge, double angular, double chord)
 {
     ApproxPoints result;
     result.count = 0;
 
     BRepAdaptor_Curve curve(edge);
-    // Bug 4 fix: tolerance is now a parameter instead of hardcoded 0.1
-    GCPnts_TangentialDeflection approx(curve, tolerance, tolerance);
+    GCPnts_TangentialDeflection approx(curve, angular, chord);
 
     int nb_points = approx.NbPoints();
     result.count = static_cast<uint32_t>(nb_points);
@@ -504,6 +503,14 @@ ApproxPoints edge_approximation_segments(
     }
 
     return result;
+}
+
+ApproxPoints edge_approximation_segments(
+    const TopoDS_Edge& edge, double tolerance)
+{
+    // Bug 4 fix: tolerance is now a parameter instead of hardcoded 0.1.
+    // Delegate to the ex variant with angular == chord == tolerance.
+    return edge_approximation_segments_ex(edge, tolerance, tolerance);
 }
 
 } // namespace chijin
