@@ -49,9 +49,9 @@ fn main() {
 		println!("cargo:rustc-link-lib=static={}", lib);
 	}
 
-	// Standard_ErrorHandler inline methods are defined both in the OCCT header
-	// (compiled into wrapper.o) and in Standard_ErrorHandler.cxx (in TKernel.a).
-	// MinGW's linker treats both as strong symbols and errors; allow the duplicate.
+	// Safety-net: suppress any residual duplicate-symbol errors when linking
+	// against OCCT static libraries on MinGW.  The primary fix is the
+	// OCC_CONVERT_SIGNALS define added below to the cxx_build step.
 	println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
 
 	// TKernel's OSD_WNT.cxx registers a static initialiser (Init_OSD_WNT) that
@@ -64,18 +64,28 @@ fn main() {
 	}
 
 	// Build cxx bridge + C++ wrapper
-	cxx_build::bridge("src/ffi.rs")
+	let mut build = cxx_build::bridge("src/ffi.rs");
+	build
 		.file("cpp/wrapper.cpp")
 		.include(&occt_include)
 		.std("c++17")
-		.define("_USE_MATH_DEFINES", None)
-		// On MinGW, GCC emits OCCT header-defined inline functions (e.g.
-		// Standard_ErrorHandler::Callback methods) as strong symbols rather
-		// than COMDAT, causing "multiple definition" errors when they also
-		// appear in TKernel.a. -fno-keep-inline-dllexport suppresses the
-		// DLL-export promotion that triggers this behaviour.
-		.flag_if_supported("-fno-keep-inline-dllexport")
-		.compile("chijin_cpp");
+		.define("_USE_MATH_DEFINES", None);
+
+	// On MinGW (Windows GNU toolchain), GCC at -O0 emits inline C++ methods
+	// (from Standard_ErrorHandler.hxx) as strong (non-COMDAT) symbols in wrapper.o.
+	// TKernel.a unconditionally defines the same methods in Standard_ErrorHandler.cxx.obj.
+	// This causes "multiple definition" link errors.
+	//
+	// Standard_ErrorHandler.hxx only generates the inline stubs when OCC_CONVERT_SIGNALS
+	// is NOT defined (via `#if !defined(OCC_CONVERT_SIGNALS)`).  Defining it here
+	// suppresses those stubs in wrapper.o so only TKernel.a's implementation is linked.
+	if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+		&& env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("gnu")
+	{
+		build.define("OCC_CONVERT_SIGNALS", None);
+	}
+
+	build.compile("chijin_cpp");
 
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
