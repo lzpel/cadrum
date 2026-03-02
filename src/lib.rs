@@ -35,11 +35,3 @@ pub use iterators::{ApproximationSegmentIterator, EdgeIterator, FaceIterator};
 pub use mesh::Mesh;
 pub use shape::Shape;
 pub use solid::Solid;
-
-// SAFETY: OCC shapes are not aliased across threads in this codebase.
-// The UniquePtr ensures exclusive ownership, so it is safe to transfer
-// ownership to another thread.
-unsafe impl Send for Shape {}
-unsafe impl Send for Solid {}
-unsafe impl Send for Face {}
-unsafe impl Send for Edge {}
