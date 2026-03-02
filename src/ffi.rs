@@ -40,6 +40,7 @@ mod ffi_bridge {
 		// ==================== Shape I/O (streambuf callback) ====================
 
 		fn read_step_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;
+		fn write_step_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
 		fn read_brep_bin_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;
 		fn write_brep_bin_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
 		fn read_brep_text_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;

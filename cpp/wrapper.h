@@ -73,6 +73,7 @@ std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader);
 bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer);
 std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader);
 bool write_brep_text_stream(const TopoDS_Shape& shape, RustWriter& writer);
+bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer);
 
 // ==================== Shape Constructors ====================
 
