@@ -171,6 +171,7 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 			.define("USE_DRACO", "OFF")
 			.define("USE_TK", "OFF")
 			.define("USE_TCL", "OFF")
+			.define("USE_XLIB", "OFF") // X11 開発パッケージを要求されないようにする
 			// Only build the modules we need
 			.define("BUILD_MODULE_FoundationClasses", "ON")
 			.define("BUILD_MODULE_ModelingData", "ON")
