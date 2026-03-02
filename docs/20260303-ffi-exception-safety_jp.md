@@ -125,12 +125,12 @@ std::unique_ptr<TopoDS_Shape> boolean_fuse(
 
 ## 4. `stretch_box` テストの目的と設計
 
-`tests/stretch_box.rs` の `map_ok` テストは、ランダムな中心点で
+`tests/stretch_box.rs` の `stretch_box_random_survey` テストは、ランダムな中心点で
 引き延ばし処理を大量実行し、エラーが生じるパラメータを探索して CSV に書き出す。
 
 - シード固定の LCG 疑似乱数で再現性を確保
 - 1000 点 × 3 軸 = 3000 試行
-- 各試行の `(cx, cy, cz, dx, dy, dz, success, error_msg)` を `out/map_ok.csv` へ記録
+- 各試行の `(cx, cy, cz, dx, dy, dz, success, error_msg)` を `out/stretch_box_random_survey.csv` へ記録
 - テスト自体はエラーがあっても継続し、最後まで実行されることを保証する
 
 上記の C++ 修正により、今まで例外でプロセスが落ちていた試行が

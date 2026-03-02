@@ -1,6 +1,6 @@
 // 目的: ランダムに中心点を変えながら引き延ばし処理を多数実行し、
 // 実行時エラー(C++例外・パニック)が生じるパラメータの組み合わせを探索して
-// out/map_ok.csv に書き出す。テスト自体はエラーが生じても継続し、
+// out/stretch_box_random_survey.csv に書き出す。テスト自体はエラーが生じても継続し、
 // 最終的に全試行の成功・失敗をCSVで記録することを目的とする。
 
 use chijin::{Error, Shape};
@@ -141,8 +141,10 @@ impl Lcg {
 }
 
 #[test]
-/// ランダムなパラメータで引き伸ばし処理を多数実行し、成功・失敗の結果をCSVに出力します。
-fn map_ok() {
+#[ignore = "3000 試行で約 8 分かかるため通常の cargo test からは除外。実行: cargo test stretch_box_random_survey -- --ignored"]
+/// ランダムなパラメータで引き伸ばし処理を多数実行し、成功・失敗の結果を
+/// out/stretch_box_random_survey.csv に出力します。
+fn stretch_box_random_survey() {
 	use std::io::Write;
 
 	let out_dir = Path::new("out");
@@ -150,7 +152,7 @@ fn map_ok() {
 		std::fs::create_dir_all(out_dir).unwrap();
 	}
 
-	let mut file = std::fs::File::create("out/map_ok.csv").unwrap();
+	let mut file = std::fs::File::create("out/stretch_box_random_survey.csv").unwrap();
 	writeln!(file, "cx,cy,cz,dx,dy,dz,success,error_msg").unwrap();
 
 	let base_shape = lambda360box();
@@ -207,8 +209,8 @@ fn write_step(shape: &Shape, name: &str) {
 #[test]
 /// 旧バージョンで Standard_OutOfRange によりテストランナーごとクラッシュしていた
 /// 既知パラメーター (cx=1.0, cy=0.0, cz=1.0, dx=1.0, dy=1.0, dz=1.0) の確認テスト。
-/// 現在は正常に処理され、out/stretch_known_error_case_1_0_1.step に形状を出力する。
-fn stretch_known_error_case_1_0_1() {
+/// 現在は正常に処理され、out/stretch_box_known_error_case_1_0_1.step に形状を出力する。
+fn stretch_box_known_error_case_1_0_1() {
 	let shape = lambda360box();
 	let (cx, cy, cz) = (1.0, 0.0, 1.0);
 	let (dx, dy, dz) = (1.0, 1.0, 1.0);
@@ -216,7 +218,7 @@ fn stretch_known_error_case_1_0_1() {
 	let result = stretch_ok(&shape, cx, cy, cz, dx, dy, dz);
 
 	match &result {
-		Ok(s) => write_step(s, "stretch_known_error_case_1_0_1"),
+		Ok(s) => write_step(s, "stretch_box_known_error_case_1_0_1"),
 		Err(e) => println!("Error: {e}"),
 	}
 	if let Err(e) = result {
