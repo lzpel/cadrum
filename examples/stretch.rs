@@ -8,6 +8,7 @@
 
 use chijin::Shape;
 use glam::DVec3;
+use std::path::Path;
 
 const NORMAL_THRESHOLD: f64 = 0.99;
 const COORD_TOLERANCE: f64 = 0.5;

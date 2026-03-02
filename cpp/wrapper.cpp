@@ -1,6 +1,53 @@
 #include "chijin/src/ffi.rs.h"
 
+// Implementation-only OCCT headers (not exposed via wrapper.h)
 #include <Standard_Failure.hxx>
+#include <TopoDS_Solid.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <TopoDS.hxx>
+
+#include <BRepBuilderAPI_Copy.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepPrimAPI_MakeBox.hxx>
+#include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakeHalfSpace.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
+
+#include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepAlgoAPI_Cut.hxx>
+#include <BRepAlgoAPI_Common.hxx>
+
+#include <ShapeUpgrade_UnifySameDomain.hxx>
+
+#include <BRepMesh_IncrementalMesh.hxx>
+#include <BRep_Tool.hxx>
+#include <Poly_Triangulation.hxx>
+#include <BRepGProp.hxx>
+#include <BRepGProp_Face.hxx>
+#include <GProp_GProps.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+
+#include <BRepAdaptor_Curve.hxx>
+#include <GCPnts_TangentialDeflection.hxx>
+
+#include <BRep_Builder.hxx>
+#include <TopExp.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <gp_Pln.hxx>
+#include <gp_Ax2.hxx>
+#include <gp_Trsf.hxx>
+#include <TopLoc_Location.hxx>
+
+#include <BinTools.hxx>
+#include <BRepTools.hxx>
+#include <STEPControl_Reader.hxx>
+#include <Message_ProgressRange.hxx>
+
+#include <istream>
+#include <ostream>
+#include <sstream>
 #include <cmath>
 #include <cstring>
 #include <algorithm>
