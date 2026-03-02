@@ -43,6 +43,7 @@
 #include <BinTools.hxx>
 #include <BRepTools.hxx>
 #include <STEPControl_Reader.hxx>
+#include <STEPControl_Writer.hxx>
 #include <Message_ProgressRange.hxx>
 
 #include <istream>
@@ -559,6 +560,16 @@ ApproxPoints edge_approximation_segments(
     // Bug 4 fix: tolerance is now a parameter instead of hardcoded 0.1.
     // Delegate to the ex variant with angular == chord == tolerance.
     return edge_approximation_segments_ex(edge, tolerance, tolerance);
+}
+
+bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+    RustWriteStreambuf sbuf(writer);
+    std::ostream os(&sbuf);
+    STEPControl_Writer step_writer;
+    if (step_writer.Transfer(shape, STEPControl_AsIs) != IFSelect_RetDone) {
+        return false;
+    }
+    return step_writer.WriteStream(os) == IFSelect_RetDone;
 }
 
 } // namespace chijin

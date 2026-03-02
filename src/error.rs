@@ -9,6 +9,10 @@ pub enum Error {
     #[error("BRep read failed")]
     BrepReadFailed,
 
+    /// STEP file write failed.
+    #[error("STEP write failed")]
+    StepWriteFailed,
+
     /// BRep file write failed.
     #[error("BRep write failed")]
     BrepWriteFailed,

@@ -56,6 +56,19 @@ impl Shape {
 		Ok(Shape { inner })
 	}
 
+	/// Write this shape in STEP format to a stream.
+	///
+	/// # Errors
+	/// Returns [`Error::StepWriteFailed`] if writing fails.
+	pub fn write_step(&self, writer: &mut impl Write) -> Result<(), Error> {
+		let mut rust_writer = RustWriter::from_ref(writer);
+		if ffi::write_step_stream(&self.inner, &mut rust_writer) {
+			Ok(())
+		} else {
+			Err(Error::StepWriteFailed)
+		}
+	}
+
 	/// Write this shape in BRep binary format to a stream.
 	///
 	/// # Errors

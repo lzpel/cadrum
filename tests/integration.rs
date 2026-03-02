@@ -185,6 +185,19 @@ fn test_t08_boolean_returns_shape() {
 	let _inter: Shape = a.intersect(&b);
 }
 
+// ==================== STEP export ====================
+
+#[test]
+fn test_hollow_cube_write_step() {
+	let outer = Shape::box_from_corners(dvec3(-10.0, -10.0, -10.0), dvec3(10.0, 10.0, 10.0));
+	let inner = Shape::box_from_corners(dvec3(-5.0, -5.0, -5.0), dvec3(5.0, 5.0, 5.0));
+	let hollow_cube = outer.subtract(&inner);
+
+	std::fs::create_dir_all("out").unwrap();
+	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
+	hollow_cube.write_step(&mut file).unwrap();
+}
+
 // ==================== Additional Tests ====================
 
 #[test]
