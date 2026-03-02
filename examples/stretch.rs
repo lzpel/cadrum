@@ -81,7 +81,8 @@ fn main() {
     let result = stretch(cylinder, center.x, center.y, center.z, dx, dy, dz);
 
     // ── BRep テキストとして書き出し ───────────────────────────
-    let out_path = "stretched.brep";
+    let out_path = "out/stretched.brep";
+    std::fs::create_dir_all(Path::new(out_path).parent().unwrap()).unwrap();
     let mut buf = Vec::new();
     result
         .write_brep_text(&mut buf)

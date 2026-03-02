@@ -2,5 +2,5 @@ test:
 	cargo test
 test-system:
 	cargo run --example stretch --features OCCT_ROOT --no-default-features
-deploy:
+deploy: # --no-verify なしだと buildin feature で OCCT をフルビルドする検証が走り、非常に時間がかかります。
 	cargo publish --no-verify
