@@ -47,7 +47,6 @@
 #include <BRepTools.hxx>
 #include <STEPControl_Reader.hxx>
 #include <Message_ProgressRange.hxx>
-#include <Standard_Failure.hxx>
 
 #include <BRepBuilderAPI_Transform.hxx>
 

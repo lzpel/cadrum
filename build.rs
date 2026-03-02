@@ -69,6 +69,12 @@ fn main() {
 		.include(&occt_include)
 		.std("c++17")
 		.define("_USE_MATH_DEFINES", None)
+		// On MinGW, GCC emits OCCT header-defined inline functions (e.g.
+		// Standard_ErrorHandler::Callback methods) as strong symbols rather
+		// than COMDAT, causing "multiple definition" errors when they also
+		// appear in TKernel.a. -fno-keep-inline-dllexport suppresses the
+		// DLL-export promotion that triggers this behaviour.
+		.flag_if_supported("-fno-keep-inline-dllexport")
 		.compile("chijin_cpp");
 
 	println!("cargo:rerun-if-changed=src/ffi.rs");

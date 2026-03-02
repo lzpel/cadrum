@@ -1,5 +1,6 @@
 #include "chijin/src/ffi.rs.h"
 
+#include <Standard_Failure.hxx>
 #include <cmath>
 #include <cstring>
 #include <algorithm>
