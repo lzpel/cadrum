@@ -20,4 +20,16 @@ pub enum Error {
     /// Triangulation/meshing failed.
     #[error("Triangulation failed")]
     TriangulationFailed,
+
+    /// Boolean operation (fuse/cut/common) failed in OCCT.
+    #[error("Boolean operation failed")]
+    BooleanOperationFailed,
+
+    /// Shape cleaning (UnifySameDomain) failed in OCCT.
+    #[error("Shape clean failed")]
+    CleanFailed,
+
+    /// Face extrusion (MakePrism) failed in OCCT.
+    #[error("Extrude failed")]
+    ExtrudeFailed,
 }
