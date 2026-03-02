@@ -8,34 +8,17 @@ const COORD_TOLERANCE: f64 = 0.5;
 
 // ── ユーティリティ ────────────────────────────────────────────────
 
-fn axis_vec(axis: usize, v: f64) -> DVec3 {
-	match axis {
-		0 => DVec3::new(v, 0.0, 0.0),
-		1 => DVec3::new(0.0, v, 0.0),
-		_ => DVec3::new(0.0, 0.0, v),
-	}
-}
-
-fn axis_unit(axis: usize) -> DVec3 {
-	axis_vec(axis, 1.0)
-}
-
-fn axis_component(v: DVec3, axis: usize) -> f64 {
-	match axis {
-		0 => v.x,
-		1 => v.y,
-		_ => v.z,
-	}
-}
-
-fn extrude_cut_faces(shape: &Shape, axis: usize, cut_coord: f64, delta: f64) -> Shape {
-	let extrude_dir = axis_vec(axis, delta);
+/// 指定された
+/// 座標でカットされた面を押し出し、切断面を塞ぐための形状（フィラー）を生成します。
+fn extrude_cut_faces(shape: &Shape, origin: DVec3, delta: DVec3) -> Shape {
+	let plane_normal = delta.normalize();
+	let extrude_dir = delta;
 	let mut filler: Option<Shape> = None;
 	for face in shape.faces() {
 		let normal = face.normal_at_center();
 		let center = face.center_of_mass();
-		if axis_component(normal, axis).abs() > NORMAL_THRESHOLD
-			&& (axis_component(center, axis) - cut_coord).abs() < COORD_TOLERANCE
+		if normal.dot(plane_normal).abs() > NORMAL_THRESHOLD
+			&& (center - origin).dot(plane_normal).abs() < COORD_TOLERANCE
 		{
 			let extruded = Shape::from(face.extrude(extrude_dir));
 			filler = Some(match filler {
@@ -47,37 +30,59 @@ fn extrude_cut_faces(shape: &Shape, axis: usize, cut_coord: f64, delta: f64) -> 
 	filler.unwrap_or_else(Shape::empty)
 }
 
-fn stretch_axis(shape: &Shape, axis: usize, cut_coord: f64, delta: f64) -> Shape {
-	let plane_origin = axis_vec(axis, cut_coord);
-	let plane_normal = axis_unit(axis);
-	let half = Shape::half_space(plane_origin, plane_normal);
+/// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
+fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Shape {
+	let plane_normal = delta.normalize();
+	let half = Shape::half_space(origin, plane_normal);
 
 	let part_neg = shape.intersect(&half);
-	let part_pos = shape.subtract(&half).translated(axis_vec(axis, delta));
+	let part_pos = shape.subtract(&half).translated(delta);
 
-	let filler = extrude_cut_faces(&part_neg, axis, cut_coord, delta);
+	let filler = extrude_cut_faces(&part_neg, origin, delta);
 	part_neg.union(&filler).union(&part_pos)
 }
 
+/// 形状をX, Y, Zの各軸方向に順番に引き伸ばします。
 fn stretch(shape: &Shape, cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -> Shape {
 	let eps = 1e-10;
-	let x = if dx > eps { Some(stretch_axis(shape, 0, cx, dx)) } else { None };
+	let origin = DVec3::new(cx, cy, cz);
+
+	let x = if dx > eps {
+		Some(stretch_vector(shape, origin, DVec3::new(dx, 0.0, 0.0)))
+	} else {
+		None
+	};
 	let after_x = x.as_ref().unwrap_or(shape);
-	let y = if dy > eps { Some(stretch_axis(after_x, 1, cy, dy)) } else { None };
+
+	let y = if dy > eps {
+		Some(stretch_vector(after_x, origin, DVec3::new(0.0, dy, 0.0)))
+	} else {
+		None
+	};
 	let after_y = y.as_ref().unwrap_or(after_x);
-	let z = if dz > eps { Some(stretch_axis(after_y, 2, cz, dz)) } else { None };
+
+	let z = if dz > eps {
+		Some(stretch_vector(after_y, origin, DVec3::new(0.0, 0.0, dz)))
+	} else {
+		None
+	};
 	let after_z = z.as_ref().unwrap_or(after_y);
+
 	after_z.clean()
 }
 
 // ── 今回の要件 ──────────────────────────────────────────────────
 
-pub fn hollow_cube() -> Shape {
-	let outer = Shape::box_from_corners(DVec3::new(-10., -10., -10.), DVec3::new(10., 10., 10.));
-	let inner = Shape::box_from_corners(DVec3::new(-5., -5., -5.), DVec3::new(5., 5., 5.));
-	outer.subtract(&inner)
+/// テスト用のベース形状として、外部のSTEPファイルを読み込みます。
+pub fn lambda360box() -> Shape {
+	let mut file = std::fs::File::open(
+		"tests/LAMBDA360-BOX-d6cb2eb2d6e0d802095ea1eda691cf9a3e9bf3394301a0d148f53e55f0f97951.step",
+	)
+	.expect("Failed to open step file");
+	Shape::read_step(&mut file).expect("Failed to read step file")
 }
 
+/// 形状の引き伸ばし処理をパニックキャッチ付きで安全に実行し、結果を返します。
 pub fn stretch_ok(
 	shape: &Shape,
 	cx: f64,
@@ -110,23 +115,28 @@ pub fn stretch_ok(
 	}
 }
 
+/// 線形合同法(LCG)によるシンプルな疑似乱数生成器です。
 struct Lcg {
 	state: u32,
 }
 impl Lcg {
+	/// 指定されたシードで乱数生成器を初期化します。
 	fn new(seed: u32) -> Self {
 		Self { state: seed }
 	}
+	/// 0.0以上1.0未満の乱数を生成します。
 	fn next_f64(&mut self) -> f64 {
 		self.state = self.state.wrapping_mul(1664525).wrapping_add(1013904223);
 		(self.state as f64) / (u32::MAX as f64)
 	}
+	/// 指定された範囲[min, max)の乱数を生成します。
 	fn gen_range(&mut self, min: f64, max: f64) -> f64 {
 		min + self.next_f64() * (max - min)
 	}
 }
 
 #[test]
+/// ランダムなパラメータで引き伸ばし処理を多数実行し、成功・失敗の結果をCSVに出力します。
 fn map_ok() {
 	use std::io::Write;
 
@@ -138,7 +148,7 @@ fn map_ok() {
 	let mut file = std::fs::File::create("out/map_ok.csv").unwrap();
 	writeln!(file, "cx,cy,cz,dx,dy,dz,success,error_msg").unwrap();
 
-	let base_shape = hollow_cube();
+	let base_shape = lambda360box();
 	let mut rng = Lcg::new(42);
 
 	let mut success_count = 0;
