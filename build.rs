@@ -181,17 +181,25 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 
 	// Re-resolve lib dir after build (in case it was just created)
 	let lib_dir = find_occt_lib_dir(&occt_root);
-
-	// Determine include path
-	let include_dir = if occt_root.join("include").join("opencascade").exists() {
-		occt_root.join("include").join("opencascade")
-	} else if occt_root.join("inc").exists() {
-		occt_root.join("inc")
-	} else {
-		occt_root.join("include")
-	};
+	let include_dir = find_occt_include_dir(&occt_root);
 
 	(include_dir, lib_dir)
+}
+
+/// Find the OCCT include directory, checking common install layouts.
+fn find_occt_include_dir(occt_root: &Path) -> PathBuf {
+	let candidates = [
+		occt_root.join("include").join("opencascade"),
+		occt_root.join("inc"),
+		occt_root.join("include"),
+	];
+	for dir in &candidates {
+		if dir.exists() {
+			return dir.clone();
+		}
+	}
+	// Default fallback
+	occt_root.join("include")
 }
 
 /// Find the OCCT lib directory, checking common install layouts.
@@ -222,21 +230,8 @@ fn use_system_occt() -> (PathBuf, PathBuf) {
 
 	let occt_root = PathBuf::from(occt_root);
 
-	// Try common include paths
-	let include_dir = if occt_root.join("include").join("opencascade").exists() {
-		occt_root.join("include").join("opencascade")
-	} else if occt_root.join("inc").exists() {
-		occt_root.join("inc")
-	} else {
-		occt_root.join("include")
-	};
-
-	// Try common lib paths
-	let lib_dir = if occt_root.join("win64").join("vc14").join("lib").exists() {
-		occt_root.join("win64").join("vc14").join("lib")
-	} else {
-		occt_root.join("lib")
-	};
+	let include_dir = find_occt_include_dir(&occt_root);
+	let lib_dir = find_occt_lib_dir(&occt_root);
 
 	assert!(
 		include_dir.exists(),
