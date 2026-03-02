@@ -20,7 +20,12 @@
       "Bash(objdump:*)",
       "Bash(x86_64-w64-mingw32-g++:*)",
       "Bash(rm:*)",
-      "Bash(/C/Users/smith/mingw64/bin/c++.exe:*)"
+      "Bash(/C/Users/smith/mingw64/bin/c++.exe:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:dev.opencascade.org)",
+      "WebFetch(domain:old.opencascade.com)"
     ]
   }
 }

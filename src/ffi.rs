@@ -36,6 +36,7 @@ mod ffi_bridge {
 		type TopoDS_Face;
 		type TopoDS_Edge;
 		type TopExp_Explorer;
+		type BooleanShape;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -83,9 +84,12 @@ mod ffi_bridge {
 
 		// ==================== Boolean Operations ====================
 
-		fn boolean_fuse(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
-		fn boolean_cut(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
-		fn boolean_common(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
+		fn boolean_fuse(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<BooleanShape>;
+		fn boolean_cut(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<BooleanShape>;
+		fn boolean_common(a: &TopoDS_Shape, b: &TopoDS_Shape) -> UniquePtr<BooleanShape>;
+
+		fn boolean_shape_shape(r: &BooleanShape) -> UniquePtr<TopoDS_Shape>;
+		fn boolean_shape_new_faces(r: &BooleanShape) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Shape Methods ====================
 
@@ -99,6 +103,7 @@ mod ffi_bridge {
 		) -> UniquePtr<TopoDS_Shape>;
 
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
+		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
 
 		// ==================== Meshing ====================
 
@@ -151,3 +156,4 @@ unsafe impl Send for TopoDS_Shape {}
 unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
 unsafe impl Send for TopExp_Explorer {}
+unsafe impl Send for BooleanShape {}

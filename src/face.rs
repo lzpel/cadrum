@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::ffi;
 use crate::solid::Solid;
 use glam::DVec3;
@@ -41,8 +42,11 @@ impl Face {
 	///
 	/// Uses `BRepPrimAPI_MakePrism`. The result can be converted to a `Shape`
 	/// via `Shape::from(solid)`.
-	pub fn extrude(&self, dir: DVec3) -> Solid {
+	pub fn extrude(&self, dir: DVec3) -> Result<Solid, Error> {
 		let shape = ffi::face_extrude(&self.inner, dir.x, dir.y, dir.z);
-		Solid::new(shape)
+		if shape.is_null() {
+			return Err(Error::ExtrudeFailed);
+		}
+		Ok(Solid::new(shape))
 	}
 }
