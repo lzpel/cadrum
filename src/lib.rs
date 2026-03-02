@@ -33,5 +33,5 @@ pub use error::Error;
 pub use face::Face;
 pub use iterators::{ApproximationSegmentIterator, EdgeIterator, FaceIterator};
 pub use mesh::Mesh;
-pub use shape::Shape;
+pub use shape::{BooleanShape, Shape};
 pub use solid::Solid;

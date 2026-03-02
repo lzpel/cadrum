@@ -8,43 +8,37 @@ use glam::DVec3;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
-const NORMAL_THRESHOLD: f64 = 0.99;
-const COORD_TOLERANCE: f64 = 0.5;
-
 // ── ユーティリティ ────────────────────────────────────────────────
 
-/// 指定された
-/// 座標でカットされた面を押し出し、切断面を塞ぐための形状（フィラー）を生成します。
-fn extrude_cut_faces(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
-	let plane_normal = delta.normalize();
-	let extrude_dir = delta;
+/// 切断面フェイスの Compound を delta 方向に押し出してフィラーを作ります。
+/// BooleanShape::new_faces から直接フェイスを受け取るため、
+/// heuristic による法線・重心フィルタは不要です。
+fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Result<Shape, Error> {
 	let mut filler: Option<Shape> = None;
-	for face in shape.faces() {
-		let normal = face.normal_at_center();
-		let center = face.center_of_mass();
-		if normal.dot(plane_normal).abs() > NORMAL_THRESHOLD
-			&& (center - origin).dot(plane_normal).abs() < COORD_TOLERANCE
-		{
-			let extruded = Shape::from(face.extrude(extrude_dir)?);
-			filler = Some(match filler {
-				None => extruded,
-				Some(f) => f.union(&extruded)?,
-			});
-		}
+	for face in cut_faces.faces() {
+		let extruded = Shape::from(face.extrude(delta)?);
+		filler = Some(match filler {
+			None => extruded,
+			Some(f) => Shape::from(f.union(&extruded)?),
+		});
 	}
 	Ok(filler.unwrap_or_else(Shape::empty))
 }
 
 /// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
+/// intersect の BooleanShape::new_faces から切断面を直接取得するため、
+/// 法線・重心による heuristic フィルタを使いません。
 fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
-	let plane_normal = delta.normalize();
-	let half = Shape::half_space(origin, plane_normal);
+	let half = Shape::half_space(origin, delta.normalize());
 
-	let part_neg = shape.intersect(&half)?;
-	let part_pos = shape.subtract(&half)?.translated(delta);
+	let intersect_result = shape.intersect(&half)?;
+	let part_neg = intersect_result.shape;
+	let cut_faces = intersect_result.new_faces;
+	let part_pos = Shape::from(shape.subtract(&half)?).translated(delta);
 
-	let filler = extrude_cut_faces(&part_neg, origin, delta)?;
-	part_neg.union(&filler)?.union(&part_pos)
+	let filler = extrude_faces(&cut_faces, delta)?;
+	let combined = Shape::from(part_neg.union(&filler)?);
+	combined.union(&part_pos).map(Shape::from)
 }
 
 /// 形状をX, Y, Zの各軸方向に順番に引き伸ばします。
@@ -204,21 +198,76 @@ fn write_step(shape: &Shape, name: &str) {
 	);
 }
 
+// ── 診断テスト ───────────────────────────────────────────────────
+
+/// new_faces (Generated() 結果) の中身を診断する。
+/// half_space と大きな有界ボックスの2種類のツールで intersect し、
+/// new_faces に何フェイスあるかを比較することで、Generated() が
+/// 非有界フェイスに対して機能しないかを確認する。
+#[test]
+fn diagnose_new_faces() {
+	let shape = lambda360box();
+	println!("input: face_count={}, shell_count={}", shape.faces().count(), shape.shell_count());
+
+	let origin = glam::DVec3::new(1.0, 0.0, 1.0);
+	let delta = glam::DVec3::new(1.0, 0.0, 0.0);
+
+	// --- tool A: half_space (非有界フェイス) ---
+	let half = Shape::half_space(origin, delta.normalize());
+	println!("\n[tool=half_space]");
+	println!("  half_space: face_count={}, shell_count={}", half.faces().count(), half.shell_count());
+	let r_half = shape.intersect(&half).expect("intersect(half_space) failed");
+	println!(
+		"  intersect result: shape face_count={}, shell_count={}",
+		r_half.shape.faces().count(),
+		r_half.shape.shell_count()
+	);
+	println!("  intersect result: new_faces face_count={}", r_half.new_faces.faces().count());
+
+	// --- tool B: 大きな有界ボックス (origin.x=1.0 が切断面になるように配置) ---
+	// x が [-1000, 1.0] の範囲の巨大ボックスで x=1.0 面が切断面となる
+	let big_box = Shape::box_from_corners(
+		glam::DVec3::new(-1000.0, -1000.0, -1000.0),
+		glam::DVec3::new(1.0, 1000.0, 1000.0),
+	);
+	println!("\n[tool=big_box (bounded, x in [-1000,1.0])]");
+	println!("  big_box: face_count={}, shell_count={}", big_box.faces().count(), big_box.shell_count());
+	let r_box = shape.intersect(&big_box).expect("intersect(big_box) failed");
+	println!(
+		"  intersect result: shape face_count={}, shell_count={}",
+		r_box.shape.faces().count(),
+		r_box.shape.shell_count()
+	);
+	println!("  intersect result: new_faces face_count={}", r_box.new_faces.faces().count());
+	println!("  new_faces details:");
+	for (i, face) in r_box.new_faces.faces().enumerate() {
+		let n = face.normal_at_center();
+		let c = face.center_of_mass();
+		println!("    face[{i}]: normal=({:.3},{:.3},{:.3}) center=({:.3},{:.3},{:.3})", n.x, n.y, n.z, c.x, c.y, c.z);
+	}
+}
+
 // ── 既知バグの再現・修正確認テスト ───────────────────────────────
 
 #[test]
 /// 旧バージョンで Standard_OutOfRange によりテストランナーごとクラッシュしていた
 /// 既知パラメーター (cx=1.0, cy=0.0, cz=1.0, dx=1.0, dy=1.0, dz=1.0) の確認テスト。
 /// 現在は正常に処理され、out/stretch_box_known_error_case_1_0_1.step に形状を出力する。
+/// 入力・出力ともに単一シェル（閉じた連結面）であることを検証する。
 fn stretch_box_known_error_case_1_0_1() {
 	let shape = lambda360box();
+	assert_eq!(shape.shell_count(), 1, "input shape must have exactly one shell");
+
 	let (cx, cy, cz) = (1.0, 0.0, 1.0);
 	let (dx, dy, dz) = (1.0, 1.0, 1.0);
 
 	let result = stretch_ok(&shape, cx, cy, cz, dx, dy, dz);
 
 	match &result {
-		Ok(s) => write_step(s, "stretch_box_known_error_case_1_0_1"),
+		Ok(s) => {
+			assert_eq!(s.shell_count(), 1, "stretched shape must have exactly one shell");
+			write_step(s, "stretch_box_known_error_case_1_0_1");
+		}
 		Err(e) => println!("Error: {e}"),
 	}
 	if let Err(e) = result {

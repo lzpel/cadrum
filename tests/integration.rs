@@ -77,7 +77,7 @@ fn test_t01_chained_boolean_drops() {
 	let b = test_box_2();
 	let c = test_box_3();
 	let r1 = a.union(&b).unwrap();
-	let r2 = r1.subtract(&c).unwrap();
+	let r2 = r1.shape.subtract(&c).unwrap();
 	drop(r1);
 	drop(r2);
 	drop(a);
@@ -130,7 +130,7 @@ fn test_t04_approximation_tolerance() {
 fn test_t05_translated_compound() {
 	let a = test_box();
 	let b = test_box_2();
-	let compound = a.union(&b).unwrap();
+	let compound: Shape = a.union(&b).unwrap().into();
 	let v = dvec3(100.0, 0.0, 0.0);
 	let shifted = compound.translated(v);
 
@@ -174,15 +174,15 @@ fn test_t07_stream_api_only() {
 	let _restored = Shape::read_brep_bin(&mut data.as_slice()).unwrap();
 }
 
-// ==================== T-08: Boolean returns Shape ====================
+// ==================== T-08: Boolean returns BooleanShape, convertible to Shape ====================
 
 #[test]
 fn test_t08_boolean_returns_shape() {
 	let a = test_box();
 	let b = test_box_2();
-	let _union: Shape = a.union(&b).unwrap();
-	let _sub: Shape = a.subtract(&b).unwrap();
-	let _inter: Shape = a.intersect(&b).unwrap();
+	let _union: Shape = a.union(&b).unwrap().into();
+	let _sub: Shape = a.subtract(&b).unwrap().into();
+	let _inter: Shape = a.intersect(&b).unwrap().into();
 }
 
 // ==================== STEP export ====================
@@ -191,7 +191,7 @@ fn test_t08_boolean_returns_shape() {
 fn test_hollow_cube_write_step() {
 	let outer = Shape::box_from_corners(dvec3(-10.0, -10.0, -10.0), dvec3(10.0, 10.0, 10.0));
 	let inner = Shape::box_from_corners(dvec3(-5.0, -5.0, -5.0), dvec3(5.0, 5.0, 5.0));
-	let hollow_cube = outer.subtract(&inner).unwrap();
+	let hollow_cube: Shape = outer.subtract(&inner).unwrap().into();
 
 	std::fs::create_dir_all("out").unwrap();
 	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
@@ -249,7 +249,7 @@ fn test_half_space_intersect() {
 	let shape = test_box();
 	let half = Shape::half_space(dvec3(5.0, 0.0, 0.0), dvec3(1.0, 0.0, 0.0));
 	let result = shape.intersect(&half).unwrap();
-	assert!(!result.is_null());
+	assert!(!result.shape.is_null());
 }
 
 #[test]

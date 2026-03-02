@@ -6,6 +6,26 @@ use crate::stream::{RustReader, RustWriter};
 use glam::{DVec2, DVec3};
 use std::io::{Read, Write};
 
+/// Result of a boolean operation.
+///
+/// `new_faces` is a compound of the faces generated at the tool boundary:
+/// - For [`intersect`](Shape::intersect) and [`subtract`](Shape::subtract):
+///   the cross-section faces at the cut plane.
+/// - For [`union`](Shape::union): an empty compound (no new cut faces are generated).
+///
+/// Both fields are `pub` for direct access. Use [`From<BooleanShape> for Shape`]
+/// (`.into()`) when only the shape is needed.
+pub struct BooleanShape {
+	pub shape: Shape,
+	pub new_faces: Shape,
+}
+
+impl From<BooleanShape> for Shape {
+	fn from(r: BooleanShape) -> Shape {
+		r.shape
+	}
+}
+
 /// A topological shape wrapping `TopoDS_Shape`.
 ///
 /// This is the central type in Chijin. Shapes can represent solids, compounds,
@@ -174,40 +194,55 @@ impl Shape {
 impl Shape {
 	/// Boolean union (fuse) with another shape.
 	///
+	/// Returns a [`BooleanShape`] whose `new_faces` is an empty compound
+	/// (union has no tool boundary that generates new faces).
+	///
 	/// # Bug 1 fix
 	/// The result is automatically deep-copied in the C++ layer via
 	/// `BRepBuilderAPI_Copy` to prevent `STATUS_HEAP_CORRUPTION`
 	/// when shapes are dropped in any order.
-	///
-	/// # T-08: Returns `Shape` directly (no `BooleanShape` intermediate type).
-	pub fn union(&self, other: &Shape) -> Result<Shape, Error> {
-		let inner = ffi::boolean_fuse(&self.inner, &other.inner);
-		if inner.is_null() {
+	pub fn union(&self, other: &Shape) -> Result<BooleanShape, Error> {
+		let r = ffi::boolean_fuse(&self.inner, &other.inner);
+		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
-		Ok(Shape { inner })
+		Ok(BooleanShape {
+			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
+			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
+		})
 	}
 
 	/// Boolean subtraction (cut) with another shape.
 	///
+	/// `new_faces` contains the cross-section faces generated at the tool boundary.
+	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
-	pub fn subtract(&self, other: &Shape) -> Result<Shape, Error> {
-		let inner = ffi::boolean_cut(&self.inner, &other.inner);
-		if inner.is_null() {
+	pub fn subtract(&self, other: &Shape) -> Result<BooleanShape, Error> {
+		let r = ffi::boolean_cut(&self.inner, &other.inner);
+		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
-		Ok(Shape { inner })
+		Ok(BooleanShape {
+			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
+			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
+		})
 	}
 
 	/// Boolean intersection (common) with another shape.
 	///
+	/// `new_faces` contains the cross-section faces generated at the tool boundary.
+	/// This is the primary source of cut faces used by the stretch algorithm.
+	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
-	pub fn intersect(&self, other: &Shape) -> Result<Shape, Error> {
-		let inner = ffi::boolean_common(&self.inner, &other.inner);
-		if inner.is_null() {
+	pub fn intersect(&self, other: &Shape) -> Result<BooleanShape, Error> {
+		let r = ffi::boolean_common(&self.inner, &other.inner);
+		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
-		Ok(Shape { inner })
+		Ok(BooleanShape {
+			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
+			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
+		})
 	}
 }
 
@@ -314,5 +349,14 @@ impl Shape {
 	/// Check if this shape is null.
 	pub fn is_null(&self) -> bool {
 		ffi::shape_is_null(&self.inner)
+	}
+
+	/// Count the number of shells in this shape.
+	///
+	/// Uses `TopExp_Explorer` with `TopAbs_SHELL`, which recursively
+	/// traverses the entire shape tree. Returns 1 for a single solid,
+	/// and N for a compound of N solids.
+	pub fn shell_count(&self) -> u32 {
+		ffi::shape_shell_count(&self.inner)
 	}
 }

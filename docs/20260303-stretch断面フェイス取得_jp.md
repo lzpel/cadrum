@@ -244,7 +244,7 @@ fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Result<Shape, Error> {
 
 ---
 
-## 発展案：全 Boolean 演算を `BooleanResult` に統一する
+## 発展案：全 Boolean 演算を `BooleanShape` に統一する
 
 ### 各演算で `Generated()` が返すもの
 
@@ -266,20 +266,20 @@ OCCT の Boolean 演算ごとに「生成されるフェイス」の意味が異
 新たなエッジが刻まれた版であり、stretch のフィラーとは無関係。
 統一型では `new_faces` を空 Compound として返す。
 
-### `BooleanResult` 型の設計
+### `BooleanShape` 型の設計
 
 ```rust
 /// Boolean 演算の結果。
 /// `new_faces` は演算ツールの境界面が生んだフェイスの Compound。
 /// union の場合は空 Compound が返る。
-pub struct BooleanResult {
+pub struct BooleanShape {
     pub shape: Shape,
     pub new_faces: Shape,
 }
 
 /// Shape が必要な場所に `.into()` で変換できる。
-impl From<BooleanResult> for Shape {
-    fn from(r: BooleanResult) -> Shape { r.shape }
+impl From<BooleanShape> for Shape {
+    fn from(r: BooleanShape) -> Shape { r.shape }
 }
 ```
 
@@ -292,7 +292,7 @@ Rust の構造体分解も使える。`shape()` / `into_shape()` のような
 let mesh = result.shape.mesh_with_tolerance(0.1)?;
 
 // 構造体分解（最も明示的）
-let BooleanResult { shape: part_neg, new_faces: cut_faces } = shape.intersect(&half)?;
+let BooleanShape { shape: part_neg, new_faces: cut_faces } = shape.intersect(&half)?;
 
 // Shape として使いたいだけのとき
 let s: Shape = a.union(&b)?.into();
@@ -306,7 +306,7 @@ let s: Shape = a.union(&b)?.into();
 // union / subtract / intersect でそれぞれの BRepAlgoAPI_XXX を使い、
 // Generated を呼ぶかどうかだけ変える。
 
-std::unique_ptr<BooleanResult> boolean_fuse_impl(
+std::unique_ptr<BooleanShape> boolean_fuse_impl(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
     try {
@@ -314,21 +314,21 @@ std::unique_ptr<BooleanResult> boolean_fuse_impl(
         op.Build();
         if (!op.IsDone()) return nullptr;
         BRepBuilderAPI_Copy copier(op.Shape(), Standard_True, Standard_False);
-        auto r = std::make_unique<BooleanResult>();
+        auto r = std::make_unique<BooleanShape>();
         r->shape = copier.Shape();
         r->new_faces = make_empty_compound(); // union に Generated は不要
         return r;
     } catch (const Standard_Failure&) { return nullptr; }
 }
 
-std::unique_ptr<BooleanResult> boolean_cut_impl(
+std::unique_ptr<BooleanShape> boolean_cut_impl(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
     // intersect_with_cut_faces と同じパターンで Generated を収集してから deep copy
     ...
 }
 
-std::unique_ptr<BooleanResult> boolean_common_impl(
+std::unique_ptr<BooleanShape> boolean_common_impl(
     const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
     // intersect_with_cut_faces と同じパターン
@@ -343,14 +343,14 @@ std::unique_ptr<BooleanResult> boolean_common_impl(
 let part_neg = shape.intersect(&half)?;                         // Shape
 let filler = extrude_cut_faces(&part_neg, origin, delta)?;     // heuristic
 
-// 新（BooleanResult 統一後）
-let BooleanResult { shape: part_neg, new_faces: cut_faces } = shape.intersect(&half)?;
+// 新（BooleanShape 統一後）
+let BooleanShape { shape: part_neg, new_faces: cut_faces } = shape.intersect(&half)?;
 let filler = extrude_faces(&cut_faces, delta)?;                // 確実
 
 // union は new_faces を無視して使う場合が多い
 let result: Shape = a.union(&b)?.into();
 // または構造体分解して明示的に
-let BooleanResult { shape: result, .. } = a.union(&b)?;
+let BooleanShape { shape: result, .. } = a.union(&b)?;
 ```
 
 ### union の `new_faces` が空であることの安全性
@@ -363,13 +363,13 @@ let BooleanResult { shape: result, .. } = a.union(&b)?;
 
 | | メリット | デメリット |
 |---|---|---|
-| 統一型 | API が一貫。呼び出し側は常に同じ型を受け取る | 既存の `union/subtract/intersect` が破壊的変更になる |
-| 統一型 | stretch 以外のユースケースでも Generated が取れる | union の `new_faces` は意味的に空であり、混乱の余地がある |
+| `BooleanShape` 統一型 | API が一貫。呼び出し側は常に同じ型を受け取る | 既存の `union/subtract/intersect` が破壊的変更になる |
+| `BooleanShape` 統一型 | stretch 以外のユースケースでも Generated が取れる | union の `new_faces` は意味的に空であり、混乱の余地がある |
 | 個別拡張（現行 Option C 案） | 既存 API を壊さない | `intersect_with_cut_faces` だけ特別扱い。一貫性に欠ける |
 
 ### 推奨方針
 
 すでに `union/subtract/intersect` は `0.2.0` で破壊的変更（`Result<Shape, Error>` 化）
-が行われる予定なので、同じタイミングで `Result<BooleanResult, Error>` に変更するのが
-コストが最小。`BooleanResult` に `From<BooleanResult> for Shape` を実装すれば
+が行われる予定なので、同じタイミングで `Result<BooleanShape, Error>` に変更するのが
+コストが最小。`BooleanShape` に `From<BooleanShape> for Shape` を実装すれば
 既存の `.into()` パターンで簡単に移行できる。

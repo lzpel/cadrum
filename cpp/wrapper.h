@@ -95,12 +95,24 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
 
 // ==================== Boolean Operations ====================
 
-std::unique_ptr<TopoDS_Shape> boolean_fuse(
+/// Result of a boolean operation: the output shape plus any faces
+/// generated at the tool boundary (cut cross-sections for cut/common;
+/// empty compound for fuse).
+class BooleanShape {
+public:
+    TopoDS_Shape shape;
+    TopoDS_Shape new_faces;
+};
+
+std::unique_ptr<BooleanShape> boolean_fuse(
     const TopoDS_Shape& a, const TopoDS_Shape& b);
-std::unique_ptr<TopoDS_Shape> boolean_cut(
+std::unique_ptr<BooleanShape> boolean_cut(
     const TopoDS_Shape& a, const TopoDS_Shape& b);
-std::unique_ptr<TopoDS_Shape> boolean_common(
+std::unique_ptr<BooleanShape> boolean_common(
     const TopoDS_Shape& a, const TopoDS_Shape& b);
+
+std::unique_ptr<TopoDS_Shape> boolean_shape_shape(const BooleanShape& r);
+std::unique_ptr<TopoDS_Shape> boolean_shape_new_faces(const BooleanShape& r);
 
 // ==================== Shape Methods ====================
 
@@ -108,6 +120,7 @@ std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape, double tx, double ty, double tz);
 bool shape_is_null(const TopoDS_Shape& shape);
+uint32_t shape_shell_count(const TopoDS_Shape& shape);
 
 // ==================== Meshing ====================
 

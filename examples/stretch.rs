@@ -4,31 +4,22 @@
 //! cargo run --example stretch --features buildin
 //! ```
 //!
-//! 出力: stretched.brep (BRep テキスト形式)
+//! 出力: out/stretched.brep (BRep テキスト形式)
 
 use chijin::Shape;
 use glam::DVec3;
 use std::path::Path;
 
-const NORMAL_THRESHOLD: f64 = 0.99;
-const COORD_TOLERANCE: f64 = 0.5;
-
-/// 切断面の Face を delta だけ押し出してフィラーソリッドを生成する。
-fn extrude_cut_faces(shape: &Shape, axis: usize, cut_coord: f64, delta: f64) -> Shape {
-    let extrude_dir = axis_vec(axis, delta);
+/// 切断面フェイスの Compound を delta 方向に押し出してフィラーを生成する。
+/// BooleanShape::new_faces から直接フェイスを受け取るため heuristic フィルタは不要。
+fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Shape {
     let mut filler: Option<Shape> = None;
-    for face in shape.faces() {
-        let normal = face.normal_at_center();
-        let center = face.center_of_mass();
-        if axis_component(normal, axis).abs() > NORMAL_THRESHOLD
-            && (axis_component(center, axis) - cut_coord).abs() < COORD_TOLERANCE
-        {
-            let extruded = Shape::from(face.extrude(extrude_dir)).deep_copy();
-            filler = Some(match filler {
-                None => extruded,
-                Some(f) => f.union(&extruded).deep_copy(),
-            });
-        }
+    for face in cut_faces.faces() {
+        let extruded = Shape::from(face.extrude(delta).unwrap());
+        filler = Some(match filler {
+            None => extruded,
+            Some(f) => Shape::from(f.union(&extruded).unwrap()),
+        });
     }
     filler.unwrap_or_else(Shape::empty)
 }
@@ -39,12 +30,14 @@ fn stretch_axis(shape: Shape, axis: usize, cut_coord: f64, delta: f64) -> Shape 
     let plane_normal = axis_unit(axis);
     let half = Shape::half_space(plane_origin, plane_normal);
 
-    let part_neg = shape.intersect(&half).deep_copy();
-    let part_pos = shape.subtract(&half).deep_copy();
-    let part_pos = part_pos.translated(axis_vec(axis, delta));
+    let intersect = shape.intersect(&half).unwrap();
+    let part_neg = intersect.shape;
+    let cut_faces = intersect.new_faces;
+    let part_pos = Shape::from(shape.subtract(&half).unwrap()).translated(axis_vec(axis, delta));
 
-    let filler = extrude_cut_faces(&part_neg, axis, cut_coord, delta);
-    part_neg.union(&filler).union(&part_pos).deep_copy()
+    let filler = extrude_faces(&cut_faces, axis_vec(axis, delta));
+    let combined = Shape::from(part_neg.union(&filler).unwrap());
+    Shape::from(combined.union(&part_pos).unwrap())
 }
 
 /// (cx,cy,cz) で切断し、(dx,dy,dz) だけ各軸方向に引き延ばす。
@@ -54,7 +47,7 @@ fn stretch(shape: Shape, cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -
     let shape = if dx > eps { stretch_axis(shape, 0, cx, dx) } else { shape };
     let shape = if dy > eps { stretch_axis(shape, 1, cy, dy) } else { shape };
     let shape = if dz > eps { stretch_axis(shape, 2, cz, dz) } else { shape };
-    shape.clean().deep_copy()
+    shape.clean().unwrap()
 }
 
 fn main() {
@@ -114,12 +107,4 @@ fn axis_vec(axis: usize, v: f64) -> DVec3 {
 
 fn axis_unit(axis: usize) -> DVec3 {
     axis_vec(axis, 1.0)
-}
-
-fn axis_component(v: DVec3, axis: usize) -> f64 {
-    match axis {
-        0 => v.x,
-        1 => v.y,
-        _ => v.z,
-    }
 }
