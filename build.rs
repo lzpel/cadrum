@@ -64,12 +64,25 @@ fn main() {
 	}
 
 	// Build cxx bridge + C++ wrapper
-	let mut build = cxx_build::bridge("src/ffi.rs");
+	let mut bridge_sources: Vec<&str> = vec!["src/ffi.rs"];
+
+	// When the "color" feature is enabled, also compile the color FFI bridge.
+	if cfg!(feature = "color") {
+		bridge_sources.push("src/color_ffi.rs");
+	}
+
+	let mut build = cxx_build::bridges(bridge_sources);
+
 	build
 		.file("cpp/wrapper.cpp")
 		.include(&occt_include)
 		.std("c++17")
 		.define("_USE_MATH_DEFINES", None);
+
+	// Define CHIJIN_COLOR for C++ when the "color" feature is enabled.
+	if cfg!(feature = "color") {
+		build.define("CHIJIN_COLOR", None);
+	}
 
 	// On MinGW (Windows GNU toolchain), GCC at -O0 emits inline C++ methods
 	// (from Standard_ErrorHandler.hxx) as strong (non-COMDAT) symbols in wrapper.o.
@@ -90,6 +103,9 @@ fn main() {
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
+	if cfg!(feature = "color") {
+		println!("cargo:rerun-if-changed=src/color_ffi.rs");
+	}
 }
 
 /// Feature "bundled": Download OCCT 7.9.3 source and build with CMake.

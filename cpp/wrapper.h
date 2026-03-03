@@ -11,6 +11,12 @@
 
 #include <streambuf>
 #include <memory>
+#include <array>
+
+#ifdef CHIJIN_COLOR
+#include <NCollection_DataMap.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
+#endif
 
 namespace chijin {
 
@@ -151,5 +157,72 @@ ApproxPoints edge_approximation_segments(
     const TopoDS_Edge& edge, double tolerance);
 ApproxPoints edge_approximation_segments_ex(
     const TopoDS_Edge& edge, double angular, double chord);
+
+// ==================== Color Map (feature = "color") ====================
+#ifdef CHIJIN_COLOR
+
+using RGB = std::array<uint8_t, 3>;
+
+/// Per-face color map using IsSame()-based lookup.
+/// Wraps NCollection_DataMap<TopoDS_Shape, RGB, TopTools_ShapeMapHasher>.
+class ColorMap {
+public:
+    ColorMap() = default;
+
+    void set(const TopoDS_Shape& face, uint8_t r, uint8_t g, uint8_t b);
+    bool get(const TopoDS_Shape& face, uint8_t& r, uint8_t& g, uint8_t& b) const;
+    int32_t size() const;
+
+    // Internal: raw map access for relay functions
+    auto& raw() { return map_; }
+    const auto& raw() const { return map_; }
+
+private:
+    NCollection_DataMap<TopoDS_Shape, RGB, TopTools_ShapeMapHasher> map_;
+};
+
+/// Result of a colored boolean operation.
+class BooleanShapeColored {
+public:
+    TopoDS_Shape shape;
+    TopoDS_Shape new_faces;
+    ColorMap shape_colors;
+    ColorMap new_faces_colors;
+};
+
+// ColorMap free functions (for cxx bridge)
+std::unique_ptr<ColorMap> colormap_new();
+void colormap_set(ColorMap& map, const TopoDS_Face& face, uint8_t r, uint8_t g, uint8_t b);
+bool colormap_get(const ColorMap& map, const TopoDS_Face& face, uint8_t& r, uint8_t& g, uint8_t& b);
+int32_t colormap_size(const ColorMap& map);
+
+// Color-relay boolean operations
+std::unique_ptr<BooleanShapeColored> boolean_fuse_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors);
+std::unique_ptr<BooleanShapeColored> boolean_cut_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors);
+std::unique_ptr<BooleanShapeColored> boolean_common_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors);
+
+// Accessors for BooleanShapeColored (for cxx bridge)
+std::unique_ptr<TopoDS_Shape> colored_result_shape(const BooleanShapeColored& r);
+std::unique_ptr<TopoDS_Shape> colored_result_new_faces(const BooleanShapeColored& r);
+std::unique_ptr<ColorMap> colored_result_shape_colors(const BooleanShapeColored& r);
+std::unique_ptr<ColorMap> colored_result_new_faces_colors(const BooleanShapeColored& r);
+
+// Color-relay clean
+std::unique_ptr<TopoDS_Shape> clean_shape_colored(
+    const TopoDS_Shape& shape, const ColorMap& in_colors, ColorMap& out_colors);
+
+// Color remap after deep_copy / translate
+std::unique_ptr<ColorMap> remap_colors_after_copy(
+    const TopoDS_Shape& before_copy,
+    const TopoDS_Shape& after_copy,
+    const ColorMap& src);
+
+#endif // CHIJIN_COLOR
 
 } // namespace chijin

@@ -672,4 +672,256 @@ bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
     return step_writer.WriteStream(os) == IFSelect_RetDone;
 }
 
+// ==================== ColorMap ====================
+#ifdef CHIJIN_COLOR
+
+void ColorMap::set(const TopoDS_Shape& face, uint8_t r, uint8_t g, uint8_t b) {
+    RGB rgb = {r, g, b};
+    if (map_.IsBound(face)) {
+        map_.ChangeFind(face) = rgb;
+    } else {
+        map_.Bind(face, rgb);
+    }
+}
+
+bool ColorMap::get(const TopoDS_Shape& face, uint8_t& r, uint8_t& g, uint8_t& b) const {
+    if (!map_.IsBound(face)) return false;
+    const RGB& rgb = map_.Find(face);
+    r = rgb[0]; g = rgb[1]; b = rgb[2];
+    return true;
+}
+
+int32_t ColorMap::size() const {
+    return static_cast<int32_t>(map_.Size());
+}
+
+// Free functions for cxx bridge
+std::unique_ptr<ColorMap> colormap_new() {
+    return std::make_unique<ColorMap>();
+}
+
+void colormap_set(ColorMap& map, const TopoDS_Face& face, uint8_t r, uint8_t g, uint8_t b) {
+    map.set(face, r, g, b);
+}
+
+bool colormap_get(const ColorMap& map, const TopoDS_Face& face, uint8_t& r, uint8_t& g, uint8_t& b) {
+    return map.get(face, r, g, b);
+}
+
+int32_t colormap_size(const ColorMap& map) {
+    return map.size();
+}
+
+// ==================== Color Relay Helpers ====================
+
+// Relay colors through a boolean operation:
+// For each face in input_shape that has a color in old_map,
+// find Modified/unmodified faces in the result and assign the same color.
+static void relay_colors_from_input(
+    BRepAlgoAPI_BooleanOperation& op,
+    const TopoDS_Shape& input_shape,
+    const ColorMap& old_map,
+    ColorMap& out_map)
+{
+    for (TopExp_Explorer ex(input_shape, TopAbs_FACE); ex.More(); ex.Next()) {
+        const TopoDS_Shape& old_face = ex.Current();
+        uint8_t r, g, b;
+        if (!old_map.get(old_face, r, g, b)) continue;
+
+        const TopTools_ListOfShape& modified = op.Modified(old_face);
+        if (!modified.IsEmpty()) {
+            // Face was modified: assign color to all resulting faces
+            for (const TopoDS_Shape& new_face : modified) {
+                out_map.set(new_face, r, g, b);
+            }
+        } else if (!op.IsDeleted(old_face)) {
+            // Face was not modified and not deleted: it survived as-is
+            out_map.set(old_face, r, g, b);
+        }
+    }
+}
+
+// Remap colors from before_copy to after_copy using face enumeration order.
+// Both shapes must have the same number of faces in the same order.
+std::unique_ptr<ColorMap> remap_colors_after_copy(
+    const TopoDS_Shape& before_copy,
+    const TopoDS_Shape& after_copy,
+    const ColorMap& src)
+{
+    auto result = std::make_unique<ColorMap>();
+
+    // Build indexed maps for both shapes
+    TopTools_IndexedMapOfShape before_faces, after_faces;
+    TopExp::MapShapes(before_copy, TopAbs_FACE, before_faces);
+    TopExp::MapShapes(after_copy, TopAbs_FACE, after_faces);
+
+    int n = std::min(before_faces.Extent(), after_faces.Extent());
+    for (int i = 1; i <= n; ++i) {
+        uint8_t r, g, b;
+        if (src.get(before_faces(i), r, g, b)) {
+            result->set(after_faces(i), r, g, b);
+        }
+    }
+
+    return result;
+}
+
+// ==================== Color-Relay Boolean Operations ====================
+
+// Generic helper for colored boolean operations.
+// Template parameter Op is BRepAlgoAPI_Fuse, BRepAlgoAPI_Cut, or BRepAlgoAPI_Common.
+template<typename Op>
+static std::unique_ptr<BooleanShapeColored> boolean_colored_impl(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors,
+    bool collect_new_faces_from_tool)
+{
+    try {
+        Op op(a, b);
+        op.Build();
+        if (!op.IsDone()) return nullptr;
+
+        // 1. Relay colors from both inputs BEFORE deep_copy
+        ColorMap pre_copy_colors;
+        relay_colors_from_input(op, a, a_colors, pre_copy_colors);
+        relay_colors_from_input(op, b, b_colors, pre_copy_colors);
+
+        // 2. Collect new faces (cut cross-sections) if applicable
+        ColorMap pre_copy_new_colors;
+        TopoDS_Shape new_faces_raw;
+        if (collect_new_faces_from_tool) {
+            new_faces_raw = collect_generated_faces(op, b);
+            // New faces get no color by default (user can assign later)
+        } else {
+            BRep_Builder builder;
+            TopoDS_Compound empty;
+            builder.MakeCompound(empty);
+            new_faces_raw = empty;
+        }
+
+        // 3. Deep-copy the result shape
+        BRepBuilderAPI_Copy copier(op.Shape(), Standard_True, Standard_False);
+        TopoDS_Shape result_shape = copier.Shape();
+
+        // 4. Remap colors from pre-copy to post-copy
+        auto result_colors = remap_colors_after_copy(
+            op.Shape(), result_shape, pre_copy_colors);
+
+        auto r = std::make_unique<BooleanShapeColored>();
+        r->shape = result_shape;
+        r->new_faces = new_faces_raw;
+        r->shape_colors = std::move(*result_colors);
+        // new_faces are already deep-copied individually in collect_generated_faces
+        r->new_faces_colors = pre_copy_new_colors;
+        return r;
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<BooleanShapeColored> boolean_fuse_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors)
+{
+    return boolean_colored_impl<BRepAlgoAPI_Fuse>(
+        a, a_colors, b, b_colors, false);
+}
+
+std::unique_ptr<BooleanShapeColored> boolean_cut_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors)
+{
+    return boolean_colored_impl<BRepAlgoAPI_Cut>(
+        a, a_colors, b, b_colors, true);
+}
+
+std::unique_ptr<BooleanShapeColored> boolean_common_colored(
+    const TopoDS_Shape& a, const ColorMap& a_colors,
+    const TopoDS_Shape& b, const ColorMap& b_colors)
+{
+    return boolean_colored_impl<BRepAlgoAPI_Common>(
+        a, a_colors, b, b_colors, true);
+}
+
+// Accessors for BooleanShapeColored
+std::unique_ptr<TopoDS_Shape> colored_result_shape(const BooleanShapeColored& r) {
+    return std::make_unique<TopoDS_Shape>(r.shape);
+}
+
+std::unique_ptr<TopoDS_Shape> colored_result_new_faces(const BooleanShapeColored& r) {
+    return std::make_unique<TopoDS_Shape>(r.new_faces);
+}
+
+std::unique_ptr<ColorMap> colored_result_shape_colors(const BooleanShapeColored& r) {
+    auto m = std::make_unique<ColorMap>();
+    for (NCollection_DataMap<TopoDS_Shape, RGB, TopTools_ShapeMapHasher>::Iterator it(r.shape_colors.raw()); it.More(); it.Next()) {
+        m->set(it.Key(), it.Value()[0], it.Value()[1], it.Value()[2]);
+    }
+    return m;
+}
+
+std::unique_ptr<ColorMap> colored_result_new_faces_colors(const BooleanShapeColored& r) {
+    auto m = std::make_unique<ColorMap>();
+    for (NCollection_DataMap<TopoDS_Shape, RGB, TopTools_ShapeMapHasher>::Iterator it(r.new_faces_colors.raw()); it.More(); it.Next()) {
+        m->set(it.Key(), it.Value()[0], it.Value()[1], it.Value()[2]);
+    }
+    return m;
+}
+
+// ==================== Color-Relay Clean ====================
+
+std::unique_ptr<TopoDS_Shape> clean_shape_colored(
+    const TopoDS_Shape& shape, const ColorMap& in_colors, ColorMap& out_colors)
+{
+    try {
+        ShapeUpgrade_UnifySameDomain unifier(shape, Standard_True, Standard_True, Standard_True);
+        unifier.AllowInternalEdges(Standard_False);
+        unifier.Build();
+
+        TopoDS_Shape result = unifier.Shape();
+
+        const Handle(BRepTools_History)& history = unifier.History();
+
+        // Relay colors: for each original face, find its Modified result
+        for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+            const TopoDS_Shape& old_face = ex.Current();
+            uint8_t r, g, b;
+            if (!in_colors.get(old_face, r, g, b)) continue;
+
+            const TopTools_ListOfShape& modified = history->Generated(old_face);
+            if (!modified.IsEmpty()) {
+                for (const TopoDS_Shape& new_face : modified) {
+                    // Use first-found color: only set if not already colored
+                    uint8_t dummy_r, dummy_g, dummy_b;
+                    if (!out_colors.get(new_face, dummy_r, dummy_g, dummy_b)) {
+                        out_colors.set(new_face, r, g, b);
+                    }
+                }
+            }
+
+            const TopTools_ListOfShape& mod_list = history->Modified(old_face);
+            if (!mod_list.IsEmpty()) {
+                for (const TopoDS_Shape& new_face : mod_list) {
+                    uint8_t dummy_r, dummy_g, dummy_b;
+                    if (!out_colors.get(new_face, dummy_r, dummy_g, dummy_b)) {
+                        out_colors.set(new_face, r, g, b);
+                    }
+                }
+            }
+
+            // If neither Generated nor Modified, and face is not removed, it survives
+            if (modified.IsEmpty() && mod_list.IsEmpty() && !history->IsRemoved(old_face)) {
+                out_colors.set(old_face, r, g, b);
+            }
+        }
+
+        return std::make_unique<TopoDS_Shape>(result);
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+#endif // CHIJIN_COLOR
+
 } // namespace chijin
+

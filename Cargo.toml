@@ -13,6 +13,8 @@ default = ["bundled"]
 bundled = []
 # Use a system-installed OCCT via the OCCT_ROOT environment variable
 prebuilt = []
+# Enable per-face color tracking through boolean operations and transforms
+color = []
 
 [dependencies]
 cxx = "1"

@@ -22,6 +22,12 @@ mod edge;
 mod error;
 mod face;
 mod ffi;
+
+#[cfg(feature = "color")]
+pub mod color;
+#[cfg(feature = "color")]
+pub mod color_ffi;
+
 mod iterators;
 mod mesh;
 mod shape;

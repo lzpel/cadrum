@@ -30,14 +30,47 @@ impl From<BooleanShape> for Shape {
 ///
 /// This is the central type in Chijin. Shapes can represent solids, compounds,
 /// faces, edges, or any other topology supported by OpenCASCADE.
+///
+/// When the `color` feature is enabled, shapes additionally carry a per-face
+/// color map that is automatically relayed through boolean operations,
+/// `clean()`, and `translated()`.
 pub struct Shape {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
+	#[cfg(feature = "color")]
+	pub(crate) colors: cxx::UniquePtr<crate::color_ffi::ColorMap>,
 }
 
 // `Shape` is `Send` because `UniquePtr<TopoDS_Shape>` is `Send`
 // (see ffi.rs — `unsafe impl Send for TopoDS_Shape`).
 // `Sync` is intentionally NOT implemented: OCC Handle<> ref-counts are
 // non-atomic, making concurrent `&Shape` access from multiple threads unsound.
+
+/// Helper macro to construct a Shape with or without the color field.
+#[cfg(feature = "color")]
+macro_rules! shape_new {
+	($inner:expr) => {
+		Shape {
+			inner: $inner,
+			colors: crate::color_ffi::colormap_new(),
+		}
+	};
+	($inner:expr, $colors:expr) => {
+		Shape {
+			inner: $inner,
+			colors: $colors,
+		}
+	};
+}
+
+#[cfg(not(feature = "color"))]
+macro_rules! shape_new {
+	($inner:expr) => {
+		Shape { inner: $inner }
+	};
+	($inner:expr, $_colors:expr) => {
+		Shape { inner: $inner }
+	};
+}
 
 // ==================== Constructors ====================
 
@@ -60,7 +93,7 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::StepReadFailed);
 		}
-		Ok(Shape { inner })
+		Ok(shape_new!(inner))
 	}
 
 	/// Read a shape from a BRep binary format stream.
@@ -73,7 +106,7 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
-		Ok(Shape { inner })
+		Ok(shape_new!(inner))
 	}
 
 	/// Write this shape in STEP format to a stream.
@@ -112,7 +145,7 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
-		Ok(Shape { inner })
+		Ok(shape_new!(inner))
 	}
 
 	/// Write this shape in BRep text format to a stream.
@@ -145,7 +178,7 @@ impl Shape {
 			plane_normal.y,
 			plane_normal.z,
 		);
-		Shape { inner }
+		shape_new!(inner)
 	}
 
 	/// Create a box from two opposite corner points.
@@ -156,7 +189,7 @@ impl Shape {
 		let inner = ffi::make_box(
 			corner_1.x, corner_1.y, corner_1.z, corner_2.x, corner_2.y, corner_2.z,
 		);
-		Shape { inner }
+		shape_new!(inner)
 	}
 
 	/// Create a cylinder.
@@ -167,7 +200,7 @@ impl Shape {
 	/// - `h`: height along the axis
 	pub fn cylinder(p: DVec3, r: f64, dir: DVec3, h: f64) -> Shape {
 		let inner = ffi::make_cylinder(p.x, p.y, p.z, dir.x, dir.y, dir.z, r, h);
-		Shape { inner }
+		shape_new!(inner)
 	}
 
 	/// Create an empty compound shape.
@@ -176,7 +209,7 @@ impl Shape {
 	/// a null shape, because null shapes cause boolean operations to fail.
 	pub fn empty() -> Shape {
 		let inner = ffi::make_empty();
-		Shape { inner }
+		shape_new!(inner)
 	}
 
 	/// Create an independent deep copy of this shape.
@@ -185,7 +218,14 @@ impl Shape {
 	/// no internal `Handle<Geom_XXX>` references with the original.
 	pub fn deep_copy(&self) -> Shape {
 		let inner = ffi::deep_copy(&self.inner);
-		Shape { inner }
+		#[cfg(feature = "color")]
+		{
+			let colors =
+				crate::color_ffi::remap_colors_after_copy(&self.inner, &inner, &self.colors);
+			return shape_new!(inner, colors);
+		}
+		#[cfg(not(feature = "color"))]
+		shape_new!(inner)
 	}
 }
 
@@ -202,14 +242,39 @@ impl Shape {
 	/// `BRepBuilderAPI_Copy` to prevent `STATUS_HEAP_CORRUPTION`
 	/// when shapes are dropped in any order.
 	pub fn union(&self, other: &Shape) -> Result<BooleanShape, Error> {
-		let r = ffi::boolean_fuse(&self.inner, &other.inner);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
+		#[cfg(feature = "color")]
+		{
+			let r = crate::color_ffi::boolean_fuse_colored(
+				&self.inner,
+				&self.colors,
+				&other.inner,
+				&other.colors,
+			);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			return Ok(BooleanShape {
+				shape: shape_new!(
+					crate::color_ffi::colored_result_shape(&r),
+					crate::color_ffi::colored_result_shape_colors(&r)
+				),
+				new_faces: shape_new!(
+					crate::color_ffi::colored_result_new_faces(&r),
+					crate::color_ffi::colored_result_new_faces_colors(&r)
+				),
+			});
 		}
-		Ok(BooleanShape {
-			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
-			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
-		})
+		#[cfg(not(feature = "color"))]
+		{
+			let r = ffi::boolean_fuse(&self.inner, &other.inner);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			Ok(BooleanShape {
+				shape: shape_new!(ffi::boolean_shape_shape(&r)),
+				new_faces: shape_new!(ffi::boolean_shape_new_faces(&r)),
+			})
+		}
 	}
 
 	/// Boolean subtraction (cut) with another shape.
@@ -218,14 +283,39 @@ impl Shape {
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
 	pub fn subtract(&self, other: &Shape) -> Result<BooleanShape, Error> {
-		let r = ffi::boolean_cut(&self.inner, &other.inner);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
+		#[cfg(feature = "color")]
+		{
+			let r = crate::color_ffi::boolean_cut_colored(
+				&self.inner,
+				&self.colors,
+				&other.inner,
+				&other.colors,
+			);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			return Ok(BooleanShape {
+				shape: shape_new!(
+					crate::color_ffi::colored_result_shape(&r),
+					crate::color_ffi::colored_result_shape_colors(&r)
+				),
+				new_faces: shape_new!(
+					crate::color_ffi::colored_result_new_faces(&r),
+					crate::color_ffi::colored_result_new_faces_colors(&r)
+				),
+			});
 		}
-		Ok(BooleanShape {
-			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
-			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
-		})
+		#[cfg(not(feature = "color"))]
+		{
+			let r = ffi::boolean_cut(&self.inner, &other.inner);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			Ok(BooleanShape {
+				shape: shape_new!(ffi::boolean_shape_shape(&r)),
+				new_faces: shape_new!(ffi::boolean_shape_new_faces(&r)),
+			})
+		}
 	}
 
 	/// Boolean intersection (common) with another shape.
@@ -235,14 +325,39 @@ impl Shape {
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
 	pub fn intersect(&self, other: &Shape) -> Result<BooleanShape, Error> {
-		let r = ffi::boolean_common(&self.inner, &other.inner);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
+		#[cfg(feature = "color")]
+		{
+			let r = crate::color_ffi::boolean_common_colored(
+				&self.inner,
+				&self.colors,
+				&other.inner,
+				&other.colors,
+			);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			return Ok(BooleanShape {
+				shape: shape_new!(
+					crate::color_ffi::colored_result_shape(&r),
+					crate::color_ffi::colored_result_shape_colors(&r)
+				),
+				new_faces: shape_new!(
+					crate::color_ffi::colored_result_new_faces(&r),
+					crate::color_ffi::colored_result_new_faces_colors(&r)
+				),
+			});
 		}
-		Ok(BooleanShape {
-			shape: Shape { inner: ffi::boolean_shape_shape(&r) },
-			new_faces: Shape { inner: ffi::boolean_shape_new_faces(&r) },
-		})
+		#[cfg(not(feature = "color"))]
+		{
+			let r = ffi::boolean_common(&self.inner, &other.inner);
+			if r.is_null() {
+				return Err(Error::BooleanOperationFailed);
+			}
+			Ok(BooleanShape {
+				shape: shape_new!(ffi::boolean_shape_shape(&r)),
+				new_faces: shape_new!(ffi::boolean_shape_new_faces(&r)),
+			})
+		}
 	}
 }
 
@@ -254,11 +369,27 @@ impl Shape {
 	/// Uses `ShapeUpgrade_UnifySameDomain` to remove redundant topology
 	/// created by boolean operations.
 	pub fn clean(&self) -> Result<Shape, Error> {
-		let inner = ffi::clean_shape(&self.inner);
-		if inner.is_null() {
-			return Err(Error::CleanFailed);
+		#[cfg(feature = "color")]
+		{
+			let mut out_colors = crate::color_ffi::colormap_new();
+			let inner = crate::color_ffi::clean_shape_colored(
+				&self.inner,
+				&self.colors,
+				out_colors.pin_mut(),
+			);
+			if inner.is_null() {
+				return Err(Error::CleanFailed);
+			}
+			return Ok(shape_new!(inner, out_colors));
 		}
-		Ok(Shape { inner })
+		#[cfg(not(feature = "color"))]
+		{
+			let inner = ffi::clean_shape(&self.inner);
+			if inner.is_null() {
+				return Err(Error::CleanFailed);
+			}
+			Ok(shape_new!(inner))
+		}
 	}
 
 	/// Create a new shape translated by the given vector.
@@ -269,7 +400,16 @@ impl Shape {
 	/// created by boolean operations.
 	pub fn translated(&self, translation: DVec3) -> Shape {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
-		Shape { inner }
+		#[cfg(feature = "color")]
+		{
+			// BRepBuilderAPI_Transform creates new TShape pointers,
+			// so remap colors by face enumeration order.
+			let colors =
+				crate::color_ffi::remap_colors_after_copy(&self.inner, &inner, &self.colors);
+			return shape_new!(inner, colors);
+		}
+		#[cfg(not(feature = "color"))]
+		shape_new!(inner)
 	}
 
 	/// Set a global translation on this shape (in-place mutation).
@@ -281,6 +421,11 @@ impl Shape {
 		// Replace self with a translated copy for correctness
 		let translated =
 			ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
+		#[cfg(feature = "color")]
+		{
+			self.colors =
+				crate::color_ffi::remap_colors_after_copy(&self.inner, &translated, &self.colors);
+		}
 		self.inner = translated;
 	}
 
@@ -358,5 +503,50 @@ impl Shape {
 	/// and N for a compound of N solids.
 	pub fn shell_count(&self) -> u32 {
 		ffi::shape_shell_count(&self.inner)
+	}
+}
+
+// ==================== Color API (feature = "color") ====================
+
+#[cfg(feature = "color")]
+impl Shape {
+	/// Set the color of a specific face.
+	///
+	/// The face must belong to this shape (obtained via [`faces()`](Self::faces)).
+	/// Uses `IsSame()` internally for face lookup.
+	pub fn set_face_color(&mut self, face: &crate::Face, rgb: [u8; 3]) {
+		crate::color_ffi::colormap_set(self.colors.pin_mut(), &face.inner, rgb[0], rgb[1], rgb[2]);
+	}
+
+	/// Set the same color for all faces in this shape.
+	pub fn set_all_faces_color(&mut self, rgb: [u8; 3]) {
+		for face in self.faces() {
+			crate::color_ffi::colormap_set(
+				self.colors.pin_mut(),
+				&face.inner,
+				rgb[0],
+				rgb[1],
+				rgb[2],
+			);
+		}
+	}
+
+	/// Get the color of a specific face, if set.
+	///
+	/// Returns `None` if no color has been assigned to this face.
+	pub fn face_color(&self, face: &crate::Face) -> Option<[u8; 3]> {
+		let mut r = 0u8;
+		let mut g = 0u8;
+		let mut b = 0u8;
+		if crate::color_ffi::colormap_get(&self.colors, &face.inner, &mut r, &mut g, &mut b) {
+			Some([r, g, b])
+		} else {
+			None
+		}
+	}
+
+	/// Get the number of face-color entries in the color map.
+	pub fn color_count(&self) -> i32 {
+		crate::color_ffi::colormap_size(&self.colors)
 	}
 }

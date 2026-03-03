@@ -1,0 +1,145 @@
+   Compiling chijin v0.2.1 (C:\Users\smith\Downloads\chijin)
+warning: chijin@0.2.1: cpp/wrapper.cpp: In function 'std::unique_ptr<chijin::ColorMap> chijin::colored_result_shape_colors(const BooleanShapeColored&)':
+warning: chijin@0.2.1: cpp/wrapper.cpp:858:20: error: 'const struct std::array<unsigned char, 3>' has no member named 'first'
+warning: chijin@0.2.1:   858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                    ^~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:858:31: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                               ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:858:46: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                                              ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:858:61: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                                                             ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp: In function 'std::unique_ptr<chijin::ColorMap> chijin::colored_result_new_faces_colors(const BooleanShapeColored&)':
+warning: chijin@0.2.1: cpp/wrapper.cpp:866:20: error: 'const struct std::array<unsigned char, 3>' has no member named 'first'
+warning: chijin@0.2.1:   866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                    ^~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:866:31: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                               ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:866:46: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                                              ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:866:61: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+warning: chijin@0.2.1:   866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+warning: chijin@0.2.1:       |                                                             ^~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp: In function 'std::unique_ptr<TopoDS_Shape> chijin::clean_shape_colored(const TopoDS_Shape&, const ColorMap&, ColorMap&)':
+warning: chijin@0.2.1: cpp/wrapper.cpp:889:58: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'Generated'
+warning: chijin@0.2.1:   889 |             const TopoDS_ListOfShape& modified = unifier.Generated(old_face);
+warning: chijin@0.2.1:       |                                                          ^~~~~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:900:58: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'Modified'
+warning: chijin@0.2.1:   900 |             const TopoDS_ListOfShape& mod_list = unifier.Modified(old_face);
+warning: chijin@0.2.1:       |                                                          ^~~~~~~~
+warning: chijin@0.2.1: cpp/wrapper.cpp:911:70: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'IsDeleted'; did you mean 'Delete'?
+warning: chijin@0.2.1:   911 |             if (modified.IsEmpty() && mod_list.IsEmpty() && !unifier.IsDeleted(old_face)) {
+warning: chijin@0.2.1:       |                                                                      ^~~~~~~~~
+warning: chijin@0.2.1:       |                                                                      Delete
+error: failed to run custom build command for `chijin v0.2.1 (C:\Users\smith\Downloads\chijin)`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\smith\Downloads\chijin\target\debug\build\chijin-d393b149f9ead2ce\build-script-build` (exit code: 1)
+  --- stdout
+  cargo:rustc-link-search=native=C:\Users\smith\Downloads\chijin\target\occt\win64\gcc\lib
+  cargo:rustc-link-lib=static=TKernel
+  cargo:rustc-link-lib=static=TKMath
+  cargo:rustc-link-lib=static=TKBRep
+  cargo:rustc-link-lib=static=TKTopAlgo
+  cargo:rustc-link-lib=static=TKPrim
+  cargo:rustc-link-lib=static=TKBO
+  cargo:rustc-link-lib=static=TKBool
+  cargo:rustc-link-lib=static=TKShHealing
+  cargo:rustc-link-lib=static=TKMesh
+  cargo:rustc-link-lib=static=TKGeomBase
+  cargo:rustc-link-lib=static=TKGeomAlgo
+  cargo:rustc-link-lib=static=TKG3d
+  cargo:rustc-link-lib=static=TKG2d
+  cargo:rustc-link-lib=static=TKBin
+  cargo:rustc-link-lib=static=TKXSBase
+  cargo:rustc-link-lib=static=TKDE
+  cargo:rustc-link-lib=static=TKDECascade
+  cargo:rustc-link-lib=static=TKDESTEP
+  cargo:rustc-link-lib=static=TKService
+  cargo:rustc-link-arg=-Wl,--allow-multiple-definition
+  cargo:rustc-link-arg=-ladvapi32
+  cargo:rerun-if-changed=src/ffi.rs
+  cargo:rerun-if-changed=src/color_ffi.rs
+  cargo:CXXBRIDGE_PREFIX=chijin
+  cargo:CXXBRIDGE_DIR0=C:\Users\smith\Downloads\chijin\target\debug\build\chijin-094b1cb2e0f67a41\out\cxxbridge\include
+  cargo:CXXBRIDGE_DIR1=C:\Users\smith\Downloads\chijin\target\debug\build\chijin-094b1cb2e0f67a41\out\cxxbridge\crate
+  OUT_DIR = Some(C:\Users\smith\Downloads\chijin\target\debug\build\chijin-094b1cb2e0f67a41\out)
+  OPT_LEVEL = Some(0)
+  TARGET = Some(x86_64-pc-windows-gnu)
+  CARGO_ENCODED_RUSTFLAGS = Some()
+  HOST = Some(x86_64-pc-windows-gnu)
+  cargo:rerun-if-env-changed=CXX_x86_64-pc-windows-gnu
+  CXX_x86_64-pc-windows-gnu = None
+  cargo:rerun-if-env-changed=CXX_x86_64_pc_windows_gnu
+  CXX_x86_64_pc_windows_gnu = None
+  cargo:rerun-if-env-changed=HOST_CXX
+  HOST_CXX = None
+  cargo:rerun-if-env-changed=CXX
+  CXX = None
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  RUSTC_WRAPPER = None
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  DEBUG = Some(true)
+  CARGO_CFG_TARGET_FEATURE = Some(cmpxchg16b,fxsr,sse,sse2,sse3)
+  cargo:rerun-if-env-changed=CXXFLAGS
+  CXXFLAGS = None
+  cargo:rerun-if-env-changed=HOST_CXXFLAGS
+  HOST_CXXFLAGS = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64_pc_windows_gnu
+  CXXFLAGS_x86_64_pc_windows_gnu = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64-pc-windows-gnu
+  CXXFLAGS_x86_64-pc-windows-gnu = None
+  cargo:warning=cpp/wrapper.cpp: In function 'std::unique_ptr<chijin::ColorMap> chijin::colored_result_shape_colors(const BooleanShapeColored&)':
+  cargo:warning=cpp/wrapper.cpp:858:20: error: 'const struct std::array<unsigned char, 3>' has no member named 'first'
+  cargo:warning=  858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                    ^~~~~
+  cargo:warning=cpp/wrapper.cpp:858:31: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                               ^~~~~~
+  cargo:warning=cpp/wrapper.cpp:858:46: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                                              ^~~~~~
+  cargo:warning=cpp/wrapper.cpp:858:61: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  858 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                                                             ^~~~~~
+  cargo:warning=cpp/wrapper.cpp: In function 'std::unique_ptr<chijin::ColorMap> chijin::colored_result_new_faces_colors(const BooleanShapeColored&)':
+  cargo:warning=cpp/wrapper.cpp:866:20: error: 'const struct std::array<unsigned char, 3>' has no member named 'first'
+  cargo:warning=  866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                    ^~~~~
+  cargo:warning=cpp/wrapper.cpp:866:31: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                               ^~~~~~
+  cargo:warning=cpp/wrapper.cpp:866:46: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                                              ^~~~~~
+  cargo:warning=cpp/wrapper.cpp:866:61: error: 'const struct std::array<unsigned char, 3>' has no member named 'second'
+  cargo:warning=  866 |         m->set(it->first, it->second[0], it->second[1], it->second[2]);
+  cargo:warning=      |                                                             ^~~~~~
+  cargo:warning=cpp/wrapper.cpp: In function 'std::unique_ptr<TopoDS_Shape> chijin::clean_shape_colored(const TopoDS_Shape&, const ColorMap&, ColorMap&)':
+  cargo:warning=cpp/wrapper.cpp:889:58: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'Generated'
+  cargo:warning=  889 |             const TopoDS_ListOfShape& modified = unifier.Generated(old_face);
+  cargo:warning=      |                                                          ^~~~~~~~~
+  cargo:warning=cpp/wrapper.cpp:900:58: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'Modified'
+  cargo:warning=  900 |             const TopoDS_ListOfShape& mod_list = unifier.Modified(old_face);
+  cargo:warning=      |                                                          ^~~~~~~~
+  cargo:warning=cpp/wrapper.cpp:911:70: error: 'class ShapeUpgrade_UnifySameDomain' has no member named 'IsDeleted'; did you mean 'Delete'?
+  cargo:warning=  911 |             if (modified.IsEmpty() && mod_list.IsEmpty() && !unifier.IsDeleted(old_face)) {
+  cargo:warning=      |                                                                      ^~~~~~~~~
+  cargo:warning=      |                                                                      Delete
+
+  --- stderr
+
+  CXX include path:
+    C:\Users\smith\Downloads\chijin\target\debug\build\chijin-094b1cb2e0f67a41\out\cxxbridge\include
+    C:\Users\smith\Downloads\chijin\target\debug\build\chijin-094b1cb2e0f67a41\out\cxxbridge\crate
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit code: 1): "g++.exe" "-O0" "-ffunction-sections" "-fdata-sections" "-g" "-gdwarf-2" "-fno-omit-frame-pointer" "-m64" "-std=c++17" "-I" "C:\\Users\\smith\\Downloads\\chijin\\target\\debug\\build\\chijin-094b1cb2e0f67a41\\out\\cxxbridge\\include" "-I" "C:\\Users\\smith\\Downloads\\chijin\\target\\debug\\build\\chijin-094b1cb2e0f67a41\\out\\cxxbridge\\crate" "-I" "C:\\Users\\smith\\Downloads\\chijin\\target\\occt\\inc" "-Wall" "-Wextra" "-D_USE_MATH_DEFINES" "-DCHIJIN_COLOR" "-DOCC_CONVERT_SIGNALS" "-o" "C:\\Users\\smith\\Downloads\\chijin\\target\\debug\\build\\chijin-094b1cb2e0f67a41\\out\\5811b530fb0dbdaf-wrapper.o" "-c" "cpp/wrapper.cpp"
+
+
