@@ -44,7 +44,10 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 		"TKDE",        // DE framework base (OCCT 7.8+)
 		"TKDECascade", // DE cascade bridge (OCCT 7.8+)
 		"TKDESTEP",    // was TKSTEP + TKSTEP209 + TKSTEPAttr + TKSTEPBase
-		"TKService",
+		// TKService is NOT linked here: it contains Image_AlienPixMap (WIC image I/O)
+		// which pulls in ole32/windowscodecs on Windows, but image I/O is unused in
+		// the base API.  TKService is added below only when "color" is enabled because
+		// TKXCAF references Graphic3d_* symbols that live in TKService.
 	];
 
 	// Link OCC libraries
@@ -61,6 +64,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 	//   TKCAF    — TNaming_NamedShape, TNaming_Builder (needed by TKXCAF's XCAFDoc)
 	//   TKCDF    — CDM_Document, CDM_Application (needed by TKLCAF's TDocStd_Document)
 	//   TKDESTEP — STEPCAFControl_Reader / Writer (already in OCC_LIBS above)
+	//   TKService — Graphic3d_* symbols referenced by TKXCAF (XCAFDoc_VisMaterial etc.)
 	if color {
 		for lib in &["TKLCAF", "TKXCAF", "TKCAF", "TKCDF"] {
 			println!("cargo:rustc-link-lib=static={}", lib);
@@ -78,16 +82,13 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 	// so the dependency cannot be removed via compiler flags alone.
 	// Rust passes -nodefaultlibs, bypassing GCC's spec that normally adds -ladvapi32.
 	//
-	// Additional Windows system libs required by OCCT static libs:
+	// Additional Windows system libs required by OCCT static libs (color feature only):
 	//   ole32         — Image_AlienPixMap uses CoInitializeEx / CoCreateInstance /
 	//                   CreateStreamOnHGlobal / GetHGlobalFromStream (WIC image I/O)
 	//   windowscodecs — GUID_WICPixelFormat* / CLSID_WICImagingFactory data symbols
+	//                   (pulled in transitively via TKService → Image_AlienPixMap)
 	if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
 		println!("cargo:rustc-link-arg=-ladvapi32");
-		if color {
-			println!("cargo:rustc-link-arg=-lole32");
-			println!("cargo:rustc-link-arg=-lwindowscodecs");
-		}
 	}
 
 	// Build cxx bridge + C++ wrapper
@@ -188,6 +189,13 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 		.find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir())
 		.map(|e| e.path())
 		.expect("OCCT source directory not found after extraction");
+
+	// Patch OCCT sources to remove TKService (Visualization) dependencies.
+	// XCAFDoc_VisMaterial.cxx and XCAFPrs_Texture.cxx reference Graphic3d_* symbols
+	// that live in TKService, which we don't build (BUILD_MODULE_Visualization=OFF).
+	// The non-visualization TDF_Attribute methods (GetID, Restore, Paste, …) are
+	// kept intact; only FillMaterialAspect / FillAspect are emptied.
+	patch_occt_sources(&source_dir);
 
 	// Install into target/occt for a stable, predictable location
 	let occt_root = manifest_dir.join("target").join("occt");
@@ -305,4 +313,124 @@ fn use_system_occt() -> (PathBuf, PathBuf) {
 	);
 
 	(include_dir, lib_dir)
+}
+
+/// Patch two OCCT source files that pull in Graphic3d_* (TKService) symbols even
+/// when BUILD_MODULE_Visualization=OFF:
+///
+///  - XCAFDoc/XCAFDoc_VisMaterial.cxx: remove #include lines for Graphic3d_Aspects,
+///    Graphic3d_MaterialAspect and XCAFPrs_Texture, then empty the bodies of
+///    FillMaterialAspect() and FillAspect() — the only methods that use those types.
+///    All TDF_Attribute interface methods (GetID, Restore, Paste, …) are left intact.
+///
+///  - XCAFPrs/XCAFPrs_Texture.cxx: replaced with an empty file because it defines
+///    XCAFPrs_Texture which inherits from Graphic3d_Texture2D (TKService).
+///    The only caller was FillAspect(), which is now empty.
+fn patch_occt_sources(source_dir: &Path) {
+	patch_remove_includes_and_stub_methods(
+		&source_dir.join("src/XCAFDoc/XCAFDoc_VisMaterial.cxx"),
+		&[
+			"Graphic3d_Aspects.hxx",
+			"Graphic3d_MaterialAspect.hxx",
+			"XCAFPrs_Texture.hxx",
+		],
+		&[
+			"XCAFDoc_VisMaterial::FillMaterialAspect",
+			"XCAFDoc_VisMaterial::FillAspect",
+			// ConvertToPbrMaterial / ConvertToCommonMaterial use Graphic3d_PBRMaterial
+			// (defined in Graphic3d_MaterialAspect.hxx which we removed above).
+			"XCAFDoc_VisMaterial::ConvertToPbrMaterial",
+			"XCAFDoc_VisMaterial::ConvertToCommonMaterial",
+		],
+	);
+
+	let texture_cxx = source_dir.join("src/XCAFPrs/XCAFPrs_Texture.cxx");
+	if texture_cxx.exists() {
+		std::fs::write(&texture_cxx, "// Stubbed: TKService not built\n")
+			.expect("Failed to patch XCAFPrs_Texture.cxx");
+		eprintln!("Patched XCAFPrs_Texture.cxx");
+	}
+}
+
+/// Read `path`, strip #include lines whose filename matches any entry in
+/// `includes_to_remove`, empty the bodies of functions whose qualified name
+/// matches any entry in `methods_to_stub`, then write back.
+fn patch_remove_includes_and_stub_methods(
+	path: &Path,
+	includes_to_remove: &[&str],
+	methods_to_stub: &[&str],
+) {
+	if !path.exists() {
+		return;
+	}
+	let content = std::fs::read_to_string(path).expect("Failed to read file for patching");
+
+	// Remove matching #include lines.
+	let patched: String = content
+		.lines()
+		.filter(|line| {
+			let t = line.trim();
+			if !t.starts_with("#include") {
+				return true;
+			}
+			!includes_to_remove.iter().any(|pat| t.contains(pat))
+		})
+		.collect::<Vec<_>>()
+		.join("\n") + "\n";
+
+	// Empty bodies of each listed method.
+	let patched = methods_to_stub
+		.iter()
+		.fold(patched, |s, m| empty_method_body(&s, m));
+
+	std::fs::write(path, patched).expect("Failed to write patched file");
+	eprintln!("Patched {}", path.file_name().unwrap().to_string_lossy());
+}
+
+/// Find the first definition of `method_name` in `content` and replace its
+/// brace-delimited body `{ … }` with `{}`.  Returns the (possibly unchanged)
+/// string.  Uses brace counting so nested braces inside the body are handled
+/// correctly; string/character literals are intentionally ignored because OCCT
+/// source doesn't embed `{`/`}` inside string literals in these methods.
+fn empty_method_body(content: &str, method_name: &str) -> String {
+	let Some(name_pos) = content.find(method_name) else {
+		return content.to_string();
+	};
+
+	// Detect return type: look at the text between the nearest preceding newline
+	// and the method name.  If "void" appears there, an empty body `{}` is valid;
+	// otherwise use `{ return {}; }` to value-initialise the return type.
+	let sig_start = content[..name_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+	let stub_body = if content[sig_start..name_pos].contains("void") {
+		"{}"
+	} else {
+		"{ return {}; }"
+	};
+
+	let after_name = &content[name_pos..];
+	let Some(brace_offset) = after_name.find('{') else {
+		return content.to_string();
+	};
+	let brace_start = name_pos + brace_offset;
+
+	let bytes = content.as_bytes();
+	let mut depth = 0usize;
+	let mut i = brace_start;
+	while i < bytes.len() {
+		match bytes[i] {
+			b'{' => depth += 1,
+			b'}' => {
+				depth -= 1;
+				if depth == 0 {
+					return format!("{}{}{}",
+						&content[..brace_start],
+						stub_body,
+						&content[i + 1..]);
+				}
+			}
+			_ => {}
+		}
+		i += 1;
+	}
+	content.to_string()
 }
