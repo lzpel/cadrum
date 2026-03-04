@@ -94,6 +94,56 @@ impl Shape {
 		})
 	}
 
+	/// Read a STEP file and populate `colormap` with face colors found in the file.
+	///
+	/// Uses `STEPCAFControl_Reader` (XDE) which reads `STYLED_ITEM` / `COLOUR_RGB`
+	/// records.  Faces without a color entry are simply absent from `colormap`.
+	///
+	/// # Errors
+	/// Returns [`Error::StepReadFailed`] if the data cannot be parsed.
+	#[cfg(feature = "color")]
+	pub fn read_step_with_colors(reader: &mut impl Read) -> Result<Shape, Error> {
+		let mut rust_reader = RustReader::from_ref(reader);
+		let d = ffi::read_step_color_stream(&mut rust_reader);
+		if d.is_null() {
+			return Err(Error::StepReadFailed);
+		}
+		let inner = ffi::colored_step_shape(&d);
+		if inner.is_null() {
+			return Err(Error::StepReadFailed);
+		}
+		let ids = ffi::colored_step_ids(&d);
+		let r = ffi::colored_step_colors_r(&d);
+		let g = ffi::colored_step_colors_g(&d);
+		let b = ffi::colored_step_colors_b(&d);
+		let mut colormap = std::collections::HashMap::new();
+		for i in 0..ids.len() {
+			colormap.insert(TShapeId(ids[i]), Rgb { r: r[i], g: g[i], b: b[i] });
+		}
+		Ok(Shape { inner, colormap })
+	}
+
+	/// Write this shape in STEP format, embedding face colors from `colormap`.
+	///
+	/// Uses `STEPCAFControl_Writer` (XDE) to emit `STYLED_ITEM` / `COLOUR_RGB`
+	/// records for every face present in `colormap`.
+	///
+	/// # Errors
+	/// Returns [`Error::StepWriteFailed`] if writing fails.
+	#[cfg(feature = "color")]
+	pub fn write_step_with_colors(&self, writer: &mut impl Write) -> Result<(), Error> {
+		let ids: Vec<u64> = self.colormap.keys().map(|k| k.0).collect();
+		let r: Vec<f32> = ids.iter().map(|&id| self.colormap[&TShapeId(id)].r).collect();
+		let g: Vec<f32> = ids.iter().map(|&id| self.colormap[&TShapeId(id)].g).collect();
+		let b: Vec<f32> = ids.iter().map(|&id| self.colormap[&TShapeId(id)].b).collect();
+		let mut rust_writer = RustWriter::from_ref(writer);
+		if ffi::write_step_color_stream(&self.inner, &ids, &r, &g, &b, &mut rust_writer) {
+			Ok(())
+		} else {
+			Err(Error::StepWriteFailed)
+		}
+	}
+
 	/// Read a shape from a BRep binary format stream.
 	///
 	/// # Errors

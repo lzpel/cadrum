@@ -93,6 +93,34 @@ mod ffi_bridge {
 		fn boolean_shape_from_a(r: &BooleanShape) -> Vec<u64>;
 		fn boolean_shape_from_b(r: &BooleanShape) -> Vec<u64>;
 
+		// ==================== Colored STEP I/O (color feature only) ====================
+
+		#[cfg(feature = "color")]
+		type ColoredStepData;
+
+		#[cfg(feature = "color")]
+		fn read_step_color_stream(reader: &mut RustReader) -> UniquePtr<ColoredStepData>;
+		#[cfg(feature = "color")]
+		fn colored_step_shape(d: &ColoredStepData) -> UniquePtr<TopoDS_Shape>;
+		#[cfg(feature = "color")]
+		fn colored_step_ids(d: &ColoredStepData) -> Vec<u64>;
+		#[cfg(feature = "color")]
+		fn colored_step_colors_r(d: &ColoredStepData) -> Vec<f32>;
+		#[cfg(feature = "color")]
+		fn colored_step_colors_g(d: &ColoredStepData) -> Vec<f32>;
+		#[cfg(feature = "color")]
+		fn colored_step_colors_b(d: &ColoredStepData) -> Vec<f32>;
+
+		#[cfg(feature = "color")]
+		fn write_step_color_stream(
+			shape: &TopoDS_Shape,
+			ids: &[u64],
+			cr: &[f32],
+			cg: &[f32],
+			cb: &[f32],
+			writer: &mut RustWriter,
+		) -> bool;
+
 		// ==================== Shape Methods ====================
 
 		fn clean_shape(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
@@ -172,3 +200,5 @@ unsafe impl Send for TopExp_Explorer {}
 unsafe impl Send for BooleanShape {}
 #[cfg(feature = "color")]
 unsafe impl Send for CleanShape {}
+#[cfg(feature = "color")]
+unsafe impl Send for ColoredStepData {}
