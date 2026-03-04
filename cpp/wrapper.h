@@ -127,6 +127,18 @@ rust::Vec<uint64_t> boolean_shape_from_b(const BooleanShape& r);
 // ==================== Shape Methods ====================
 
 std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape);
+
+/// Result of clean_shape that also carries face-origin mapping for color remapping.
+/// mapping is a flat array of [new_tshape_id, old_tshape_id, ...] pairs.
+class CleanShape {
+public:
+    TopoDS_Shape shape;
+    std::vector<uint64_t> mapping; // pairs: [new_id, old_id, ...]
+};
+
+std::unique_ptr<CleanShape> clean_shape_full(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> clean_shape_get(const CleanShape& r);
+rust::Vec<uint64_t> clean_shape_mapping(const CleanShape& r);
 std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape, double tx, double ty, double tz);
 bool shape_is_null(const TopoDS_Shape& shape);

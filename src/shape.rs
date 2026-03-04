@@ -358,11 +358,36 @@ impl Shape {
 	/// Uses `ShapeUpgrade_UnifySameDomain` to remove redundant topology
 	/// created by boolean operations.
 	pub fn clean(&self) -> Result<Shape, Error> {
-		let inner = ffi::clean_shape(&self.inner);
-		if inner.is_null() {
-			return Err(Error::CleanFailed);
+		#[cfg(feature = "color")]
+		{
+			let r = ffi::clean_shape_full(&self.inner);
+			if r.is_null() {
+				return Err(Error::CleanFailed);
+			}
+			let inner = ffi::clean_shape_get(&r);
+			if inner.is_null() {
+				return Err(Error::CleanFailed);
+			}
+			let mapping = ffi::clean_shape_mapping(&r);
+			let mut colormap = std::collections::HashMap::new();
+			for pair in mapping.chunks(2) {
+				let new_id = TShapeId(pair[0]);
+				let old_id = TShapeId(pair[1]);
+				if let Some(&color) = self.colormap.get(&old_id) {
+					// First-found wins when multiple old faces merge into one.
+					colormap.entry(new_id).or_insert(color);
+				}
+			}
+			return Ok(Shape { inner, colormap });
 		}
-		Ok(Shape::from_inner(inner))
+		#[cfg(not(feature = "color"))]
+		{
+			let inner = ffi::clean_shape(&self.inner);
+			if inner.is_null() {
+				return Err(Error::CleanFailed);
+			}
+			Ok(Shape::from_inner(inner))
+		}
 	}
 
 	/// Create a new shape translated by the given vector.

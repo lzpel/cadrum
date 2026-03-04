@@ -21,6 +21,7 @@
 #include <BRepAlgoAPI_Common.hxx>
 
 #include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <BRepTools_History.hxx>
 
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
@@ -469,6 +470,50 @@ std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape) {
     } catch (const Standard_Failure&) {
         return nullptr;
     }
+}
+
+std::unique_ptr<CleanShape> clean_shape_full(const TopoDS_Shape& shape) {
+    try {
+        ShapeUpgrade_UnifySameDomain unifier(shape, Standard_True, Standard_True, Standard_True);
+        unifier.AllowInternalEdges(Standard_False);
+        unifier.Build();
+
+        auto r = std::make_unique<CleanShape>();
+        r->shape = unifier.Shape();
+
+        Handle(BRepTools_History) history = unifier.History();
+        if (!history.IsNull()) {
+            for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+                const TopoDS_Shape& old_face = ex.Current();
+                uint64_t old_id = reinterpret_cast<uint64_t>(old_face.TShape().get());
+                if (history->IsRemoved(old_face)) continue;
+                const TopTools_ListOfShape& mods = history->Modified(old_face);
+                if (mods.IsEmpty()) {
+                    // Unchanged: TShape* is the same in the result.
+                    r->mapping.push_back(old_id);
+                    r->mapping.push_back(old_id);
+                } else {
+                    // Merged: use only the first resulting face (first-found wins).
+                    uint64_t new_id = reinterpret_cast<uint64_t>(mods.First().TShape().get());
+                    r->mapping.push_back(new_id);
+                    r->mapping.push_back(old_id);
+                }
+            }
+        }
+        return r;
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> clean_shape_get(const CleanShape& r) {
+    return std::make_unique<TopoDS_Shape>(r.shape);
+}
+
+rust::Vec<uint64_t> clean_shape_mapping(const CleanShape& r) {
+    rust::Vec<uint64_t> v;
+    for (uint64_t x : r.mapping) v.push_back(x);
+    return v;
 }
 
 std::unique_ptr<TopoDS_Shape> translate_shape(

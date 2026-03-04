@@ -97,6 +97,15 @@ mod ffi_bridge {
 
 		fn clean_shape(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 
+		#[cfg(feature = "color")]
+		type CleanShape;
+		#[cfg(feature = "color")]
+		fn clean_shape_full(shape: &TopoDS_Shape) -> UniquePtr<CleanShape>;
+		#[cfg(feature = "color")]
+		fn clean_shape_get(r: &CleanShape) -> UniquePtr<TopoDS_Shape>;
+		#[cfg(feature = "color")]
+		fn clean_shape_mapping(r: &CleanShape) -> Vec<u64>;
+
 		fn translate_shape(
 			shape: &TopoDS_Shape,
 			tx: f64,
@@ -161,3 +170,5 @@ unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
 unsafe impl Send for TopExp_Explorer {}
 unsafe impl Send for BooleanShape {}
+#[cfg(feature = "color")]
+unsafe impl Send for CleanShape {}

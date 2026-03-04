@@ -134,3 +134,72 @@ fn colored_box_intersect_z_positive_half_space() {
         .any(|f| f.normal_at_center().dot(DVec3::NEG_Z) > 0.9 && f.center_of_mass().z < -0.5);
     assert!(!bottom_in_result, "bottom face (-Z) at z=-1 should be deleted by intersect");
 }
+
+/// Verify that `Shape::clean()` preserves face colors.
+///
+/// Strategy: build a colored box, call clean(), and assert every face in the
+/// cleaned result still carries a color.  A plain box already has
+/// clean topology, so `ShapeUpgrade_UnifySameDomain` will emit an identity
+/// mapping (new_id == old_id for every face) — the simplest possible path
+/// through the color-remapping code.
+#[test]
+fn clean_preserves_face_colors() {
+    let mut cube = Shape::box_from_corners(DVec3::splat(-1.0), DVec3::splat(1.0));
+    let colored = color_box_faces(&mut cube);
+    assert_eq!(colored, 6);
+
+    let cleaned = cube.clean().expect("clean should succeed");
+
+    // Every face in the cleaned shape must have a color.
+    let mut colored_after = 0usize;
+    for f in cleaned.faces() {
+        assert!(
+            cleaned.colormap.contains_key(&f.tshape_id()),
+            "face {:?} lost its color after clean",
+            f.tshape_id()
+        );
+        colored_after += 1;
+    }
+    assert_eq!(colored_after, 6, "cleaned box should still have 6 colored faces");
+}
+
+/// Verify that clean() preserves colors when two adjacent same-plane faces
+/// are unified into one.
+///
+/// Two unit boxes share the face at x = 1.  After union the internal wall
+/// disappears; the top / bottom / front / back faces are each split into two
+/// coplanar patches that `clean()` merges into one.  The merged face must
+/// carry a color (the one from whichever original patch is visited first).
+#[test]
+fn clean_merge_preserves_color() {
+    // Box A: x ∈ [0,1], y ∈ [0,1], z ∈ [0,1]
+    let mut a = Shape::box_from_corners(DVec3::new(0.0, 0.0, 0.0), DVec3::new(1.0, 1.0, 1.0));
+    color_box_faces(&mut a);
+
+    // Box B: x ∈ [1,2], y ∈ [0,1], z ∈ [0,1]  (adjacent, sharing the x=1 face)
+    let mut b = Shape::box_from_corners(DVec3::new(1.0, 0.0, 0.0), DVec3::new(2.0, 1.0, 1.0));
+    color_box_faces(&mut b);
+
+    // Union produces a 2×1×1 slab whose side faces may be split at x=1.
+    let unioned: Shape = a.union(&b).expect("union should succeed").into();
+
+    // clean() merges coplanar adjacent patches.
+    let cleaned = unioned.clean().expect("clean should succeed");
+
+    // Every face in the cleaned shape must have a color.
+    for f in cleaned.faces() {
+        assert!(
+            cleaned.colormap.contains_key(&f.tshape_id()),
+            "face {:?} lost its color after clean+merge",
+            f.tshape_id()
+        );
+    }
+    // The 2×1×1 slab has 6 faces after clean.
+    let face_count = cleaned.faces().count();
+    assert_eq!(face_count, 6, "cleaned slab should have 6 faces, got {}", face_count);
+    assert_eq!(
+        cleaned.colormap.len(),
+        6,
+        "all 6 faces should carry a color after clean"
+    );
+}
