@@ -65,16 +65,6 @@ pub struct Shape {
 // `Sync` is intentionally NOT implemented: OCC Handle<> ref-counts are
 // non-atomic, making concurrent `&Shape` access from multiple threads unsound.
 
-impl Shape {
-	/// Internal constructor: wrap an inner pointer with an empty colormap.
-	pub(crate) fn from_inner(inner: cxx::UniquePtr<ffi::TopoDS_Shape>) -> Shape {
-		Shape {
-			inner,
-			#[cfg(feature = "color")]
-			colormap: std::collections::HashMap::new(),
-		}
-	}
-}
 
 // ==================== Constructors ====================
 
@@ -97,7 +87,11 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::StepReadFailed);
 		}
-		Ok(Shape::from_inner(inner))
+		Ok(Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		})
 	}
 
 	/// Read a shape from a BRep binary format stream.
@@ -110,7 +104,11 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
-		Ok(Shape::from_inner(inner))
+		Ok(Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		})
 	}
 
 	/// Write this shape in STEP format to a stream.
@@ -149,7 +147,11 @@ impl Shape {
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
-		Ok(Shape::from_inner(inner))
+		Ok(Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		})
 	}
 
 	/// Write this shape in BRep text format to a stream.
@@ -179,7 +181,11 @@ impl Shape {
 			plane_normal.y,
 			plane_normal.z,
 		);
-		Shape::from_inner(inner)
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
 
 	/// Create a box from two opposite corner points.
@@ -190,7 +196,11 @@ impl Shape {
 		let inner = ffi::make_box(
 			corner_1.x, corner_1.y, corner_1.z, corner_2.x, corner_2.y, corner_2.z,
 		);
-		Shape::from_inner(inner)
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
 
 	/// Create a cylinder.
@@ -201,7 +211,11 @@ impl Shape {
 	/// - `h`: height along the axis
 	pub fn cylinder(p: DVec3, r: f64, dir: DVec3, h: f64) -> Shape {
 		let inner = ffi::make_cylinder(p.x, p.y, p.z, dir.x, dir.y, dir.z, r, h);
-		Shape::from_inner(inner)
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
 
 	/// Create an empty compound shape.
@@ -210,7 +224,11 @@ impl Shape {
 	/// a null shape, because null shapes cause boolean operations to fail.
 	pub fn empty() -> Shape {
 		let inner = ffi::make_empty();
-		Shape::from_inner(inner)
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
 
 	/// Create an independent deep copy of this shape.
@@ -219,8 +237,43 @@ impl Shape {
 	/// no internal `Handle<Geom_XXX>` references with the original.
 	pub fn deep_copy(&self) -> Shape {
 		let inner = ffi::deep_copy(&self.inner);
-		Shape::from_inner(inner)
+		#[cfg(feature = "color")]
+		{
+			let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+			return Shape { inner, colormap };
+		}
+		#[cfg(not(feature = "color"))]
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
+}
+
+// ==================== Color helpers ====================
+
+/// Remap a colormap by matching old and new faces by traversal order.
+///
+/// Used for topology-preserving operations (translate, deep_copy) where
+/// `BRepBuilderAPI_Transform`/`Copy` keeps faces in the same `TopExp_Explorer`
+/// order.  Each old face maps 1-to-1 to the new face at the same index.
+#[cfg(feature = "color")]
+fn remap_colormap_by_order(
+	old_inner: &ffi::TopoDS_Shape,
+	new_inner: &ffi::TopoDS_Shape,
+	old_colormap: &std::collections::HashMap<TShapeId, Rgb>,
+) -> std::collections::HashMap<TShapeId, Rgb> {
+	use crate::iterators::FaceIterator;
+	let mut colormap = std::collections::HashMap::new();
+	let old_faces = FaceIterator::new(ffi::explore_faces(old_inner));
+	let new_faces = FaceIterator::new(ffi::explore_faces(new_inner));
+	for (old_face, new_face) in old_faces.zip(new_faces) {
+		if let Some(&color) = old_colormap.get(&old_face.tshape_id()) {
+			colormap.insert(new_face.tshape_id(), color);
+		}
+	}
+	colormap
 }
 
 // ==================== Boolean Operations ====================
@@ -386,7 +439,11 @@ impl Shape {
 			if inner.is_null() {
 				return Err(Error::CleanFailed);
 			}
-			Ok(Shape::from_inner(inner))
+			Ok(Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		})
 		}
 	}
 
@@ -398,7 +455,17 @@ impl Shape {
 	/// created by boolean operations.
 	pub fn translated(&self, translation: DVec3) -> Shape {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
-		Shape::from_inner(inner)
+		#[cfg(feature = "color")]
+		{
+			let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+			return Shape { inner, colormap };
+		}
+		#[cfg(not(feature = "color"))]
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap: std::collections::HashMap::new(),
+		}
 	}
 
 	/// Set a global translation on this shape (in-place mutation).
