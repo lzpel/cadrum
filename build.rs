@@ -180,8 +180,12 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 			.define("USE_RAPIDJSON", "OFF")
 			.define("USE_DRACO", "OFF")
 			.define("USE_TK", "OFF")
-			.define("USE_TCL", "OFF")
-			.define("USE_XLIB", "OFF") // X11 開発パッケージを要求されないようにする
+			.define("USE_TCL", "OFF")                                                                                                   
+			.define("USE_XLIB", "OFF")
+			.define("USE_OPENGL", "OFF")
+			.define("USE_GLES2", "OFF")
+			.define("USE_EGL", "OFF")
+			.define("USE_D3D", "OFF")
 			// Only build the modules we need
 			.define("BUILD_MODULE_FoundationClasses", "ON")
 			.define("BUILD_MODULE_ModelingData", "ON")
@@ -191,6 +195,13 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 			.define("BUILD_MODULE_ApplicationFramework", "OFF")
 			.define("BUILD_MODULE_Draw", "OFF")
 			.define("BUILD_DOC_Overview", "OFF")
+			.define("BUILD_DOC_RefMan", "OFF")
+			.define("BUILD_YACCLEX", "OFF")
+			.define("BUILD_RESOURCES", "OFF")
+			.define("BUILD_SAMPLES_MFC", "OFF")
+			.define("BUILD_SAMPLES_QT", "OFF")
+			.define("BUILD_Inspector", "OFF")
+			.define("BUILD_ENABLE_FPE_SIGNAL_HANDLER", "OFF")
 			.build();
 
 		eprintln!("OCCT built at: {}", built.display());
