@@ -321,122 +321,19 @@ fn use_system_occt() -> (PathBuf, PathBuf) {
 	(include_dir, lib_dir)
 }
 
-/// Patch two OCCT source files that pull in Graphic3d_* (TKService) symbols even
-/// when BUILD_MODULE_Visualization=OFF:
-///
-///  - XCAFDoc/XCAFDoc_VisMaterial.cxx: remove #include lines for Graphic3d_Aspects,
-///    Graphic3d_MaterialAspect and XCAFPrs_Texture, then empty the bodies of
-///    FillMaterialAspect() and FillAspect() — the only methods that use those types.
-///    All TDF_Attribute interface methods (GetID, Restore, Paste, …) are left intact.
-///
-///  - XCAFPrs/XCAFPrs_Texture.cxx: replaced with an empty file because it defines
-///    XCAFPrs_Texture which inherits from Graphic3d_Texture2D (TKService).
-///    The only caller was FillAspect(), which is now empty.
+/// Stub out OCCT source files that pull in unwanted dependencies.
 fn patch_occt_sources(source_dir: &Path) {
-	patch_remove_includes_and_stub_methods(
-		&source_dir.join("src/XCAFDoc/XCAFDoc_VisMaterial.cxx"),
-		&[
-			"Graphic3d_Aspects.hxx",
-			"Graphic3d_MaterialAspect.hxx",
-			"XCAFPrs_Texture.hxx",
-		],
-		&[
-			"XCAFDoc_VisMaterial::FillMaterialAspect",
-			"XCAFDoc_VisMaterial::FillAspect",
-			// ConvertToPbrMaterial / ConvertToCommonMaterial use Graphic3d_PBRMaterial
-			// (defined in Graphic3d_MaterialAspect.hxx which we removed above).
-			"XCAFDoc_VisMaterial::ConvertToPbrMaterial",
-			"XCAFDoc_VisMaterial::ConvertToCommonMaterial",
-		],
-	);
-
-	let texture_cxx = source_dir.join("src/XCAFPrs/XCAFPrs_Texture.cxx");
-	if texture_cxx.exists() {
-		std::fs::write(&texture_cxx, "// Stubbed: TKService not built\n")
-			.expect("Failed to patch XCAFPrs_Texture.cxx");
-		eprintln!("Patched XCAFPrs_Texture.cxx");
-	}
-}
-
-/// Read `path`, strip #include lines whose filename matches any entry in
-/// `includes_to_remove`, empty the bodies of functions whose qualified name
-/// matches any entry in `methods_to_stub`, then write back.
-fn patch_remove_includes_and_stub_methods(
-	path: &Path,
-	includes_to_remove: &[&str],
-	methods_to_stub: &[&str],
-) {
-	if !path.exists() {
-		return;
-	}
-	let content = std::fs::read_to_string(path).expect("Failed to read file for patching");
-
-	// Remove matching #include lines.
-	let patched: String = content
-		.lines()
-		.filter(|line| {
-			let t = line.trim();
-			if !t.starts_with("#include") {
-				return true;
-			}
-			!includes_to_remove.iter().any(|pat| t.contains(pat))
-		})
-		.collect::<Vec<_>>()
-		.join("\n") + "\n";
-
-	// Empty bodies of each listed method.
-	let patched = methods_to_stub
-		.iter()
-		.fold(patched, |s, m| empty_method_body(&s, m));
-
-	std::fs::write(path, patched).expect("Failed to write patched file");
-	eprintln!("Patched {}", path.file_name().unwrap().to_string_lossy());
-}
-
-/// Find the first definition of `method_name` in `content` and replace its
-/// brace-delimited body `{ … }` with `{}`.  Returns the (possibly unchanged)
-/// string.  Uses brace counting so nested braces inside the body are handled
-/// correctly; string/character literals are intentionally ignored because OCCT
-/// source doesn't embed `{`/`}` inside string literals in these methods.
-fn empty_method_body(content: &str, method_name: &str) -> String {
-	let Some(name_pos) = content.find(method_name) else {
-		return content.to_string();
-	};
-
-	// Detect return type: look at the text between the nearest preceding newline
-	// and the method name.  If "void" appears there, an empty body `{}` is valid;
-	// otherwise use `{ return {}; }` to value-initialise the return type.
-	let sig_start = content[..name_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
-	let stub_body = if content[sig_start..name_pos].contains("void") {
-		"{}"
-	} else {
-		"{ return {}; }"
-	};
-
-	let after_name = &content[name_pos..];
-	let Some(brace_offset) = after_name.find('{') else {
-		return content.to_string();
-	};
-	let brace_start = name_pos + brace_offset;
-
-	let bytes = content.as_bytes();
-	let mut depth = 0usize;
-	let mut i = brace_start;
-	while i < bytes.len() {
-		match bytes[i] {
-			b'{' => depth += 1,
-			b'}' => {
-				depth -= 1;
-				if depth == 0 {
-					return format!("{}{}{}",
-						&content[..brace_start],
-						stub_body,
-						&content[i + 1..]);
-				}
-			}
-			_ => {}
+	for path in &[
+		"src/XCAFDoc/XCAFDoc_VisMaterial.cxx", // Graphic3d_* (TKService) refs, unused
+		"src/XCAFPrs/XCAFPrs_Texture.cxx",     // inherits Graphic3d_Texture2D (TKService)
+		"src/OSD/OSD_signal.cxx",               // MessageBoxA/MessageBeep (user32), unused
+	] {
+		let full = source_dir.join(path);
+		if full.exists() {
+			std::fs::write(&full, "// Stubbed by chijin build.rs\n")
+				.unwrap_or_else(|e| panic!("Failed to patch {path}: {e}"));
+			eprintln!("Patched {path}");
 		}
-		i += 1;
 	}
-	content.to_string()
 }
+
