@@ -213,6 +213,7 @@ fn build_occt_from_source(out_dir: &Path, manifest_dir: &Path) -> (PathBuf, Path
 		eprintln!("Building OCCT with CMake (this may take a while)...");
 
 		let built = cmake::Config::new(&source_dir)
+			.profile("Release")
 			.define("BUILD_LIBRARY_TYPE", "Static")
 			.define("CMAKE_INSTALL_PREFIX", occt_root.to_str().unwrap())
 			// Disable optional dependencies we don't need
