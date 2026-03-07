@@ -88,17 +88,17 @@ impl Face {
 	/// `Shape` via `Shape::from(solid)`.
 	///
 	/// - `axis_origin`: a point on the rotation axis
-	/// - `axis_dir`: direction of the rotation axis (normalised by OCCT)
+	/// - `axis_direction`: direction of the rotation axis (normalised by OCCT)
 	/// - `angle`: rotation angle in radians (`std::f64::consts::TAU` for a full revolution)
 	///
 	/// # Errors
 	/// Returns [`Error::RevolveFailed`] if the operation fails (e.g. the face
 	/// crosses the rotation axis, causing self-intersection).
-	pub fn revolve(&self, axis_origin: DVec3, axis_dir: DVec3, angle: f64) -> Result<Solid, Error> {
+	pub fn revolve(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Solid, Error> {
 		let shape = ffi::face_revolve(
 			&self.inner,
 			axis_origin.x, axis_origin.y, axis_origin.z,
-			axis_dir.x, axis_dir.y, axis_dir.z,
+			axis_direction.x, axis_direction.y, axis_direction.z,
 			angle,
 		);
 		if shape.is_null() {
