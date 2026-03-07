@@ -27,7 +27,7 @@ fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Result<Shape, Error> {
 pub fn revolve_section(
 	shape: &Shape,
 	origin: DVec3,
-	axis_dir: DVec3,
+	axis_direction: DVec3,
 	plane_normal: DVec3,
 	angle: f64,
 ) -> Result<Shape, Error> {
@@ -36,7 +36,7 @@ pub fn revolve_section(
 
 	let mut result: Option<Shape> = None;
 	for face in cut_faces.faces() {
-		let revolved = Shape::from(face.revolve(origin, axis_dir, angle)?);
+		let revolved = Shape::from(face.revolve(origin, axis_direction, angle)?);
 		result = Some(match result {
 			None => revolved,
 			Some(r) => Shape::from(r.union(&revolved)?),

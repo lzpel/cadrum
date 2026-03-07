@@ -489,6 +489,37 @@ std::unique_ptr<TopoDS_Shape> translate_shape(
     return std::make_unique<TopoDS_Shape>(transformer.Shape());
 }
 
+std::unique_ptr<TopoDS_Shape> rotate_shape(
+    const TopoDS_Shape& shape,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle)
+{
+    try {
+        gp_Trsf trsf;
+        trsf.SetRotation(gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz)), angle);
+        BRepBuilderAPI_Transform transform(shape, trsf, Standard_True);
+        return std::make_unique<TopoDS_Shape>(transform.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> scale_shape(
+    const TopoDS_Shape& shape,
+    double cx, double cy, double cz,
+    double factor)
+{
+    try {
+        gp_Trsf trsf;
+        trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
+        BRepBuilderAPI_Transform transform(shape, trsf, Standard_True);
+        return std::make_unique<TopoDS_Shape>(transform.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
 bool shape_is_null(const TopoDS_Shape& shape) {
     return shape.IsNull();
 }

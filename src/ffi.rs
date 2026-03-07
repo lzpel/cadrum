@@ -142,6 +142,19 @@ mod ffi_bridge {
 			tz: f64,
 		) -> UniquePtr<TopoDS_Shape>;
 
+		fn rotate_shape(
+			shape: &TopoDS_Shape,
+			ox: f64, oy: f64, oz: f64,
+			dx: f64, dy: f64, dz: f64,
+			angle: f64,
+		) -> UniquePtr<TopoDS_Shape>;
+
+		fn scale_shape(
+			shape: &TopoDS_Shape,
+			cx: f64, cy: f64, cz: f64,
+			factor: f64,
+		) -> UniquePtr<TopoDS_Shape>;
+
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
 		fn shape_volume(shape: &TopoDS_Shape) -> f64;

@@ -646,15 +646,56 @@ impl Shape {
 	pub fn translated(&self, translation: DVec3) -> Shape {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
 		#[cfg(feature = "color")]
-		{
-			let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-			return Shape { inner, colormap };
-		}
-		#[cfg(not(feature = "color"))]
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Shape {
 			inner,
 			#[cfg(feature = "color")]
-			colormap: std::collections::HashMap::new(),
+			colormap,
+		}
+	}
+
+	/// Create a new shape rotated around an axis.
+	///
+	/// Uses `BRepBuilderAPI_Transform` with `gp_Trsf::SetRotation`.
+	///
+	/// - `axis_origin`: a point on the rotation axis
+	/// - `axis_direction`: direction of the rotation axis
+	/// - `angle`: rotation angle in radians
+	pub fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Shape {
+		let inner = ffi::rotate_shape(
+			&self.inner,
+			axis_origin.x, axis_origin.y, axis_origin.z,
+			axis_direction.x, axis_direction.y, axis_direction.z,
+			angle,
+		);
+		#[cfg(feature = "color")]
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap,
+		}
+	}
+
+	/// Create a new shape uniformly scaled around a center point.
+	///
+	/// Uses `BRepBuilderAPI_Transform` with `gp_Trsf::SetScale`.
+	/// Only uniform scaling (same factor for all axes) is supported.
+	///
+	/// - `center`: center of scaling
+	/// - `factor`: scale factor
+	pub fn scaled(&self, center: DVec3, factor: f64) -> Shape {
+		let inner = ffi::scale_shape(
+			&self.inner,
+			center.x, center.y, center.z,
+			factor,
+		);
+		#[cfg(feature = "color")]
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		Shape {
+			inner,
+			#[cfg(feature = "color")]
+			colormap,
 		}
 	}
 
