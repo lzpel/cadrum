@@ -131,6 +131,7 @@ std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape, double tx, double ty, double tz);
 bool shape_is_null(const TopoDS_Shape& shape);
 uint32_t shape_shell_count(const TopoDS_Shape& shape);
+double shape_volume(const TopoDS_Shape& shape);
 
 // ==================== Meshing ====================
 
@@ -151,9 +152,13 @@ void face_center_of_mass(const TopoDS_Face& face,
     double& cx, double& cy, double& cz);
 void face_normal_at_center(const TopoDS_Face& face,
     double& nx, double& ny, double& nz);
+std::unique_ptr<TopoDS_Face> face_from_polygon(rust::Slice<const double> coords);
 std::unique_ptr<TopoDS_Shape> face_extrude(const TopoDS_Face& face,
     double dx, double dy, double dz);
-std::unique_ptr<TopoDS_Shape> face_to_shape(const TopoDS_Face& face);
+std::unique_ptr<TopoDS_Shape> face_revolve(const TopoDS_Face& face,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle);
 
 // ==================== Edge Methods ====================
 

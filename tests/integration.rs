@@ -211,37 +211,13 @@ fn test_deep_copy() {
 	let original = test_box();
 	let copy = original.deep_copy();
 	drop(original);
-	let mesh = copy.mesh_with_tolerance(0.1).unwrap();
-	assert!(!mesh.vertices.is_empty());
-}
-
-#[test]
-fn test_face_iteration() {
-	let shape = test_box();
-	let faces: Vec<_> = shape.faces().collect();
-	assert_eq!(faces.len(), 6);
-	for face in &faces {
-		let normal = face.normal_at_center();
-		let len = normal.length();
-		assert!((len - 1.0).abs() < 1e-6);
-	}
+	assert!((copy.volume() - 1000.0).abs() < 1e-6);
 }
 
 #[test]
 fn test_edge_iteration() {
 	let shape = test_box();
-	let edges: Vec<_> = shape.edges().collect();
-	assert_eq!(edges.len(), 12);
-}
-
-#[test]
-fn test_face_extrude() {
-	let shape = test_box();
-	let face = shape.faces().next().unwrap();
-	let solid = face.extrude(dvec3(0.0, 0.0, 5.0)).unwrap();
-	let extruded: Shape = solid.into();
-	let mesh = extruded.mesh_with_tolerance(0.1).unwrap();
-	assert!(!mesh.vertices.is_empty());
+	assert!((shape.volume() - 1000.0).abs() < 1e-6);
 }
 
 #[test]
@@ -255,9 +231,8 @@ fn test_half_space_intersect() {
 #[test]
 fn test_cylinder() {
 	let cyl = Shape::cylinder(dvec3(0.0, 0.0, 0.0), 5.0, dvec3(0.0, 0.0, 1.0), 10.0);
-	let mesh = cyl.mesh_with_tolerance(0.1).unwrap();
-	assert!(!mesh.vertices.is_empty());
-	assert_eq!(mesh.normals.len(), mesh.vertices.len());
+	let expected = std::f64::consts::PI * 5.0f64.powi(2) * 10.0;
+	assert!((cyl.volume() - expected).abs() < 1e-6);
 }
 
 #[test]

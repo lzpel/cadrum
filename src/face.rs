@@ -3,6 +3,28 @@ use crate::ffi;
 use crate::solid::Solid;
 use glam::DVec3;
 
+impl Face {
+	/// Create a planar face from a polygon defined by 3D points.
+	///
+	/// Points must be coplanar and form a non-degenerate polygon (at least 3 points).
+	/// The face normal follows the right-hand rule: the normal points toward you
+	/// when the points appear counter-clockwise.
+	///
+	/// Uses `BRepBuilderAPI_MakePolygon` + `BRepBuilderAPI_MakeFace`.
+	///
+	/// # Errors
+	/// Returns [`Error::InvalidPolygon`] if the points are non-planar, degenerate,
+	/// or fewer than 3 points are provided.
+	pub fn from_polygon(points: &[DVec3]) -> Result<Face, Error> {
+		let coords: Vec<f64> = points.iter().flat_map(|p| [p.x, p.y, p.z]).collect();
+		let inner = ffi::face_from_polygon(&coords);
+		if inner.is_null() {
+			return Err(Error::InvalidPolygon);
+		}
+		Ok(Face::new(inner))
+	}
+}
+
 /// A face topology shape.
 pub struct Face {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Face>,
@@ -55,6 +77,32 @@ impl Face {
 		let shape = ffi::face_extrude(&self.inner, dir.x, dir.y, dir.z);
 		if shape.is_null() {
 			return Err(Error::ExtrudeFailed);
+		}
+		Ok(Solid::new(shape))
+	}
+
+	/// Revolve this face around an axis to create a solid.
+	///
+	/// Uses `BRepPrimAPI_MakeRevol`. The face's current position defines the
+	/// start of the revolution (angle = 0). The result can be converted to a
+	/// `Shape` via `Shape::from(solid)`.
+	///
+	/// - `axis_origin`: a point on the rotation axis
+	/// - `axis_dir`: direction of the rotation axis (normalised by OCCT)
+	/// - `angle`: rotation angle in radians (`std::f64::consts::TAU` for a full revolution)
+	///
+	/// # Errors
+	/// Returns [`Error::RevolveFailed`] if the operation fails (e.g. the face
+	/// crosses the rotation axis, causing self-intersection).
+	pub fn revolve(&self, axis_origin: DVec3, axis_dir: DVec3, angle: f64) -> Result<Solid, Error> {
+		let shape = ffi::face_revolve(
+			&self.inner,
+			axis_origin.x, axis_origin.y, axis_origin.z,
+			axis_dir.x, axis_dir.y, axis_dir.z,
+			angle,
+		);
+		if shape.is_null() {
+			return Err(Error::RevolveFailed);
 		}
 		Ok(Solid::new(shape))
 	}

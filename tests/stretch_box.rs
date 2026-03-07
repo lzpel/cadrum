@@ -3,44 +3,10 @@
 // out/stretch_box_random_survey.csv に書き出す。テスト自体はエラーが生じても継続し、
 // 最終的に全試行の成功・失敗をCSVで記録することを目的とする。
 
-use chijin::{Error, Shape};
+use chijin::{utils::stretch_vector, Error, Shape};
 use glam::DVec3;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-
-// ── ユーティリティ ────────────────────────────────────────────────
-
-/// 切断面フェイスの Compound を delta 方向に押し出してフィラーを作ります。
-/// BooleanShape::new_faces から直接フェイスを受け取るため、
-/// heuristic による法線・重心フィルタは不要です。
-fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Result<Shape, Error> {
-	let mut filler: Option<Shape> = None;
-	for face in cut_faces.faces() {
-		let extruded = Shape::from(face.extrude(delta)?);
-		filler = Some(match filler {
-			None => extruded,
-			Some(f) => Shape::from(f.union(&extruded)?),
-		});
-	}
-	Ok(filler.unwrap_or_else(Shape::empty))
-}
-
-/// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
-/// intersect の BooleanShape::new_faces から切断面を直接取得するため、
-/// 法線・重心による heuristic フィルタを使いません。
-fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
-	// Negate so the solid fills the -delta side; intersect then yields part_neg.
-	let half = Shape::half_space(origin, -delta.normalize());
-
-	let intersect_result = shape.intersect(&half)?;
-	let part_neg = intersect_result.shape;
-	let cut_faces = intersect_result.new_faces;
-	let part_pos = Shape::from(shape.subtract(&half)?).translated(delta);
-
-	let filler = extrude_faces(&cut_faces, delta)?;
-	let combined = Shape::from(part_neg.union(&filler)?);
-	combined.union(&part_pos).map(Shape::from)
-}
 
 /// 形状をX, Y, Zの各軸方向に順番に引き伸ばします。
 fn stretch(shape: &Shape, cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -> Result<Shape, Error> {

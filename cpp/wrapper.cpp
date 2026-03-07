@@ -9,11 +9,14 @@
 
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeHalfSpace.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <gp_Ax1.hxx>
 
 #include <BRepAlgoAPI_BooleanOperation.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -498,6 +501,12 @@ uint32_t shape_shell_count(const TopoDS_Shape& shape) {
     return count;
 }
 
+double shape_volume(const TopoDS_Shape& shape) {
+    GProp_GProps props;
+    BRepGProp::VolumeProperties(shape, props);
+    return props.Mass();
+}
+
 // ==================== Meshing ====================
 
 MeshData mesh_shape(const TopoDS_Shape& shape, double tolerance) {
@@ -719,8 +728,37 @@ std::unique_ptr<TopoDS_Shape> face_extrude(const TopoDS_Face& face,
     }
 }
 
-std::unique_ptr<TopoDS_Shape> face_to_shape(const TopoDS_Face& face) {
-    return std::make_unique<TopoDS_Shape>(face);
+std::unique_ptr<TopoDS_Face> face_from_polygon(rust::Slice<const double> coords)
+{
+    if (coords.size() < 9 || coords.size() % 3 != 0) return nullptr;
+    try {
+        BRepBuilderAPI_MakePolygon poly;
+        for (size_t i = 0; i + 2 < coords.size(); i += 3) {
+            poly.Add(gp_Pnt(coords[i], coords[i + 1], coords[i + 2]));
+        }
+        poly.Close();
+        if (!poly.IsDone()) return nullptr;
+        BRepBuilderAPI_MakeFace face_maker(poly.Wire(), Standard_True);
+        if (!face_maker.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Face>(face_maker.Face());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> face_revolve(const TopoDS_Face& face,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle)
+{
+    try {
+        gp_Ax1 axis(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz));
+        BRepPrimAPI_MakeRevol maker(face, axis, angle);
+        if (!maker.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(maker.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 // ==================== Edge Methods ====================

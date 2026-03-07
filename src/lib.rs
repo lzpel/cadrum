@@ -27,6 +27,7 @@ mod mesh;
 mod shape;
 mod solid;
 pub mod stream;
+pub mod utils;
 
 pub use edge::Edge;
 pub use error::Error;

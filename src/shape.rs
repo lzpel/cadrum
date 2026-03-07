@@ -747,4 +747,25 @@ impl Shape {
 	pub fn shell_count(&self) -> u32 {
 		ffi::shape_shell_count(&self.inner)
 	}
+
+	/// Compute the volume of this shape.
+	///
+	/// Uses `BRepGProp::VolumeProperties`. Returns 0 for non-solid shapes
+	/// (faces, edges, compounds without volume). May return a negative value
+	/// if the shape orientation is reversed.
+	pub fn volume(&self) -> f64 {
+		ffi::shape_volume(&self.inner)
+	}
+
+	/// Assign the same color to every face in this shape.
+	///
+	/// Collects all face [`TShapeId`]s first to avoid a borrow conflict
+	/// between the face iterator and the mutable `colormap`.
+	#[cfg(feature = "color")]
+	pub fn paint(&mut self, color: Rgb) {
+		let ids: Vec<TShapeId> = self.faces().map(|f| f.tshape_id()).collect();
+		for id in ids {
+			self.colormap.insert(id, color);
+		}
+	}
 }

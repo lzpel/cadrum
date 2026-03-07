@@ -144,6 +144,7 @@ mod ffi_bridge {
 
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
+		fn shape_volume(shape: &TopoDS_Shape) -> f64;
 
 		// ==================== Meshing ====================
 
@@ -164,10 +165,16 @@ mod ffi_bridge {
 
 		#[cfg(feature = "color")]
 		fn face_tshape_id(face: &TopoDS_Face) -> u64;
+		fn face_from_polygon(coords: &[f64]) -> UniquePtr<TopoDS_Face>;
 		fn face_center_of_mass(face: &TopoDS_Face, cx: &mut f64, cy: &mut f64, cz: &mut f64);
 		fn face_normal_at_center(face: &TopoDS_Face, nx: &mut f64, ny: &mut f64, nz: &mut f64);
 		fn face_extrude(face: &TopoDS_Face, dx: f64, dy: f64, dz: f64) -> UniquePtr<TopoDS_Shape>;
-		fn face_to_shape(face: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;
+		fn face_revolve(
+			face: &TopoDS_Face,
+			ox: f64, oy: f64, oz: f64,
+			dx: f64, dy: f64, dz: f64,
+			angle: f64,
+		) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Edge Methods ====================
 

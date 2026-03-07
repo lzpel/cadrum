@@ -32,4 +32,12 @@ pub enum Error {
     /// Face extrusion (MakePrism) failed in OCCT.
     #[error("Extrude failed")]
     ExtrudeFailed,
+
+    /// Face revolution (MakeRevol) failed in OCCT.
+    #[error("Revolve failed")]
+    RevolveFailed,
+
+    /// Face creation from polygon points failed (non-planar or degenerate points).
+    #[error("Invalid polygon")]
+    InvalidPolygon,
 }
