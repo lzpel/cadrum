@@ -421,6 +421,47 @@ impl Shape {
 		}
 	}
 
+	/// Decompose this compound into its constituent solids.
+	///
+	/// Consumes `self` and returns a `Vec<Shape>`, one per `TopAbs_SOLID`
+	/// found by `TopExp_Explorer`. The returned shapes share the same
+	/// underlying B-Rep geometry via reference-counted handles (no deep copy).
+	/// Returns an empty `Vec` if the shape contains no solids.
+	pub fn into_solids(self) -> Vec<Shape> {
+		let solids = ffi::decompose_into_solids(&self.inner);
+		solids
+			.iter()
+			.map(|s| {
+				let inner = ffi::shallow_copy(s);
+				Shape {
+					inner,
+					#[cfg(feature = "color")]
+					colormap: self.colormap.clone(),
+				}
+			})
+			.collect()
+	}
+
+	/// Build a compound shape from a collection of shapes.
+	///
+	/// Uses `BRep_Builder::Add` to assemble shapes into a `TopoDS_Compound`.
+	/// Only lightweight handle copies are performed (no deep copy).
+	pub fn from_solids(solids: Vec<Shape>) -> Shape {
+		let mut compound = ffi::make_empty();
+		#[cfg(feature = "color")]
+		let mut colormap = std::collections::HashMap::new();
+		for s in &solids {
+			ffi::compound_add(compound.pin_mut(), &s.inner);
+			#[cfg(feature = "color")]
+			colormap.extend(s.colormap.iter().map(|(&k, &v)| (k, v)));
+		}
+		Shape {
+			inner: compound,
+			#[cfg(feature = "color")]
+			colormap,
+		}
+	}
+
 	/// Create an independent deep copy of this shape.
 	///
 	/// Uses `BRepBuilderAPI_Copy` to create a complete copy that shares
@@ -787,6 +828,16 @@ impl Shape {
 	/// and N for a compound of N solids.
 	pub fn shell_count(&self) -> u32 {
 		ffi::shape_shell_count(&self.inner)
+	}
+
+	/// Check if a point is inside this solid shape.
+	///
+	/// Uses `BRepClass3d_SolidClassifier` with tolerance `1e-6`.
+	/// Returns `true` only for points strictly inside (`TopAbs_IN`),
+	/// not on the boundary. Designed for solid shapes; behavior is
+	/// undefined for open shells, faces, or edges.
+	pub fn contains(&self, point: DVec3) -> bool {
+		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
 	}
 
 	/// Compute the volume of this shape.

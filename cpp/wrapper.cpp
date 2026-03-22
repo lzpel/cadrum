@@ -29,6 +29,7 @@
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
 #include <Poly_Triangulation.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepGProp.hxx>
 #include <BRepGProp_Face.hxx>
 #include <GProp_GProps.hxx>
@@ -269,6 +270,25 @@ std::unique_ptr<TopoDS_Shape> make_empty() {
 std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape) {
     BRepBuilderAPI_Copy copier(shape, Standard_True, Standard_False);
     return std::make_unique<TopoDS_Shape>(copier.Shape());
+}
+
+std::unique_ptr<TopoDS_Shape> shallow_copy(const TopoDS_Shape& shape) {
+    return std::make_unique<TopoDS_Shape>(shape);
+}
+
+// ==================== Compound Decompose/Compose ====================
+
+std::unique_ptr<std::vector<TopoDS_Shape>> decompose_into_solids(const TopoDS_Shape& shape) {
+    auto result = std::make_unique<std::vector<TopoDS_Shape>>();
+    for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
+        result->push_back(ex.Current());  // shallow handle copy
+    }
+    return result;
+}
+
+void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child) {
+    BRep_Builder builder;
+    builder.Add(compound, child);
 }
 
 // ==================== Boolean Operations ====================
@@ -536,6 +556,11 @@ double shape_volume(const TopoDS_Shape& shape) {
     GProp_GProps props;
     BRepGProp::VolumeProperties(shape, props);
     return props.Mass();
+}
+
+bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z) {
+    BRepClass3d_SolidClassifier classifier(shape, gp_Pnt(x, y, z), 1e-6);
+    return classifier.State() == TopAbs_IN;
 }
 
 // ==================== Meshing ====================

@@ -94,6 +94,7 @@ std::unique_ptr<TopoDS_Shape> make_cylinder(
 
 std::unique_ptr<TopoDS_Shape> make_empty();
 std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> shallow_copy(const TopoDS_Shape& shape);
 
 // ==================== Boolean Operations ====================
 
@@ -141,6 +142,12 @@ std::unique_ptr<TopoDS_Shape> scale_shape(
 bool shape_is_null(const TopoDS_Shape& shape);
 uint32_t shape_shell_count(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
+bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
+
+// ==================== Compound Decompose/Compose ====================
+
+std::unique_ptr<std::vector<TopoDS_Shape>> decompose_into_solids(const TopoDS_Shape& shape);
+void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child);
 
 // ==================== Meshing ====================
 

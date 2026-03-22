@@ -82,6 +82,7 @@ mod ffi_bridge {
 		fn make_empty() -> UniquePtr<TopoDS_Shape>;
 
 		fn deep_copy(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
+		fn shallow_copy(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Boolean Operations ====================
 
@@ -158,6 +159,12 @@ mod ffi_bridge {
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
 		fn shape_volume(shape: &TopoDS_Shape) -> f64;
+		fn shape_contains_point(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> bool;
+
+		// ==================== Compound Decompose/Compose ====================
+
+		fn decompose_into_solids(shape: &TopoDS_Shape) -> UniquePtr<CxxVector<TopoDS_Shape>>;
+		fn compound_add(compound: Pin<&mut TopoDS_Shape>, child: &TopoDS_Shape);
 
 		// ==================== Meshing ====================
 

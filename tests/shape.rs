@@ -95,3 +95,54 @@ fn test_scaled_preserves_shell_count() {
 	let scaled = shape.scaled(DVec3::ZERO, 3.0);
 	assert_eq!(scaled.shell_count(), 1);
 }
+
+// ==================== into_solids / from_solids ====================
+
+#[test]
+fn test_into_solids_roundtrip() {
+	// 2 つのボックスを union して compound を作り、into_solids → from_solids のラウンドトリップ
+	let a = Shape::box_from_corners(dvec3(0.0, 0.0, 0.0), dvec3(10.0, 10.0, 10.0));
+	let b = Shape::box_from_corners(dvec3(20.0, 0.0, 0.0), dvec3(30.0, 10.0, 10.0));
+	let compound = Shape::from_solids(vec![a, b]);
+	let total_volume = compound.volume();
+
+	// 分解
+	let solids = compound.into_solids();
+	assert_eq!(solids.len(), 2);
+
+	// 各 solid の体積合計が元と一致
+	let sum: f64 = solids.iter().map(|s| s.volume()).sum();
+	assert!((sum - total_volume).abs() < 1e-6, "sum={sum}, expected={total_volume}");
+
+	// 再合成
+	let recompound = Shape::from_solids(solids);
+	assert!((recompound.volume() - total_volume).abs() < 1e-6);
+}
+
+#[test]
+fn test_into_solids_single() {
+	// 単一 solid → into_solids で要素 1 個
+	let shape = test_box();
+	let solids = shape.into_solids();
+	assert_eq!(solids.len(), 1);
+	assert!((solids[0].volume() - 1000.0).abs() < 1e-6);
+}
+
+#[test]
+fn test_into_solids_empty() {
+	// 空 compound → into_solids で空 Vec
+	let shape = Shape::empty();
+	let solids = shape.into_solids();
+	assert!(solids.is_empty());
+}
+
+// ==================== contains ====================
+
+#[test]
+fn test_contains() {
+	let shape = test_box(); // 0..10 の箱
+	assert!(shape.contains(dvec3(5.0, 5.0, 5.0)));   // 中心
+	assert!(shape.contains(dvec3(0.1, 0.1, 0.1)));   // 内側寄り
+	assert!(!shape.contains(dvec3(20.0, 5.0, 5.0)));  // 外
+	assert!(!shape.contains(dvec3(-0.1, 5.0, 5.0)));  // 外寄り
+}
