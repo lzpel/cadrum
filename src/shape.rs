@@ -28,27 +28,33 @@ pub struct Rgb {
 
 /// Result of a boolean operation.
 ///
-/// Use [`new_face_ids`](BooleanShape::new_face_ids) to get the IDs of faces
-/// originating from the `other` (tool) operand, then filter `shape.faces()`
-/// to iterate over them.
+/// Use [`is_tool_face`](BooleanShape::is_tool_face) /
+/// [`is_shape_face`](BooleanShape::is_shape_face) to classify faces of `shape`
+/// by which operand they originated from.
 ///
 /// Use [`From<BooleanShape> for Shape`] (`.into()`) when only the shape is needed.
 pub struct BooleanShape {
 	pub shape: Shape,
-	#[cfg_attr(not(feature = "color"), allow(dead_code))]
 	from_a: Vec<u64>,
 	from_b: Vec<u64>,
 }
 
 impl BooleanShape {
-	/// Returns the set of [`TShapeId`]s of faces in `shape` that originated
-	/// from the `other` (tool) operand of the boolean operation.
+	/// Returns `true` if `face` originated from the `other` (tool) operand.
 	///
 	/// For `subtract` and `intersect` these are the cross-section / interface faces.
-	/// For `union` the set may be non-empty (faces of `other` that survived into
-	/// the result).
-	pub fn new_face_ids(&self) -> std::collections::HashSet<TShapeId> {
-		self.from_b.chunks(2).map(|p| TShapeId(p[0])).collect()
+	///
+	/// Implemented as a linear scan over `from_b`. post_ids are TShape* of the
+	/// copied result, which never overlap with src_ids (original input pointers),
+	/// so a flat `.contains()` on the interleaved `[post_id, src_id, ...]` array
+	/// is correct.
+	pub fn is_tool_face(&self, face: &crate::face::Face) -> bool {
+		self.from_b.contains(&face.tshape_id().0)
+	}
+
+	/// Returns `true` if `face` originated from `self` (the base shape operand).
+	pub fn is_shape_face(&self, face: &crate::face::Face) -> bool {
+		self.from_a.contains(&face.tshape_id().0)
 	}
 }
 
@@ -561,24 +567,13 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
-		let from_a = ffi::boolean_shape_from_a(&r);
-		let from_b = ffi::boolean_shape_from_b(&r);
-		#[cfg(feature = "color")]
-		let colormap = merge_colormaps(&from_a, &from_b, &self.colormap, &other.colormap);
-		Ok(BooleanShape {
-			shape: Shape {
-				inner: ffi::boolean_shape_shape(&r),
-				#[cfg(feature = "color")]
-				colormap,
-			},
-			from_a,
-			from_b,
-		})
+		self.build_boolean_shape(r, other)
 	}
 
 	/// Boolean subtraction (cut) with another shape.
 	///
-	/// `new_faces` contains the cross-section faces generated at the tool boundary.
+	/// Use [`BooleanShape::is_tool_face`] to identify the cross-section faces
+	/// generated at the tool boundary.
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
 	pub fn subtract(&self, other: &Shape) -> Result<BooleanShape, Error> {
@@ -586,25 +581,13 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
-		let from_a = ffi::boolean_shape_from_a(&r);
-		let from_b = ffi::boolean_shape_from_b(&r);
-		#[cfg(feature = "color")]
-		let colormap = merge_colormaps(&from_a, &from_b, &self.colormap, &other.colormap);
-		Ok(BooleanShape {
-			shape: Shape {
-				inner: ffi::boolean_shape_shape(&r),
-				#[cfg(feature = "color")]
-				colormap,
-			},
-			from_a,
-			from_b,
-		})
+		self.build_boolean_shape(r, other)
 	}
 
 	/// Boolean intersection (common) with another shape.
 	///
-	/// `new_faces` contains the cross-section faces generated at the tool boundary.
-	/// This is the primary source of cut faces used by the stretch algorithm.
+	/// Use [`BooleanShape::is_tool_face`] to identify the cross-section faces
+	/// generated at the tool boundary.
 	///
 	/// See [`union`](Self::union) for details on automatic deep-copy.
 	pub fn intersect(&self, other: &Shape) -> Result<BooleanShape, Error> {
@@ -612,6 +595,15 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
+		self.build_boolean_shape(r, other)
+	}
+
+	fn build_boolean_shape(
+		&self,
+		r: cxx::UniquePtr<ffi::BooleanShape>,
+		#[cfg_attr(not(feature = "color"), allow(unused_variables))]
+		other: &Shape,
+	) -> Result<BooleanShape, Error> {
 		let from_a = ffi::boolean_shape_from_a(&r);
 		let from_b = ffi::boolean_shape_from_b(&r);
 		#[cfg(feature = "color")]
