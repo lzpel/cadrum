@@ -163,15 +163,16 @@ fn diagnose_new_faces() {
 
 	let half = Shape::half_space(origin, -delta.normalize());
 	let r_half = shape.intersect(&half).expect("intersect(half_space) failed");
-	println!("  intersect result: new_faces face_count={}", r_half.new_faces.faces().count());
+	println!("  intersect result: new_face_ids count={}", r_half.new_face_ids().len());
 
 	let big_box = Shape::box_from_corners(
 		DVec3::new(-1000.0, -1000.0, -1000.0),
 		DVec3::new(1.0, 1000.0, 1000.0),
 	);
 	let r_box = shape.intersect(&big_box).expect("intersect(big_box) failed");
-	println!("  intersect result: new_faces face_count={}", r_box.new_faces.faces().count());
-	for (i, face) in r_box.new_faces.faces().enumerate() {
+	let new_ids = r_box.new_face_ids();
+	println!("  intersect result: new_face_ids count={}", new_ids.len());
+	for (i, face) in r_box.shape.faces().filter(|f| new_ids.contains(&f.tshape_id())).enumerate() {
 		let n = face.normal_at_center();
 		let c = face.center_of_mass();
 		println!("    face[{i}]: normal=({:.3},{:.3},{:.3}) center=({:.3},{:.3},{:.3})", n.x, n.y, n.z, c.x, c.y, c.z);

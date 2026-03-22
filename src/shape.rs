@@ -10,8 +10,8 @@ use std::io::{Read, Write};
 
 /// Identifier for a `TopoDS_TShape` object (pointer address).
 ///
-/// Used as the key in `Shape::colormap`. Valid as long as the owning `Shape` is alive.
-#[cfg(feature = "color")]
+/// Used as the key in `Shape::colormap` and in [`BooleanShape::new_face_ids`].
+/// Valid as long as the owning `Shape` is alive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TShapeId(pub u64);
 
@@ -28,16 +28,28 @@ pub struct Rgb {
 
 /// Result of a boolean operation.
 ///
-/// `new_faces` is a compound of the faces generated at the tool boundary:
-/// - For [`intersect`](Shape::intersect) and [`subtract`](Shape::subtract):
-///   the cross-section faces at the cut plane.
-/// - For [`union`](Shape::union): an empty compound (no new cut faces are generated).
+/// Use [`new_face_ids`](BooleanShape::new_face_ids) to get the IDs of faces
+/// originating from the `other` (tool) operand, then filter `shape.faces()`
+/// to iterate over them.
 ///
-/// Both fields are `pub` for direct access. Use [`From<BooleanShape> for Shape`]
-/// (`.into()`) when only the shape is needed.
+/// Use [`From<BooleanShape> for Shape`] (`.into()`) when only the shape is needed.
 pub struct BooleanShape {
 	pub shape: Shape,
-	pub new_faces: Shape,
+	#[cfg_attr(not(feature = "color"), allow(dead_code))]
+	from_a: Vec<u64>,
+	from_b: Vec<u64>,
+}
+
+impl BooleanShape {
+	/// Returns the set of [`TShapeId`]s of faces in `shape` that originated
+	/// from the `other` (tool) operand of the boolean operation.
+	///
+	/// For `subtract` and `intersect` these are the cross-section / interface faces.
+	/// For `union` the set may be non-empty (faces of `other` that survived into
+	/// the result).
+	pub fn new_face_ids(&self) -> std::collections::HashSet<TShapeId> {
+		self.from_b.chunks(2).map(|p| TShapeId(p[0])).collect()
+	}
 }
 
 impl From<BooleanShape> for Shape {
@@ -515,8 +527,8 @@ fn remap_colormap_by_order(
 /// Looks up `src_id` in `colormap_x`; if found, inserts `post_id → color`.
 #[cfg(feature = "color")]
 fn merge_colormaps(
-	from_a: Vec<u64>,
-	from_b: Vec<u64>,
+	from_a: &[u64],
+	from_b: &[u64],
 	colormap_a: &std::collections::HashMap<TShapeId, Rgb>,
 	colormap_b: &std::collections::HashMap<TShapeId, Rgb>,
 ) -> std::collections::HashMap<TShapeId, Rgb> {
@@ -549,24 +561,18 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
+		let from_a = ffi::boolean_shape_from_a(&r);
+		let from_b = ffi::boolean_shape_from_b(&r);
 		#[cfg(feature = "color")]
-		let colormap = merge_colormaps(
-			ffi::boolean_shape_from_a(&r),
-			ffi::boolean_shape_from_b(&r),
-			&self.colormap,
-			&other.colormap,
-		);
+		let colormap = merge_colormaps(&from_a, &from_b, &self.colormap, &other.colormap);
 		Ok(BooleanShape {
 			shape: Shape {
 				inner: ffi::boolean_shape_shape(&r),
 				#[cfg(feature = "color")]
 				colormap,
 			},
-			new_faces: Shape {
-				inner: ffi::boolean_shape_new_faces(&r),
-				#[cfg(feature = "color")]
-				colormap: std::collections::HashMap::new(),
-			},
+			from_a,
+			from_b,
 		})
 	}
 
@@ -580,24 +586,18 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
+		let from_a = ffi::boolean_shape_from_a(&r);
+		let from_b = ffi::boolean_shape_from_b(&r);
 		#[cfg(feature = "color")]
-		let colormap = merge_colormaps(
-			ffi::boolean_shape_from_a(&r),
-			ffi::boolean_shape_from_b(&r),
-			&self.colormap,
-			&other.colormap,
-		);
+		let colormap = merge_colormaps(&from_a, &from_b, &self.colormap, &other.colormap);
 		Ok(BooleanShape {
 			shape: Shape {
 				inner: ffi::boolean_shape_shape(&r),
 				#[cfg(feature = "color")]
 				colormap,
 			},
-			new_faces: Shape {
-				inner: ffi::boolean_shape_new_faces(&r),
-				#[cfg(feature = "color")]
-				colormap: std::collections::HashMap::new(),
-			},
+			from_a,
+			from_b,
 		})
 	}
 
@@ -612,24 +612,18 @@ impl Shape {
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
 		}
+		let from_a = ffi::boolean_shape_from_a(&r);
+		let from_b = ffi::boolean_shape_from_b(&r);
 		#[cfg(feature = "color")]
-		let colormap = merge_colormaps(
-			ffi::boolean_shape_from_a(&r),
-			ffi::boolean_shape_from_b(&r),
-			&self.colormap,
-			&other.colormap,
-		);
+		let colormap = merge_colormaps(&from_a, &from_b, &self.colormap, &other.colormap);
 		Ok(BooleanShape {
 			shape: Shape {
 				inner: ffi::boolean_shape_shape(&r),
 				#[cfg(feature = "color")]
 				colormap,
 			},
-			new_faces: Shape {
-				inner: ffi::boolean_shape_new_faces(&r),
-				#[cfg(feature = "color")]
-				colormap: std::collections::HashMap::new(),
-			},
+			from_a,
+			from_b,
 		})
 	}
 }

@@ -1,11 +1,12 @@
 use crate::error::Error;
-use crate::shape::Shape;
+use crate::shape::{Shape, TShapeId};
 use glam::DVec3;
+use std::collections::HashSet;
 
-/// 切断面フェイスの Compound を delta 方向に押し出してフィラーを作ります。
-fn extrude_faces(cut_faces: &Shape, delta: DVec3) -> Result<Shape, Error> {
+/// `ids` に含まれるフェイスだけを delta 方向に押し出してフィラーを作ります。
+fn extrude_face_ids(shape: &Shape, ids: &HashSet<TShapeId>, delta: DVec3) -> Result<Shape, Error> {
 	let mut filler: Option<Shape> = None;
-	for face in cut_faces.faces() {
+	for face in shape.faces().filter(|f| ids.contains(&f.tshape_id())) {
 		let extruded = Shape::from(face.extrude(delta)?);
 		filler = Some(match filler {
 			None => extruded,
@@ -32,10 +33,11 @@ pub fn revolve_section(
 	angle: f64,
 ) -> Result<Shape, Error> {
 	let half = Shape::half_space(origin, -plane_normal.normalize());
-	let cut_faces = shape.intersect(&half)?.new_faces;
+	let intersect_result = shape.intersect(&half)?;
+	let new_ids = intersect_result.new_face_ids();
 
 	let mut result: Option<Shape> = None;
-	for face in cut_faces.faces() {
+	for face in intersect_result.shape.faces().filter(|f| new_ids.contains(&f.tshape_id())) {
 		let revolved = Shape::from(face.revolve(origin, axis_direction, angle)?);
 		result = Some(match result {
 			None => revolved,
@@ -46,18 +48,18 @@ pub fn revolve_section(
 }
 
 /// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
-/// intersect の BooleanShape::new_faces から切断面を直接取得するため、
+/// intersect の BooleanShape::new_face_ids から切断面を直接取得するため、
 /// 法線・重心による heuristic フィルタを使いません。
 pub fn stretch_vector(shape: &Shape, origin: DVec3, delta: DVec3) -> Result<Shape, Error> {
 	// Negate so the solid fills the -delta side; intersect then yields part_neg.
 	let half = Shape::half_space(origin, -delta.normalize());
 
 	let intersect_result = shape.intersect(&half)?;
+	let new_ids = intersect_result.new_face_ids();
 	let part_neg = intersect_result.shape;
-	let cut_faces = intersect_result.new_faces;
 	let part_pos = Shape::from(shape.subtract(&half)?).translated(delta);
 
-	let filler = extrude_faces(&cut_faces, delta)?;
+	let filler = extrude_face_ids(&part_neg, &new_ids, delta)?;
 	let combined = Shape::from(part_neg.union(&filler)?);
 	combined.union(&part_pos).map(Shape::from)
 }
