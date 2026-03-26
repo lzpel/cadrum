@@ -1,45 +1,24 @@
-//! ちぢん例: 奄美大島の楽器「ちぢん」を chijin ライブラリで再現する
+//! Chijin example: build a chijin (hand drum from Amami Oshima) using the chijin library.
 //!
 //! ```
 //! cargo run --example chijin --features bundled,color
 //! ```
 //!
-//! 出力: out/chijin.step (AP214 STEP, 色付き)
+//! Output: out/chijin.step (AP214 STEP, colored), out/chijin.svg
 
 use chijin::{Boolean, Face, Rgb, Shape, Solid};
 use glam::DVec3;
 use std::f64::consts::PI;
-use std::path::Path;
-
 
 fn chijin() -> Solid {
-	// ── 色定義 ────────────────────────────────────────────────────────────────
-	// 鼓面・胴体: 濃い茶色
-	let dark_brown = Rgb {
-		r: 0.6,
-		g: 0.6,
-		b: 0.6,
-	};
-	// 縁・締め木: 明るい茶色
-	let light_brown = Rgb {
-		r: 1.0,
-		g: 1.0,
-		b: 1.0,
-	};
-
-	// ── 胴体 (cylinder): r=15cm, h=10cm, 原点中心 ────────────────────────────
-	// 底面中心を z=-5 にして、形状が z=-5..+5 の範囲に収まるようにする
+	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
 	let cylinder: Solid =
-		Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0).color_paint(dark_brown);
+		Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0).color_paint(Rgb::from_hex("#999").unwrap());
 
-	// ── 縁板 (sheet): x=0 の多角形プロファイルを Z 軸回転体にした薄いリング ──
-	// プロファイル点(y, z): (0,5),(15,5),(16,3),(15,4),(0,4)
-	// → extrude で厚みを持たせ、回転 (revolution) の代わりに
-	//   多数の薄いくさびを union して近似する。
-	//
-	// 簡易実装: 外径16cm・内径15cmのリングを z=3..5 に配置する薄いシェル
-	// outer cylinder - inner cylinder で中空シリンダーを作る
-	let sheet_face = Face::from_polygon(&[
+	// ── Rim: cross-section polygon in the x=0 plane, revolved 360° around Z
+	// to form a ring with outer radius 17 at z=3..5.
+	// Mirrored across z=0 to create rims on both top and bottom.
+	let cross_section = Face::from_polygon(&[
 		DVec3::new(0.0, 0.0, 5.0),
 		DVec3::new(0.0, 15.0, 5.0),
 		DVec3::new(0.0, 17.0, 3.0),
@@ -48,21 +27,18 @@ fn chijin() -> Solid {
 		DVec3::new(0.0, 0.0, 5.0),
 	])
 	.unwrap();
-	let sheet = sheet_face
+	let sheet = cross_section
 		.revolve(DVec3::ZERO, DVec3::Z, 2.0 * PI)
 		.unwrap()
-		.color_paint(light_brown);
+		.color_paint(Rgb::from_hex("#fff").unwrap());
 	let sheets = [sheet.mirrored(DVec3::ZERO, DVec3::Z), sheet];
 
-	// ── 締め木 (block): 2cm x 5cm x 1cm ─────────────────────────────────────
-	// x軸方向に伸びた板。z軸方向に 60° の仰角で配置し、x=0, y=0, z=15cm へ移動
-	// corners: (-1, -2.5, -0.5) .. (1, 2.5, 0.5)
-	let block_proto =
-		Solid::box_from_corners(DVec3::new(-1.0, -4.0, -0.5), DVec3::new(1.0, 4.0, 0.5));
-	// z軸まわりに 60°回転（板を斜めにする）してから (0, 15, 0) に移動
-	let block_proto = block_proto
+	// ── Lacing blocks: 2x8x1, rotated 60° around Z, placed at y=15 ──────
+	let block_proto = Solid::box_from_corners(DVec3::new(-1.0, -4.0, -0.5), DVec3::new(1.0, 4.0, 0.5))
 		.rotate(DVec3::ZERO, DVec3::Z, 60.0_f64.to_radians())
 		.translate(DVec3::new(0.0, 15.0, 0.0));
+
+	// ── Lacing holes: thin cylinders through each block ──────────────────
 	let hole_proto = Solid::cylinder(
 		DVec3::new(-5.0, 16.0, -15.0),
 		0.7,
@@ -70,7 +46,7 @@ fn chijin() -> Solid {
 		30.0,
 	);
 
-	// n=20 個の締め木を 360°/n ずつ Z 軸回転して虹色に配置
+	// Distribute 20 blocks and holes evenly around Z, each block in a rainbow color
 	let n = 20usize;
 	let mut blocks: Vec<Solid> = Vec::with_capacity(n);
 	let mut holes: Vec<Solid> = Vec::with_capacity(n);
@@ -96,34 +72,32 @@ fn chijin() -> Solid {
 		.reduce(|a, b| Boolean::union(&a, &b).unwrap().solids)
 		.unwrap();
 
-	// ── すべてを union ───────────────────────────────────────────────────────
-	// cylinder + sheet
+	// ── Assemble with boolean operations: union, subtract, union ─────────
 	let combined: Vec<Solid> = Boolean::union(&[cylinder], &sheets)
-		.expect("cylinder + sheet union に失敗")
+		.expect("cylinder + sheet union failed")
 		.into();
-
-	// combined + blocks - holes
-	let result: Vec<Solid> = Boolean::subtract(&combined, &holes).unwrap().into();
-	let result: Vec<Solid> = Boolean::union(&result, &blocks).unwrap().into();
+	let result: Vec<Solid> = Boolean::subtract(&combined, &holes).unwrap().into(); // drill holes
+	let result: Vec<Solid> = Boolean::union(&result, &blocks).unwrap().into(); // attach blocks
 	assert!(result.len() == 1);
 	result.into_iter().next().unwrap()
 }
+
 fn main() {
 	let result = vec![chijin()];
 	std::fs::create_dir_all("out").unwrap();
 
-	// ── STEP ファイルとして書き出し ──────────────────────────────────────────
+	// ── Write STEP ───────────────────────────────────────────────────────
 	let step_path = "out/chijin.step";
-	let mut f = std::fs::File::create(step_path).expect("STEP ファイル作成に失敗");
-	chijin::write_step_with_colors(&result, &mut f).expect("STEP 書き込みに失敗");
+	let mut f = std::fs::File::create(step_path).expect("failed to create STEP file");
+	chijin::write_step_with_colors(&result, &mut f).expect("failed to write STEP");
 	println!("wrote {step_path}");
 
-	// ── SVG として書き出し (斜め上からの視点) ───────────────────────────────
+	// ── Write SVG (isometric view from (1,1,1)) ─────────────────────────
 	let svg_path = "out/chijin.svg";
 	let svg = result
 		.to_svg(DVec3::new(1.0, 1.0, 1.0), 0.5)
-		.expect("SVG 書き出しに失敗");
-	let mut f = std::fs::File::create(svg_path).expect("SVG ファイル作成に失敗");
-	std::io::Write::write_all(&mut f, svg.as_bytes()).expect("SVG 書き込みに失敗");
+		.expect("failed to export SVG");
+	let mut f = std::fs::File::create(svg_path).expect("failed to create SVG file");
+	std::io::Write::write_all(&mut f, svg.as_bytes()).expect("failed to write SVG");
 	println!("wrote {svg_path}");
 }
