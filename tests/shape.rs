@@ -26,7 +26,7 @@ fn test_clone_is_independent() {
 	let original = test_box();
 	let copy = original.clone();
 	let other: Vec<Solid> = vec![Solid::box_from_corners(dvec3(5.0, 5.0, 5.0), dvec3(15.0, 15.0, 15.0))];
-	let _: Vec<Solid> = original.union(&other).unwrap().into();
+	let _: Vec<Solid> = chijin::Boolean::union(&original, &other).unwrap().into();
 	assert!((copy.volume() - 1000.0).abs() < 1e-6);
 }
 
@@ -137,7 +137,7 @@ fn test_new_faces_subtract_b_inside_a() {
 	// 新実装（from_b post_ids）では unchanged 面も from_b に入る → tool faces = 6
 	let big: Vec<Solid> = vec![Solid::box_from_corners(dvec3(0.0, 0.0, 0.0), dvec3(10.0, 10.0, 10.0))];
 	let small: Vec<Solid> = vec![Solid::box_from_corners(dvec3(3.0, 3.0, 3.0), dvec3(7.0, 7.0, 7.0))];
-	let result = big.subtract(&small).unwrap();
+	let result = chijin::Boolean::subtract(&big, &small).unwrap();
 	assert_eq!(result.solids.faces().filter(|f| result.is_tool_face(f)).count(), 6,
 		"subtract with B fully inside A: tool faces should be all 6 inner walls");
 }
@@ -148,7 +148,7 @@ fn test_new_faces_intersect_b_inside_a() {
 	// small の 6 面はすべて unchanged → tool faces = 結果の全フェイス = 6
 	let big: Vec<Solid> = vec![Solid::box_from_corners(dvec3(0.0, 0.0, 0.0), dvec3(10.0, 10.0, 10.0))];
 	let small: Vec<Solid> = vec![Solid::box_from_corners(dvec3(3.0, 3.0, 3.0), dvec3(7.0, 7.0, 7.0))];
-	let result = big.intersect(&small).unwrap();
+	let result = chijin::Boolean::intersect(&big, &small).unwrap();
 	let tool_count = result.solids.faces().filter(|f| result.is_tool_face(f)).count();
 	assert_eq!(tool_count, 6,
 		"intersect with B fully inside A: tool faces should equal all faces of result");
@@ -161,8 +161,8 @@ fn test_new_faces_intersect_b_inside_a() {
 #[test]
 fn test_contains() {
 	let shape = test_box(); // 0..10 の箱
-	assert!(Shape::contains(&*shape, dvec3(5.0, 5.0, 5.0)));   // 中心
-	assert!(Shape::contains(&*shape, dvec3(0.1, 0.1, 0.1)));   // 内側寄り
-	assert!(!Shape::contains(&*shape, dvec3(20.0, 5.0, 5.0)));  // 外
-	assert!(!Shape::contains(&*shape, dvec3(-0.1, 5.0, 5.0)));  // 外寄り
+	assert!(Shape::contains(&shape, dvec3(5.0, 5.0, 5.0)));   // 中心
+	assert!(Shape::contains(&shape, dvec3(0.1, 0.1, 0.1)));   // 内側寄り
+	assert!(!Shape::contains(&shape, dvec3(20.0, 5.0, 5.0)));  // 外
+	assert!(!Shape::contains(&shape, dvec3(-0.1, 5.0, 5.0)));  // 外寄り
 }

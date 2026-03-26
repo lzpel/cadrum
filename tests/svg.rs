@@ -59,7 +59,7 @@ fn test_svg_has_hidden_lines() {
 	// Two boxes: the back one should have hidden edges
 	let a: Vec<Solid> = vec![Solid::box_from_corners(DVec3::ZERO, dvec3(10.0, 10.0, 10.0))];
 	let b: Vec<Solid> = vec![Solid::box_from_corners(dvec3(5.0, 5.0, 0.0), dvec3(15.0, 15.0, 10.0))];
-	let shape: Vec<Solid> = a.union(&b).unwrap().into();
+	let shape: Vec<Solid> = chijin::Boolean::union(&a, &b).unwrap().into();
 	let svg = shape
 		.to_svg(dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
 		.unwrap();

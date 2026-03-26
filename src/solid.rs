@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::ffi;
 use crate::iterators::{EdgeIterator, FaceIterator};
 use crate::mesh::Mesh;
+use crate::shape::Shape;
 use glam::{DVec2, DVec3};
 
 /// A single solid topology shape wrapping a `TopoDS_Shape` guaranteed to be `TopAbs_SOLID`.
@@ -101,10 +102,12 @@ impl Solid {
 		)
 	}
 
+}
+
+impl Shape for Solid {
 	// ==================== Transforms ====================
 
-	/// Create a new solid translated by the given vector.
-	pub fn translated(&self, translation: DVec3) -> Solid {
+	fn translated(&self, translation: DVec3) -> Self {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
 		#[cfg(feature = "color")]
 		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
@@ -115,8 +118,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a new solid rotated around an axis.
-	pub fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Solid {
+	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
 		let inner = ffi::rotate_shape(
 			&self.inner,
 			axis_origin.x, axis_origin.y, axis_origin.z,
@@ -132,8 +134,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a new solid uniformly scaled around a center point.
-	pub fn scaled(&self, center: DVec3, factor: f64) -> Solid {
+	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		let inner = ffi::scale_shape(&self.inner, center.x, center.y, center.z, factor);
 		#[cfg(feature = "color")]
 		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
@@ -146,8 +147,7 @@ impl Solid {
 
 	// ==================== Clean ====================
 
-	/// Clean the solid by unifying same-domain faces, edges, and vertices.
-	pub fn clean(&self) -> Result<Solid, Error> {
+	fn clean(&self) -> Result<Self, Error> {
 		#[cfg(feature = "color")]
 		{
 			let r = ffi::clean_shape_full(&self.inner);
@@ -181,40 +181,33 @@ impl Solid {
 
 	// ==================== Queries ====================
 
-	/// Compute the volume of this solid.
-	pub fn volume(&self) -> f64 {
+	fn volume(&self) -> f64 {
 		ffi::shape_volume(&self.inner)
 	}
 
-	/// Check if this solid is null.
-	pub fn is_null(&self) -> bool {
+	fn is_null(&self) -> bool {
 		ffi::shape_is_null(&self.inner)
 	}
 
-	/// Count the number of shells in this solid.
-	pub fn shell_count(&self) -> u32 {
+	fn shell_count(&self) -> u32 {
 		ffi::shape_shell_count(&self.inner)
 	}
 
-	/// Check if a point is inside this solid.
-	pub fn contains(&self, point: DVec3) -> bool {
+	fn contains(&self, point: DVec3) -> bool {
 		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
 	}
 
-	/// Iterate over all faces in this solid.
-	pub fn faces(&self) -> FaceIterator {
+	fn faces(&self) -> FaceIterator {
 		FaceIterator::new(ffi::explore_faces(&self.inner))
 	}
 
-	/// Iterate over all edges in this solid.
-	pub fn edges(&self) -> EdgeIterator {
+	fn edges(&self) -> EdgeIterator {
 		EdgeIterator::new(ffi::explore_edges(&self.inner))
 	}
 
 	// ==================== Mesh ====================
 
-	/// Mesh this solid with the given linear deflection tolerance.
-	pub fn mesh_with_tolerance(&self, tol: f64) -> Result<Mesh, Error> {
+	fn mesh_with_tolerance(&self, tol: f64) -> Result<Mesh, Error> {
 		let data = ffi::mesh_shape(&self.inner, tol);
 		if !data.success {
 			return Err(Error::TriangulationFailed);
@@ -234,20 +227,22 @@ impl Solid {
 		Ok(Mesh { vertices, uvs, normals, indices, face_ids })
 	}
 
+	fn to_svg(&self, direction: DVec3, tolerance: f64) -> Result<String, Error> {
+		vec![self.clone()].to_svg(direction, tolerance)
+	}
+
 	// ==================== Color ====================
 
-	/// Assign the same color to every face in this solid.
 	#[cfg(feature = "color")]
-	pub fn color_paint(&mut self, color: crate::shape::Rgb) {
+	fn color_paint(&mut self, color: crate::shape::Rgb) {
 		let ids: Vec<crate::shape::TShapeId> = self.faces().map(|f| f.tshape_id()).collect();
 		for id in ids {
 			self.colormap.insert(id, color);
 		}
 	}
 
-	/// Remove all face colors from this solid.
 	#[cfg(feature = "color")]
-	pub fn color_clear(&mut self) {
+	fn color_clear(&mut self) {
 		self.colormap.clear();
 	}
 }

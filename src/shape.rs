@@ -101,13 +101,13 @@ fn merge_colormaps(
 // ==================== BooleanShape ====================
 
 /// Result of a boolean operation.
-pub struct BooleanShape {
+pub struct Boolean {
 	pub solids: Vec<Solid>,
 	from_a: Vec<u64>,
 	from_b: Vec<u64>,
 }
 
-impl BooleanShape {
+impl Boolean {
 	/// Returns `true` if `face` originated from the `other` (tool) operand.
 	pub fn is_tool_face(&self, face: &crate::face::Face) -> bool {
 		self.from_b.contains(&face.tshape_id().0)
@@ -117,10 +117,75 @@ impl BooleanShape {
 	pub fn is_shape_face(&self, face: &crate::face::Face) -> bool {
 		self.from_a.contains(&face.tshape_id().0)
 	}
+
+	// --- Boolean operations ---
+
+	pub fn union(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
+		let c_self = to_compound(a);
+		let c_other = to_compound(b);
+		let r = ffi::boolean_fuse(&c_self, &c_other);
+		if r.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Self::build_boolean_result(r, a, b)
+	}
+
+	pub fn subtract(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
+		let c_self = to_compound(a);
+		let c_other = to_compound(b);
+		let r = ffi::boolean_cut(&c_self, &c_other);
+		if r.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Self::build_boolean_result(r, a, b)
+	}
+
+	pub fn intersect(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
+		let c_self = to_compound(a);
+		let c_other = to_compound(b);
+		let r = ffi::boolean_common(&c_self, &c_other);
+		if r.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
+		Self::build_boolean_result(r, a, b)
+	}
+
+	// ==================== Boolean helper ====================
+
+	fn build_boolean_result(
+		r: cxx::UniquePtr<ffi::BooleanShape>,
+		self_solids: &[Solid],
+		other_solids: &[Solid],
+	) -> Result<Boolean, Error> {
+		let from_a = ffi::boolean_shape_from_a(&r);
+		let from_b = ffi::boolean_shape_from_b(&r);
+		let inner = ffi::boolean_shape_shape(&r);
+
+		#[cfg(feature = "color")]
+		let colormap = {
+			let colormap_a = merge_all_colormaps(self_solids);
+			let colormap_b = merge_all_colormaps(other_solids);
+			merge_colormaps(&from_a, &from_b, &colormap_a, &colormap_b)
+		};
+		#[cfg(not(feature = "color"))]
+		let _ = (self_solids, other_solids);
+
+		let solids = decompose(
+			&inner,
+			#[cfg(feature = "color")]
+			&colormap,
+		);
+
+		Ok(Boolean {
+			solids,
+			from_a,
+			from_b,
+		})
+	}
 }
 
-impl From<BooleanShape> for Vec<Solid> {
-	fn from(r: BooleanShape) -> Vec<Solid> {
+impl From<Boolean> for Vec<Solid> {
+	fn from(r: Boolean) -> Vec<Solid> {
 		r.solids
 	}
 }
@@ -133,17 +198,13 @@ impl From<BooleanShape> for Vec<Solid> {
 /// ```
 /// use chijin::Shape;
 /// ```
-pub trait Shape {
-	// --- Boolean ---
-	fn union(&self, other: &[Solid]) -> Result<BooleanShape, Error>;
-	fn subtract(&self, other: &[Solid]) -> Result<BooleanShape, Error>;
-	fn intersect(&self, other: &[Solid]) -> Result<BooleanShape, Error>;
+pub trait Shape: Sized {
 
 	// --- Transforms ---
-	fn translated(&self, translation: DVec3) -> Vec<Solid>;
-	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Vec<Solid>;
-	fn scaled(&self, center: DVec3, factor: f64) -> Vec<Solid>;
-	fn clean(&self) -> Result<Vec<Solid>, Error>;
+	fn translated(&self, translation: DVec3) -> Self;
+	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
+	fn scaled(&self, center: DVec3, factor: f64) -> Self;
+	fn clean(&self) -> Result<Self, Error>;
 
 	// --- Aggregate queries ---
 	fn volume(&self) -> f64;
@@ -166,66 +227,25 @@ pub trait Shape {
 
 // ==================== impl Shape for [Solid] ====================
 
-impl Shape for [Solid] {
-	// --- Boolean ---
-
-	fn union(&self, other: &[Solid]) -> Result<BooleanShape, Error> {
-		let c_self = to_compound(self);
-		let c_other = to_compound(other);
-		let r = ffi::boolean_fuse(&c_self, &c_other);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
-		}
-		build_boolean_result(
-			r,
-			self,
-			other,
-		)
-	}
-
-	fn subtract(&self, other: &[Solid]) -> Result<BooleanShape, Error> {
-		let c_self = to_compound(self);
-		let c_other = to_compound(other);
-		let r = ffi::boolean_cut(&c_self, &c_other);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
-		}
-		build_boolean_result(
-			r,
-			self,
-			other,
-		)
-	}
-
-	fn intersect(&self, other: &[Solid]) -> Result<BooleanShape, Error> {
-		let c_self = to_compound(self);
-		let c_other = to_compound(other);
-		let r = ffi::boolean_common(&c_self, &c_other);
-		if r.is_null() {
-			return Err(Error::BooleanOperationFailed);
-		}
-		build_boolean_result(
-			r,
-			self,
-			other,
-		)
-	}
+impl Shape for Vec<Solid> {
 
 	// --- Transforms ---
 
-	fn translated(&self, translation: DVec3) -> Vec<Solid> {
+	fn translated(&self, translation: DVec3) -> Self {
 		self.iter().map(|s| s.translated(translation)).collect()
 	}
 
-	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Vec<Solid> {
-		self.iter().map(|s| s.rotated(axis_origin, axis_direction, angle)).collect()
+	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
+		self.iter()
+			.map(|s| s.rotated(axis_origin, axis_direction, angle))
+			.collect()
 	}
 
-	fn scaled(&self, center: DVec3, factor: f64) -> Vec<Solid> {
+	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		self.iter().map(|s| s.scaled(center, factor)).collect()
 	}
 
-	fn clean(&self) -> Result<Vec<Solid>, Error> {
+	fn clean(&self) -> Result<Self, Error> {
 		self.iter().map(|s| s.clean()).collect()
 	}
 
@@ -267,28 +287,43 @@ impl Shape for [Solid] {
 		}
 		let vertex_count = data.vertices.len() / 3;
 		let vertices: Vec<DVec3> = (0..vertex_count)
-			.map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2]))
+			.map(|i| {
+				DVec3::new(
+					data.vertices[i * 3],
+					data.vertices[i * 3 + 1],
+					data.vertices[i * 3 + 2],
+				)
+			})
 			.collect();
 		let uvs: Vec<DVec2> = (0..vertex_count)
 			.map(|i| DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1]))
 			.collect();
 		let normals: Vec<DVec3> = (0..vertex_count)
-			.map(|i| DVec3::new(data.normals[i * 3], data.normals[i * 3 + 1], data.normals[i * 3 + 2]))
+			.map(|i| {
+				DVec3::new(
+					data.normals[i * 3],
+					data.normals[i * 3 + 1],
+					data.normals[i * 3 + 2],
+				)
+			})
 			.collect();
 		let indices: Vec<usize> = data.indices.iter().map(|&i| i as usize).collect();
 		let face_ids = data.face_tshape_ids;
-		Ok(Mesh { vertices, uvs, normals, indices, face_ids })
+		Ok(Mesh {
+			vertices,
+			uvs,
+			normals,
+			indices,
+			face_ids,
+		})
 	}
 
 	fn to_svg(&self, direction: DVec3, tolerance: f64) -> Result<String, Error> {
 		let cleaned: Vec<Solid> = self.clean()?;
 		let compound = to_compound(&cleaned);
 
-		let edge_data = ffi::project_shape_hlr(
-			&compound,
-			direction.x, direction.y, direction.z,
-			tolerance,
-		);
+		let edge_data =
+			ffi::project_shape_hlr(&compound, direction.x, direction.y, direction.z, tolerance);
 		if !edge_data.success {
 			return Err(Error::SvgExportFailed);
 		}
@@ -321,35 +356,6 @@ impl Shape for [Solid] {
 	}
 }
 
-// ==================== Boolean helper ====================
-
-fn build_boolean_result(
-	r: cxx::UniquePtr<ffi::BooleanShape>,
-	self_solids: &[Solid],
-	other_solids: &[Solid],
-) -> Result<BooleanShape, Error> {
-	let from_a = ffi::boolean_shape_from_a(&r);
-	let from_b = ffi::boolean_shape_from_b(&r);
-	let inner = ffi::boolean_shape_shape(&r);
-
-	#[cfg(feature = "color")]
-	let colormap = {
-		let colormap_a = merge_all_colormaps(self_solids);
-		let colormap_b = merge_all_colormaps(other_solids);
-		merge_colormaps(&from_a, &from_b, &colormap_a, &colormap_b)
-	};
-	#[cfg(not(feature = "color"))]
-	let _ = (self_solids, other_solids);
-
-	let solids = decompose(
-		&inner,
-		#[cfg(feature = "color")]
-		&colormap,
-	);
-
-	Ok(BooleanShape { solids, from_a, from_b })
-}
-
 // ==================== SVG helpers ====================
 
 struct SvgTriangle {
@@ -363,11 +369,23 @@ fn occt_ax2_basis(dir: DVec3) -> (DVec3, DVec3) {
 	let (a_abs, b_abs, c_abs) = (a.abs(), b.abs(), c.abs());
 
 	let perp = if b_abs <= a_abs && b_abs <= c_abs {
-		if a_abs > c_abs { DVec3::new(-c, 0.0, a) } else { DVec3::new(c, 0.0, -a) }
+		if a_abs > c_abs {
+			DVec3::new(-c, 0.0, a)
+		} else {
+			DVec3::new(c, 0.0, -a)
+		}
 	} else if a_abs <= b_abs && a_abs <= c_abs {
-		if b_abs > c_abs { DVec3::new(0.0, -c, b) } else { DVec3::new(0.0, c, -b) }
+		if b_abs > c_abs {
+			DVec3::new(0.0, -c, b)
+		} else {
+			DVec3::new(0.0, c, -b)
+		}
 	} else {
-		if a_abs > b_abs { DVec3::new(-b, a, 0.0) } else { DVec3::new(b, -a, 0.0) }
+		if a_abs > b_abs {
+			DVec3::new(-b, a, 0.0)
+		} else {
+			DVec3::new(b, -a, 0.0)
+		}
 	};
 
 	let x_dir = perp.normalize();
@@ -410,7 +428,12 @@ fn project_and_sort_triangles(
 		let fill = {
 			let face_id = TShapeId(mesh.face_ids[ti]);
 			if let Some(c) = colormap.get(&face_id) {
-				format!("rgb({},{},{})", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)
+				format!(
+					"rgb({},{},{})",
+					(c.r * 255.0) as u8,
+					(c.g * 255.0) as u8,
+					(c.b * 255.0) as u8
+				)
 			} else {
 				"#ddd".to_string()
 			}
@@ -418,10 +441,18 @@ fn project_and_sort_triangles(
 		#[cfg(not(feature = "color"))]
 		let fill = "#ddd".to_string();
 
-		triangles.push(SvgTriangle { pts: [p0, p1, p2], depth, fill });
+		triangles.push(SvgTriangle {
+			pts: [p0, p1, p2],
+			depth,
+			fill,
+		});
 	}
 
-	triangles.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
+	triangles.sort_by(|a, b| {
+		a.depth
+			.partial_cmp(&b.depth)
+			.unwrap_or(std::cmp::Ordering::Equal)
+	});
 	triangles
 }
 
@@ -433,7 +464,9 @@ fn polylines_to_svg(svg: &mut String, coords: &[f64], counts: &[u32], stroke: &s
 		for i in 0..n {
 			let x = coords[(offset + i) * 2];
 			let y = -coords[(offset + i) * 2 + 1];
-			if i > 0 { svg.push(' '); }
+			if i > 0 {
+				svg.push(' ');
+			}
 			svg.push_str(&format!("{x:.4},{y:.4}"));
 		}
 		svg.push_str("\" fill=\"none\" stroke=\"");
@@ -456,10 +489,18 @@ fn build_svg(edge_data: &ffi::SvgEdgeData, triangles: &[SvgTriangle]) -> String 
 	let mut max_y = edge_data.max_y;
 	for tri in triangles {
 		for &(x, y) in &tri.pts {
-			if x < min_x { min_x = x; }
-			if x > max_x { max_x = x; }
-			if y < min_y { min_y = y; }
-			if y > max_y { max_y = y; }
+			if x < min_x {
+				min_x = x;
+			}
+			if x > max_x {
+				max_x = x;
+			}
+			if y < min_y {
+				min_y = y;
+			}
+			if y > max_y {
+				max_y = y;
+			}
 		}
 	}
 
@@ -492,7 +533,13 @@ fn build_svg(edge_data: &ffi::SvgEdgeData, triangles: &[SvgTriangle]) -> String 
 		));
 	}
 
-	polylines_to_svg(&mut svg, &edge_data.visible_coords, &edge_data.visible_counts, "black", "");
+	polylines_to_svg(
+		&mut svg,
+		&edge_data.visible_coords,
+		&edge_data.visible_counts,
+		"black",
+		"",
+	);
 	polylines_to_svg(
 		&mut svg,
 		&edge_data.hidden_coords,

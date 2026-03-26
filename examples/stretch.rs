@@ -6,18 +6,18 @@
 //!
 //! 出力: out/stretched.brep (BRep テキスト形式)
 
-use chijin::{BooleanShape, Error, Shape, Solid};
+use chijin::{Boolean, Error, Shape, Solid};
 use glam::DVec3;
 use std::path::Path;
 
 /// ツール側フェイスだけを delta 方向に押し出してフィラーを作ります。
-fn extrude_tool_faces(result: &BooleanShape, delta: DVec3) -> Result<Vec<Solid>, Error> {
+fn extrude_tool_faces(result: &Boolean, delta: DVec3) -> Result<Vec<Solid>, Error> {
     let mut filler: Option<Vec<Solid>> = None;
     for face in result.solids.faces().filter(|f| result.is_tool_face(f)) {
         let extruded: Vec<Solid> = vec![face.extrude(delta)?];
         filler = Some(match filler {
             None => extruded,
-            Some(f) => f.union(&extruded)?.into(),
+            Some(f) => chijin::Boolean::union(&f, &extruded)?.into(),
         });
     }
     Ok(filler.unwrap_or_default())
@@ -30,14 +30,14 @@ fn stretch_vector(shape: &[Solid], origin: DVec3, delta: DVec3) -> Result<Vec<So
     // Negate so the solid fills the -delta side; intersect then yields part_neg.
     let half: Vec<Solid> = vec![Solid::half_space(origin, -delta.normalize())];
 
-    let intersect_result = shape.intersect(&half)?;
-    let part_pos: Vec<Solid> = shape.subtract(&half)?.into();
+    let intersect_result = chijin::Boolean::intersect(&shape, &half)?;
+    let part_pos: Vec<Solid> = chijin::Boolean::subtract(&shape, &half)?.into();
     let part_pos = part_pos.translated(delta);
 
     let filler = extrude_tool_faces(&intersect_result, delta)?;
     let part_neg: Vec<Solid> = intersect_result.into();
-    let combined: Vec<Solid> = part_neg.union(&filler)?.into();
-    combined.union(&part_pos).map(Vec::from)
+    let combined: Vec<Solid> = chijin::Boolean::union(&part_neg, &filler)?.into();
+    chijin::Boolean::union(&combined, &part_pos).map(Vec::from)
 }
 
 /// (cx,cy,cz) で切断し、(dx,dy,dz) だけ各軸方向に引き延ばす。

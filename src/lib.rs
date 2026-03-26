@@ -23,7 +23,7 @@ pub use error::Error;
 pub use face::Face;
 pub use iterators::{ApproximationSegmentIterator, EdgeIterator, FaceIterator};
 pub use mesh::Mesh;
-pub use shape::{BooleanShape, Shape};
+pub use shape::{Boolean, Shape};
 pub use shape::TShapeId;
 pub use solid::Solid;
 #[cfg(feature = "color")]

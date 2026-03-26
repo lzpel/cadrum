@@ -35,7 +35,7 @@ fn shape_to_brep_bytes(shape: &[Solid]) -> Vec<u8> {
 fn test_t01_union_drop_result_first() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.union(&b).unwrap();
+	let result = chijin::Boolean::union(&a, &b).unwrap();
 	drop(result);
 	drop(a);
 	drop(b);
@@ -45,7 +45,7 @@ fn test_t01_union_drop_result_first() {
 fn test_t01_union_drop_result_last() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.union(&b).unwrap();
+	let result = chijin::Boolean::union(&a, &b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -55,7 +55,7 @@ fn test_t01_union_drop_result_last() {
 fn test_t01_subtract_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.subtract(&b).unwrap();
+	let result = chijin::Boolean::subtract(&a, &b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -65,7 +65,7 @@ fn test_t01_subtract_drop_order() {
 fn test_t01_intersect_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = a.intersect(&b).unwrap();
+	let result = chijin::Boolean::intersect(&a, &b).unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -76,8 +76,8 @@ fn test_t01_chained_boolean_drops() {
 	let a = test_box();
 	let b = test_box_2();
 	let c = test_box_3();
-	let r1 = a.union(&b).unwrap();
-	let r2 = r1.solids.subtract(&c).unwrap();
+	let r1 = chijin::Boolean::union(&a, &b).unwrap();
+	let r2 = chijin::Boolean::subtract(&r1.solids, &c).unwrap();
 	drop(r1);
 	drop(r2);
 	drop(a);
@@ -130,7 +130,7 @@ fn test_t04_approximation_tolerance() {
 fn test_t05_translated_compound() {
 	let a = test_box();
 	let b = test_box_2();
-	let compound: Vec<Solid> = a.union(&b).unwrap().into();
+	let compound: Vec<Solid> = chijin::Boolean::union(&a, &b).unwrap().into();
 	let v = dvec3(100.0, 0.0, 0.0);
 	let shifted = compound.translated(v);
 
@@ -180,9 +180,9 @@ fn test_t07_stream_api_only() {
 fn test_t08_boolean_returns_shape() {
 	let a = test_box();
 	let b = test_box_2();
-	let _union: Vec<Solid> = a.union(&b).unwrap().into();
-	let _sub: Vec<Solid> = a.subtract(&b).unwrap().into();
-	let _inter: Vec<Solid> = a.intersect(&b).unwrap().into();
+	let _union: Vec<Solid> = chijin::Boolean::union(&a, &b).unwrap().into();
+	let _sub: Vec<Solid> = chijin::Boolean::subtract(&a, &b).unwrap().into();
+	let _inter: Vec<Solid> = chijin::Boolean::intersect(&a, &b).unwrap().into();
 }
 
 // ==================== STEP export ====================
@@ -191,7 +191,7 @@ fn test_t08_boolean_returns_shape() {
 fn test_hollow_cube_write_step() {
 	let outer: Vec<Solid> = vec![Solid::box_from_corners(dvec3(-10.0, -10.0, -10.0), dvec3(10.0, 10.0, 10.0))];
 	let inner: Vec<Solid> = vec![Solid::box_from_corners(dvec3(-5.0, -5.0, -5.0), dvec3(5.0, 5.0, 5.0))];
-	let hollow_cube: Vec<Solid> = outer.subtract(&inner).unwrap().into();
+	let hollow_cube: Vec<Solid> = chijin::Boolean::subtract(&outer, &inner).unwrap().into();
 
 	std::fs::create_dir_all("out").unwrap();
 	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
@@ -224,7 +224,7 @@ fn test_edge_iteration() {
 fn test_half_space_intersect() {
 	let shape = test_box();
 	let half: Vec<Solid> = vec![Solid::half_space(dvec3(5.0, 0.0, 0.0), dvec3(1.0, 0.0, 0.0))];
-	let result = shape.intersect(&half).unwrap();
+	let result = chijin::Boolean::intersect(&shape, &half).unwrap();
 	assert!(!result.solids.is_null());
 }
 

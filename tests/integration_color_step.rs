@@ -87,7 +87,7 @@ fn intersect_colored_step_preserves_colors() {
 
     // Half-space keeping z > 0 side.
     let half: Vec<Solid> = vec![Solid::half_space(DVec3::ZERO, DVec3::Z)];
-    let result = cube.intersect(&half).expect("intersect should succeed");
+    let result = chijin::Boolean::intersect(&cube, &half).expect("intersect should succeed");
 
     // At least one face should have kept its color.
     assert!(

@@ -66,7 +66,7 @@ fn colorless_shape_roundtrip() {
 fn roundtrip_after_boolean() {
     let cube = read_colored_box();
     let half: Vec<Solid> = vec![Solid::half_space(DVec3::ZERO, DVec3::NEG_Z)];
-    let cut = cube.intersect(&half).expect("intersect should succeed");
+    let cut = chijin::Boolean::intersect(&cube, &half).expect("intersect should succeed");
 
     assert!(colormap_len(&cut.solids) >= 1, "at least one color should survive intersect");
 

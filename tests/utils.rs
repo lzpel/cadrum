@@ -11,7 +11,10 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 }
 
 fn test_box() -> Vec<Solid> {
-	vec![Solid::box_from_corners(dvec3(0.0, 0.0, 0.0), dvec3(10.0, 10.0, 10.0))]
+	vec![Solid::box_from_corners(
+		dvec3(0.0, 0.0, 0.0),
+		dvec3(10.0, 10.0, 10.0),
+	)]
 }
 
 /// テスト用のベース形状として、外部のSTEPファイルを読み込みます。
@@ -24,32 +27,31 @@ fn lambda360box() -> Vec<Solid> {
 }
 
 /// 形状をX, Y, Zの各軸方向に順番に引き伸ばします。
-fn stretch(shape: &[Solid], cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64) -> Result<Vec<Solid>, Error> {
+fn stretch(
+	shape: &Vec<Solid>,
+	cx: f64,
+	cy: f64,
+	cz: f64,
+	dx: f64,
+	dy: f64,
+	dz: f64,
+) -> Result<Vec<Solid>, Error> {
 	let eps = 1e-10;
 	let origin = DVec3::new(cx, cy, cz);
-
-	let x;
-	let after_x: &[Solid] = if dx > eps {
-		x = stretch_vector(shape, origin, DVec3::new(dx, 0.0, 0.0))?;
-		&x
+	let after_x: Vec<Solid> = if dx > eps {
+		stretch_vector(shape, origin, DVec3::new(dx, 0.0, 0.0))?
 	} else {
-		shape
+		shape.clone()
 	};
-
-	let y;
-	let after_y: &[Solid] = if dy > eps {
-		y = stretch_vector(after_x, origin, DVec3::new(0.0, dy, 0.0))?;
-		&y
+	let after_y: Vec<Solid> = if dy > eps {
+		stretch_vector(&after_x, origin, DVec3::new(0.0, dy, 0.0))?
 	} else {
-		after_x
+		after_x.clone()
 	};
-
-	let z;
-	let after_z: &[Solid] = if dz > eps {
-		z = stretch_vector(after_y, origin, DVec3::new(0.0, 0.0, dz))?;
-		&z
+	let after_z: Vec<Solid> = if dz > eps {
+		stretch_vector(&after_y, origin, DVec3::new(0.0, 0.0, dz))?
 	} else {
-		after_y
+		after_y.clone()
 	};
 
 	after_z.clean()
@@ -57,7 +59,7 @@ fn stretch(shape: &[Solid], cx: f64, cy: f64, cz: f64, dx: f64, dy: f64, dz: f64
 
 /// 形状の引き伸ばし処理をパニックキャッチ付きで安全に実行し、結果を返します。
 fn stretch_ok(
-	shape: &[Solid],
+	shape: &Vec<Solid>,
 	cx: f64,
 	cy: f64,
 	cz: f64,
@@ -100,7 +102,7 @@ impl Lcg {
 }
 
 /// 形状を `out/<name>.step` に書き出し、頂点数・三角形数を標準出力に表示します。
-fn write_step(shape: &[Solid], name: &str) {
+fn write_step(shape: &Vec<Solid>, name: &str) {
 	std::fs::create_dir_all("out").unwrap();
 	let path = format!("out/{name}.step");
 	let mut file = std::fs::File::create(&path).unwrap();
@@ -148,7 +150,10 @@ fn test_revolve_section_volume() {
 	chijin::write_step(&result, &mut file).expect("STEP write failed");
 
 	let expected = std::f64::consts::PI * 10.0f64.powi(2) * 10.0;
-	assert!((v - expected).abs() < 1.0, "expected volume ≈ {expected:.2}, got {v}");
+	assert!(
+		(v - expected).abs() < 1.0,
+		"expected volume ≈ {expected:.2}, got {v}"
+	);
 }
 
 // ==================== helix_section ====================
@@ -193,25 +198,51 @@ fn test_helix_section_volume() {
 #[test]
 fn diagnose_new_faces() {
 	let shape = lambda360box();
-	println!("input: face_count={}, shell_count={}", shape.faces().count(), shape.shell_count());
+	println!(
+		"input: face_count={}, shell_count={}",
+		shape.faces().count(),
+		shape.shell_count()
+	);
 
 	let origin = DVec3::new(1.0, 0.0, 1.0);
 	let delta = DVec3::new(1.0, 0.0, 0.0);
 
 	let half: Vec<Solid> = vec![Solid::half_space(origin, -delta.normalize())];
-	let r_half = shape.intersect(&half).expect("intersect(half_space) failed");
-	println!("  intersect result: tool_face count={}", r_half.solids.faces().filter(|f| r_half.is_tool_face(f)).count());
+	let r_half = chijin::Boolean::intersect(&shape, &half).expect("intersect(half_space) failed");
+	println!(
+		"  intersect result: tool_face count={}",
+		r_half
+			.solids
+			.faces()
+			.filter(|f| r_half.is_tool_face(f))
+			.count()
+	);
 
 	let big_box: Vec<Solid> = vec![Solid::box_from_corners(
 		DVec3::new(-1000.0, -1000.0, -1000.0),
 		DVec3::new(1.0, 1000.0, 1000.0),
 	)];
-	let r_box = shape.intersect(&big_box).expect("intersect(big_box) failed");
-	println!("  intersect result: tool_face count={}", r_box.solids.faces().filter(|f| r_box.is_tool_face(f)).count());
-	for (i, face) in r_box.solids.faces().filter(|f| r_box.is_tool_face(f)).enumerate() {
+	let r_box = chijin::Boolean::intersect(&shape, &big_box).expect("intersect(big_box) failed");
+	println!(
+		"  intersect result: tool_face count={}",
+		r_box
+			.solids
+			.faces()
+			.filter(|f| r_box.is_tool_face(f))
+			.count()
+	);
+	for (i, face) in r_box
+		.solids
+		.faces()
+		.filter(|f| r_box.is_tool_face(f))
+		.enumerate()
+	{
 		let n = face.normal_at_center();
 		let c = face.center_of_mass();
-		println!("    face[{i}]: normal=({:.3},{:.3},{:.3}) center=({:.3},{:.3},{:.3})", n.x, n.y, n.z, c.x, c.y, c.z);
+		println!(
+			"    face[{i}]: normal=({:.3},{:.3},{:.3}) center=({:.3},{:.3},{:.3})",
+			n.x, n.y, n.z, c.x, c.y, c.z
+		);
 	}
 }
 
@@ -220,12 +251,20 @@ fn stretch_box_known_error_case_1_0_1() {
 	// 旧バージョンで Standard_OutOfRange によりテストランナーごとクラッシュしていた
 	// 既知パラメーター (cx=1.0, cy=0.0, cz=1.0, dx=1.0, dy=1.0, dz=1.0) の確認テスト。
 	let shape = lambda360box();
-	assert_eq!(shape.shell_count(), 1, "input shape must have exactly one shell");
+	assert_eq!(
+		shape.shell_count(),
+		1,
+		"input shape must have exactly one shell"
+	);
 
 	let result = stretch_ok(&shape, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0);
 	match &result {
 		Ok(s) => {
-			assert_eq!(s.shell_count(), 1, "stretched shape must have exactly one shell");
+			assert_eq!(
+				s.shell_count(),
+				1,
+				"stretched shape must have exactly one shell"
+			);
 			write_step(s, "stretch_box_known_error_case_1_0_1");
 		}
 		Err(e) => println!("Error: {e}"),
@@ -270,5 +309,9 @@ fn stretch_box_random_survey() {
 		}
 	}
 
-	println!("Out of {} total tries, {} succeeded.", total_attempts * 3, success_count);
+	println!(
+		"Out of {} total tries, {} succeeded.",
+		total_attempts * 3,
+		success_count
+	);
 }
