@@ -168,6 +168,12 @@ mod ffi_bridge {
 			factor: f64,
 		) -> UniquePtr<TopoDS_Shape>;
 
+		fn mirror_shape(
+			shape: &TopoDS_Shape,
+			ox: f64, oy: f64, oz: f64,
+			nx: f64, ny: f64, nz: f64,
+		) -> UniquePtr<TopoDS_Shape>;
+
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_is_solid(shape: &TopoDS_Shape) -> bool;
 		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
@@ -197,6 +203,7 @@ mod ffi_bridge {
 		// ==================== Face Methods ====================
 
 		fn face_tshape_id(face: &TopoDS_Face) -> u64;
+		fn shape_tshape_id(shape: &TopoDS_Shape) -> u64;
 		fn face_from_polygon(coords: &[f64]) -> UniquePtr<TopoDS_Face>;
 		fn face_center_of_mass(face: &TopoDS_Face, cx: &mut f64, cy: &mut f64, cz: &mut f64);
 		fn face_normal_at_center(face: &TopoDS_Face, nx: &mut f64, ny: &mut f64, nz: &mut f64);

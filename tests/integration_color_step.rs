@@ -108,7 +108,7 @@ fn translate_colored_step_preserves_colors() {
     let shape = read_colored_box();
     let original_len = colormap_len(&shape);
 
-    let moved = shape.translated(DVec3::new(100.0, 0.0, 0.0));
+    let moved = shape.translate(DVec3::new(100.0, 0.0, 0.0));
 
     assert_eq!(
         colormap_len(&moved),

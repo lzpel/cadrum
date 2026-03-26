@@ -80,7 +80,7 @@ pub fn stretch_vector(shape: &[Solid], origin: DVec3, delta: DVec3) -> Result<Ve
 
 	let intersect_result = Boolean::intersect(shape, &half)?;
 	let part_pos: Vec<Solid> = Boolean::subtract(shape, &half)?.into();
-	let part_pos = part_pos.translated(delta);
+	let part_pos = part_pos.translate(delta);
 
 	let filler = extrude_tool_faces(&intersect_result, delta)?;
 	let part_neg: Vec<Solid> = intersect_result.into();

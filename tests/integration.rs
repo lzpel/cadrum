@@ -132,9 +132,8 @@ fn test_t05_translated_compound() {
 	let b = test_box_2();
 	let compound: Vec<Solid> = chijin::Boolean::union(&a, &b).unwrap().into();
 	let v = dvec3(100.0, 0.0, 0.0);
-	let shifted = compound.translated(v);
-
-	let orig_mesh = compound.mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = compound.clone().mesh_with_tolerance(0.1).unwrap();
+	let shifted = compound.translate(v);
 	let shifted_mesh = shifted.mesh_with_tolerance(0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), shifted_mesh.vertices.len());

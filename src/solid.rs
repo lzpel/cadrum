@@ -43,6 +43,11 @@ impl Solid {
 		&self.inner
 	}
 
+	/// Return the `TShapeId` (underlying `TopoDS_TShape*` address) of this solid.
+	pub fn tshape_id(&self) -> crate::shape::TShapeId {
+		crate::shape::TShapeId(ffi::shape_tshape_id(&self.inner))
+	}
+
 	// ==================== Color accessors ====================
 
 	/// Read-only access to the per-face colormap.
@@ -107,42 +112,45 @@ impl Solid {
 impl Shape for Solid {
 	// ==================== Transforms ====================
 
-	fn translated(&self, translation: DVec3) -> Self {
+	fn translate(self, translation: DVec3) -> Self {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
-		#[cfg(feature = "color")]
-		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-		Solid::new(
-			inner,
+		Solid {
 			#[cfg(feature = "color")]
-			colormap,
-		)
+			colormap: self.colormap,
+			inner,
+		}
 	}
 
-	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
 		let inner = ffi::rotate_shape(
 			&self.inner,
 			axis_origin.x, axis_origin.y, axis_origin.z,
 			axis_direction.x, axis_direction.y, axis_direction.z,
 			angle,
 		);
-		#[cfg(feature = "color")]
-		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-		Solid::new(
-			inner,
+		Solid {
 			#[cfg(feature = "color")]
-			colormap,
-		)
+			colormap: self.colormap,
+			inner,
+		}
 	}
 
 	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		let inner = ffi::scale_shape(&self.inner, center.x, center.y, center.z, factor);
 		#[cfg(feature = "color")]
 		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			colormap,
-		)
+		Solid::new(inner, #[cfg(feature = "color")] colormap)
+	}
+
+	fn mirrored(&self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
+		let inner = ffi::mirror_shape(
+			&self.inner,
+			plane_origin.x, plane_origin.y, plane_origin.z,
+			plane_normal.x, plane_normal.y, plane_normal.z,
+		);
+		#[cfg(feature = "color")]
+		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		Solid::new(inner, #[cfg(feature = "color")] colormap)
 	}
 
 	// ==================== Clean ====================

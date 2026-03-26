@@ -35,14 +35,14 @@ fn test_clone_is_independent() {
 #[test]
 fn test_translated_preserves_volume() {
 	let shape = test_box();
-	let moved = shape.translated(dvec3(100.0, 200.0, -50.0));
+	let moved = shape.translate(dvec3(100.0, 200.0, -50.0));
 	assert!((moved.volume() - 1000.0).abs() < 1e-6);
 }
 
 #[test]
 fn test_translated_preserves_shell_count() {
 	let shape = test_box();
-	let moved = shape.translated(dvec3(5.0, 0.0, 0.0));
+	let moved = shape.translate(dvec3(5.0, 0.0, 0.0));
 	assert_eq!(moved.shell_count(), 1);
 }
 
@@ -52,7 +52,7 @@ fn test_union_of_translated_overlapping_solids_has_single_volume() {
 	// 結果のvolumeは1つ分（1000）になるはず。
 	let a = vec![Solid::box_from_corners(dvec3(0.0, 0.0, 0.0), dvec3(10.0, 10.0, 10.0))];
 	let b = vec![Solid::box_from_corners(dvec3(100.0, 0.0, 0.0), dvec3(110.0, 10.0, 10.0))];
-	let b_moved: Vec<Solid> = b.iter().map(|s| s.translated(dvec3(-100.0, 0.0, 0.0))).collect();
+	let b_moved: Vec<Solid> = b.clone().translate(dvec3(-100.0, 0.0, 0.0));
 
 	// b と b_moved は実態が別であることを確認: a と b（移動前）を union するとvolumeは2つ分（2000）。
 	let result_no_move: Vec<Solid> = chijin::Boolean::union(&a, &b)
@@ -83,7 +83,7 @@ fn test_union_of_translated_overlapping_solids_has_single_volume() {
 fn test_rotated_preserves_volume() {
 	let shape = test_box();
 	// Z 軸周りに 45° 回転
-	let rotated = shape.rotated(DVec3::ZERO, DVec3::Z, std::f64::consts::FRAC_PI_4);
+	let rotated = shape.rotate(DVec3::ZERO, DVec3::Z, std::f64::consts::FRAC_PI_4);
 	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
 }
 
@@ -91,14 +91,14 @@ fn test_rotated_preserves_volume() {
 fn test_rotated_full_turn_preserves_volume() {
 	let shape = test_box();
 	// 360° 回転（元に戻る）
-	let rotated = shape.rotated(DVec3::ZERO, DVec3::Z, std::f64::consts::TAU);
+	let rotated = shape.rotate(DVec3::ZERO, DVec3::Z, std::f64::consts::TAU);
 	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
 }
 
 #[test]
 fn test_rotated_preserves_shell_count() {
 	let shape = test_box();
-	let rotated = shape.rotated(DVec3::ZERO, DVec3::Y, std::f64::consts::FRAC_PI_2);
+	let rotated = shape.rotate(DVec3::ZERO, DVec3::Y, std::f64::consts::FRAC_PI_2);
 	assert_eq!(rotated.shell_count(), 1);
 }
 
@@ -125,6 +125,65 @@ fn test_scaled_preserves_shell_count() {
 	let shape = test_box();
 	let scaled = shape.scaled(DVec3::ZERO, 3.0);
 	assert_eq!(scaled.shell_count(), 1);
+}
+
+// ==================== face id preservation ====================
+
+#[test]
+fn test_preserves_face_ids() {
+	use chijin::TShapeId;
+	fn face_ids(s: &Vec<Solid>) -> Vec<TShapeId> {
+		s.faces().map(|f| f.tshape_id()).collect()
+	}
+
+	let shape = test_box();
+	let solid_id = shape[0].tshape_id();
+	let ids = face_ids(&shape);
+	let moved = shape.translate(dvec3(10.0, 0.0, 0.0));
+	assert_eq!(solid_id, moved[0].tshape_id(), "translate should preserve solid TShapeId");
+	assert_eq!(ids, face_ids(&moved), "translate should preserve face IDs");
+
+	let shape = test_box();
+	let solid_id = shape[0].tshape_id();
+	let ids = face_ids(&shape);
+	let rotated = shape.rotate(DVec3::ZERO, DVec3::Z, std::f64::consts::FRAC_PI_4);
+	assert_eq!(solid_id, rotated[0].tshape_id(), "rotate should preserve solid TShapeId");
+	assert_eq!(ids, face_ids(&rotated), "rotate should preserve face IDs");
+}
+
+// ==================== mirrored / scaled independence ====================
+
+#[test]
+fn test_mirrored_octants_union_volume_is_eight() {
+	// (1,1,1)→(2,2,2) のboxを全8方向に鏡像コピーして8辺体を作る。
+	// 実態が独立していない（同一インスタンスなど）場合は重複で体積が8を下回る。
+	let b = vec![Solid::box_from_corners(dvec3(1.0, 1.0, 1.0), dvec3(2.0, 2.0, 2.0))];
+	let bx   = b.mirrored(DVec3::ZERO, DVec3::X);
+	let by   = b.mirrored(DVec3::ZERO, DVec3::Y);
+	let bz   = b.mirrored(DVec3::ZERO, DVec3::Z);
+	let bxy  = bx.mirrored(DVec3::ZERO, DVec3::Y);
+	let bxz  = bx.mirrored(DVec3::ZERO, DVec3::Z);
+	let byz  = by.mirrored(DVec3::ZERO, DVec3::Z);
+	let bxyz = bxy.mirrored(DVec3::ZERO, DVec3::Z);
+	let octants = [b, bx, by, bz, bxy, bxz, byz, bxyz];
+	let mut result = octants[0].clone();
+	for other in &octants[1..] {
+		result = chijin::Boolean::union(&result, other).expect("union failed").into();
+	}
+	let volume: f64 = result.iter().map(|s| s.volume()).sum();
+	assert!((volume - 8.0).abs() < 1e-3, "expected volume ~8, got {volume}");
+}
+
+#[test]
+fn test_scaled_union_with_original_volume_is_nine() {
+	// (1,1,1)→(2,2,2) のbox（体積1）と原点中心2倍スケール（→(2,2,2)→(4,4,4), 体積8）は
+	// 角のみ接するので union 体積 = 1 + 8 = 9。
+	// scaled が実態を変化させていた場合は体積がこれより小さくなる。
+	let b = vec![Solid::box_from_corners(dvec3(1.0, 1.0, 1.0), dvec3(2.0, 2.0, 2.0))];
+	let b_scaled = b.scaled(DVec3::ZERO, 2.0);
+	let result: Vec<Solid> = chijin::Boolean::union(&b, &b_scaled).expect("union failed").into();
+	let volume: f64 = result.iter().map(|s| s.volume()).sum();
+	assert!((volume - 9.0).abs() < 1e-3, "expected volume ~9 (1 + 8), got {volume}");
 }
 
 // ==================== Vec<Solid> operations (replaces into_solids / from_solids tests) ====================

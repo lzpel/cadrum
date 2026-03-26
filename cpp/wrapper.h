@@ -136,11 +136,16 @@ std::unique_ptr<TopoDS_Shape> scale_shape(
     const TopoDS_Shape& shape,
     double cx, double cy, double cz,
     double factor);
+std::unique_ptr<TopoDS_Shape> mirror_shape(
+    const TopoDS_Shape& shape,
+    double ox, double oy, double oz,
+    double nx, double ny, double nz);
 bool shape_is_null(const TopoDS_Shape& shape);
 bool shape_is_solid(const TopoDS_Shape& shape);
 uint32_t shape_shell_count(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
+uint64_t shape_tshape_id(const TopoDS_Shape& shape);
 
 // ==================== Compound Decompose/Compose ====================
 
