@@ -474,13 +474,9 @@ std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape,
     double tx, double ty, double tz)
 {
-    // Bug 5 fix: Use BRepBuilderAPI_Transform which creates a fully
-    // transformed copy, properly propagating to all sub-shapes.
-    gp_Trsf transform;
-    transform.SetTranslation(gp_Vec(tx, ty, tz));
-
-    BRepBuilderAPI_Transform transformer(shape, transform, Standard_True);
-    return std::make_unique<TopoDS_Shape>(transformer.Shape());
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(tx, ty, tz));
+    return std::make_unique<TopoDS_Shape>(shape.Moved(TopLoc_Location(trsf)));
 }
 
 std::unique_ptr<TopoDS_Shape> rotate_shape(
@@ -492,8 +488,7 @@ std::unique_ptr<TopoDS_Shape> rotate_shape(
     try {
         gp_Trsf trsf;
         trsf.SetRotation(gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz)), angle);
-        BRepBuilderAPI_Transform transform(shape, trsf, Standard_True);
-        return std::make_unique<TopoDS_Shape>(transform.Shape());
+        return std::make_unique<TopoDS_Shape>(shape.Moved(TopLoc_Location(trsf)));
     } catch (const Standard_Failure&) {
         return nullptr;
     }
@@ -507,6 +502,21 @@ std::unique_ptr<TopoDS_Shape> scale_shape(
     try {
         gp_Trsf trsf;
         trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
+        BRepBuilderAPI_Transform transform(shape, trsf, Standard_True);
+        return std::make_unique<TopoDS_Shape>(transform.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> mirror_shape(
+    const TopoDS_Shape& shape,
+    double ox, double oy, double oz,
+    double nx, double ny, double nz)
+{
+    try {
+        gp_Trsf trsf;
+        trsf.SetMirror(gp_Ax2(gp_Pnt(ox, oy, oz), gp_Dir(nx, ny, nz)));
         BRepBuilderAPI_Transform transform(shape, trsf, Standard_True);
         return std::make_unique<TopoDS_Shape>(transform.Shape());
     } catch (const Standard_Failure&) {
@@ -693,6 +703,10 @@ std::unique_ptr<TopoDS_Edge> explorer_current_edge(const TopExp_Explorer& explor
 
 uint64_t face_tshape_id(const TopoDS_Face& face) {
     return reinterpret_cast<uint64_t>(face.TShape().get());
+}
+
+uint64_t shape_tshape_id(const TopoDS_Shape& shape) {
+    return reinterpret_cast<uint64_t>(shape.TShape().get());
 }
 
 void face_center_of_mass(const TopoDS_Face& face,

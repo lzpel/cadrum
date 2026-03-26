@@ -18,6 +18,27 @@ pub struct Rgb {
 	pub b: f32,
 }
 
+#[cfg(feature = "color")]
+impl Rgb {
+	/// Create an `Rgb` from HSV values (all in `0.0..=1.0`).
+	pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
+		let h6 = h * 6.0;
+		let f = h6.fract();
+		let p = v * (1.0 - s);
+		let q = v * (1.0 - s * f);
+		let t = v * (1.0 - s * (1.0 - f));
+		let (r, g, b) = match h6 as u32 % 6 {
+			0 => (v, t, p),
+			1 => (q, v, p),
+			2 => (p, v, t),
+			3 => (p, q, v),
+			4 => (t, p, v),
+			_ => (v, p, q),
+		};
+		Rgb { r, g, b }
+	}
+}
+
 // ==================== Internal helpers ====================
 
 /// Assemble solids into a TopoDS_Compound.
@@ -201,9 +222,10 @@ impl From<Boolean> for Vec<Solid> {
 pub trait Shape: Sized {
 
 	// --- Transforms ---
-	fn translated(&self, translation: DVec3) -> Self;
-	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
+	fn translate(self, translation: DVec3) -> Self;
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
 	fn scaled(&self, center: DVec3, factor: f64) -> Self;
+	fn mirrored(&self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
 	fn clean(&self) -> Result<Self, Error>;
 
 	// --- Aggregate queries ---
@@ -233,18 +255,22 @@ impl Shape for Vec<Solid> {
 
 	// --- Transforms ---
 
-	fn translated(&self, translation: DVec3) -> Self {
-		self.iter().map(|s| s.translated(translation)).collect()
+	fn translate(self, translation: DVec3) -> Self {
+		self.into_iter().map(|s| s.translate(translation)).collect()
 	}
 
-	fn rotated(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		self.iter()
-			.map(|s| s.rotated(axis_origin, axis_direction, angle))
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
+		self.into_iter()
+			.map(|s| s.rotate(axis_origin, axis_direction, angle))
 			.collect()
 	}
 
 	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		self.iter().map(|s| s.scaled(center, factor)).collect()
+	}
+
+	fn mirrored(&self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
+		self.iter().map(|s| s.mirrored(plane_origin, plane_normal)).collect()
 	}
 
 	fn clean(&self) -> Result<Self, Error> {

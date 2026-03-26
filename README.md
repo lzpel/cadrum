@@ -3,14 +3,26 @@
 [![GitHub License](https://img.shields.io/github/license/lzpel/chijin)](https://github.com/lzpel/chijin/blob/main/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/chijin.svg?logo=rust)](https://crates.io/crates/chijin)
 
-Minimal Rust bindings for OpenCASCADE (OCC 7.9).
+Minimal Rust bindings for [OpenCASCADE](https://dev.opencascade.org/) (OCC 7.9) — a solid modeling kernel used in CAD/CAM software.
+
+<p align="center">
+  <img src="figure/chijin.svg" alt="chijin — a drum of Amami Oshima" width="360"/>
+</p>
 
 Provides safe, ergonomic wrappers around the OCC C++ kernel for:
+
 - Reading/writing STEP and BRep formats (stream-based, no temp files)
 - Constructing primitive shapes (box, cylinder, half-space)
 - Boolean operations (union, subtract, intersect)
 - Face/edge topology traversal
 - Meshing with customizable tolerance
+- SVG export with hidden-line removal and face colors (`color` feature)
+
+## Name
+
+The library is named after the **チヂン** (*chijin*), a hand drum traditional to Amami Oshima, a subtropical island of southern Japan.
+Its form — a cylindrical body bound with a ring of wooden blocks — makes for a good test of boolean operations and revolve, which is why it serves as the library's example model.
+The figure above is generated entirely with chijin itself: [`examples/chijin.rs`](examples/chijin.rs).
 
 ## Usage
 
@@ -39,6 +51,9 @@ chijin = "0.1.0"
   export OCCT_ROOT=/path/to/occt
   cargo build
   ```
+
+- `color`: Colored STEP I/O via XDE (`STEPCAFControl`). Enables `write_step_with_colors`,
+  `read_step_with_colors`, and per-face color on `Solid`.
 
 ## License
 
