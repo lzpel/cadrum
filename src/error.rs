@@ -36,6 +36,9 @@ pub enum Error {
 
     /// SVG export (HLR projection) failed.
     SvgExportFailed,
+
+    /// Invalid hex color string (expected `#RGB` or `#RRGGBB`).
+    InvalidHexColor,
 }
 
 impl std::fmt::Display for Error {
@@ -53,6 +56,7 @@ impl std::fmt::Display for Error {
             Error::HelixFailed => write!(f, "Helix failed"),
             Error::InvalidPolygon => write!(f, "Invalid polygon"),
             Error::SvgExportFailed => write!(f, "SVG export failed"),
+            Error::InvalidHexColor => write!(f, "Invalid hex color (expected #RGB or #RRGGBB)"),
         }
     }
 }
