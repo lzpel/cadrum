@@ -2,7 +2,7 @@
 
 #![cfg(feature = "color")]
 
-use chijin::{Rgb, Shape, Solid, TShapeId};
+use chijin::{Rgb, Shape, Solid};
 use glam::DVec3;
 use std::fs;
 

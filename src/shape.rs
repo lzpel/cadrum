@@ -223,6 +223,8 @@ pub trait Shape: Sized {
 	fn color_paint(&mut self, color: Rgb);
 	#[cfg(feature = "color")]
 	fn color_clear(&mut self);
+	#[cfg(feature = "color")]
+	fn color(&self) -> Option<Rgb>;
 }
 
 // ==================== impl Shape for [Solid] ====================
@@ -352,6 +354,20 @@ impl Shape for Vec<Solid> {
 	fn color_clear(&mut self) {
 		for s in self.iter_mut() {
 			s.color_clear();
+		}
+	}
+
+	#[cfg(feature = "color")]
+	fn color(&self) -> Option<Rgb> {
+		let colors: Vec<Rgb> = self.iter().filter_map(|s| s.color()).collect();
+		if colors.is_empty() {
+			None
+		}else{
+			Some(Rgb {
+				r: colors.iter().map(|c| c.r).sum::<f32>() / colors.len() as f32,
+				g: colors.iter().map(|c| c.g).sum::<f32>() / colors.len() as f32,
+				b: colors.iter().map(|c| c.b).sum::<f32>() / colors.len() as f32,
+			})
 		}
 	}
 }

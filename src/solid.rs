@@ -245,6 +245,23 @@ impl Shape for Solid {
 	fn color_clear(&mut self) {
 		self.colormap.clear();
 	}
+
+	#[cfg(feature = "color")]
+	fn color(&self) -> Option<crate::shape::Rgb> {
+		let colors: Vec<crate::shape::Rgb> = self
+			.faces()
+			.filter_map(|f| self.colormap.get(&f.tshape_id()).copied())
+			.collect();
+		if colors.is_empty() {
+			None
+		}else{
+			Some(crate::shape::Rgb {
+				r: colors.iter().map(|c| c.r).sum::<f32>() / colors.len() as f32,
+				g: colors.iter().map(|c| c.g).sum::<f32>() / colors.len() as f32,
+				b: colors.iter().map(|c| c.b).sum::<f32>() / colors.len() as f32,
+			})
+		}
+	}
 }
 
 impl Clone for Solid {
