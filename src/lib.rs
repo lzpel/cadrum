@@ -1,6 +1,6 @@
 //! # Chijin
 //!
-//! Minimal Rust bindings for OpenCASCADE (OCC 7.9).
+//! Minimal Rust bindings for OpenCASCADE (OCCT 7.9.3).
 //!
 //! ## Core Types
 //! - [`Solid`] — a single solid shape (wraps `TopoDS_Shape` / `TopAbs_SOLID`)

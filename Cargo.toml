@@ -2,10 +2,12 @@
 name = "chijin"
 version = "0.4.1"
 edition = "2021"
-description = "Minimal Rust bindings for OpenCASCADE (OCC 7.9)"
+description = "Minimal Rust bindings for OpenCASCADE (OCCT 7.9.3)"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lzpel/chijin"
+keywords = ["opencascade", "cad", "step", "b-rep", "geometry"]
+categories = ["graphics", "science"]
 
 [features]
 default = ["bundled", "color"]
