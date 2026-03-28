@@ -75,7 +75,7 @@ Tested with GCC 15.2.0 (MinGW-w64) and CMake 3.31.11 on Windows.
 This produces the image shown at the top of this page.
 
 ```sh
-cargo run --example chijin --features bundled,color
+cargo run --example chijin
 ```
 
 <details>
