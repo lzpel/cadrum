@@ -1,12 +1,12 @@
 [package]
 name = "chijin"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
-description = "Minimal Rust bindings for OpenCASCADE (OCCT 7.9.3)"
+description = "DEPRECATED: Use `cadrum` instead. Minimal Rust bindings for OpenCASCADE."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/lzpel/chijin"
-keywords = ["opencascade", "cad", "step", "b-rep", "geometry"]
+repository = "https://github.com/lzpel/cadrum"
+keywords = ["deprecated", "opencascade", "cad", "step", "geometry"]
 categories = ["graphics", "science"]
 
 [features]

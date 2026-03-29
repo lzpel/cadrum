@@ -1,7 +1,9 @@
 # Chijin
 
-[![GitHub License](https://img.shields.io/github/license/lzpel/chijin)](https://github.com/lzpel/chijin/blob/main/LICENSE)
-[![Crates.io](https://img.shields.io/crates/v/chijin.svg?logo=rust)](https://crates.io/crates/chijin)
+> **This crate has been renamed to [`cadrum`](https://crates.io/crates/cadrum).** Please use `cadrum` for all new projects.
+
+[![GitHub License](https://img.shields.io/github/license/lzpel/cadrum)](https://github.com/lzpel/cadrum/blob/main/LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/cadrum.svg?logo=rust)](https://crates.io/crates/cadrum)
 
 Minimal Rust bindings for [OpenCASCADE](https://dev.opencascade.org/) (OCCT 7.9.3) — a solid modeling kernel used in CAD/CAM software.
 
