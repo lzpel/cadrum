@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
-	println!("cargo:rerun-if-env-changed=CASROOT");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
@@ -13,26 +12,20 @@ fn main() {
 	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 	let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-	let (occt_include, occt_lib_dir) =
-		match env::var("OCCT_ROOT").or_else(|_| env::var("CASROOT")) {
-			Ok(root) => {
-				let occt_root = PathBuf::from(root);
-				let lib_dir = find_occt_lib_dir(&occt_root);
-				println!("cargo:rerun-if-changed={}", lib_dir.display());
-				if lib_dir.exists() {
-					// バイナリあり → リンクのみ
-					(find_occt_include_dir(&occt_root), lib_dir)
-				} else {
-					// バイナリなし → OCCT_ROOT にビルド
-					build_occt_from_source(&out_dir, &occt_root)
-				}
-			}
-			Err(_) => {
-				// OCCT_ROOT 未設定 → target/occt にビルド
-				let install_prefix = manifest_dir.join("target").join("occt");
-				build_occt_from_source(&out_dir, &install_prefix)
-			}
-		};
+	let occt_root = env::var("OCCT_ROOT")
+		.map(PathBuf::from)
+		.unwrap_or_else(|_| manifest_dir.join("target").join("occt"));
+
+	let lib_dir = find_occt_lib_dir(&occt_root);
+	println!("cargo:rerun-if-changed={}", lib_dir.display());
+	let (occt_include, occt_lib_dir) = if lib_dir.exists() {
+		// Libraries found — link only, no rebuild
+		(find_occt_include_dir(&occt_root), lib_dir)
+	} else {
+		// No libraries found — build OCCT from source (this may take 10-30 minutes)
+		eprintln!("cargo:warning=OCCT not found at {}. Building from source — this may take 10-30 minutes.", occt_root.display());
+		build_occt_from_source(&out_dir, &occt_root)
+	};
 
 	link_occt_libraries(&occt_include, &occt_lib_dir, cfg!(feature = "color"));
 }
@@ -327,34 +320,35 @@ fn find_occt_lib_dir(occt_root: &Path) -> PathBuf {
 ///    XCAFPrs_Texture which inherits from Graphic3d_Texture2D (TKService).
 ///    The only caller was FillAspect(), which is now empty.
 fn patch_occt_sources(source_dir: &Path) {
-	// ボディのみスタブ化: #include・シグネチャを残し、メソッド本体だけを空にする。
+	// Stub method bodies only: keep #includes and signatures, empty the bodies.
 	stub_out_methods(&source_dir.join("src/XCAFDoc/XCAFDoc_VisMaterial.cxx"), true);
-	// ファイルごと空化: イニシャライザリストでベースクラスを参照するため
-	// ボディスタブでは TKService 依存を断ち切れない。
+	// Empty the entire file: the initializer list references the base class, so
+	// body stubs alone cannot cut the TKService dependency.
 	stub_out_methods(&source_dir.join("src/XCAFPrs/XCAFPrs_Texture.cxx"), false);
 }
 
-/// `path` の C++ ソースファイルを無力化する。
+/// Neutralize a C++ source file at `path`.
 ///
-/// # 引数
-/// - `keep_signatures` — `true`: `#include` とシグネチャを残し、トップレベルの
-///   メソッドボディだけを空スタブに置換する。シグネチャの型参照が必要な場合に使う。
-///   `false`: ファイルを空にする (冒頭コメントのみ残す)。イニシャライザリストで
-///   ベースクラスを参照する等、ボディスタブでは依存を断ち切れない場合に使う。
+/// # Arguments
+/// - `keep_signatures` — `true`: keep `#include`s and signatures, replace only the
+///   top-level method bodies with empty stubs. Use when the signature types are still
+///   needed by the compiler.
+///   `false`: empty the entire file (header comment only). Use when the initializer
+///   list references a base class and body stubs alone cannot cut the dependency.
 ///
-/// ボディスタブ時の規則:
-/// - `void` 戻り値 / コンストラクタ / デストラクタ → `{}`
-/// - それ以外 → `{ return {}; }` (値初期化)
+/// Stub body rules:
+/// - `void` return / constructor / destructor → `{}`
+/// - anything else → `{ return {}; }` (value-initialize)
 ///
-/// # 注意
-/// `keep_signatures: true` はトップレベルに `namespace {}` や `extern "C" {}`
-/// があるファイルには使えない。`.cxx` 実装ファイル専用。
+/// # Note
+/// `keep_signatures: true` cannot be used on files that have top-level
+/// `namespace {}` or `extern "C" {}` blocks. Intended for `.cxx` implementation files only.
 fn stub_out_methods(path: &Path, keep_signatures: bool) {
 	if !path.exists() {
 		return;
 	}
 
-	// 冒頭にスタブ化の記録コメントを生成する。
+	// Build the header comment that records the stub operation.
 	let timestamp = std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
 		.map(|d| {
@@ -376,10 +370,10 @@ fn stub_out_methods(path: &Path, keep_signatures: bool) {
 
 	let patched = if keep_signatures {
 		let content = std::fs::read_to_string(path).expect("Failed to read file for stubbing");
-		// トップレベルのブレースブロックをすべてスタブ化する。
+		// Replace all top-level brace blocks with empty stubs.
 		header + &stub_all_top_level_bodies(&content)
 	} else {
-		// ファイルを空にする (冒頭コメントのみ)。
+		// Empty the file (header comment only).
 		header
 	};
 
@@ -387,8 +381,8 @@ fn stub_out_methods(path: &Path, keep_signatures: bool) {
 	eprintln!("Stubbed {}", path.file_name().unwrap().to_string_lossy());
 }
 
-/// `content` 内のトップレベル (ブレース深さ 0) にある `{ … }` ブロックをすべて
-/// `{}` または `{ return {}; }` に置換して返す。
+/// Replace every top-level (brace depth 0) `{ … }` block in `content` with
+/// `{}` or `{ return {}; }` and return the result.
 fn stub_all_top_level_bodies(content: &str) -> String {
 	let bytes = content.as_bytes();
 	let mut result = String::new();
@@ -399,7 +393,7 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 	while i < bytes.len() {
 		match bytes[i] {
 			b'{' if depth == 0 => {
-				// トップレベルブロック開始: 直前のシグネチャで戻り値型を判定する。
+				// Top-level block start: check the preceding signature for return type.
 				let prefix = &content[last_end..i];
 				let stub_body = if is_void_return(prefix) {
 					"{}"
@@ -407,7 +401,7 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 					"{ return {}; }"
 				};
 
-				// ブレースカウントでブロック終端を探す。
+				// Walk forward with brace counting to find the matching closing brace.
 				depth = 1;
 				i += 1;
 				while i < bytes.len() && depth > 0 {
@@ -418,7 +412,7 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 					}
 					i += 1;
 				}
-				// i は閉じ '}' の次を指している。
+				// i now points one past the closing '}'.
 				result.push_str(prefix);
 				result.push_str(stub_body);
 				last_end = i;
@@ -438,22 +432,22 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 	result
 }
 
-/// シグネチャ文字列から、ボディを `{}` で置換すべきか判定する。
+/// Return `true` if the signature string indicates the body should be stubbed as `{}`.
 ///
-/// 以下のいずれかに該当すれば `true` (空ボディ `{}`):
-/// 1. 戻り値型が `void` — シグネチャ中に識別子 "void" がある
-/// 2. デストラクタ — シグネチャに `::~` が含まれる
-/// 3. コンストラクタ — `ClassName::ClassName(` のように `::` 前後の識別子が同一
+/// Returns `true` for any of:
+/// 1. `void` return type — the identifier "void" appears in the signature
+/// 2. Destructor — signature contains `::`~`
+/// 3. Constructor — `ClassName::ClassName(` pattern (identifier before and after `::` match)
 ///
-/// いずれも該当しなければ `false` → `{ return {}; }` で値初期化する。
+/// Returns `false` otherwise → stub as `{ return {}; }` (value-initialize).
 fn is_void_return(prefix: &str) -> bool {
-	// 直前の定義の終端 (';' か '}') 以降のシグネチャ部分だけを見る。
+	// Only examine the signature after the last definition terminator (';' or '}').
 	let sig = prefix
 		.rfind(|c| c == ';' || c == '}')
 		.map(|p| &prefix[p + 1..])
 		.unwrap_or(prefix);
 
-	// 1. void 戻り値型
+	// 1. void return type
 	if sig
 		.split(|c: char| !c.is_alphanumeric() && c != '_')
 		.any(|w| w == "void")
@@ -461,13 +455,13 @@ fn is_void_return(prefix: &str) -> bool {
 		return true;
 	}
 
-	// 2. デストラクタ: ::~ が含まれる
+	// 2. Destructor: contains ::~
 	if sig.contains("::~") {
 		return true;
 	}
 
-	// 3. コンストラクタ: ClassName::ClassName( のパターン
-	//    '(' の直前までを見て、最後の '::' を境に前後の識別子を比較する。
+	// 3. Constructor: ClassName::ClassName( pattern
+	//    Look at everything before '(' and compare the identifiers around the last '::'.`
 	if let Some(paren) = sig.find('(') {
 		let before_paren = sig[..paren].trim_end();
 		if let Some(dc) = before_paren.rfind("::") {
