@@ -1,0 +1,11 @@
+[book]
+title = "cadrum"
+authors = ["lzpel"]
+language = "en"
+src = "out/markdown"
+
+[build]
+build-dir = "out/html"
+
+[output.html]
+git-repository-url = "https://github.com/lzpel/cadrum"

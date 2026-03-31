@@ -1,6 +1,9 @@
+PATH_DOCS=out/markdown
+generate: # generate out/markdown from examples, then build out/html
+	cargo install --root out mdbook
+	ls examples/*.rs | xargs -IX basename X .rs | xargs -IX sh -c "mkdir -p $(PATH_DOCS) && cd $(PATH_DOCS) && cargo run --manifest-path ../../Cargo.toml --example X"
+	./out/bin/mdbook build
 test:
 	cargo test --features color
-test-system:
-	cargo run --example stretch --features prebuilt --no-default-features
-deploy: # --no-verify なしだと bundled feature で OCCT をフルビルドする検証が走り、非常に時間がかかります。
+deploy: # --no-verify skips the full OCCT build verification which takes a very long time
 	cargo publish --no-verify
