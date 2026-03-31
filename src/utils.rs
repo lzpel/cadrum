@@ -3,7 +3,7 @@ use crate::shape::{Boolean, Shape};
 use crate::solid::Solid;
 use glam::DVec3;
 
-/// ツール側フェイスだけを delta 方向に押し出してフィラーを作ります。
+/// Extrude only the tool-side faces of a boolean result by `delta` to create a filler solid.
 fn extrude_tool_faces(result: &Boolean, delta: DVec3) -> Result<Vec<Solid>, Error> {
 	let mut filler: Option<Vec<Solid>> = None;
 	for face in result.solids.faces().filter(|f| result.is_tool_face(f)) {
@@ -17,8 +17,8 @@ fn extrude_tool_faces(result: &Boolean, delta: DVec3) -> Result<Vec<Solid>, Erro
 	Ok(filler.unwrap_or_default())
 }
 
-/// `origin` を含み `plane_normal` が法線の平面で `shape` を切断し、
-/// その断面を `origin` を通る `axis_dir` 軸周りに `angle` だけ回転させた回転体を返す。
+/// Cut `shape` with the plane through `origin` with normal `plane_normal`, then revolve
+/// the cut face around `axis_direction` through `origin` by `angle` radians.
 pub fn revolve_section(
 	shape: &[Solid],
 	origin: DVec3,
@@ -45,8 +45,8 @@ pub fn revolve_section(
 	Ok(result.unwrap_or_default())
 }
 
-/// `origin` を含み `plane_normal` が法線の平面で `shape` を切断し、
-/// その断面を `origin` を通る `axis_dir` 軸周りにヘリカルスイープした形状を返す。
+/// Cut `shape` with the plane through `origin` with normal `plane_normal`, then sweep
+/// the cut face along a helix around `axis_direction` through `origin`.
 pub fn helix_section(
 	shape: &[Solid],
 	origin: DVec3,
@@ -74,7 +74,8 @@ pub fn helix_section(
 	Ok(result.unwrap_or_default())
 }
 
-/// 指定された座標とベクトルで形状を分割し、片方を平行移動させた後、隙間を押し出し形状で埋めることで引き伸ばしを行います。
+/// Split `shape` at `origin` along `delta`, translate one half by `delta`,
+/// and fill the gap with an extruded filler derived from the cut face.
 pub fn stretch_vector(shape: &[Solid], origin: DVec3, delta: DVec3) -> Result<Vec<Solid>, Error> {
 	let half = vec![Solid::half_space(origin, -delta.normalize())];
 

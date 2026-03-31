@@ -1,10 +1,10 @@
 //! Chijin example: build a chijin (hand drum from Amami Oshima) using the chijin library.
 //!
 //! ```
-//! cargo run --example chijin --features bundled,color
+//! cargo run --example chijin
 //! ```
 //!
-//! Output: out/chijin.step (AP214 STEP, colored), out/chijin.svg
+//! Output: chijin.step (AP214 STEP, colored), chijin.svg
 
 use cadrum::{Boolean, Face, Color, Shape, Solid};
 use glam::DVec3;
@@ -83,21 +83,20 @@ pub fn chijin() -> Solid {
 }
 
 fn main() {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let result = vec![chijin()];
-	std::fs::create_dir_all("out").unwrap();
-
 	// ── Write STEP ───────────────────────────────────────────────────────
-	let step_path = "out/chijin.step";
-	let mut f = std::fs::File::create(step_path).expect("failed to create STEP file");
+	let step_path = format!("{example_name}.step");
+	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
 	cadrum::write_step_with_colors(&result, &mut f).expect("failed to write STEP");
-	println!("wrote {step_path}");
+	println!("wrote {}", &step_path);
 
 	// ── Write SVG (isometric view from (1,1,1)) ─────────────────────────
-	let svg_path = "out/chijin.svg";
+	let svg_path = format!("{}.svg", example_name);
 	let svg = result
 		.to_svg(DVec3::new(1.0, 1.0, 1.0), 0.5)
 		.expect("failed to export SVG");
-	let mut f = std::fs::File::create(svg_path).expect("failed to create SVG file");
+	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
 	std::io::Write::write_all(&mut f, svg.as_bytes()).expect("failed to write SVG");
-	println!("wrote {svg_path}");
+	println!("wrote {}", &svg_path);
 }
