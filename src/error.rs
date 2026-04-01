@@ -37,8 +37,8 @@ pub enum Error {
     /// SVG export (HLR projection) failed.
     SvgExportFailed,
 
-    /// Invalid hex color string (expected `#RGB` or `#RRGGBB`).
-    InvalidHexColor,
+    /// Invalid color string (unrecognized name or invalid hex format).
+    InvalidColor(String),
 
     /// Unknown error. OpenCASCADE operation failed for some reason.
     Unknown(String),
@@ -59,7 +59,7 @@ impl std::fmt::Display for Error {
             Error::HelixFailed => write!(f, "Helix failed"),
             Error::InvalidPolygon => write!(f, "Invalid polygon"),
             Error::SvgExportFailed => write!(f, "SVG export failed"),
-            Error::InvalidHexColor => write!(f, "Invalid hex color (expected #RGB or #RRGGBB)"),
+            Error::InvalidColor(s) => write!(f, "Invalid color: \"{}\"", s),
             Error::Unknown(msg) => write!(f, "Unknown error: {}", msg),
         }
     }

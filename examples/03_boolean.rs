@@ -7,11 +7,11 @@ fn main() {
     // Base shapes: a box and a cylinder, overlapping at origin
     let make_box = || {
         Solid::box_from_corners(DVec3::ZERO, DVec3::new(20.0, 20.0, 20.0))
-            .color_paint(Some(Color::from_hex("#4a90d9").unwrap()))
+            .color_paint(Some(Color::from_str("#4a90d9").unwrap()))
     };
     let make_cyl = || {
         Solid::cylinder(DVec3::new(10.0, 10.0, -5.0), 8.0, DVec3::Z, 30.0)
-            .color_paint(Some(Color::from_hex("#e67e22").unwrap()))
+            .color_paint(Some(Color::from_str("#e67e22").unwrap()))
     };
 
     // union: merge both shapes into one — offset X=0
