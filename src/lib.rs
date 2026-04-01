@@ -1,6 +1,6 @@
 //! # cadrum
 //!
-//! Minimal Rust bindings for OpenCASCADE (OCCT 7.9.3).
+//! Rust CAD library powered by OpenCASCADE (OCCT 7.9.3).
 //!
 //! ## Core Types
 //! - [`Solid`] — a single solid shape (wraps `TopoDS_Shape` / `TopAbs_SOLID`)
