@@ -13,7 +13,7 @@ use std::f64::consts::PI;
 pub fn chijin() -> Solid {
 	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
 	let cylinder: Solid =
-		Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0).color_paint(Some(Color::from_hex("#999").unwrap()));
+		Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0).color_paint(Some(Color::from_str("#999").unwrap()));
 
 	// ── Rim: cross-section polygon in the x=0 plane, revolved 360° around Z
 	// to form a ring with outer radius 17 at z=3..5.
@@ -30,7 +30,7 @@ pub fn chijin() -> Solid {
 	let sheet = cross_section
 		.revolve(DVec3::ZERO, DVec3::Z, 2.0 * PI)
 		.unwrap()
-		.color_paint(Some(Color::from_hex("#fff").unwrap()));
+		.color_paint(Some(Color::from_str("#fff").unwrap()));
 	let sheets = [sheet.mirrored(DVec3::ZERO, DVec3::Z), sheet];
 
 	// ── Lacing blocks: 2x8x1, rotated 60° around Z, placed at y=15 ──────

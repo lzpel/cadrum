@@ -8,7 +8,7 @@ fn main() {
     // Base shape: cone pointing up (tip at Z=20), used as reference for each transform
     let base = || {
         Solid::cone(DVec3::ZERO, DVec3::Z, 8.0, 0.0, 20.0)
-            .color_paint(Some(Color::from_hex("#888888").unwrap()))
+            .color_paint(Some(Color::from_str("#888888").unwrap()))
     };
 
     // original — reference, no transform
@@ -16,24 +16,24 @@ fn main() {
 
     // translate — shift +20 along Z
     let translated = base()
-        .color_paint(Some(Color::from_hex("#4a90d9").unwrap()))
+        .color_paint(Some(Color::from_str("#4a90d9").unwrap()))
         .translate(DVec3::new(40.0, 0.0, 20.0));
 
     // rotate — 90° around X axis so the cone tips toward Y
     let rotated = base()
-        .color_paint(Some(Color::from_hex("#e67e22").unwrap()))
+        .color_paint(Some(Color::from_str("#e67e22").unwrap()))
         .rotate(DVec3::new(80.0, 0.0, 0.0), DVec3::X, PI / 2.0)
         .translate(DVec3::new(80.0, 0.0, 0.0));
 
     // scaled — 1.5x from its local origin
     let scaled = base()
-        .color_paint(Some(Color::from_hex("#2ecc71").unwrap()))
+        .color_paint(Some(Color::from_str("#2ecc71").unwrap()))
         .scaled(DVec3::ZERO, 1.5)
         .translate(DVec3::new(120.0, 0.0, 0.0));
 
     // mirrored — flip across Z=0 plane so the tip points down
     let mirrored = base()
-        .color_paint(Some(Color::from_hex("#e74c3c").unwrap()))
+        .color_paint(Some(Color::from_str("#e74c3c").unwrap()))
         .mirrored(DVec3::ZERO, DVec3::Z)
         .translate(DVec3::new(160.0, 0.0, 0.0));
 
