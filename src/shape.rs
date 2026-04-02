@@ -14,7 +14,7 @@ pub struct TShapeId(pub u64);
 // ==================== Internal helpers ====================
 
 /// Assemble solids into a TopoDS_Compound.
-pub(crate) fn to_compound(solids: &[Solid]) -> cxx::UniquePtr<ffi::TopoDS_Shape> {
+pub(crate) fn to_compound<'a>(solids: impl IntoIterator<Item = &'a Solid>) -> cxx::UniquePtr<ffi::TopoDS_Shape> {
 	let mut compound = ffi::make_empty();
 	for s in solids {
 		ffi::compound_add(compound.pin_mut(), s.inner());
@@ -43,7 +43,7 @@ pub(crate) fn decompose(
 
 /// Merge colormaps from all solids.
 #[cfg(feature = "color")]
-pub(crate) fn merge_all_colormaps(solids: &[Solid]) -> std::collections::HashMap<TShapeId, Color> {
+pub(crate) fn merge_all_colormaps<'a>(solids: impl IntoIterator<Item = &'a Solid>) -> std::collections::HashMap<TShapeId, Color> {
 	let mut merged = std::collections::HashMap::new();
 	for s in solids {
 		merged.extend(s.colormap().iter().map(|(&k, &v)| (k, v)));
@@ -113,9 +113,12 @@ impl Boolean {
 
 	// --- Boolean operations ---
 
-	pub fn union(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
-		let c_self = to_compound(a);
-		let c_other = to_compound(b);
+	pub fn union<'a>(
+		a: impl IntoIterator<Item = &'a Solid> + Clone,
+		b: impl IntoIterator<Item = &'a Solid> + Clone,
+	) -> Result<Self, Error> {
+		let c_self = to_compound(a.clone());
+		let c_other = to_compound(b.clone());
 		let r = ffi::boolean_fuse(&c_self, &c_other);
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
@@ -123,9 +126,12 @@ impl Boolean {
 		Self::build_boolean_result(r, a, b)
 	}
 
-	pub fn subtract(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
-		let c_self = to_compound(a);
-		let c_other = to_compound(b);
+	pub fn subtract<'a>(
+		a: impl IntoIterator<Item = &'a Solid> + Clone,
+		b: impl IntoIterator<Item = &'a Solid> + Clone,
+	) -> Result<Self, Error> {
+		let c_self = to_compound(a.clone());
+		let c_other = to_compound(b.clone());
 		let r = ffi::boolean_cut(&c_self, &c_other);
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
@@ -133,9 +139,12 @@ impl Boolean {
 		Self::build_boolean_result(r, a, b)
 	}
 
-	pub fn intersect(a: &[Solid], b: &[Solid]) -> Result<Self, Error> {
-		let c_self = to_compound(a);
-		let c_other = to_compound(b);
+	pub fn intersect<'a>(
+		a: impl IntoIterator<Item = &'a Solid> + Clone,
+		b: impl IntoIterator<Item = &'a Solid> + Clone,
+	) -> Result<Self, Error> {
+		let c_self = to_compound(a.clone());
+		let c_other = to_compound(b.clone());
 		let r = ffi::boolean_common(&c_self, &c_other);
 		if r.is_null() {
 			return Err(Error::BooleanOperationFailed);
@@ -145,10 +154,10 @@ impl Boolean {
 
 	// ==================== Boolean helper ====================
 
-	fn build_boolean_result(
+	fn build_boolean_result<'a>(
 		r: cxx::UniquePtr<ffi::BooleanShape>,
-		self_solids: &[Solid],
-		other_solids: &[Solid],
+		self_solids: impl IntoIterator<Item = &'a Solid>,
+		other_solids: impl IntoIterator<Item = &'a Solid>,
 	) -> Result<Boolean, Error> {
 		let from_a = ffi::boolean_shape_from_a(&r);
 		let from_b = ffi::boolean_shape_from_b(&r);
