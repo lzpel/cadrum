@@ -267,6 +267,10 @@ fn test_bounding_box() {
 	let [min, max] = test_box().translate(dvec3(10.0, 20.0, 30.0)).bounding_box();
 	assert!((min - dvec3(10.0, 20.0, 30.0)).length() < 1e-6);
 	assert!((max - dvec3(20.0, 30.0, 40.0)).length() < 1e-6);
+
+	// half-space は無限ソリッド — bbox がどう返るか確認
+	let [min, max] = vec![Solid::half_space(dvec3(0.0, 0.0, 0.0), dvec3(0.0, 0.0, 1.0))].bounding_box();
+	println!("half_space bbox: min={min:?} max={max:?}");
 }
 
 // ==================== contains ====================
