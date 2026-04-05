@@ -1,15 +1,20 @@
+mod build_delegation;
+
 use std::env;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
+	println!("cargo:rerun-if-changed=src/traits.rs");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
 	}
 
 	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+	build_delegation::build_delegation(include_str!("src/traits.rs"), &out_dir);
+
 	let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
 	let occt_root = env::var("OCCT_ROOT")
@@ -53,7 +58,6 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 		"TKDE",        // DE framework base (OCCT 7.8+)
 		"TKDECascade", // DE cascade bridge (OCCT 7.8+)
 		"TKOffset",    // BRepOffsetAPI_MakePipeShell (helix sweep)
-		"TKHLR",       // HLRBRep_Algo (hidden line removal for SVG export)
 		"TKDESTEP",    // was TKSTEP + TKSTEP209 + TKSTEPAttr + TKSTEPBase
 		               // TKService is NOT linked here: it contains Image_AlienPixMap (WIC image I/O)
 		               // which pulls in ole32/windowscodecs on Windows, but image I/O is unused in
@@ -112,7 +116,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 	}
 
 	// Build cxx bridge + C++ wrapper
-	let mut build = cxx_build::bridge("src/ffi.rs");
+	let mut build = cxx_build::bridge("src/occt/ffi.rs");
 	build
 		.file("cpp/wrapper.cpp")
 		.include(occt_include)
@@ -140,7 +144,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 
 	build.compile("cadrum_cpp");
 
-	println!("cargo:rerun-if-changed=src/ffi.rs");
+	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
 }

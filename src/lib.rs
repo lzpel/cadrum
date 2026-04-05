@@ -4,36 +4,32 @@
 //!
 //! ## Core Types
 //! - [`Solid`] — a single solid shape (wraps `TopoDS_Shape` / `TopAbs_SOLID`)
-//! - [`Shape`] — trait with operations on `[Solid]` / `Vec<Solid>` (import to use methods)
+//! - [`Solid`] has all methods directly (no trait import needed)
 
-mod edge;
-mod error;
-mod face;
-mod ffi;
-mod io;
-mod iterators;
-mod mesh;
-mod shape;
-mod solid;
-mod color;
-pub mod stream;
-pub mod utils;
+pub mod common;
+pub(crate) mod traits;
+pub mod occt;
+#[cfg(feature = "pure")]
+pub mod pure;
 
-pub use edge::Edge;
-pub use error::Error;
-pub use face::Face;
-pub use iterators::{ApproximationSegmentIterator, EdgeIterator, FaceIterator};
-pub use mesh::Mesh;
-pub use shape::{Boolean, Shape};
-pub use shape::TShapeId;
-pub use solid::Solid;
-#[cfg(feature = "color")]
-pub use color::Color;
+// Re-export OCCT types at crate root
+pub use occt::edge::Edge;
+pub use occt::face::Face;
+pub use occt::boolean::Boolean;
+pub use occt::solid::Solid;
 
-// I/O functions
-pub use io::{read_step, read_brep_bin, read_brep_text};
-pub use io::{write_step, write_brep_bin, write_brep_text};
+// Re-export common types
+pub use glam::DVec3;
+pub use common::error::Error;
+pub use common::mesh::{EdgeData, Mesh};
 #[cfg(feature = "color")]
-pub use io::{read_step_with_colors, read_brep_color};
-#[cfg(feature = "color")]
-pub use io::{write_step_with_colors, write_brep_color};
+pub use common::color::Color;
+
+// I/O (cadrum::io::read_step(...) etc.)
+pub use occt::io::io;
+
+// Re-export submodules
+pub use occt::utils;
+
+// Auto-generated inherent method delegations (trait methods → pub fn on concrete types)
+include!(concat!(env!("OUT_DIR"), "/generated_delegation.rs"));

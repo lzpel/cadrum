@@ -1,9 +1,27 @@
-use crate::error::Error;
-use crate::ffi;
-use crate::iterators::{EdgeIterator, FaceIterator};
-use crate::mesh::Mesh;
-use crate::shape::Shape;
-use glam::{DVec2, DVec3};
+use crate::common::error::Error;
+use crate::traits::SolidTrait;
+use super::ffi;
+use super::face::Face;
+use super::edge::Edge;
+use super::iterators::{EdgeIterator, FaceIterator};
+use glam::DVec3;
+
+#[cfg(feature = "color")]
+fn remap_colormap_by_order(
+	old_inner: &ffi::TopoDS_Shape,
+	new_inner: &ffi::TopoDS_Shape,
+	old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>,
+) -> std::collections::HashMap<u64, crate::common::color::Color> {
+	let mut colormap = std::collections::HashMap::new();
+	for (old_face, new_face) in FaceIterator::new(ffi::explore_faces(old_inner))
+		.zip(FaceIterator::new(ffi::explore_faces(new_inner)))
+	{
+		if let Some(&color) = old_colormap.get(&old_face.tshape_id()) {
+			colormap.insert(new_face.tshape_id(), color);
+		}
+	}
+	colormap
+}
 
 /// A single solid topology shape wrapping a `TopoDS_Shape` guaranteed to be `TopAbs_SOLID`.
 ///
@@ -12,7 +30,7 @@ use glam::{DVec2, DVec3};
 pub struct Solid {
 	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 	#[cfg(feature = "color")]
-	colormap: std::collections::HashMap<crate::shape::TShapeId, crate::color::Color>,
+	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 }
 
 impl Solid {
@@ -23,7 +41,7 @@ impl Solid {
 	pub(crate) fn new(
 		inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 		#[cfg(feature = "color")]
-		colormap: std::collections::HashMap<crate::shape::TShapeId, crate::color::Color>,
+		colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 	) -> Self {
 		debug_assert!(
 			ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner),
@@ -43,46 +61,53 @@ impl Solid {
 		&self.inner
 	}
 
-	/// Return the `TShapeId` (underlying `TopoDS_TShape*` address) of this solid.
-	pub fn tshape_id(&self) -> crate::shape::TShapeId {
-		crate::shape::TShapeId(ffi::shape_tshape_id(&self.inner))
+	/// Return the underlying `TopoDS_TShape*` address as a `u64`.
+	pub fn tshape_id(&self) -> u64 {
+		ffi::shape_tshape_id(&self.inner)
 	}
 
 	// ==================== Color accessors ====================
 
 	/// Read-only access to the per-face colormap.
 	#[cfg(feature = "color")]
-	pub fn colormap(&self) -> &std::collections::HashMap<crate::shape::TShapeId, crate::color::Color> {
+	pub fn colormap(&self) -> &std::collections::HashMap<u64, crate::common::color::Color> {
 		&self.colormap
 	}
 
 	/// Mutable access to the per-face colormap.
 	#[cfg(feature = "color")]
-	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<crate::shape::TShapeId, crate::color::Color> {
+	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<u64, crate::common::color::Color> {
 		&mut self.colormap
 	}
 
 	// ==================== Constructors ====================
 
-	/// Create a half-space solid.
-	///
-	/// The solid fills the half-space on the side **where the normal points**.
-	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
-		let inner = ffi::make_half_space(
-			plane_origin.x, plane_origin.y, plane_origin.z,
-			plane_normal.x, plane_normal.y, plane_normal.z,
-		);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-		)
+
+	/// Returns `true` if this solid wraps a null shape.
+	pub fn is_null(&self) -> bool {
+		ffi::shape_is_null(&self.inner)
 	}
 
-	/// Create a box from two opposite corner points.
-	///
-	/// Named `box_from_corners` rather than `box` because `box` is a reserved keyword in Rust.
-	pub fn box_from_corners(corner_1: DVec3, corner_2: DVec3) -> Solid {
+	// ==================== Iterators ====================
+
+	/// Get a face iterator over this solid.
+	pub fn face_iter(&self) -> FaceIterator {
+		FaceIterator::new(ffi::explore_faces(&self.inner))
+	}
+
+	/// Get an edge iterator over this solid.
+	pub fn edge_iter(&self) -> EdgeIterator {
+		EdgeIterator::new(ffi::explore_edges(&self.inner))
+	}
+}
+
+impl SolidTrait for Solid {
+	type Face = Face;
+	type Edge = Edge;
+
+	// ==================== Constructors ====================
+
+	fn box_from_corners(corner_1: DVec3, corner_2: DVec3) -> Solid {
 		let inner = ffi::make_box(
 			corner_1.x, corner_1.y, corner_1.z,
 			corner_2.x, corner_2.y, corner_2.z,
@@ -94,13 +119,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a cylinder.
-	///
-	/// - `p`: center of the base circle
-	/// - `r`: radius
-	/// - `dir`: axis direction
-	/// - `h`: height along the axis
-	pub fn cylinder(p: DVec3, r: f64, dir: DVec3, h: f64) -> Solid {
+	fn cylinder(p: DVec3, r: f64, dir: DVec3, h: f64) -> Solid {
 		let inner = ffi::make_cylinder(p.x, p.y, p.z, dir.x, dir.y, dir.z, r, h);
 		Solid::new(
 			inner,
@@ -109,11 +128,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a sphere.
-	///
-	/// - `center`: center point
-	/// - `radius`: radius
-	pub fn sphere(center: DVec3, radius: f64) -> Solid {
+	fn sphere(center: DVec3, radius: f64) -> Solid {
 		let inner = ffi::make_sphere(center.x, center.y, center.z, radius);
 		Solid::new(
 			inner,
@@ -122,14 +137,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a cone.
-	///
-	/// - `p`: center of the base circle
-	/// - `dir`: axis direction
-	/// - `r1`: bottom radius
-	/// - `r2`: top radius (0 for a pointed tip)
-	/// - `h`: height along the axis
-	pub fn cone(p: DVec3, dir: DVec3, r1: f64, r2: f64, h: f64) -> Solid {
+	fn cone(p: DVec3, dir: DVec3, r1: f64, r2: f64, h: f64) -> Solid {
 		let inner = ffi::make_cone(p.x, p.y, p.z, dir.x, dir.y, dir.z, r1, r2, h);
 		Solid::new(
 			inner,
@@ -138,13 +146,7 @@ impl Solid {
 		)
 	}
 
-	/// Create a torus.
-	///
-	/// - `p`: center point
-	/// - `dir`: axis direction (normal to the torus plane)
-	/// - `r1`: major radius (center to tube center)
-	/// - `r2`: minor radius (tube radius)
-	pub fn torus(p: DVec3, dir: DVec3, r1: f64, r2: f64) -> Solid {
+	fn torus(p: DVec3, dir: DVec3, r1: f64, r2: f64) -> Solid {
 		let inner = ffi::make_torus(p.x, p.y, p.z, dir.x, dir.y, dir.z, r1, r2);
 		Solid::new(
 			inner,
@@ -153,9 +155,18 @@ impl Solid {
 		)
 	}
 
-}
+	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
+		let inner = ffi::make_half_space(
+			plane_origin.x, plane_origin.y, plane_origin.z,
+			plane_normal.x, plane_normal.y, plane_normal.z,
+		);
+		Solid::new(
+			inner,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		)
+	}
 
-impl Shape for Solid {
 	// ==================== Transforms ====================
 
 	fn translate(self, translation: DVec3) -> Self {
@@ -184,7 +195,7 @@ impl Shape for Solid {
 	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		let inner = ffi::scale_shape(&self.inner, center.x, center.y, center.z, factor);
 		#[cfg(feature = "color")]
-		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(inner, #[cfg(feature = "color")] colormap)
 	}
 
@@ -195,11 +206,9 @@ impl Shape for Solid {
 			plane_normal.x, plane_normal.y, plane_normal.z,
 		);
 		#[cfg(feature = "color")]
-		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(inner, #[cfg(feature = "color")] colormap)
 	}
-
-	// ==================== Clean ====================
 
 	fn clean(&self) -> Result<Self, Error> {
 		#[cfg(feature = "color")]
@@ -215,8 +224,8 @@ impl Shape for Solid {
 			let mapping = ffi::clean_shape_mapping(&r);
 			let mut colormap = std::collections::HashMap::new();
 			for pair in mapping.chunks(2) {
-				let new_id = crate::shape::TShapeId(pair[0]);
-				let old_id = crate::shape::TShapeId(pair[1]);
+				let new_id = pair[0];
+				let old_id = pair[1];
 				if let Some(&color) = self.colormap.get(&old_id) {
 					colormap.entry(new_id).or_insert(color);
 				}
@@ -239,10 +248,6 @@ impl Shape for Solid {
 		ffi::shape_volume(&self.inner)
 	}
 
-	fn is_null(&self) -> bool {
-		ffi::shape_is_null(&self.inner)
-	}
-
 	fn shell_count(&self) -> u32 {
 		ffi::shape_shell_count(&self.inner)
 	}
@@ -258,61 +263,39 @@ impl Shape for Solid {
 		[DVec3::new(xmin, ymin, zmin), DVec3::new(xmax, ymax, zmax)]
 	}
 
-	fn faces(&self) -> FaceIterator {
-		FaceIterator::new(ffi::explore_faces(&self.inner))
+	// ==================== Topology ====================
+
+	fn faces(&self) -> Vec<Face> {
+		FaceIterator::new(ffi::explore_faces(&self.inner)).collect()
 	}
 
-	fn edges(&self) -> EdgeIterator {
-		EdgeIterator::new(ffi::explore_edges(&self.inner))
+	fn edges(&self) -> Vec<Edge> {
+		EdgeIterator::new(ffi::explore_edges(&self.inner)).collect()
 	}
 
-	// ==================== Mesh ====================
-
-	fn mesh_with_tolerance(&self, tol: f64) -> Result<Mesh, Error> {
-		let data = ffi::mesh_shape(&self.inner, tol);
-		if !data.success {
-			return Err(Error::TriangulationFailed);
-		}
-		let vertex_count = data.vertices.len() / 3;
-		let vertices: Vec<DVec3> = (0..vertex_count)
-			.map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2]))
-			.collect();
-		let uvs: Vec<DVec2> = (0..vertex_count)
-			.map(|i| DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1]))
-			.collect();
-		let normals: Vec<DVec3> = (0..vertex_count)
-			.map(|i| DVec3::new(data.normals[i * 3], data.normals[i * 3 + 1], data.normals[i * 3 + 2]))
-			.collect();
-		let indices: Vec<usize> = data.indices.iter().map(|&i| i as usize).collect();
-		let face_ids = data.face_tshape_ids;
-		Ok(Mesh { vertices, uvs, normals, indices, face_ids })
-	}
-
-	fn to_svg(&self, direction: DVec3, tolerance: f64) -> Result<String, Error> {
-		vec![self.clone()].to_svg(direction, tolerance)
-	}
 
 	// ==================== Color ====================
 
 	#[cfg(feature = "color")]
-	fn color_paint(self, color: Option<crate::color::Color>) -> Self {
+	fn color_paint(self, color: Option<crate::common::color::Color>) -> Self {
 		let colormap = match color {
-			Some(c) => self.faces().map(|f| (f.tshape_id(), c)).collect(),
+			Some(c) => FaceIterator::new(ffi::explore_faces(&self.inner))
+				.map(|f| (f.tshape_id(), c))
+				.collect(),
 			None => std::collections::HashMap::new(),
 		};
 		Self::new(self.inner, colormap)
 	}
 
 	#[cfg(feature = "color")]
-	fn color(&self) -> Option<crate::color::Color> {
-		let colors: Vec<crate::color::Color> = self
-			.faces()
+	fn color(&self) -> Option<crate::common::color::Color> {
+		let colors: Vec<crate::common::color::Color> = FaceIterator::new(ffi::explore_faces(&self.inner))
 			.filter_map(|f| self.colormap.get(&f.tshape_id()).copied())
 			.collect();
 		if colors.is_empty() {
 			None
-		}else{
-			Some(crate::color::Color {
+		} else {
+			Some(crate::common::color::Color {
 				r: colors.iter().map(|c| c.r).sum::<f32>() / colors.len() as f32,
 				g: colors.iter().map(|c| c.g).sum::<f32>() / colors.len() as f32,
 				b: colors.iter().map(|c| c.b).sum::<f32>() / colors.len() as f32,
@@ -325,7 +308,7 @@ impl Clone for Solid {
 	fn clone(&self) -> Self {
 		let inner = ffi::deep_copy(&self.inner);
 		#[cfg(feature = "color")]
-		let colormap = crate::shape::remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]

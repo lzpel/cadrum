@@ -3,7 +3,7 @@
 //! These tests correspond to acceptance criteria T-01 through T-08
 //! defined in 仕様書.md §4.3.
 
-use cadrum::{Shape, Solid};
+use cadrum::Solid;
 use glam::DVec3;
 
 fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
@@ -25,7 +25,7 @@ fn test_box_3() -> Vec<Solid> {
 /// Helper: write shape to BRep binary bytes
 fn shape_to_brep_bytes(shape: &[Solid]) -> Vec<u8> {
 	let mut buf = Vec::new();
-	cadrum::write_brep_bin(shape, &mut buf).unwrap();
+	cadrum::io::write_brep_binary(shape, &mut buf).unwrap();
 	buf
 }
 
@@ -92,7 +92,7 @@ fn test_t02_multiple_reads_no_crash() {
 	let original = test_box();
 	let brep_data = shape_to_brep_bytes(&original);
 	for _ in 0..5 {
-		let _shape = cadrum::read_brep_bin(&mut brep_data.as_slice()).unwrap();
+		let _shape = cadrum::io::read_brep_binary(&mut brep_data.as_slice()).unwrap();
 	}
 }
 
@@ -101,7 +101,7 @@ fn test_t02_multiple_reads_no_crash() {
 #[test]
 fn test_t03_mesh_normals_count() {
 	let shape = test_box();
-	let mesh = shape.mesh_with_tolerance(0.1).unwrap();
+	let mesh = cadrum::io::mesh(&shape, 0.1).unwrap();
 	assert_eq!(mesh.normals.len(), mesh.vertices.len());
 }
 
@@ -111,9 +111,9 @@ fn test_t03_mesh_normals_count() {
 fn test_t04_approximation_tolerance() {
 	let cyl: Vec<Solid> = vec![Solid::cylinder(dvec3(0.0, 0.0, 0.0), 10.0, dvec3(0.0, 0.0, 1.0), 20.0)];
 	let mut has_difference = false;
-	for edge in cyl.edges() {
-		let coarse = edge.approximation_segments(1.0).count();
-		let fine = edge.approximation_segments(0.01).count();
+	for edge in cyl.iter().flat_map(|s| s.edges()) {
+		let coarse = edge.approximation_segments(1.0).len();
+		let fine = edge.approximation_segments(0.01).len();
 		if fine > coarse {
 			has_difference = true;
 		}
@@ -132,9 +132,9 @@ fn test_t05_translated_compound() {
 	let b = test_box_2();
 	let compound: Vec<Solid> = cadrum::Boolean::union(&a, &b).unwrap().into();
 	let v = dvec3(100.0, 0.0, 0.0);
-	let orig_mesh = compound.clone().mesh_with_tolerance(0.1).unwrap();
-	let shifted = compound.translate(v);
-	let shifted_mesh = shifted.mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = cadrum::io::mesh(&compound, 0.1).unwrap();
+	let shifted: Vec<Solid> = compound.into_iter().map(|s| s.translate(v)).collect();
+	let shifted_mesh = cadrum::io::mesh(&shifted, 0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), shifted_mesh.vertices.len());
 	for (o, s) in orig_mesh.vertices.iter().zip(shifted_mesh.vertices.iter()) {
@@ -149,11 +149,11 @@ fn test_t05_translated_compound() {
 #[test]
 fn test_t06_brep_roundtrip() {
 	let original = test_box();
-	let orig_mesh = original.mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = cadrum::io::mesh(&original, 0.1).unwrap();
 
 	let brep_data = shape_to_brep_bytes(&original);
-	let restored = cadrum::read_brep_bin(&mut brep_data.as_slice()).unwrap();
-	let rest_mesh = restored.mesh_with_tolerance(0.1).unwrap();
+	let restored = cadrum::io::read_brep_binary(&mut brep_data.as_slice()).unwrap();
+	let rest_mesh = cadrum::io::mesh(&restored, 0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 	for (o, r) in orig_mesh.vertices.iter().zip(rest_mesh.vertices.iter()) {
@@ -170,7 +170,7 @@ fn test_t07_stream_api_only() {
 	let shape = test_box();
 	let data = shape_to_brep_bytes(&shape);
 	assert!(!data.is_empty());
-	let _restored = cadrum::read_brep_bin(&mut data.as_slice()).unwrap();
+	let _restored = cadrum::io::read_brep_binary(&mut data.as_slice()).unwrap();
 }
 
 // ==================== T-08: Boolean returns BooleanShape, convertible to Shape ====================
@@ -194,7 +194,7 @@ fn test_hollow_cube_write_step() {
 
 	std::fs::create_dir_all("out").unwrap();
 	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
-	cadrum::write_step(&hollow_cube, &mut file).unwrap();
+	cadrum::io::write_step(&hollow_cube, &mut file).unwrap();
 }
 
 // ==================== Additional Tests ====================
@@ -202,7 +202,7 @@ fn test_hollow_cube_write_step() {
 #[test]
 fn test_empty_shape() {
 	let empty: Vec<Solid> = vec![];
-	assert!(empty.is_null());
+	assert!(empty.iter().all(|s| s.is_null()));
 }
 
 #[test]
@@ -210,13 +210,13 @@ fn test_deep_copy() {
 	let original = test_box();
 	let copy = original.clone();
 	drop(original);
-	assert!((copy.volume() - 1000.0).abs() < 1e-6);
+	assert!((copy.iter().map(|s| s.volume()).sum::<f64>() - 1000.0).abs() < 1e-6);
 }
 
 #[test]
 fn test_edge_iteration() {
 	let shape = test_box();
-	assert!((shape.volume() - 1000.0).abs() < 1e-6);
+	assert!((shape.iter().map(|s| s.volume()).sum::<f64>() - 1000.0).abs() < 1e-6);
 }
 
 #[test]
@@ -224,14 +224,14 @@ fn test_half_space_intersect() {
 	let shape = test_box();
 	let half: Vec<Solid> = vec![Solid::half_space(dvec3(5.0, 0.0, 0.0), dvec3(1.0, 0.0, 0.0))];
 	let result = cadrum::Boolean::intersect(&shape, &half).unwrap();
-	assert!(!result.solids.is_null());
+	assert!(!result.solids.iter().all(|s| s.is_null()));
 }
 
 #[test]
 fn test_cylinder() {
 	let cyl: Vec<Solid> = vec![Solid::cylinder(dvec3(0.0, 0.0, 0.0), 5.0, dvec3(0.0, 0.0, 1.0), 10.0)];
 	let expected = std::f64::consts::PI * 5.0f64.powi(2) * 10.0;
-	assert!((cyl.volume() - expected).abs() < 1e-6);
+	assert!((cyl.iter().map(|s| s.volume()).sum::<f64>() - expected).abs() < 1e-6);
 }
 
 #[test]
@@ -239,11 +239,11 @@ fn test_brep_text_roundtrip() {
 	let original = test_box();
 
 	let mut text_data = Vec::new();
-	cadrum::write_brep_text(&original, &mut text_data).unwrap();
+	cadrum::io::write_brep_text(&original, &mut text_data).unwrap();
 	assert!(!text_data.is_empty());
 
-	let restored = cadrum::read_brep_text(&mut text_data.as_slice()).unwrap();
-	let orig_mesh = original.mesh_with_tolerance(0.1).unwrap();
-	let rest_mesh = restored.mesh_with_tolerance(0.1).unwrap();
+	let restored = cadrum::io::read_brep_text(&mut text_data.as_slice()).unwrap();
+	let orig_mesh = cadrum::io::mesh(&original, 0.1).unwrap();
+	let rest_mesh = cadrum::io::mesh(&restored, 0.1).unwrap();
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 }
