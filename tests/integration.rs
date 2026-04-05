@@ -101,7 +101,7 @@ fn test_t02_multiple_reads_no_crash() {
 #[test]
 fn test_t03_mesh_normals_count() {
 	let shape = test_box();
-	let mesh = shape[0].mesh_with_tolerance(0.1).unwrap();
+	let mesh = cadrum::io::mesh(&shape, 0.1).unwrap();
 	assert_eq!(mesh.normals.len(), mesh.vertices.len());
 }
 
@@ -132,9 +132,9 @@ fn test_t05_translated_compound() {
 	let b = test_box_2();
 	let compound: Vec<Solid> = cadrum::Boolean::union(&a, &b).unwrap().into();
 	let v = dvec3(100.0, 0.0, 0.0);
-	let orig_mesh = compound[0].mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = cadrum::io::mesh(&compound, 0.1).unwrap();
 	let shifted: Vec<Solid> = compound.into_iter().map(|s| s.translate(v)).collect();
-	let shifted_mesh = shifted[0].mesh_with_tolerance(0.1).unwrap();
+	let shifted_mesh = cadrum::io::mesh(&shifted, 0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), shifted_mesh.vertices.len());
 	for (o, s) in orig_mesh.vertices.iter().zip(shifted_mesh.vertices.iter()) {
@@ -149,11 +149,11 @@ fn test_t05_translated_compound() {
 #[test]
 fn test_t06_brep_roundtrip() {
 	let original = test_box();
-	let orig_mesh = original[0].mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = cadrum::io::mesh(&original, 0.1).unwrap();
 
 	let brep_data = shape_to_brep_bytes(&original);
 	let restored = cadrum::io::read_brep_binary(&mut brep_data.as_slice()).unwrap();
-	let rest_mesh = restored[0].mesh_with_tolerance(0.1).unwrap();
+	let rest_mesh = cadrum::io::mesh(&restored, 0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 	for (o, r) in orig_mesh.vertices.iter().zip(rest_mesh.vertices.iter()) {
@@ -243,7 +243,7 @@ fn test_brep_text_roundtrip() {
 	assert!(!text_data.is_empty());
 
 	let restored = cadrum::io::read_brep_text(&mut text_data.as_slice()).unwrap();
-	let orig_mesh = original[0].mesh_with_tolerance(0.1).unwrap();
-	let rest_mesh = restored[0].mesh_with_tolerance(0.1).unwrap();
+	let orig_mesh = cadrum::io::mesh(&original, 0.1).unwrap();
+	let rest_mesh = cadrum::io::mesh(&restored, 0.1).unwrap();
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 }

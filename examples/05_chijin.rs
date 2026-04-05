@@ -93,7 +93,7 @@ fn main() {
 
 	// ── Write SVG (isometric view from (1,1,1)) ─────────────────────────
 	let svg_path = format!("{}.svg", example_name);
-	let svg = cadrum::to_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5)
+	let svg = cadrum::io::to_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5)
 		.expect("failed to export SVG");
 	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
 	std::io::Write::write_all(&mut f, svg.as_bytes()).expect("failed to write SVG");

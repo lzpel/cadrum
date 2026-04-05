@@ -31,29 +31,5 @@ pub use occt::io::io;
 // Re-export submodules
 pub use occt::utils;
 
-// TODO: モック実装。メッシュ結合を適切な方法に置き換える。
-pub fn to_svg<'a>(solids: impl IntoIterator<Item = &'a Solid>, direction: glam::DVec3, tolerance: f64) -> Result<String, Error> {
-    let mut combined = Mesh {
-        vertices: vec![], uvs: vec![], normals: vec![], indices: vec![],
-        face_ids: vec![],
-        #[cfg(feature = "color")]
-        colormap: std::collections::HashMap::new(),
-        edges: EdgeData::default(),
-    };
-    for s in solids {
-        let m = s.mesh_with_tolerance(tolerance)?;
-        let offset = combined.vertices.len();
-        combined.vertices.extend(&m.vertices);
-        combined.uvs.extend(&m.uvs);
-        combined.normals.extend(&m.normals);
-        combined.indices.extend(m.indices.iter().map(|i| i + offset));
-        combined.face_ids.extend(&m.face_ids);
-        #[cfg(feature = "color")]
-        combined.colormap.extend(&m.colormap);
-        combined.edges.polylines.extend(m.edges.polylines);
-    }
-    Ok(combined.to_svg(direction))
-}
-
 // Auto-generated inherent method delegations (trait methods → pub fn on concrete types)
 include!(concat!(env!("OUT_DIR"), "/generated_delegation.rs"));
