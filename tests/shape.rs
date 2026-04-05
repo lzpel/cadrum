@@ -131,8 +131,7 @@ fn test_scaled_preserves_shell_count() {
 
 #[test]
 fn test_preserves_face_ids() {
-	use cadrum::TShapeId;
-	fn face_ids(s: &Vec<Solid>) -> Vec<TShapeId> {
+	fn face_ids(s: &Vec<Solid>) -> Vec<u64> {
 		s.iter().flat_map(|s| s.face_iter()).map(|f| f.tshape_id()).collect()
 	}
 
@@ -140,14 +139,14 @@ fn test_preserves_face_ids() {
 	let solid_id = shape[0].tshape_id();
 	let ids = face_ids(&shape);
 	let moved: Vec<Solid> = shape.into_iter().map(|s| s.translate(dvec3(10.0, 0.0, 0.0))).collect();
-	assert_eq!(solid_id, moved[0].tshape_id(), "translate should preserve solid TShapeId");
+	assert_eq!(solid_id, moved[0].tshape_id(), "translate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids(&moved), "translate should preserve face IDs");
 
 	let shape = test_box();
 	let solid_id = shape[0].tshape_id();
 	let ids = face_ids(&shape);
 	let rotated: Vec<Solid> = shape.into_iter().map(|s| s.rotate(DVec3::ZERO, DVec3::Z, std::f64::consts::FRAC_PI_4)).collect();
-	assert_eq!(solid_id, rotated[0].tshape_id(), "rotate should preserve solid TShapeId");
+	assert_eq!(solid_id, rotated[0].tshape_id(), "rotate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids(&rotated), "rotate should preserve face IDs");
 }
 

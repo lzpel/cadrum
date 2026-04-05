@@ -1,205 +1,179 @@
 use crate::common::error::Error;
 use super::ffi;
 use super::iterators::FaceIterator;
-use super::shape::{to_compound, decompose};
+use super::compound::Compound;
 use super::solid::Solid;
 use super::stream::{RustReader, RustWriter};
 use std::io::{Read, Write};
 
-#[cfg(feature = "color")]
-use super::shape::{merge_all_colormaps, TShapeId};
 #[cfg(feature = "color")]
 use crate::common::color::Color;
 
 // ==================== Read ====================
 
 /// Read a shape from a STEP format stream.
+///
+/// With the `color` feature enabled, face colors are automatically extracted
+/// from the STEP file (XDE / AP214 styled items).
 pub fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-    let mut rust_reader = RustReader::from_ref(reader);
-    let inner = ffi::read_step_stream(&mut rust_reader);
-    if inner.is_null() {
-        return Err(Error::StepReadFailed);
+    #[cfg(feature = "color")]
+    {
+        let mut rust_reader = RustReader::from_ref(reader);
+        let d = ffi::read_step_color_stream(&mut rust_reader);
+        if d.is_null() {
+            return Err(Error::StepReadFailed);
+        }
+        let inner = ffi::colored_step_shape(&d);
+        if inner.is_null() {
+            return Err(Error::StepReadFailed);
+        }
+        let ids = ffi::colored_step_ids(&d);
+        let r = ffi::colored_step_colors_r(&d);
+        let g = ffi::colored_step_colors_g(&d);
+        let b = ffi::colored_step_colors_b(&d);
+        let mut colormap = std::collections::HashMap::new();
+        for i in 0..ids.len() {
+            colormap.insert(ids[i], Color { r: r[i], g: g[i], b: b[i] });
+        }
+        Ok(Compound::from_raw(inner, colormap).decompose())
     }
-    Ok(decompose(
-        &inner,
-        #[cfg(feature = "color")]
-        &std::collections::HashMap::new(),
-    ))
+    #[cfg(not(feature = "color"))]
+    {
+        let mut rust_reader = RustReader::from_ref(reader);
+        let inner = ffi::read_step_stream(&mut rust_reader);
+        if inner.is_null() {
+            return Err(Error::StepReadFailed);
+        }
+        Ok(Compound::from_raw(inner).decompose())
+    }
 }
 
 /// Read a shape from a BRep binary format stream.
-pub fn read_brep_bin<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-    let mut rust_reader = RustReader::from_ref(reader);
-    let inner = ffi::read_brep_bin_stream(&mut rust_reader);
-    if inner.is_null() {
-        return Err(Error::BrepReadFailed);
+///
+/// With the `color` feature enabled, a color trailer (if present) at the end
+/// of the data is parsed to reconstruct the per-face colormap.
+pub fn read_brep_binary<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
+    #[cfg(feature = "color")]
+    {
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
+        let (index_colormap, brep_len) = strip_color_trailer(&buf);
+        let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
+        let mut rust_reader = RustReader::from_ref(&mut cursor);
+        let inner = ffi::read_brep_bin_stream(&mut rust_reader);
+        if inner.is_null() {
+            return Err(Error::BrepReadFailed);
+        }
+        let colormap = resolve_color_trailer(&inner, &index_colormap);
+        Ok(Compound::from_raw(inner, colormap).decompose())
     }
-    Ok(decompose(
-        &inner,
-        #[cfg(feature = "color")]
-        &std::collections::HashMap::new(),
-    ))
+    #[cfg(not(feature = "color"))]
+    {
+        let mut rust_reader = RustReader::from_ref(reader);
+        let inner = ffi::read_brep_bin_stream(&mut rust_reader);
+        if inner.is_null() {
+            return Err(Error::BrepReadFailed);
+        }
+        Ok(Compound::from_raw(inner).decompose())
+    }
 }
 
 /// Read a shape from a BRep text format stream.
+///
+/// With the `color` feature enabled, a color trailer (if present) at the end
+/// of the data is parsed to reconstruct the per-face colormap.
 pub fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-    let mut rust_reader = RustReader::from_ref(reader);
-    let inner = ffi::read_brep_text_stream(&mut rust_reader);
-    if inner.is_null() {
-        return Err(Error::BrepReadFailed);
+    #[cfg(feature = "color")]
+    {
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
+        let (index_colormap, brep_len) = strip_color_trailer(&buf);
+        let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
+        let mut rust_reader = RustReader::from_ref(&mut cursor);
+        let inner = ffi::read_brep_text_stream(&mut rust_reader);
+        if inner.is_null() {
+            return Err(Error::BrepReadFailed);
+        }
+        let colormap = resolve_color_trailer(&inner, &index_colormap);
+        Ok(Compound::from_raw(inner, colormap).decompose())
     }
-    Ok(decompose(
-        &inner,
-        #[cfg(feature = "color")]
-        &std::collections::HashMap::new(),
-    ))
+    #[cfg(not(feature = "color"))]
+    {
+        let mut rust_reader = RustReader::from_ref(reader);
+        let inner = ffi::read_brep_text_stream(&mut rust_reader);
+        if inner.is_null() {
+            return Err(Error::BrepReadFailed);
+        }
+        Ok(Compound::from_raw(inner).decompose())
+    }
 }
 
-/// Read a STEP file and populate colormaps with face colors.
+
+// ==================== Color trailer ====================
+
 #[cfg(feature = "color")]
-pub fn read_step_with_colors<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-    let mut rust_reader = RustReader::from_ref(reader);
-    let d = ffi::read_step_color_stream(&mut rust_reader);
-    if d.is_null() {
-        return Err(Error::StepReadFailed);
+const COLOR_TRAILER_MAGIC: &[u8; 4] = b"CDCL";
+
+/// Strip the color trailer (if present) from the end of `buf`.
+/// Returns the colormap and the byte length of the BRep portion.
+#[cfg(feature = "color")]
+fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, usize) {
+    // Minimum trailer: 0 entries → 4 (count) + 4 (magic) = 8 bytes
+    if buf.len() < 8 || &buf[buf.len() - 4..] != COLOR_TRAILER_MAGIC {
+        return (std::collections::HashMap::new(), buf.len());
     }
-    let inner = ffi::colored_step_shape(&d);
-    if inner.is_null() {
-        return Err(Error::StepReadFailed);
+    let entry_count = u32::from_le_bytes(buf[buf.len() - 8..buf.len() - 4].try_into().unwrap()) as usize;
+    let trailer_size = 8 + entry_count * 16;
+    if buf.len() < trailer_size {
+        return (std::collections::HashMap::new(), buf.len());
     }
-    let ids = ffi::colored_step_ids(&d);
-    let r = ffi::colored_step_colors_r(&d);
-    let g = ffi::colored_step_colors_g(&d);
-    let b = ffi::colored_step_colors_b(&d);
+    let brep_len = buf.len() - trailer_size;
+    let entries_start = brep_len;
     let mut colormap = std::collections::HashMap::new();
-    for i in 0..ids.len() {
-        colormap.insert(TShapeId(ids[i]), Color { r: r[i], g: g[i], b: b[i] });
+    for i in 0..entry_count {
+        let off = entries_start + i * 16;
+        let idx = u32::from_le_bytes(buf[off..off + 4].try_into().unwrap());
+        let r = f32::from_le_bytes(buf[off + 4..off + 8].try_into().unwrap());
+        let g = f32::from_le_bytes(buf[off + 8..off + 12].try_into().unwrap());
+        let b = f32::from_le_bytes(buf[off + 12..off + 16].try_into().unwrap());
+        colormap.insert(idx as u64, Color { r, g, b });
     }
-    Ok(decompose(&inner, &colormap))
+    (colormap, brep_len)
 }
 
-/// Read a shape (with colors) from the CHJC binary format.
+/// Build the face-index-keyed colormap from the raw index→Color map
+/// by mapping face traversal order to TShape IDs.
 #[cfg(feature = "color")]
-pub fn read_brep_color<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-    let mut magic = [0u8; 4];
-    reader.read_exact(&mut magic).map_err(|_| Error::BrepReadFailed)?;
-    if &magic != b"CHJC" {
-        return Err(Error::BrepReadFailed);
-    }
-    let mut ver = [0u8; 1];
-    reader.read_exact(&mut ver).map_err(|_| Error::BrepReadFailed)?;
-    if ver[0] != 1 {
-        return Err(Error::BrepReadFailed);
-    }
-
-    let mut buf4 = [0u8; 4];
-    reader.read_exact(&mut buf4).map_err(|_| Error::BrepReadFailed)?;
-    let color_count = u32::from_le_bytes(buf4) as usize;
-    let mut entries: Vec<(u32, f32, f32, f32)> = Vec::with_capacity(color_count);
-    for _ in 0..color_count {
-        let mut e = [0u8; 16];
-        reader.read_exact(&mut e).map_err(|_| Error::BrepReadFailed)?;
-        let idx = u32::from_le_bytes(e[0..4].try_into().unwrap());
-        let r = f32::from_le_bytes(e[4..8].try_into().unwrap());
-        let g = f32::from_le_bytes(e[8..12].try_into().unwrap());
-        let b = f32::from_le_bytes(e[12..16].try_into().unwrap());
-        entries.push((idx, r, g, b));
-    }
-
-    let mut buf8 = [0u8; 8];
-    reader.read_exact(&mut buf8).map_err(|_| Error::BrepReadFailed)?;
-    let mut rust_reader = RustReader::from_ref(reader);
-    let inner = ffi::read_brep_bin_stream(&mut rust_reader);
-    if inner.is_null() {
-        return Err(Error::BrepReadFailed);
-    }
-
-    let index_to_id: Vec<TShapeId> = FaceIterator::new(ffi::explore_faces(&inner))
+fn resolve_color_trailer(
+    inner: &ffi::TopoDS_Shape,
+    index_colormap: &std::collections::HashMap<u64, Color>,
+) -> std::collections::HashMap<u64, Color> {
+    let index_to_id: Vec<u64> = FaceIterator::new(ffi::explore_faces(inner))
         .map(|f| f.tshape_id())
         .collect();
-
-    let colormap = entries
-        .into_iter()
-        .filter_map(|(idx, r, g, b)| {
-            index_to_id.get(idx as usize).map(|&id| (id, Color { r, g, b }))
+    index_colormap
+        .iter()
+        .filter_map(|(&idx, &color)| {
+            index_to_id.get(idx as usize).map(|&id| (id, color))
         })
-        .collect();
-
-    Ok(decompose(&inner, &colormap))
+        .collect()
 }
 
-// ==================== Write ====================
-
-/// Write a shape to a STEP format stream.
-pub fn write_step<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
-    let compound = to_compound(solids);
-    let mut rust_writer = RustWriter::from_ref(writer);
-    if ffi::write_step_stream(&compound, &mut rust_writer) {
-        Ok(())
-    } else {
-        Err(Error::StepWriteFailed)
-    }
-}
-
-/// Write a shape to a BRep binary format stream.
-pub fn write_brep_bin<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
-    let compound = to_compound(solids);
-    let mut rust_writer = RustWriter::from_ref(writer);
-    if ffi::write_brep_bin_stream(&compound, &mut rust_writer) {
-        Ok(())
-    } else {
-        Err(Error::BrepWriteFailed)
-    }
-}
-
-/// Write a shape to a BRep text format stream.
-pub fn write_brep_text<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
-    let compound = to_compound(solids);
-    let mut rust_writer = RustWriter::from_ref(writer);
-    if ffi::write_brep_text_stream(&compound, &mut rust_writer) {
-        Ok(())
-    } else {
-        Err(Error::BrepWriteFailed)
-    }
-}
-
-/// Write a shape with face colors to a STEP format stream.
+/// Write the color trailer after BRep data.
 #[cfg(feature = "color")]
-pub fn write_step_with_colors<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
-    let compound = to_compound(solids);
-    let colormap = merge_all_colormaps(solids);
-    let ids: Vec<u64> = colormap.keys().map(|k| k.0).collect();
-    let r: Vec<f32> = ids.iter().map(|&id| colormap[&TShapeId(id)].r).collect();
-    let g: Vec<f32> = ids.iter().map(|&id| colormap[&TShapeId(id)].g).collect();
-    let b: Vec<f32> = ids.iter().map(|&id| colormap[&TShapeId(id)].b).collect();
-    let mut rust_writer = RustWriter::from_ref(writer);
-    if ffi::write_step_color_stream(&compound, &ids, &r, &g, &b, &mut rust_writer) {
-        Ok(())
-    } else {
-        Err(Error::StepWriteFailed)
+fn write_color_trailer<W: Write>(
+    compound: &Compound,
+    writer: &mut W,
+) -> Result<(), Error> {
+    let colormap = compound.colormap();
+    if colormap.is_empty() {
+        return Ok(());
     }
-}
-
-/// Write a shape with face colors to the CHJC binary format.
-#[cfg(feature = "color")]
-pub fn write_brep_color<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
-    let compound = to_compound(solids);
-    let colormap = merge_all_colormaps(solids);
-
-    let mut brep_buf = Vec::new();
-    {
-        let mut rust_writer = RustWriter::from_ref(&mut brep_buf);
-        if !ffi::write_brep_bin_stream(&compound, &mut rust_writer) {
-            return Err(Error::BrepWriteFailed);
-        }
-    }
-
-    let id_to_index: std::collections::HashMap<TShapeId, u32> =
-        FaceIterator::new(ffi::explore_faces(&compound))
+    let id_to_index: std::collections::HashMap<u64, u32> =
+        FaceIterator::new(ffi::explore_faces(compound.inner()))
             .enumerate()
             .map(|(i, f)| (f.tshape_id(), i as u32))
             .collect();
-
     let mut entries: Vec<(u32, f32, f32, f32)> = colormap
         .iter()
         .filter_map(|(id, rgb)| {
@@ -208,16 +182,77 @@ pub fn write_brep_color<W: Write>(solids: &[Solid], writer: &mut W) -> Result<()
         .collect();
     entries.sort_by_key(|e| e.0);
 
-    writer.write_all(b"CHJC").map_err(|_| Error::BrepWriteFailed)?;
-    writer.write_all(&[1u8]).map_err(|_| Error::BrepWriteFailed)?;
-    writer.write_all(&(entries.len() as u32).to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
     for (idx, r, g, b) in &entries {
         writer.write_all(&idx.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
         writer.write_all(&r.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
         writer.write_all(&g.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
         writer.write_all(&b.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
     }
-    writer.write_all(&(brep_buf.len() as u64).to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
-    writer.write_all(&brep_buf).map_err(|_| Error::BrepWriteFailed)?;
+    writer.write_all(&(entries.len() as u32).to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+    writer.write_all(COLOR_TRAILER_MAGIC).map_err(|_| Error::BrepWriteFailed)?;
     Ok(())
 }
+
+// ==================== Write ====================
+
+/// Write a shape to a STEP format stream.
+///
+/// With the `color` feature enabled, face colors are automatically embedded
+/// in the STEP file (XDE / AP214 styled items).
+pub fn write_step<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
+    let compound = Compound::new(solids);
+    #[cfg(feature = "color")]
+    {
+        let colormap = compound.colormap();
+        let ids: Vec<u64> = colormap.keys().copied().collect();
+        let r: Vec<f32> = ids.iter().map(|&id| colormap[&id].r).collect();
+        let g: Vec<f32> = ids.iter().map(|&id| colormap[&id].g).collect();
+        let b: Vec<f32> = ids.iter().map(|&id| colormap[&id].b).collect();
+        let mut rust_writer = RustWriter::from_ref(writer);
+        if ffi::write_step_color_stream(compound.inner(), &ids, &r, &g, &b, &mut rust_writer) {
+            Ok(())
+        } else {
+            Err(Error::StepWriteFailed)
+        }
+    }
+    #[cfg(not(feature = "color"))]
+    {
+        let mut rust_writer = RustWriter::from_ref(writer);
+        if ffi::write_step_stream(compound.inner(), &mut rust_writer) {
+            Ok(())
+        } else {
+            Err(Error::StepWriteFailed)
+        }
+    }
+}
+
+/// Write a shape to a BRep binary format stream.
+///
+/// With the `color` feature enabled, a color trailer is appended after the
+/// BRep data so that face colors survive the round-trip.
+pub fn write_brep_binary<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
+    let compound = Compound::new(solids);
+    let mut rust_writer = RustWriter::from_ref(writer);
+    if !ffi::write_brep_bin_stream(compound.inner(), &mut rust_writer) {
+        return Err(Error::BrepWriteFailed);
+    }
+    #[cfg(feature = "color")]
+    write_color_trailer(&compound, writer)?;
+    Ok(())
+}
+
+/// Write a shape to a BRep text format stream.
+///
+/// With the `color` feature enabled, a color trailer is appended after the
+/// BRep data so that face colors survive the round-trip.
+pub fn write_brep_text<W: Write>(solids: &[Solid], writer: &mut W) -> Result<(), Error> {
+    let compound = Compound::new(solids);
+    let mut rust_writer = RustWriter::from_ref(writer);
+    if !ffi::write_brep_text_stream(compound.inner(), &mut rust_writer) {
+        return Err(Error::BrepWriteFailed);
+    }
+    #[cfg(feature = "color")]
+    write_color_trailer(&compound, writer)?;
+    Ok(())
+}
+

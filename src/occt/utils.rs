@@ -1,6 +1,7 @@
 use crate::common::error::Error;
 use crate::traits::SolidTrait;
-use super::shape::{Boolean, to_compound};
+use super::shape::Boolean;
+use super::compound::Compound;
 use super::solid::Solid;
 use super::ffi;
 use super::iterators::FaceIterator;
@@ -8,9 +9,9 @@ use glam::DVec3;
 
 /// Extrude only the tool-side faces of a boolean result by `delta` to create a filler solid.
 fn extrude_tool_faces(result: &Boolean, delta: DVec3) -> Result<Vec<Solid>, Error> {
-	let compound = to_compound(&result.solids);
+	let compound = Compound::new(&result.solids);
 	let mut filler: Option<Vec<Solid>> = None;
-	for face in FaceIterator::new(ffi::explore_faces(&compound)).filter(|f| result.is_tool_face(f)) {
+	for face in FaceIterator::new(ffi::explore_faces(compound.inner())).filter(|f| result.is_tool_face(f)) {
 		let solid = face.extrude(delta)?;
 		let extruded: Vec<Solid> = vec![solid];
 		filler = Some(match filler {
@@ -33,9 +34,9 @@ pub fn revolve_section(
 	let half = vec![Solid::half_space(origin, -plane_normal.normalize())];
 	let intersect_result = Boolean::intersect(shape, &half)?;
 
-	let compound = to_compound(&intersect_result.solids);
+	let compound = Compound::new(&intersect_result.solids);
 	let mut result: Option<Vec<Solid>> = None;
-	for face in FaceIterator::new(ffi::explore_faces(&compound))
+	for face in FaceIterator::new(ffi::explore_faces(compound.inner()))
 		.filter(|f| intersect_result.is_tool_face(f))
 	{
 		let solid = face.revolve(origin, axis_direction, angle)?;
@@ -61,9 +62,9 @@ pub fn helix_section(
 	let half = vec![Solid::half_space(origin, -plane_normal.normalize())];
 	let intersect_result = Boolean::intersect(shape, &half)?;
 
-	let compound = to_compound(&intersect_result.solids);
+	let compound = Compound::new(&intersect_result.solids);
 	let mut result: Option<Vec<Solid>> = None;
-	for face in FaceIterator::new(ffi::explore_faces(&compound))
+	for face in FaceIterator::new(ffi::explore_faces(compound.inner()))
 		.filter(|f| intersect_result.is_tool_face(f))
 	{
 		let solid = face.helix(origin, axis_direction, pitch, turns, false)?;

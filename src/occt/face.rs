@@ -55,12 +55,12 @@ impl Face {
 		Face { inner }
 	}
 
-	/// Return the `TShapeId` (underlying `TopoDS_TShape*` address) of this face.
+	/// Return the underlying `TopoDS_TShape*` address as a `u64`.
 	///
-	/// Use this to look up or set entries in `Shape::colormap`,
-	/// or to match faces against [`BooleanShape::new_face_ids`].
-	pub fn tshape_id(&self) -> super::shape::TShapeId {
-		super::shape::TShapeId(ffi::face_tshape_id(&self.inner))
+	/// Use this to look up or set entries in `Solid::colormap`,
+	/// or to match faces against boolean operation results.
+	pub fn tshape_id(&self) -> u64 {
+		ffi::face_tshape_id(&self.inner)
 	}
 
 	/// Get the normal vector at the center of mass of this face.
