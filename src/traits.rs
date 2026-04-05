@@ -64,9 +64,6 @@ pub trait SolidTrait: Sized + Clone {
 	fn faces(&self) -> Vec<Self::Face>;
 	fn edges(&self) -> Vec<Self::Edge>;
 
-	// --- Mesh ---
-	fn mesh_with_tolerance(&self, tol: f64) -> Result<Mesh, Error>;
-
 	// --- Color ---
 	#[cfg(feature = "color")]
 	fn color_paint(self, color: Option<Color>) -> Self;
@@ -83,4 +80,6 @@ pub trait ioTrait {
 	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
 	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
 	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f64) -> Result<Mesh, Error>;
+	fn to_svg<'a>(solids: impl IntoIterator<Item = &'a Solid>, direction: DVec3, tolerance: f64) -> Result<String, Error>;
 }

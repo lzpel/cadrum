@@ -10,7 +10,7 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 #[test]
 fn test_svg_box_isometric() {
 	let shape: Vec<Solid> = vec![Solid::box_from_corners(DVec3::ZERO, dvec3(10.0, 10.0, 10.0))];
-	let svg = cadrum::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
+	let svg = cadrum::io::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
 		.unwrap();
 
 	assert!(svg.starts_with("<svg"), "should start with <svg tag");
@@ -31,7 +31,7 @@ fn test_svg_box_isometric() {
 #[test]
 fn test_svg_box_top_down() {
 	let shape: Vec<Solid> = vec![Solid::box_from_corners(DVec3::ZERO, dvec3(10.0, 10.0, 10.0))];
-	let svg = cadrum::to_svg(&shape, DVec3::Z, 0.1).unwrap();
+	let svg = cadrum::io::to_svg(&shape, DVec3::Z, 0.1).unwrap();
 
 	assert!(svg.starts_with("<svg"));
 	assert!(svg.contains("<polyline"));
@@ -43,7 +43,7 @@ fn test_svg_box_top_down() {
 #[test]
 fn test_svg_cylinder() {
 	let shape: Vec<Solid> = vec![Solid::cylinder(DVec3::ZERO, 5.0, DVec3::Z, 10.0)];
-	let svg = cadrum::to_svg(&shape, dvec3(1.0, 0.5, 0.3).normalize(), 0.1)
+	let svg = cadrum::io::to_svg(&shape, dvec3(1.0, 0.5, 0.3).normalize(), 0.1)
 		.unwrap();
 
 	assert!(svg.contains("<polyline"));
@@ -58,7 +58,7 @@ fn test_svg_has_hidden_lines() {
 	let a: Vec<Solid> = vec![Solid::box_from_corners(DVec3::ZERO, dvec3(10.0, 10.0, 10.0))];
 	let b: Vec<Solid> = vec![Solid::box_from_corners(dvec3(5.0, 5.0, 0.0), dvec3(15.0, 15.0, 10.0))];
 	let shape: Vec<Solid> = cadrum::Boolean::union(&a, &b).unwrap().into();
-	let svg = cadrum::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
+	let svg = cadrum::io::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
 		.unwrap();
 
 	assert!(svg.contains("#999"), "should contain hidden line color");
@@ -94,7 +94,7 @@ fn test_svg_colored_box() {
 		}
 	}
 
-	let svg = cadrum::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
+	let svg = cadrum::io::to_svg(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1)
 		.unwrap();
 
 	// Should contain rgb colors from the colormap

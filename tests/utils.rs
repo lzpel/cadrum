@@ -107,7 +107,7 @@ fn write_step(shape: &Vec<Solid>, name: &str) {
 	let path = format!("out/{name}.step");
 	let mut file = std::fs::File::create(&path).unwrap();
 	cadrum::io::write_step(shape, &mut file).expect("STEP write failed");
-	let mesh = shape[0].mesh_with_tolerance(0.1).expect("meshing failed");
+	let mesh = cadrum::io::mesh(shape, 0.1).expect("meshing failed");
 	assert!(!mesh.vertices.is_empty(), "result shape has no vertices");
 	println!(
 		"{name}: {} vertices, {} triangles → {path}",
