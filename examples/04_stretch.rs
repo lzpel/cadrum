@@ -38,16 +38,11 @@ fn main() {
     cadrum::io::write_brep_text(&result, &mut buf).expect("failed to write BRep");
     std::fs::write(out_path, &buf).expect("failed to write file");
 
-    let mesh = result.iter()
-        .map(|s| s.mesh_with_tolerance(0.5))
-        .collect::<Result<Vec<_>, _>>()
-        .expect("mesh failed");
-    let total_vertices: usize = mesh.iter().map(|m| m.vertices.len()).sum();
-    let total_triangles: usize = mesh.iter().map(|m| m.indices.len() / 3).sum();
+    let mesh = cadrum::io::mesh(&result, 0.5).expect("mesh failed");
     println!(
         "done: ({} bytes) — vertices: {}, triangles: {}",
         buf.len(),
-        total_vertices,
-        total_triangles,
+        mesh.vertices.len(),
+        mesh.indices.len() / 3,
     );
 }
