@@ -1,6 +1,6 @@
 use cadrum::{SolidTrait, Solid};
 #[cfg(feature = "color")]
-use cadrum::{Color, TShapeId};
+use cadrum::Color;
 use glam::DVec3;
 
 fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
@@ -81,7 +81,7 @@ fn test_svg_colored_box() {
 		(DVec3::X,     Color { r: 0.0, g: 1.0, b: 1.0 }), // right:  cyan
 		(DVec3::NEG_X, Color { r: 1.0, g: 0.0, b: 1.0 }), // left:   magenta
 	];
-	let id_normal: Vec<(TShapeId, DVec3)> = shape
+	let id_normal: Vec<(u64, DVec3)> = shape
 		.iter().flat_map(|s| s.face_iter())
 		.map(|f| (f.tshape_id(), f.normal_at_center()))
 		.collect();

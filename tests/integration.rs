@@ -26,7 +26,7 @@ fn test_box_3() -> Vec<Solid> {
 /// Helper: write shape to BRep binary bytes
 fn shape_to_brep_bytes(shape: &[Solid]) -> Vec<u8> {
 	let mut buf = Vec::new();
-	cadrum::write_brep_bin(shape, &mut buf).unwrap();
+	cadrum::write_brep_binary(shape, &mut buf).unwrap();
 	buf
 }
 
@@ -93,7 +93,7 @@ fn test_t02_multiple_reads_no_crash() {
 	let original = test_box();
 	let brep_data = shape_to_brep_bytes(&original);
 	for _ in 0..5 {
-		let _shape = cadrum::read_brep_bin(&mut brep_data.as_slice()).unwrap();
+		let _shape = cadrum::read_brep_binary(&mut brep_data.as_slice()).unwrap();
 	}
 }
 
@@ -153,7 +153,7 @@ fn test_t06_brep_roundtrip() {
 	let orig_mesh = original[0].mesh_with_tolerance(0.1).unwrap();
 
 	let brep_data = shape_to_brep_bytes(&original);
-	let restored = cadrum::read_brep_bin(&mut brep_data.as_slice()).unwrap();
+	let restored = cadrum::read_brep_binary(&mut brep_data.as_slice()).unwrap();
 	let rest_mesh = restored[0].mesh_with_tolerance(0.1).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
@@ -171,7 +171,7 @@ fn test_t07_stream_api_only() {
 	let shape = test_box();
 	let data = shape_to_brep_bytes(&shape);
 	assert!(!data.is_empty());
-	let _restored = cadrum::read_brep_bin(&mut data.as_slice()).unwrap();
+	let _restored = cadrum::read_brep_binary(&mut data.as_slice()).unwrap();
 }
 
 // ==================== T-08: Boolean returns BooleanShape, convertible to Shape ====================

@@ -14,7 +14,7 @@ use glam::{DVec2, DVec3};
 pub struct Solid {
 	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 	#[cfg(feature = "color")]
-	colormap: std::collections::HashMap<super::shape::TShapeId, crate::common::color::Color>,
+	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 }
 
 impl Solid {
@@ -25,7 +25,7 @@ impl Solid {
 	pub(crate) fn new(
 		inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 		#[cfg(feature = "color")]
-		colormap: std::collections::HashMap<super::shape::TShapeId, crate::common::color::Color>,
+		colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 	) -> Self {
 		debug_assert!(
 			ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner),
@@ -45,22 +45,22 @@ impl Solid {
 		&self.inner
 	}
 
-	/// Return the `TShapeId` (underlying `TopoDS_TShape*` address) of this solid.
-	pub fn tshape_id(&self) -> super::shape::TShapeId {
-		super::shape::TShapeId(ffi::shape_tshape_id(&self.inner))
+	/// Return the underlying `TopoDS_TShape*` address as a `u64`.
+	pub fn tshape_id(&self) -> u64 {
+		ffi::shape_tshape_id(&self.inner)
 	}
 
 	// ==================== Color accessors ====================
 
 	/// Read-only access to the per-face colormap.
 	#[cfg(feature = "color")]
-	pub fn colormap(&self) -> &std::collections::HashMap<super::shape::TShapeId, crate::common::color::Color> {
+	pub fn colormap(&self) -> &std::collections::HashMap<u64, crate::common::color::Color> {
 		&self.colormap
 	}
 
 	/// Mutable access to the per-face colormap.
 	#[cfg(feature = "color")]
-	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<super::shape::TShapeId, crate::common::color::Color> {
+	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<u64, crate::common::color::Color> {
 		&mut self.colormap
 	}
 
@@ -210,8 +210,8 @@ impl SolidTrait for Solid {
 			let mapping = ffi::clean_shape_mapping(&r);
 			let mut colormap = std::collections::HashMap::new();
 			for pair in mapping.chunks(2) {
-				let new_id = super::shape::TShapeId(pair[0]);
-				let old_id = super::shape::TShapeId(pair[1]);
+				let new_id = pair[0];
+				let old_id = pair[1];
 				if let Some(&color) = self.colormap.get(&old_id) {
 					colormap.entry(new_id).or_insert(color);
 				}
@@ -283,7 +283,7 @@ impl SolidTrait for Solid {
 		let colormap = {
 			let mut map = std::collections::HashMap::new();
 			for &fid in &face_ids {
-				let tshape_id = super::shape::TShapeId(fid);
+				let tshape_id = fid;
 				if let Some(&color) = self.colormap.get(&tshape_id) {
 					map.insert(fid, color);
 				}

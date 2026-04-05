@@ -8,7 +8,7 @@
 
 #![cfg(feature = "color")]
 
-use cadrum::{Color, SolidTrait, Solid, TShapeId};
+use cadrum::{Color, SolidTrait, Solid};
 use glam::DVec3;
 
 /// Assign a distinct color to every face of `shape` based on its outward normal.
@@ -26,7 +26,7 @@ fn color_box_faces(shape: &mut Vec<Solid>) -> usize {
 
     let mut count = 0;
     // Collect (id, normal) pairs first so we don't borrow shape while iterating.
-    let id_normal: Vec<(TShapeId, DVec3)> = shape
+    let id_normal: Vec<(u64, DVec3)> = shape
         .iter().flat_map(|s| s.face_iter())
         .map(|f| (f.tshape_id(), f.normal_at_center()))
         .collect();
@@ -48,13 +48,13 @@ fn colormap_len(shape: &[Solid]) -> usize {
     shape.iter().map(|s| s.colormap().len()).sum()
 }
 
-/// Helper: check if a TShapeId has a color in any solid's colormap.
-fn colormap_contains(shape: &[Solid], id: &TShapeId) -> bool {
+/// Helper: check if a u64 has a color in any solid's colormap.
+fn colormap_contains(shape: &[Solid], id: &u64) -> bool {
     shape.iter().any(|s| s.colormap().contains_key(id))
 }
 
-/// Helper: get color for a TShapeId from any solid's colormap.
-fn colormap_get(shape: &[Solid], id: &TShapeId) -> Option<Color> {
+/// Helper: get color for a u64 from any solid's colormap.
+fn colormap_get(shape: &[Solid], id: &u64) -> Option<Color> {
     shape.iter().find_map(|s| s.colormap().get(id).copied())
 }
 
