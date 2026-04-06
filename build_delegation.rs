@@ -19,30 +19,19 @@ enum DelegationKind {
 	/// FooTrait → impl crate::Foo { pub fn ... { <Self as FooTrait>::... } }
 	InherentImpl { concrete_type: String },
 	/// FooModule → pub mod foo { pub fn ... { <crate::Foo as FooModule>::... } }
-	ModBlock {
-		mod_name: String,
-		struct_path: String,
-	},
+	ModBlock { mod_name: String, struct_path: String },
 }
 
 fn delegation_kind(trait_name: &str) -> DelegationKind {
 	if trait_name.ends_with("Trait") {
 		let type_name = &trait_name[..trait_name.len() - 5];
-		DelegationKind::InherentImpl {
-			concrete_type: format!("crate::{}", type_name),
-		}
+		DelegationKind::InherentImpl { concrete_type: format!("crate::{}", type_name) }
 	} else if trait_name.ends_with("Module") {
 		let base = &trait_name[..trait_name.len() - 6];
 		let mod_name = base[..1].to_lowercase() + &base[1..];
-		DelegationKind::ModBlock {
-			mod_name,
-			struct_path: format!("crate::{}", base),
-		}
+		DelegationKind::ModBlock { mod_name, struct_path: format!("crate::{}", base) }
 	} else {
-		panic!(
-			"build_delegation: trait '{}' must end with 'Trait' or 'Module'.",
-			trait_name
-		);
+		panic!("build_delegation: trait '{}' must end with 'Trait' or 'Module'.", trait_name);
 	}
 }
 
@@ -80,24 +69,15 @@ pub fn build_delegation(traits_src: &str, out_dir: &Path) {
 					output.push_str(" {\n");
 					let args_str = method.args.join(", ");
 					if method.has_self {
-						output.push_str(&format!(
-							"        <Self as {}>::{}(self, {})\n",
-							trait_path, method.name, args_str
-						));
+						output.push_str(&format!("        <Self as {}>::{}(self, {})\n", trait_path, method.name, args_str));
 					} else {
-						output.push_str(&format!(
-							"        <Self as {}>::{}({})\n",
-							trait_path, method.name, args_str
-						));
+						output.push_str(&format!("        <Self as {}>::{}({})\n", trait_path, method.name, args_str));
 					}
 					output.push_str("    }\n");
 				}
 				output.push_str("}\n\n");
 			}
-			DelegationKind::ModBlock {
-				mod_name,
-				struct_path,
-			} => {
+			DelegationKind::ModBlock { mod_name, struct_path } => {
 				output.push_str(&format!("pub mod {} {{\n", mod_name));
 				output.push_str("    use super::*;\n");
 				for method in methods {
@@ -108,10 +88,7 @@ pub fn build_delegation(traits_src: &str, out_dir: &Path) {
 					output.push_str(&format!("    pub {}", sig));
 					output.push_str(" {\n");
 					let args_str = method.args.join(", ");
-					output.push_str(&format!(
-						"        <{} as {}>::{}({})\n",
-						struct_path, trait_path, method.name, args_str
-					));
+					output.push_str(&format!("        <{} as {}>::{}({})\n", struct_path, trait_path, method.name, args_str));
 					output.push_str("    }\n");
 				}
 				output.push_str("}\n\n");
@@ -264,11 +241,7 @@ fn parse_method(line: &str, cfg: Option<String>) -> Option<Method> {
 
 	let paren_open = rest.find('(')?;
 	let name_with_generics = rest[..paren_open].trim();
-	let name = if let Some(angle) = name_with_generics.find('<') {
-		name_with_generics[..angle].trim().to_string()
-	} else {
-		name_with_generics.to_string()
-	};
+	let name = if let Some(angle) = name_with_generics.find('<') { name_with_generics[..angle].trim().to_string() } else { name_with_generics.to_string() };
 
 	let paren_close = rest.rfind(')')?;
 	let args_str = &rest[paren_open + 1..paren_close];
@@ -296,13 +269,7 @@ fn parse_method(line: &str, cfg: Option<String>) -> Option<Method> {
 	// Reconstruct signature: "fn name(self/&self, args) -> RetType"
 	let signature = line[fn_idx..].to_string();
 
-	Some(Method {
-		cfg,
-		signature,
-		name,
-		args,
-		has_self,
-	})
+	Some(Method { cfg, signature, name, args, has_self })
 }
 
 /// Split arguments by ',' while respecting `<>` nesting.

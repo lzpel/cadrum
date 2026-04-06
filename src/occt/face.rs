@@ -92,22 +92,8 @@ impl Face {
 	/// # Errors
 	/// Returns [`Error::RevolveFailed`] if the operation fails (e.g. the face
 	/// crosses the rotation axis, causing self-intersection).
-	pub fn revolve(
-		&self,
-		axis_origin: DVec3,
-		axis_direction: DVec3,
-		angle: f64,
-	) -> Result<Solid, Error> {
-		let shape = ffi::face_revolve(
-			&self.inner,
-			axis_origin.x,
-			axis_origin.y,
-			axis_origin.z,
-			axis_direction.x,
-			axis_direction.y,
-			axis_direction.z,
-			angle,
-		);
+	pub fn revolve(&self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Solid, Error> {
+		let shape = ffi::face_revolve(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle);
 		if shape.is_null() {
 			return Err(Error::RevolveFailed);
 		}
@@ -131,26 +117,8 @@ impl Face {
 	/// - `align_to_spine`: if `true`, the profile is rotated to be perpendicular
 	///   to the spine tangent (pipe-sweep); if `false`, the profile keeps its
 	///   original orientation (preserves cross-section shape)
-	pub fn helix(
-		&self,
-		axis_origin: DVec3,
-		axis_direction: DVec3,
-		pitch: f64,
-		turns: f64,
-		align_to_spine: bool,
-	) -> Result<Solid, Error> {
-		let shape = ffi::face_helix(
-			&self.inner,
-			axis_origin.x,
-			axis_origin.y,
-			axis_origin.z,
-			axis_direction.x,
-			axis_direction.y,
-			axis_direction.z,
-			pitch,
-			turns,
-			align_to_spine,
-		);
+	pub fn helix(&self, axis_origin: DVec3, axis_direction: DVec3, pitch: f64, turns: f64, align_to_spine: bool) -> Result<Solid, Error> {
+		let shape = ffi::face_helix(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, pitch, turns, align_to_spine);
 		if shape.is_null() {
 			return Err(Error::HelixFailed);
 		}

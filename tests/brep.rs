@@ -32,26 +32,11 @@ fn read_brep_binary_with_trailing_garbage() {
 		Ok(solids) => {
 			assert!(!solids.is_empty(), "should read at least one solid");
 			let vol = solids[0].volume();
-			assert!(
-				(vol - 1.0).abs() < 1e-6,
-				"unit box volume should be ~1.0, got {}",
-				vol
-			);
-			println!(
-				"BINARY: OK — read {} solid(s), volume={:.6}, brep_len={}, total={}",
-				solids.len(),
-				vol,
-				brep_len,
-				brep_len + 1024
-			);
+			assert!((vol - 1.0).abs() < 1e-6, "unit box volume should be ~1.0, got {}", vol);
+			println!("BINARY: OK — read {} solid(s), volume={:.6}, brep_len={}, total={}", solids.len(), vol, brep_len, brep_len + 1024);
 		}
 		Err(e) => {
-			println!(
-				"BINARY: FAILED — {:?} (brep_len={}, total={})",
-				e,
-				brep_len,
-				brep_len + 1024
-			);
+			println!("BINARY: FAILED — {:?} (brep_len={}, total={})", e, brep_len, brep_len + 1024);
 			panic!("read_brep_binary failed with trailing garbage: {:?}", e);
 		}
 	}
@@ -78,26 +63,11 @@ fn read_brep_text_with_trailing_garbage() {
 		Ok(solids) => {
 			assert!(!solids.is_empty(), "should read at least one solid");
 			let vol = solids[0].volume();
-			assert!(
-				(vol - 1.0).abs() < 1e-6,
-				"unit box volume should be ~1.0, got {}",
-				vol
-			);
-			println!(
-				"TEXT: OK — read {} solid(s), volume={:.6}, brep_len={}, total={}",
-				solids.len(),
-				vol,
-				brep_len,
-				brep_len + 1024
-			);
+			assert!((vol - 1.0).abs() < 1e-6, "unit box volume should be ~1.0, got {}", vol);
+			println!("TEXT: OK — read {} solid(s), volume={:.6}, brep_len={}, total={}", solids.len(), vol, brep_len, brep_len + 1024);
 		}
 		Err(e) => {
-			println!(
-				"TEXT: FAILED — {:?} (brep_len={}, total={})",
-				e,
-				brep_len,
-				brep_len + 1024
-			);
+			println!("TEXT: FAILED — {:?} (brep_len={}, total={})", e, brep_len, brep_len + 1024);
 			panic!("read_brep_text failed with trailing garbage: {:?}", e);
 		}
 	}

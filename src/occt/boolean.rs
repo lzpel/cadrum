@@ -9,12 +9,7 @@ use crate::traits::BooleanTrait;
 // ==================== Color helpers ====================
 
 #[cfg(feature = "color")]
-fn merge_colormaps(
-	from_a: &[u64],
-	from_b: &[u64],
-	colormap_a: &std::collections::HashMap<u64, Color>,
-	colormap_b: &std::collections::HashMap<u64, Color>,
-) -> std::collections::HashMap<u64, Color> {
+fn merge_colormaps(from_a: &[u64], from_b: &[u64], colormap_a: &std::collections::HashMap<u64, Color>, colormap_b: &std::collections::HashMap<u64, Color>) -> std::collections::HashMap<u64, Color> {
 	let mut result = std::collections::HashMap::new();
 	for pair in from_a.chunks(2) {
 		if let Some(&color) = colormap_a.get(&pair[1]) {
@@ -39,10 +34,7 @@ pub struct Boolean {
 }
 
 impl BooleanTrait for Boolean {
-	fn union<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error> {
+	fn union<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error> {
 		let ca = Compound::new(a);
 		let cb = Compound::new(b);
 		let r = ffi::boolean_fuse(ca.inner(), cb.inner());
@@ -52,10 +44,7 @@ impl BooleanTrait for Boolean {
 		Self::build_boolean_result(r, ca, cb)
 	}
 
-	fn subtract<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error> {
+	fn subtract<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error> {
 		let ca = Compound::new(a);
 		let cb = Compound::new(b);
 		let r = ffi::boolean_cut(ca.inner(), cb.inner());
@@ -65,10 +54,7 @@ impl BooleanTrait for Boolean {
 		Self::build_boolean_result(r, ca, cb)
 	}
 
-	fn intersect<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error> {
+	fn intersect<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error> {
 		let ca = Compound::new(a);
 		let cb = Compound::new(b);
 		let r = ffi::boolean_common(ca.inner(), cb.inner());
@@ -96,11 +82,7 @@ impl BooleanTrait for Boolean {
 }
 
 impl Boolean {
-	fn build_boolean_result(
-		r: cxx::UniquePtr<ffi::BooleanShape>,
-		ca: Compound,
-		cb: Compound,
-	) -> Result<Boolean, Error> {
+	fn build_boolean_result(r: cxx::UniquePtr<ffi::BooleanShape>, ca: Compound, cb: Compound) -> Result<Boolean, Error> {
 		let from_a = ffi::boolean_shape_from_a(&r);
 		let from_b = ffi::boolean_shape_from_b(&r);
 		let inner = ffi::boolean_shape_shape(&r);
@@ -114,11 +96,7 @@ impl Boolean {
 			colormap,
 		);
 
-		Ok(Boolean {
-			solids: compound.decompose(),
-			from_a,
-			from_b,
-		})
+		Ok(Boolean { solids: compound.decompose(), from_a, from_b })
 	}
 }
 

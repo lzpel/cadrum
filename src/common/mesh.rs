@@ -63,12 +63,7 @@ impl Mesh {
 		let silhouette_edges = detect_silhouette_edges(self, dir);
 
 		// 4. Combine topological edges + silhouette edges
-		let all_edges: Vec<&Vec<DVec3>> = self
-			.edges
-			.polylines
-			.iter()
-			.chain(silhouette_edges.iter())
-			.collect();
+		let all_edges: Vec<&Vec<DVec3>> = self.edges.polylines.iter().chain(silhouette_edges.iter()).collect();
 
 		// 5. Classify edges as visible/hidden
 		let (visible_lines, hidden_lines) = classify_edges(&all_edges, &occlusion_tris, dir, u, v);
@@ -151,12 +146,7 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Ve
 		let fill = {
 			let face_id = mesh.face_ids[ti];
 			if let Some(c) = mesh.colormap.get(&face_id) {
-				format!(
-					"rgb({},{},{})",
-					(c.r * 255.0) as u8,
-					(c.g * 255.0) as u8,
-					(c.b * 255.0) as u8
-				)
+				format!("rgb({},{},{})", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)
 			} else {
 				"#ddd".to_string()
 			}
@@ -164,18 +154,10 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Ve
 		#[cfg(not(feature = "color"))]
 		let fill = "#ddd".to_string();
 
-		triangles.push(SvgTriangle {
-			pts: [p0, p1, p2],
-			depth,
-			fill,
-		});
+		triangles.push(SvgTriangle { pts: [p0, p1, p2], depth, fill });
 	}
 
-	triangles.sort_by(|a, b| {
-		a.depth
-			.partial_cmp(&b.depth)
-			.unwrap_or(std::cmp::Ordering::Equal)
-	});
+	triangles.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
 	triangles
 }
 
@@ -198,14 +180,7 @@ fn build_occlusion_data(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<Occl
 			continue;
 		}
 
-		tris.push(OcclusionTri {
-			pts: [
-				(v0.dot(u), v0.dot(v)),
-				(v1.dot(u), v1.dot(v)),
-				(v2.dot(u), v2.dot(v)),
-			],
-			depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)],
-		});
+		tris.push(OcclusionTri { pts: [(v0.dot(u), v0.dot(v)), (v1.dot(u), v1.dot(v)), (v2.dot(u), v2.dot(v))], depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)] });
 	}
 	tris
 }
@@ -260,13 +235,7 @@ fn tri_facing(mesh: &Mesh, ti: usize, dir: DVec3) -> bool {
 /// Classify edge segments as visible or hidden based on triangle occlusion.
 ///
 /// Returns (visible_polylines, hidden_polylines) as 2D projected coordinates.
-fn classify_edges(
-	edges: &[&Vec<DVec3>],
-	occlusion_tris: &[OcclusionTri],
-	dir: DVec3,
-	u: DVec3,
-	v: DVec3,
-) -> (Vec<Vec<(f64, f64)>>, Vec<Vec<(f64, f64)>>) {
+fn classify_edges(edges: &[&Vec<DVec3>], occlusion_tris: &[OcclusionTri], dir: DVec3, u: DVec3, v: DVec3) -> (Vec<Vec<(f64, f64)>>, Vec<Vec<(f64, f64)>>) {
 	let mut visible_polylines = Vec::new();
 	let mut hidden_polylines = Vec::new();
 
@@ -394,11 +363,7 @@ fn polylines_to_svg(svg: &mut String, polylines: &[Vec<(f64, f64)>], stroke: &st
 	}
 }
 
-fn build_svg(
-	triangles: &[SvgTriangle],
-	visible_lines: &[Vec<(f64, f64)>],
-	hidden_lines: &[Vec<(f64, f64)>],
-) -> String {
+fn build_svg(triangles: &[SvgTriangle], visible_lines: &[Vec<(f64, f64)>], hidden_lines: &[Vec<(f64, f64)>]) -> String {
 	// Compute bounding box from triangles and edges
 	let mut min_x = f64::INFINITY;
 	let mut min_y = f64::INFINITY;
@@ -479,12 +444,7 @@ fn build_svg(
 	}
 
 	polylines_to_svg(&mut svg, visible_lines, "black", "");
-	polylines_to_svg(
-		&mut svg,
-		hidden_lines,
-		"#999",
-		&format!("{dash_len:.4},{dash_len:.4}"),
-	);
+	polylines_to_svg(&mut svg, hidden_lines, "#999", &format!("{dash_len:.4},{dash_len:.4}"));
 
 	svg.push_str("</svg>\n");
 	svg

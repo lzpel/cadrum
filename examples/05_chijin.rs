@@ -6,14 +6,14 @@
 //!
 //! Output: chijin.step (AP214 STEP, colored), chijin.svg
 
-use cadrum::{Boolean, Color, Face, Solid};
+use cadrum::{Boolean, Face, Color, Solid};
 use glam::DVec3;
 use std::f64::consts::PI;
 
 pub fn chijin() -> Solid {
 	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
-	let cylinder: Solid = Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0)
-		.color_paint(Some(Color::from_str("#999").unwrap()));
+	let cylinder: Solid =
+		Solid::cylinder(DVec3::new(0.0, 0.0, -4.0), 15.0, DVec3::Z, 8.0).color_paint(Some(Color::from_str("#999").unwrap()));
 
 	// ── Rim: cross-section polygon in the x=0 plane, revolved 360° around Z
 	// to form a ring with outer radius 17 at z=3..5.
@@ -34,10 +34,9 @@ pub fn chijin() -> Solid {
 	let sheets = [sheet.mirrored(DVec3::ZERO, DVec3::Z), sheet];
 
 	// ── Lacing blocks: 2x8x1, rotated 60° around Z, placed at y=15 ──────
-	let block_proto =
-		Solid::box_from_corners(DVec3::new(-1.0, -4.0, -0.5), DVec3::new(1.0, 4.0, 0.5))
-			.rotate(DVec3::ZERO, DVec3::Z, 60.0_f64.to_radians())
-			.translate(DVec3::new(0.0, 15.0, 0.0));
+	let block_proto = Solid::box_from_corners(DVec3::new(-1.0, -4.0, -0.5), DVec3::new(1.0, 4.0, 0.5))
+		.rotate(DVec3::ZERO, DVec3::Z, 60.0_f64.to_radians())
+		.translate(DVec3::new(0.0, 15.0, 0.0));
 
 	// ── Lacing holes: thin cylinders through each block ──────────────────
 	let hole_proto = Solid::cylinder(
@@ -84,11 +83,7 @@ pub fn chijin() -> Solid {
 }
 
 fn main() {
-	let example_name = std::path::Path::new(file!())
-		.file_stem()
-		.unwrap()
-		.to_str()
-		.unwrap();
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let result = vec![chijin()];
 	// ── Write STEP ───────────────────────────────────────────────────────
 	let step_path = format!("{example_name}.step");
@@ -99,7 +94,6 @@ fn main() {
 	// ── Write SVG (isometric view from (1,1,1)) ─────────────────────────
 	let svg_path = format!("{}.svg", example_name);
 	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
-	cadrum::io::write_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5, &mut f)
-		.expect("failed to write SVG");
+	cadrum::io::write_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5, &mut f).expect("failed to write SVG");
 	println!("wrote {}", &svg_path);
 }

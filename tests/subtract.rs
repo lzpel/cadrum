@@ -3,27 +3,11 @@ use glam::DVec3;
 use std::time::{Duration, Instant};
 
 fn make_toruses(offset: DVec3) -> Vec<Solid> {
-	(0..10)
-		.flat_map(|i| {
-			(0..10).map(move |j| {
-				Solid::torus(
-					DVec3::new(i as f64 * 30.0, j as f64 * 30.0, 0.0) + offset,
-					DVec3::Z,
-					5.0,
-					1.0,
-				)
-			})
-		})
-		.collect()
+	(0..10).flat_map(|i| (0..10).map(move |j| Solid::torus(DVec3::new(i as f64 * 30.0, j as f64 * 30.0, 0.0) + offset, DVec3::Z, 5.0, 1.0))).collect()
 }
 
 fn bboxes_overlap([amin, amax]: [DVec3; 2], [bmin, bmax]: [DVec3; 2]) -> bool {
-	amin.x <= bmax.x
-		&& amax.x >= bmin.x
-		&& amin.y <= bmax.y
-		&& amax.y >= bmin.y
-		&& amin.z <= bmax.z
-		&& amax.z >= bmin.z
+	amin.x <= bmax.x && amax.x >= bmin.x && amin.y <= bmax.y && amax.y >= bmin.y && amin.z <= bmax.z && amax.z >= bmin.z
 }
 
 /// A グループから B グループ（offset 位置）を pairwise subtract する。
@@ -43,11 +27,7 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 
 		for sa in &a {
 			let bb_a = sa.bounding_box();
-			let tools = b
-				.iter()
-				.zip(&bboxes_b)
-				.filter(|(sb, &bb_b)| bboxes_overlap(bb_a, bb_b))
-				.map(|(sb, _)| sb);
+			let tools = b.iter().zip(&bboxes_b).filter(|(sb, &bb_b)| bboxes_overlap(bb_a, bb_b)).map(|(sb, _)| sb);
 			if tools.clone().count() == 0 {
 				skipped += 1;
 				results.push(sa.clone());
@@ -60,10 +40,7 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 	};
 
 	let elapsed = t0.elapsed();
-	println!(
-		"  optimized={optimized}: {elapsed:?}  skipped={skipped}  results={}",
-		results.len()
-	);
+	println!("  optimized={optimized}: {elapsed:?}  skipped={skipped}  results={}", results.len());
 	(elapsed, results)
 }
 
@@ -73,14 +50,8 @@ fn test_subtract_bbox_speedup() {
 	println!("[non-intersecting offset=(15,15,0)]");
 	let (no_bbox, no_bbox_solids) = run_subtract(DVec3::new(15.0, 15.0, 0.0), false);
 	let (bbox, bbox_solids) = run_subtract(DVec3::new(15.0, 15.0, 0.0), true);
-	println!(
-		"no_bbox_solids.volume(): {}",
-		no_bbox_solids.iter().map(|s| s.volume()).sum::<f64>()
-	);
-	println!(
-		"bbox_solids.volume(): {}",
-		bbox_solids.iter().map(|s| s.volume()).sum::<f64>()
-	);
+	println!("no_bbox_solids.volume(): {}", no_bbox_solids.iter().map(|s| s.volume()).sum::<f64>());
+	println!("bbox_solids.volume(): {}", bbox_solids.iter().map(|s| s.volume()).sum::<f64>());
 	let speedup = no_bbox.as_secs_f64() / bbox.as_secs_f64();
 	println!("  -> speedup: {speedup:.1}x\n");
 
@@ -89,14 +60,8 @@ fn test_subtract_bbox_speedup() {
 	println!("[partially-intersecting offset=(3,3,0)]");
 	let (no_bbox2, no_bbox2_solids) = run_subtract(DVec3::new(3.0, 3.0, 0.0), false);
 	let (bbox2, bbox2_solids) = run_subtract(DVec3::new(3.0, 3.0, 0.0), true);
-	println!(
-		"no_bbox2.volume(): {}",
-		no_bbox2_solids.iter().map(|s| s.volume()).sum::<f64>()
-	);
-	println!(
-		"bbox2.volume(): {}",
-		bbox2_solids.iter().map(|s| s.volume()).sum::<f64>()
-	);
+	println!("no_bbox2.volume(): {}", no_bbox2_solids.iter().map(|s| s.volume()).sum::<f64>());
+	println!("bbox2.volume(): {}", bbox2_solids.iter().map(|s| s.volume()).sum::<f64>());
 	let speedup2 = no_bbox2.as_secs_f64() / bbox2.as_secs_f64();
 	println!("  -> speedup: {speedup2:.1}x\n");
 }

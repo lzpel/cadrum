@@ -66,11 +66,7 @@ pub struct ApproximationSegmentIterator {
 
 impl ApproximationSegmentIterator {
 	pub(crate) fn new(approx: ffi::ApproxPoints) -> Self {
-		ApproximationSegmentIterator {
-			coords: approx.coords,
-			count: approx.count as usize,
-			index: 0,
-		}
+		ApproximationSegmentIterator { coords: approx.coords, count: approx.count as usize, index: 0 }
 	}
 }
 

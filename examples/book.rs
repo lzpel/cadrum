@@ -12,16 +12,8 @@ fn collect_entries(examples_dir: &PathBuf) -> Vec<Entry> {
 		.filter_map(|e| e.ok())
 		.filter_map(|e| {
 			let name = e.file_name().into_string().ok()?;
-			if name.len() >= 3
-				&& name.ends_with(".rs")
-				&& name.chars().nth(0)?.is_ascii_digit()
-				&& name.chars().nth(1)?.is_ascii_digit()
-				&& name.chars().nth(2)? == '_'
-			{
-				Some(Entry {
-					name,
-					path: e.path(),
-				})
+			if name.len() >= 3 && name.ends_with(".rs") && name.chars().nth(0)?.is_ascii_digit() && name.chars().nth(1)?.is_ascii_digit() && name.chars().nth(2)? == '_' {
+				Some(Entry { name, path: e.path() })
 			} else {
 				None
 			}
@@ -53,11 +45,7 @@ fn collect_assets(stem: &str) -> Vec<String> {
 	files
 		.into_iter()
 		.map(|name| {
-			let ext = std::path::Path::new(&name)
-				.extension()
-				.unwrap()
-				.to_str()
-				.unwrap();
+			let ext = std::path::Path::new(&name).extension().unwrap().to_str().unwrap();
 			match ext {
 				"svg" | "png" => format!("- {name}\n![img]({name})"),
 				_ => format!("- [{name}]({name})"),
@@ -85,16 +73,9 @@ pub fn main() {
 
 		let source_code = fs::read_to_string(&entry.path).unwrap();
 		let assets = collect_assets(stem).join("\n\n");
-		let assets_section = if assets.is_empty() {
-			String::new()
-		} else {
-			format!("\n\n{}", assets)
-		};
+		let assets_section = if assets.is_empty() { String::new() } else { format!("\n\n{}", assets) };
 
-		let md_content = format!(
-			"# {}\n\n```rust\n{}\n```{}",
-			display_title, source_code, assets_section
-		);
+		let md_content = format!("# {}\n\n```rust\n{}\n```{}", display_title, source_code, assets_section);
 		fs::write(out.join(format!("{}.md", stem)), md_content).unwrap();
 	}
 

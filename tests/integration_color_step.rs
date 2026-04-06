@@ -36,24 +36,12 @@ fn write_colored(shape: &[Solid], path: &str) {
 #[test]
 fn read_colored_step_populates_colormap() {
 	let shape = read_colored_box();
-	assert!(
-		colormap_len(&shape) >= 6,
-		"expected at least 6 colored faces, got {}",
-		colormap_len(&shape)
-	);
+	assert!(colormap_len(&shape) >= 6, "expected at least 6 colored faces, got {}", colormap_len(&shape));
 	// Every entry in the colormap should correspond to an actual face.
-	let face_ids: std::collections::HashSet<u64> = shape
-		.iter()
-		.flat_map(|s| s.face_iter())
-		.map(|f| f.tshape_id())
-		.collect();
+	let face_ids: std::collections::HashSet<u64> = shape.iter().flat_map(|s| s.face_iter()).map(|f| f.tshape_id()).collect();
 	for solid in &shape {
 		for id in solid.colormap().keys() {
-			assert!(
-				face_ids.contains(id),
-				"colormap key {:?} does not match any face in the shape",
-				id
-			);
+			assert!(face_ids.contains(id), "colormap key {:?} does not match any face in the shape", id);
 		}
 	}
 }
@@ -69,11 +57,7 @@ fn write_then_read_preserves_colors() {
 	let data = fs::read(path).unwrap();
 	let reloaded = cadrum::io::read_step(&mut data.as_slice()).expect("re-read should succeed");
 
-	assert!(
-		colormap_len(&reloaded) >= 6,
-		"re-read shape should have at least 6 colored faces, got {}",
-		colormap_len(&reloaded)
-	);
+	assert!(colormap_len(&reloaded) >= 6, "re-read shape should have at least 6 colored faces, got {}", colormap_len(&reloaded));
 }
 
 /// Cut the colored box with a half-space (z > 0) and write the result.
@@ -89,14 +73,8 @@ fn intersect_colored_step_preserves_colors() {
 	let result = cadrum::Boolean::intersect(&cube, &half).expect("intersect should succeed");
 
 	// At least one face should have kept its color.
-	assert!(
-		colormap_len(result.solids()) >= 1,
-		"at least one face should keep its color after intersect, got 0"
-	);
-	assert!(
-		colormap_len(result.solids()) < original_colors + 1,
-		"intersect should not invent new colors"
-	);
+	assert!(colormap_len(result.solids()) >= 1, "at least one face should keep its color after intersect, got 0");
+	assert!(colormap_len(result.solids()) < original_colors + 1, "intersect should not invent new colors");
 
 	write_colored(result.solids(), "out/colored_box_intersect.step");
 }
@@ -107,17 +85,9 @@ fn translate_colored_step_preserves_colors() {
 	let shape = read_colored_box();
 	let original_len = colormap_len(&shape);
 
-	let moved: Vec<Solid> = shape
-		.into_iter()
-		.map(|s| s.translate(DVec3::new(100.0, 0.0, 0.0)))
-		.collect();
+	let moved: Vec<Solid> = shape.into_iter().map(|s| s.translate(DVec3::new(100.0, 0.0, 0.0))).collect();
 
-	assert_eq!(
-		colormap_len(&moved),
-		original_len,
-		"translate should preserve all {} face colors",
-		original_len
-	);
+	assert_eq!(colormap_len(&moved), original_len, "translate should preserve all {} face colors", original_len);
 	write_colored(&moved, "out/colored_box_translated.step");
 }
 
@@ -127,16 +97,8 @@ fn clean_colored_step_preserves_colors() {
 	let shape = read_colored_box();
 	let original_len = colormap_len(&shape);
 
-	let cleaned: Vec<Solid> = shape
-		.iter()
-		.map(|s| s.clean().expect("clean should succeed"))
-		.collect();
+	let cleaned: Vec<Solid> = shape.iter().map(|s| s.clean().expect("clean should succeed")).collect();
 
-	assert_eq!(
-		colormap_len(&cleaned),
-		original_len,
-		"clean should preserve all {} face colors",
-		original_len
-	);
+	assert_eq!(colormap_len(&cleaned), original_len, "clean should preserve all {} face colors", original_len);
 	write_colored(&cleaned, "out/colored_box_cleaned.step");
 }

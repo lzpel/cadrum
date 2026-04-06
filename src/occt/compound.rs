@@ -31,10 +31,7 @@ impl Compound {
 	}
 
 	/// Create a compound from a raw `TopoDS_Shape` (e.g. from I/O or boolean ops).
-	pub fn from_raw(
-		inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
-		#[cfg(feature = "color")] colormap: std::collections::HashMap<u64, Color>,
-	) -> Self {
+	pub fn from_raw(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, Color>) -> Self {
 		Compound {
 			inner,
 			#[cfg(feature = "color")]

@@ -21,10 +21,7 @@ enum Primitive {
 	/// Cone: base at origin, axis along +Z, bottom radius r1, top radius r2, height h.
 	Cone { r1: f64, r2: f64, height: f64 },
 	/// Torus: center at origin, axis along +Z, major radius R, minor radius r.
-	Torus {
-		major_radius: f64,
-		minor_radius: f64,
-	},
+	Torus { major_radius: f64, minor_radius: f64 },
 	/// Null / empty solid.
 	Null,
 }
@@ -44,10 +41,7 @@ pub struct Solid {
 
 impl Solid {
 	fn new(primitive: Primitive, transform: DAffine3) -> Self {
-		Solid {
-			primitive,
-			transform,
-		}
+		Solid { primitive, transform }
 	}
 
 	/// Returns `true` if this is a null/empty solid.
@@ -70,10 +64,7 @@ impl Solid {
 			Primitive::Sphere { radius } => 4.0 / 3.0 * PI * radius.powi(3),
 			Primitive::Cylinder { radius, height } => PI * radius.powi(2) * height,
 			Primitive::Cone { r1, r2, height } => PI * height / 3.0 * (r1 * r1 + r1 * r2 + r2 * r2),
-			Primitive::Torus {
-				major_radius,
-				minor_radius,
-			} => 2.0 * PI * PI * major_radius * minor_radius.powi(2),
+			Primitive::Torus { major_radius, minor_radius } => 2.0 * PI * PI * major_radius * minor_radius.powi(2),
 			Primitive::Null => 0.0,
 		}
 	}
@@ -81,16 +72,7 @@ impl Solid {
 	/// Get the 8 corners of the local-space AABB, then transform them.
 	fn transformed_aabb(&self) -> [DVec3; 2] {
 		let (lmin, lmax) = self.local_aabb();
-		let corners = [
-			DVec3::new(lmin.x, lmin.y, lmin.z),
-			DVec3::new(lmax.x, lmin.y, lmin.z),
-			DVec3::new(lmin.x, lmax.y, lmin.z),
-			DVec3::new(lmax.x, lmax.y, lmin.z),
-			DVec3::new(lmin.x, lmin.y, lmax.z),
-			DVec3::new(lmax.x, lmin.y, lmax.z),
-			DVec3::new(lmin.x, lmax.y, lmax.z),
-			DVec3::new(lmax.x, lmax.y, lmax.z),
-		];
+		let corners = [DVec3::new(lmin.x, lmin.y, lmin.z), DVec3::new(lmax.x, lmin.y, lmin.z), DVec3::new(lmin.x, lmax.y, lmin.z), DVec3::new(lmax.x, lmax.y, lmin.z), DVec3::new(lmin.x, lmin.y, lmax.z), DVec3::new(lmax.x, lmin.y, lmax.z), DVec3::new(lmin.x, lmax.y, lmax.z), DVec3::new(lmax.x, lmax.y, lmax.z)];
 		let mut wmin = DVec3::splat(f64::INFINITY);
 		let mut wmax = DVec3::splat(f64::NEG_INFINITY);
 		for c in &corners {
@@ -117,15 +99,9 @@ impl Solid {
 				let r = r1.max(*r2);
 				(DVec3::new(-r, -r, 0.0), DVec3::new(r, r, *height))
 			}
-			Primitive::Torus {
-				major_radius,
-				minor_radius,
-			} => {
+			Primitive::Torus { major_radius, minor_radius } => {
 				let outer = major_radius + minor_radius;
-				(
-					DVec3::new(-outer, -outer, -*minor_radius),
-					DVec3::new(outer, outer, *minor_radius),
-				)
+				(DVec3::new(-outer, -outer, -*minor_radius), DVec3::new(outer, outer, *minor_radius))
 			}
 			Primitive::Null => (DVec3::ZERO, DVec3::ZERO),
 		}
@@ -135,11 +111,7 @@ impl Solid {
 	fn axis_transform(origin: DVec3, dir: DVec3) -> DAffine3 {
 		let z = dir.normalize();
 		// Pick a perpendicular vector
-		let x = if z.x.abs() < 0.9 {
-			DVec3::X.cross(z).normalize()
-		} else {
-			DVec3::Y.cross(z).normalize()
-		};
+		let x = if z.x.abs() < 0.9 { DVec3::X.cross(z).normalize() } else { DVec3::Y.cross(z).normalize() };
 		let y = z.cross(x);
 		DAffine3::from_mat3_translation(DMat3::from_cols(x, y, z), origin)
 	}
@@ -160,37 +132,19 @@ impl SolidTrait for Solid {
 	}
 
 	fn sphere(center: DVec3, radius: f64) -> Self {
-		Solid::new(
-			Primitive::Sphere { radius },
-			DAffine3::from_translation(center),
-		)
+		Solid::new(Primitive::Sphere { radius }, DAffine3::from_translation(center))
 	}
 
 	fn cylinder(p: DVec3, r: f64, dir: DVec3, h: f64) -> Self {
-		Solid::new(
-			Primitive::Cylinder {
-				radius: r,
-				height: h,
-			},
-			Self::axis_transform(p, dir),
-		)
+		Solid::new(Primitive::Cylinder { radius: r, height: h }, Self::axis_transform(p, dir))
 	}
 
 	fn cone(p: DVec3, dir: DVec3, r1: f64, r2: f64, h: f64) -> Self {
-		Solid::new(
-			Primitive::Cone { r1, r2, height: h },
-			Self::axis_transform(p, dir),
-		)
+		Solid::new(Primitive::Cone { r1, r2, height: h }, Self::axis_transform(p, dir))
 	}
 
 	fn torus(p: DVec3, dir: DVec3, r1: f64, r2: f64) -> Self {
-		Solid::new(
-			Primitive::Torus {
-				major_radius: r1,
-				minor_radius: r2,
-			},
-			Self::axis_transform(p, dir),
-		)
+		Solid::new(Primitive::Torus { major_radius: r1, minor_radius: r2 }, Self::axis_transform(p, dir))
 	}
 
 	// --- Transforms ---
@@ -204,8 +158,7 @@ impl SolidTrait for Solid {
 		let axis = axis_direction.normalize();
 		let rotation = DMat3::from_axis_angle(axis, angle);
 		// Rotate around axis_origin: T(origin) * R * T(-origin)
-		let rot_affine =
-			DAffine3::from_mat3_translation(rotation, axis_origin - rotation * axis_origin);
+		let rot_affine = DAffine3::from_mat3_translation(rotation, axis_origin - rotation * axis_origin);
 		self.transform = rot_affine * self.transform;
 		self
 	}
@@ -213,22 +166,15 @@ impl SolidTrait for Solid {
 	fn scaled(&self, center: DVec3, factor: f64) -> Self {
 		let scale = DMat3::from_diagonal(DVec3::splat(factor));
 		let scale_affine = DAffine3::from_mat3_translation(scale, center - scale * center);
-		Solid {
-			primitive: self.primitive.clone(),
-			transform: scale_affine * self.transform,
-		}
+		Solid { primitive: self.primitive.clone(), transform: scale_affine * self.transform }
 	}
 
 	fn mirrored(&self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
 		let n = plane_normal.normalize();
 		// Householder reflection: I - 2*n*nT
 		let mirror = DMat3::IDENTITY - 2.0 * DMat3::from_cols(n * n.x, n * n.y, n * n.z);
-		let mirror_affine =
-			DAffine3::from_mat3_translation(mirror, plane_origin - mirror * plane_origin);
-		Solid {
-			primitive: self.primitive.clone(),
-			transform: mirror_affine * self.transform,
-		}
+		let mirror_affine = DAffine3::from_mat3_translation(mirror, plane_origin - mirror * plane_origin);
+		Solid { primitive: self.primitive.clone(), transform: mirror_affine * self.transform }
 	}
 
 	// --- Queries ---
@@ -247,14 +193,7 @@ impl SolidTrait for Solid {
 		let local = inv.transform_point3(point);
 
 		match &self.primitive {
-			Primitive::Box { min, max } => {
-				local.x >= min.x
-					&& local.x <= max.x
-					&& local.y >= min.y
-					&& local.y <= max.y
-					&& local.z >= min.z
-					&& local.z <= max.z
-			}
+			Primitive::Box { min, max } => local.x >= min.x && local.x <= max.x && local.y >= min.y && local.y <= max.y && local.z >= min.z && local.z <= max.z,
 			Primitive::Sphere { radius } => local.length() <= *radius,
 			Primitive::Cylinder { radius, height } => {
 				let r2d = DVec2::new(local.x, local.y).length();
@@ -268,10 +207,7 @@ impl SolidTrait for Solid {
 				let r_at_z = r1 * (1.0 - t) + r2 * t;
 				DVec2::new(local.x, local.y).length() <= r_at_z
 			}
-			Primitive::Torus {
-				major_radius,
-				minor_radius,
-			} => {
+			Primitive::Torus { major_radius, minor_radius } => {
 				let r2d = DVec2::new(local.x, local.y).length();
 				let d = DVec2::new(r2d - major_radius, local.z).length();
 				d <= *minor_radius
@@ -287,11 +223,11 @@ impl SolidTrait for Solid {
 			Primitive::Box { min, max } => {
 				let center = (*min + *max) * 0.5;
 				let face_defs: [(DVec3, DVec3); 6] = [
-					(DVec3::Z, DVec3::new(center.x, center.y, max.z)), // +Z top
+					(DVec3::Z, DVec3::new(center.x, center.y, max.z)),     // +Z top
 					(DVec3::NEG_Z, DVec3::new(center.x, center.y, min.z)), // -Z bottom
-					(DVec3::X, DVec3::new(max.x, center.y, center.z)), // +X right
+					(DVec3::X, DVec3::new(max.x, center.y, center.z)),     // +X right
 					(DVec3::NEG_X, DVec3::new(min.x, center.y, center.z)), // -X left
-					(DVec3::Y, DVec3::new(center.x, max.y, center.z)), // +Y back
+					(DVec3::Y, DVec3::new(center.x, max.y, center.z)),     // +Y back
 					(DVec3::NEG_Y, DVec3::new(center.x, min.y, center.z)), // -Y front
 				];
 				face_defs
@@ -299,10 +235,7 @@ impl SolidTrait for Solid {
 					.map(|&(normal, center)| {
 						let world_center = self.transform.transform_point3(center);
 						let world_normal = (self.transform.matrix3 * normal).normalize();
-						Face {
-							normal: world_normal,
-							center: world_center,
-						}
+						Face { normal: world_normal, center: world_center }
 					})
 					.collect()
 			}
@@ -339,15 +272,7 @@ impl SolidTrait for Solid {
 					(2, 6),
 					(3, 7), // verticals
 				];
-				edge_pairs
-					.iter()
-					.map(|&(a, b)| Edge {
-						points: vec![
-							self.transform.transform_point3(c[a]),
-							self.transform.transform_point3(c[b]),
-						],
-					})
-					.collect()
+				edge_pairs.iter().map(|&(a, b)| Edge { points: vec![self.transform.transform_point3(c[a]), self.transform.transform_point3(c[b])] }).collect()
 			}
 			_ => {
 				todo!("edges() not yet implemented for non-Box primitives in pure backend")
@@ -376,10 +301,7 @@ impl SolidTrait for Solid {
 			Primitive::Sphere { radius } => Ok(self.mesh_sphere(*radius, tol)),
 			Primitive::Cylinder { radius, height } => Ok(self.mesh_cylinder(*radius, *height, tol)),
 			Primitive::Cone { r1, r2, height } => Ok(self.mesh_cone(*r1, *r2, *height, tol)),
-			Primitive::Torus {
-				major_radius,
-				minor_radius,
-			} => Ok(self.mesh_torus(*major_radius, *minor_radius, tol)),
+			Primitive::Torus { major_radius, minor_radius } => Ok(self.mesh_torus(*major_radius, *minor_radius, tol)),
 			Primitive::Null => Err(Error::TriangulationFailed),
 		}
 	}
@@ -412,16 +334,7 @@ impl Solid {
 	}
 
 	fn mesh_box(&self, min: DVec3, max: DVec3) -> Mesh {
-		let c = [
-			DVec3::new(min.x, min.y, min.z),
-			DVec3::new(max.x, min.y, min.z),
-			DVec3::new(max.x, max.y, min.z),
-			DVec3::new(min.x, max.y, min.z),
-			DVec3::new(min.x, min.y, max.z),
-			DVec3::new(max.x, min.y, max.z),
-			DVec3::new(max.x, max.y, max.z),
-			DVec3::new(min.x, max.y, max.z),
-		];
+		let c = [DVec3::new(min.x, min.y, min.z), DVec3::new(max.x, min.y, min.z), DVec3::new(max.x, max.y, min.z), DVec3::new(min.x, max.y, min.z), DVec3::new(min.x, min.y, max.z), DVec3::new(max.x, min.y, max.z), DVec3::new(max.x, max.y, max.z), DVec3::new(min.x, max.y, max.z)];
 
 		// 6 faces, each with 4 vertices (shared normals per face) = 24 vertices
 		// face order: +Z, -Z, +X, -X, +Y, -Y
@@ -446,12 +359,7 @@ impl Solid {
 				vertices.push(c[ci]);
 				normals.push(*normal);
 			}
-			uvs.extend_from_slice(&[
-				DVec2::new(0.0, 0.0),
-				DVec2::new(1.0, 0.0),
-				DVec2::new(1.0, 1.0),
-				DVec2::new(0.0, 1.0),
-			]);
+			uvs.extend_from_slice(&[DVec2::new(0.0, 0.0), DVec2::new(1.0, 0.0), DVec2::new(1.0, 1.0), DVec2::new(0.0, 1.0)]);
 			indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 			face_ids.push(fi as u64);
 			face_ids.push(fi as u64);
@@ -570,11 +478,7 @@ impl Solid {
 			uvs.push(DVec2::new(0.5 + 0.5 * c, 0.5 + 0.5 * s));
 		}
 		for i in 0..n_seg {
-			indices.extend_from_slice(&[
-				cap_base,
-				cap_base + 1 + ((i + 1) % (n_seg + 1)),
-				cap_base + 1 + i,
-			]);
+			indices.extend_from_slice(&[cap_base, cap_base + 1 + ((i + 1) % (n_seg + 1)), cap_base + 1 + i]);
 			face_ids.push(1);
 		}
 
@@ -591,11 +495,7 @@ impl Solid {
 			uvs.push(DVec2::new(0.5 + 0.5 * c, 0.5 + 0.5 * s));
 		}
 		for i in 0..n_seg {
-			indices.extend_from_slice(&[
-				cap_base,
-				cap_base + 1 + i,
-				cap_base + 1 + ((i + 1) % (n_seg + 1)),
-			]);
+			indices.extend_from_slice(&[cap_base, cap_base + 1 + i, cap_base + 1 + ((i + 1) % (n_seg + 1))]);
 			face_ids.push(2);
 		}
 
@@ -664,11 +564,7 @@ impl Solid {
 				uvs.push(DVec2::new(0.5 + 0.5 * c, 0.5 + 0.5 * s));
 			}
 			for i in 0..n_seg {
-				indices.extend_from_slice(&[
-					cap_base,
-					cap_base + 1 + ((i + 1) % (n_seg + 1)),
-					cap_base + 1 + i,
-				]);
+				indices.extend_from_slice(&[cap_base, cap_base + 1 + ((i + 1) % (n_seg + 1)), cap_base + 1 + i]);
 				face_ids.push(1);
 			}
 		}
@@ -687,11 +583,7 @@ impl Solid {
 				uvs.push(DVec2::new(0.5 + 0.5 * c, 0.5 + 0.5 * s));
 			}
 			for i in 0..n_seg {
-				indices.extend_from_slice(&[
-					cap_base,
-					cap_base + 1 + i,
-					cap_base + 1 + ((i + 1) % (n_seg + 1)),
-				]);
+				indices.extend_from_slice(&[cap_base, cap_base + 1 + i, cap_base + 1 + ((i + 1) % (n_seg + 1))]);
 				face_ids.push(2);
 			}
 		}
@@ -736,10 +628,7 @@ impl Solid {
 
 				vertices.push(DVec3::new(x, y, z));
 				normals.push(DVec3::new(nx, ny, nz).normalize());
-				uvs.push(DVec2::new(
-					i as f64 / n_major as f64,
-					j as f64 / n_minor as f64,
-				));
+				uvs.push(DVec2::new(i as f64 / n_major as f64, j as f64 / n_minor as f64));
 			}
 		}
 

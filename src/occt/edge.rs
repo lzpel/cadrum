@@ -40,11 +40,7 @@ impl Edge {
 	///
 	/// Use this when you need finer control than the single-tolerance
 	/// [`approximation_segments`](Self::approximation_segments) API allows.
-	pub fn approximation_segments_ex(
-		&self,
-		angular: f64,
-		chord: f64,
-	) -> ApproximationSegmentIterator {
+	pub fn approximation_segments_ex(&self, angular: f64, chord: f64) -> ApproximationSegmentIterator {
 		let approx = ffi::edge_approximation_segments_ex(&self.inner, angular, chord);
 		ApproximationSegmentIterator::new(approx)
 	}

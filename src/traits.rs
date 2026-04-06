@@ -70,18 +70,9 @@ pub trait SolidTrait: Sized + Clone {
 
 /// Backend-independent boolean operation trait.
 pub trait BooleanTrait: Sized {
-	fn union<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error>;
-	fn subtract<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error>;
-	fn intersect<'a>(
-		a: impl IntoIterator<Item = &'a Solid>,
-		b: impl IntoIterator<Item = &'a Solid>,
-	) -> Result<Self, Error>;
+	fn union<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
+	fn subtract<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
+	fn intersect<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
 	fn is_tool_face(&self, face: &Face) -> bool;
 	fn is_shape_face(&self, face: &Face) -> bool;
 	fn solids(&self) -> &[Solid];
@@ -94,24 +85,9 @@ pub trait IoModule {
 	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Solid>, Error>;
 	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Solid>, Error>;
 	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Solid>, Error>;
-	fn write_step<'a, W: std::io::Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error>;
-	fn write_brep_binary<'a, W: std::io::Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error>;
-	fn write_brep_text<'a, W: std::io::Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error>;
-	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f64)
-		-> Result<Mesh, Error>;
-	fn write_svg<'a, W: std::io::Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		direction: DVec3,
-		tolerance: f64,
-		writer: &mut W,
-	) -> Result<(), Error>;
+	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
+	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
+	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error>;
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f64) -> Result<Mesh, Error>;
+	fn write_svg<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Solid>, direction: DVec3, tolerance: f64, writer: &mut W) -> Result<(), Error>;
 }

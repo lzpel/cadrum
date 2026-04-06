@@ -37,35 +37,12 @@ fn bin_write_then_read_preserves_colors() {
 	let original = read_colored_box();
 	let reloaded = roundtrip_bin(&original);
 
-	assert_eq!(
-		colormap_len(&reloaded),
-		colormap_len(&original),
-		"color count should be preserved (binary)"
-	);
+	assert_eq!(colormap_len(&reloaded), colormap_len(&original), "color count should be preserved (binary)");
 
-	let original_colors: Vec<Color> = original
-		.iter()
-		.flat_map(|s| s.face_iter())
-		.filter_map(|f| {
-			original
-				.iter()
-				.find_map(|s| s.colormap().get(&f.tshape_id()).copied())
-		})
-		.collect();
-	let reloaded_colors: Vec<Color> = reloaded
-		.iter()
-		.flat_map(|s| s.face_iter())
-		.filter_map(|f| {
-			reloaded
-				.iter()
-				.find_map(|s| s.colormap().get(&f.tshape_id()).copied())
-		})
-		.collect();
+	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.face_iter()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.tshape_id()).copied())).collect();
+	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.face_iter()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.tshape_id()).copied())).collect();
 
-	assert_eq!(
-		original_colors, reloaded_colors,
-		"RGB values should be identical (binary)"
-	);
+	assert_eq!(original_colors, reloaded_colors, "RGB values should be identical (binary)");
 }
 
 /// A shape with an empty colormap round-trips without error (binary).
@@ -83,17 +60,10 @@ fn bin_roundtrip_after_boolean() {
 	let half: Vec<Solid> = vec![Solid::half_space(DVec3::ZERO, DVec3::NEG_Z)];
 	let cut = cadrum::Boolean::intersect(&cube, &half).expect("intersect should succeed");
 
-	assert!(
-		colormap_len(cut.solids()) >= 1,
-		"at least one color should survive intersect"
-	);
+	assert!(colormap_len(cut.solids()) >= 1, "at least one color should survive intersect");
 
 	let reloaded = roundtrip_bin(cut.solids());
-	assert_eq!(
-		colormap_len(&reloaded),
-		colormap_len(cut.solids()),
-		"color count should survive round-trip (binary)"
-	);
+	assert_eq!(colormap_len(&reloaded), colormap_len(cut.solids()), "color count should survive round-trip (binary)");
 }
 
 // ── text tests ───────────────────────────────────────────────────────────────
@@ -104,35 +74,12 @@ fn text_write_then_read_preserves_colors() {
 	let original = read_colored_box();
 	let reloaded = roundtrip_text(&original);
 
-	assert_eq!(
-		colormap_len(&reloaded),
-		colormap_len(&original),
-		"color count should be preserved (text)"
-	);
+	assert_eq!(colormap_len(&reloaded), colormap_len(&original), "color count should be preserved (text)");
 
-	let original_colors: Vec<Color> = original
-		.iter()
-		.flat_map(|s| s.face_iter())
-		.filter_map(|f| {
-			original
-				.iter()
-				.find_map(|s| s.colormap().get(&f.tshape_id()).copied())
-		})
-		.collect();
-	let reloaded_colors: Vec<Color> = reloaded
-		.iter()
-		.flat_map(|s| s.face_iter())
-		.filter_map(|f| {
-			reloaded
-				.iter()
-				.find_map(|s| s.colormap().get(&f.tshape_id()).copied())
-		})
-		.collect();
+	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.face_iter()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.tshape_id()).copied())).collect();
+	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.face_iter()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.tshape_id()).copied())).collect();
 
-	assert_eq!(
-		original_colors, reloaded_colors,
-		"RGB values should be identical (text)"
-	);
+	assert_eq!(original_colors, reloaded_colors, "RGB values should be identical (text)");
 }
 
 /// A shape with an empty colormap round-trips without error (text).

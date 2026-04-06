@@ -80,11 +80,7 @@ impl Color {
 			}
 			_ => return Err(super::error::Error::InvalidColor(s.to_string())),
 		};
-		Ok(Color {
-			r: r as f32 / 255.0,
-			g: g as f32 / 255.0,
-			b: b as f32 / 255.0,
-		})
+		Ok(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0 })
 	}
 
 	/// Create an `Color` from HSV values (all in `0.0..=1.0`).

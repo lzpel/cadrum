@@ -50,59 +50,17 @@ mod ffi_bridge {
 
 		// ==================== Shape Constructors ====================
 
-		fn make_half_space(
-			ox: f64,
-			oy: f64,
-			oz: f64,
-			nx: f64,
-			ny: f64,
-			nz: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn make_box(
-			x1: f64,
-			y1: f64,
-			z1: f64,
-			x2: f64,
-			y2: f64,
-			z2: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn make_cylinder(
-			px: f64,
-			py: f64,
-			pz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			radius: f64,
-			height: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> UniquePtr<TopoDS_Shape>;
 
 		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn make_cone(
-			px: f64,
-			py: f64,
-			pz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			r1: f64,
-			r2: f64,
-			height: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn make_torus(
-			px: f64,
-			py: f64,
-			pz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			r1: f64,
-			r2: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> UniquePtr<TopoDS_Shape>;
 
 		fn make_empty() -> UniquePtr<TopoDS_Shape>;
 
@@ -138,14 +96,7 @@ mod ffi_bridge {
 		fn colored_step_colors_b(d: &ColoredStepData) -> Vec<f32>;
 
 		#[cfg(feature = "color")]
-		fn write_step_color_stream(
-			shape: &TopoDS_Shape,
-			ids: &[u64],
-			cr: &[f32],
-			cg: &[f32],
-			cb: &[f32],
-			writer: &mut RustWriter,
-		) -> bool;
+		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], cr: &[f32], cg: &[f32], cb: &[f32], writer: &mut RustWriter) -> bool;
 
 		// ==================== Shape Methods ====================
 
@@ -160,56 +111,20 @@ mod ffi_bridge {
 		#[cfg(feature = "color")]
 		fn clean_shape_mapping(r: &CleanShape) -> Vec<u64>;
 
-		fn translate_shape(
-			shape: &TopoDS_Shape,
-			tx: f64,
-			ty: f64,
-			tz: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn translate_shape(shape: &TopoDS_Shape, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn rotate_shape(
-			shape: &TopoDS_Shape,
-			ox: f64,
-			oy: f64,
-			oz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			angle: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn rotate_shape(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn scale_shape(
-			shape: &TopoDS_Shape,
-			cx: f64,
-			cy: f64,
-			cz: f64,
-			factor: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn scale_shape(shape: &TopoDS_Shape, cx: f64, cy: f64, cz: f64, factor: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn mirror_shape(
-			shape: &TopoDS_Shape,
-			ox: f64,
-			oy: f64,
-			oz: f64,
-			nx: f64,
-			ny: f64,
-			nz: f64,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn mirror_shape(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Shape>;
 
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_is_solid(shape: &TopoDS_Shape) -> bool;
 		fn shape_shell_count(shape: &TopoDS_Shape) -> u32;
 		fn shape_volume(shape: &TopoDS_Shape) -> f64;
 		fn shape_contains_point(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> bool;
-		fn shape_bounding_box(
-			shape: &TopoDS_Shape,
-			xmin: &mut f64,
-			ymin: &mut f64,
-			zmin: &mut f64,
-			xmax: &mut f64,
-			ymax: &mut f64,
-			zmax: &mut f64,
-		);
+		fn shape_bounding_box(shape: &TopoDS_Shape, xmin: &mut f64, ymin: &mut f64, zmin: &mut f64, xmax: &mut f64, ymax: &mut f64, zmax: &mut f64);
 
 		// ==================== Compound Decompose/Compose ====================
 
@@ -239,37 +154,13 @@ mod ffi_bridge {
 		fn face_center_of_mass(face: &TopoDS_Face, cx: &mut f64, cy: &mut f64, cz: &mut f64);
 		fn face_normal_at_center(face: &TopoDS_Face, nx: &mut f64, ny: &mut f64, nz: &mut f64);
 		fn face_extrude(face: &TopoDS_Face, dx: f64, dy: f64, dz: f64) -> UniquePtr<TopoDS_Shape>;
-		fn face_revolve(
-			face: &TopoDS_Face,
-			ox: f64,
-			oy: f64,
-			oz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			angle: f64,
-		) -> UniquePtr<TopoDS_Shape>;
-		fn face_helix(
-			face: &TopoDS_Face,
-			ox: f64,
-			oy: f64,
-			oz: f64,
-			dx: f64,
-			dy: f64,
-			dz: f64,
-			pitch: f64,
-			turns: f64,
-			align_to_spine: bool,
-		) -> UniquePtr<TopoDS_Shape>;
+		fn face_revolve(face: &TopoDS_Face, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
+		fn face_helix(face: &TopoDS_Face, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, pitch: f64, turns: f64, align_to_spine: bool) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Edge Methods ====================
 
 		fn edge_approximation_segments(edge: &TopoDS_Edge, tolerance: f64) -> ApproxPoints;
-		fn edge_approximation_segments_ex(
-			edge: &TopoDS_Edge,
-			angular: f64,
-			chord: f64,
-		) -> ApproxPoints;
+		fn edge_approximation_segments_ex(edge: &TopoDS_Edge, angular: f64, chord: f64) -> ApproxPoints;
 
 	}
 }

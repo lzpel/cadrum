@@ -23,8 +23,7 @@ fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, us
 	if buf.len() < 8 || &buf[buf.len() - 4..] != COLOR_TRAILER_MAGIC {
 		return (std::collections::HashMap::new(), buf.len());
 	}
-	let entry_count =
-		u32::from_le_bytes(buf[buf.len() - 8..buf.len() - 4].try_into().unwrap()) as usize;
+	let entry_count = u32::from_le_bytes(buf[buf.len() - 8..buf.len() - 4].try_into().unwrap()) as usize;
 	let trailer_size = 8 + entry_count * 16;
 	if buf.len() < trailer_size {
 		return (std::collections::HashMap::new(), buf.len());
@@ -44,17 +43,9 @@ fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, us
 }
 
 #[cfg(feature = "color")]
-fn resolve_color_trailer(
-	inner: &ffi::TopoDS_Shape,
-	index_colormap: &std::collections::HashMap<u64, Color>,
-) -> std::collections::HashMap<u64, Color> {
-	let index_to_id: Vec<u64> = FaceIterator::new(ffi::explore_faces(inner))
-		.map(|f| f.tshape_id())
-		.collect();
-	index_colormap
-		.iter()
-		.filter_map(|(&idx, &color)| index_to_id.get(idx as usize).map(|&id| (id, color)))
-		.collect()
+fn resolve_color_trailer(inner: &ffi::TopoDS_Shape, index_colormap: &std::collections::HashMap<u64, Color>) -> std::collections::HashMap<u64, Color> {
+	let index_to_id: Vec<u64> = FaceIterator::new(ffi::explore_faces(inner)).map(|f| f.tshape_id()).collect();
+	index_colormap.iter().filter_map(|(&idx, &color)| index_to_id.get(idx as usize).map(|&id| (id, color))).collect()
 }
 
 #[cfg(feature = "color")]
@@ -63,37 +54,18 @@ fn write_color_trailer<W: Write>(compound: &Compound, writer: &mut W) -> Result<
 	if colormap.is_empty() {
 		return Ok(());
 	}
-	let id_to_index: std::collections::HashMap<u64, u32> =
-		FaceIterator::new(ffi::explore_faces(compound.inner()))
-			.enumerate()
-			.map(|(i, f)| (f.tshape_id(), i as u32))
-			.collect();
-	let mut entries: Vec<(u32, f32, f32, f32)> = colormap
-		.iter()
-		.filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b)))
-		.collect();
+	let id_to_index: std::collections::HashMap<u64, u32> = FaceIterator::new(ffi::explore_faces(compound.inner())).enumerate().map(|(i, f)| (f.tshape_id(), i as u32)).collect();
+	let mut entries: Vec<(u32, f32, f32, f32)> = colormap.iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
 	entries.sort_by_key(|e| e.0);
 
 	for (idx, r, g, b) in &entries {
-		writer
-			.write_all(&idx.to_le_bytes())
-			.map_err(|_| Error::BrepWriteFailed)?;
-		writer
-			.write_all(&r.to_le_bytes())
-			.map_err(|_| Error::BrepWriteFailed)?;
-		writer
-			.write_all(&g.to_le_bytes())
-			.map_err(|_| Error::BrepWriteFailed)?;
-		writer
-			.write_all(&b.to_le_bytes())
-			.map_err(|_| Error::BrepWriteFailed)?;
+		writer.write_all(&idx.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+		writer.write_all(&r.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+		writer.write_all(&g.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+		writer.write_all(&b.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
 	}
-	writer
-		.write_all(&(entries.len() as u32).to_le_bytes())
-		.map_err(|_| Error::BrepWriteFailed)?;
-	writer
-		.write_all(COLOR_TRAILER_MAGIC)
-		.map_err(|_| Error::BrepWriteFailed)?;
+	writer.write_all(&(entries.len() as u32).to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+	writer.write_all(COLOR_TRAILER_MAGIC).map_err(|_| Error::BrepWriteFailed)?;
 	Ok(())
 }
 
@@ -118,14 +90,7 @@ impl IoModule for Io {
 			let b = ffi::colored_step_colors_b(&d);
 			let mut colormap = std::collections::HashMap::new();
 			for i in 0..ids.len() {
-				colormap.insert(
-					ids[i],
-					Color {
-						r: r[i],
-						g: g[i],
-						b: b[i],
-					},
-				);
+				colormap.insert(ids[i], Color { r: r[i], g: g[i], b: b[i] });
 			}
 			Ok(Compound::from_raw(inner, colormap).decompose())
 		}
@@ -148,9 +113,7 @@ impl IoModule for Io {
 		#[cfg(feature = "color")]
 		{
 			let mut buf = Vec::new();
-			reader
-				.read_to_end(&mut buf)
-				.map_err(|_| Error::BrepReadFailed)?;
+			reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
 			let (index_colormap, brep_len) = strip_color_trailer(&buf);
 			let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
 			let mut rust_reader = RustReader::from_ref(&mut cursor);
@@ -180,9 +143,7 @@ impl IoModule for Io {
 		#[cfg(feature = "color")]
 		{
 			let mut buf = Vec::new();
-			reader
-				.read_to_end(&mut buf)
-				.map_err(|_| Error::BrepReadFailed)?;
+			reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
 			let (index_colormap, brep_len) = strip_color_trailer(&buf);
 			let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
 			let mut rust_reader = RustReader::from_ref(&mut cursor);
@@ -210,10 +171,7 @@ impl IoModule for Io {
 	///
 	/// With the `color` feature enabled, face colors are automatically embedded
 	/// in the STEP file (XDE / AP214 styled items).
-	fn write_step<'a, W: Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error> {
+	fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
 		let compound = Compound::new(solids);
 		#[cfg(feature = "color")]
 		{
@@ -244,10 +202,7 @@ impl IoModule for Io {
 	///
 	/// With the `color` feature enabled, a color trailer is appended after the
 	/// BRep data so that face colors survive the round-trip.
-	fn write_brep_binary<'a, W: Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error> {
+	fn write_brep_binary<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
 		let compound = Compound::new(solids);
 		let mut rust_writer = RustWriter::from_ref(writer);
 		if !ffi::write_brep_bin_stream(compound.inner(), &mut rust_writer) {
@@ -262,10 +217,7 @@ impl IoModule for Io {
 	///
 	/// With the `color` feature enabled, a color trailer is appended after the
 	/// BRep data so that face colors survive the round-trip.
-	fn write_brep_text<'a, W: Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		writer: &mut W,
-	) -> Result<(), Error> {
+	fn write_brep_text<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
 		let compound = Compound::new(solids);
 		let mut rust_writer = RustWriter::from_ref(writer);
 		if !ffi::write_brep_text_stream(compound.inner(), &mut rust_writer) {
@@ -276,10 +228,7 @@ impl IoModule for Io {
 		Ok(())
 	}
 
-	fn mesh<'a>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		tolerance: f64,
-	) -> Result<crate::common::mesh::Mesh, Error> {
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f64) -> Result<crate::common::mesh::Mesh, Error> {
 		use crate::common::mesh::{EdgeData, Mesh};
 		use glam::{DVec2, DVec3};
 
@@ -289,27 +238,9 @@ impl IoModule for Io {
 			return Err(Error::TriangulationFailed);
 		}
 		let vertex_count = data.vertices.len() / 3;
-		let vertices: Vec<DVec3> = (0..vertex_count)
-			.map(|i| {
-				DVec3::new(
-					data.vertices[i * 3],
-					data.vertices[i * 3 + 1],
-					data.vertices[i * 3 + 2],
-				)
-			})
-			.collect();
-		let uvs: Vec<DVec2> = (0..vertex_count)
-			.map(|i| DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1]))
-			.collect();
-		let normals: Vec<DVec3> = (0..vertex_count)
-			.map(|i| {
-				DVec3::new(
-					data.normals[i * 3],
-					data.normals[i * 3 + 1],
-					data.normals[i * 3 + 2],
-				)
-			})
-			.collect();
+		let vertices: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2])).collect();
+		let uvs: Vec<DVec2> = (0..vertex_count).map(|i| DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1])).collect();
+		let normals: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.normals[i * 3], data.normals[i * 3 + 1], data.normals[i * 3 + 2])).collect();
 		let indices: Vec<usize> = data.indices.iter().map(|&i| i as usize).collect();
 		let face_ids = data.face_tshape_ids;
 
@@ -336,15 +267,8 @@ impl IoModule for Io {
 		})
 	}
 
-	fn write_svg<'a, W: Write>(
-		solids: impl IntoIterator<Item = &'a Solid>,
-		direction: glam::DVec3,
-		tolerance: f64,
-		writer: &mut W,
-	) -> Result<(), Error> {
+	fn write_svg<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, direction: glam::DVec3, tolerance: f64, writer: &mut W) -> Result<(), Error> {
 		let combined = Self::mesh(solids, tolerance)?;
-		writer
-			.write_all(combined.to_svg(direction).as_bytes())
-			.map_err(|_| Error::SvgExportFailed)
+		writer.write_all(combined.to_svg(direction).as_bytes()).map_err(|_| Error::SvgExportFailed)
 	}
 } // impl ioTrait for io
