@@ -12,8 +12,11 @@
     - 設計方針などを記録
 - examples/00_*.rs
     - このリポジトリのサンプルコードです。実行するとカレントディレクトリに00_*.svg/stepが生成されます。この命名規則に従う出力ファイルはbook.rsによりドキュメント内からリンクされます。
-- examples/book.rs
-    - mdbook形式でドキュメントを生成します
+- examples/markdown.rs
+    - 番号付きexample (NN_*.rs) を実行し、mdbook用markdownとREADMEのExamples節を生成する
+    - 使い方: `cargo run --example markdown -- out/markdown/SUMMARY.md ./README.md`
+    - 第1引数: SUMMARY.mdパス → mdbook用markdown一式を出力
+    - 第2引数: README.mdパス → ## Examples節を最新のソースコードと生成物で更新、SVGをfigure/examples/に配置
 - src/traits.rs
     - traits.rsはバックエンド共通のトレイト定義（pub(crate)、ユーザーに非公開）
     - トレイト名は`<Type>Struct`の命名規則に従う（SolidStruct→Solid, FaceStruct→Face等）
