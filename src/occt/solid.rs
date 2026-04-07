@@ -3,7 +3,7 @@ use super::face::Face;
 use super::ffi;
 use super::iterators::{EdgeIterator, FaceIterator};
 use crate::common::error::Error;
-use crate::traits::SolidTrait;
+use crate::traits::SolidStruct;
 use glam::DVec3;
 
 #[cfg(feature = "color")]
@@ -87,7 +87,7 @@ impl Solid {
 	}
 }
 
-impl SolidTrait for Solid {
+impl SolidStruct for Solid {
 	// ==================== Constructors ====================
 
 	fn cube(x: f64, y: f64, z: f64) -> Solid {

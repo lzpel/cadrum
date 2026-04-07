@@ -5,10 +5,10 @@
 //! 生成コードは lib.rs 末尾で include! される。
 //!
 //! How it works / 仕組み:
-//!   - "Trait" suffix (e.g. SolidTrait → crate::Solid): generates `impl crate::Solid { pub fn ... }`
+//!   - "Struct" suffix (e.g. SolidStruct → crate::Solid): generates `impl crate::Solid { pub fn ... }`
 //!   - "Module" suffix (e.g. IoModule → mod io): generates `pub mod io { pub fn ... }`
 //!
-//!   "Trait" → 具象型のinherent implを生成。"Module" → pub modを生成。
+//!   "Struct" → 具象型のinherent implを生成。"Module" → pub modを生成。
 //!
 //! Called from / 呼び出し元:
 //!   build.rs: build_delegation(include_str!("src/traits.rs"), &out_dir)
@@ -16,22 +16,22 @@
 use std::path::Path;
 
 enum DelegationKind {
-	/// FooTrait → impl crate::Foo { pub fn ... { <Self as FooTrait>::... } }
+	/// FooStruct → impl crate::Foo { pub fn ... { <Self as FooStruct>::... } }
 	InherentImpl { concrete_type: String },
 	/// FooModule → pub mod foo { pub fn ... { <crate::Foo as FooModule>::... } }
 	ModBlock { mod_name: String, struct_path: String },
 }
 
 fn delegation_kind(trait_name: &str) -> DelegationKind {
-	if trait_name.ends_with("Trait") {
-		let type_name = &trait_name[..trait_name.len() - 5];
+	if trait_name.ends_with("Struct") {
+		let type_name = &trait_name[..trait_name.len() - 6];
 		DelegationKind::InherentImpl { concrete_type: format!("crate::{}", type_name) }
 	} else if trait_name.ends_with("Module") {
 		let base = &trait_name[..trait_name.len() - 6];
 		let mod_name = base[..1].to_lowercase() + &base[1..];
 		DelegationKind::ModBlock { mod_name, struct_path: format!("crate::{}", base) }
 	} else {
-		panic!("build_delegation: trait '{}' must end with 'Trait' or 'Module'.", trait_name);
+		panic!("build_delegation: trait '{}' must end with 'Struct' or 'Module'.", trait_name);
 	}
 }
 
@@ -234,8 +234,8 @@ fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
 }
 
 fn extract_trait_name(line: &str) -> Option<String> {
-	// "pub trait SolidTrait: Sized + Clone {"
-	// "pub(crate) trait SolidTrait: Sized + Clone {"
+	// "pub trait SolidStruct: Sized + Clone {"
+	// "pub(crate) trait SolidStruct: Sized + Clone {"
 	let idx = line.find("trait ")?;
 	let rest = &line[idx + 6..];
 	let end = rest.find(|c: char| c == ':' || c == '{' || c == ' ')?;

@@ -16,7 +16,7 @@
     - mdbook形式でドキュメントを生成します
 - src/traits.rs
     - traits.rsはバックエンド共通のトレイト定義（pub(crate)、ユーザーに非公開）
-    - トレイト名は`<Type>Trait`の命名規則に従う（SolidTrait→Solid, FaceTrait→Face等）
+    - トレイト名は`<Type>Struct`の命名規則に従う（SolidStruct→Solid, FaceStruct→Face等）
     - fnシグネチャは1行、#[cfg]は直前1行のみ認識、ライフタイム/where句は非対応
 - build_delegation.rs
     - traits.rsをパースして$OUT_DIR/generated_delegation.rsを生成する

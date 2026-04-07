@@ -4,7 +4,7 @@ use super::solid::Solid;
 #[cfg(feature = "color")]
 use crate::common::color::Color;
 use crate::common::error::Error;
-use crate::traits::BooleanTrait;
+use crate::traits::BooleanStruct;
 
 // ==================== Color helpers ====================
 
@@ -33,7 +33,7 @@ pub struct Boolean {
 	from_b: Vec<u64>,
 }
 
-impl BooleanTrait for Boolean {
+impl BooleanStruct for Boolean {
 	fn union<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error> {
 		let ca = Compound::new(a);
 		let cb = Compound::new(b);

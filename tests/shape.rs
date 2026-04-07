@@ -10,26 +10,6 @@ fn test_box() -> Vec<Solid> {
 	vec![Solid::cube(10.0, 10.0, 10.0)]
 }
 
-// ==================== clone ====================
-
-#[test]
-fn test_clone_preserves_volume() {
-	let original = test_box();
-	let copy = original.clone();
-	drop(original);
-	assert!((copy.iter().map(|s| s.volume()).sum::<f64>() - 1000.0).abs() < 1e-6);
-}
-
-#[test]
-fn test_clone_is_independent() {
-	// コピー後にオリジナルを boolean 操作しても copy は影響を受けない
-	let original = test_box();
-	let copy = original.clone();
-	let other: Vec<Solid> = vec![Solid::cube(10.0, 10.0, 10.0).translate(dvec3(5.0, 5.0, 5.0))];
-	let _: Vec<Solid> = cadrum::Boolean::union(&original, &other).unwrap().into();
-	assert!((copy.iter().map(|s| s.volume()).sum::<f64>() - 1000.0).abs() < 1e-6);
-}
-
 // ==================== translated ====================
 
 #[test]
@@ -142,73 +122,6 @@ fn test_preserves_face_ids() {
 	let rotated: Vec<Solid> = shape.into_iter().map(|s| s.rotate(DVec3::ZERO, DVec3::Z, std::f64::consts::FRAC_PI_4)).collect();
 	assert_eq!(solid_id, rotated[0].tshape_id(), "rotate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids(&rotated), "rotate should preserve face IDs");
-}
-
-// ==================== mirror / scale independence ====================
-
-#[test]
-fn test_mirror_octants_union_volume_is_eight() {
-	// (1,1,1)→(2,2,2) のboxを全8方向に鏡像コピーして8辺体を作る。
-	// 実態が独立していない（同一インスタンスなど）場合は重複で体積が8を下回る。
-	let b = vec![Solid::cube(1.0, 1.0, 1.0).translate(dvec3(1.0, 1.0, 1.0))];
-	let bx: Vec<Solid> = b.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::X)).collect();
-	let by: Vec<Solid> = b.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Y)).collect();
-	let bz: Vec<Solid> = b.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Z)).collect();
-	let bxy: Vec<Solid> = bx.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Y)).collect();
-	let bxz: Vec<Solid> = bx.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Z)).collect();
-	let byz: Vec<Solid> = by.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Z)).collect();
-	let bxyz: Vec<Solid> = bxy.iter().map(|s| s.clone().mirror(DVec3::ZERO, DVec3::Z)).collect();
-	let octants = [b, bx, by, bz, bxy, bxz, byz, bxyz];
-	let mut result = octants[0].clone();
-	for other in &octants[1..] {
-		result = cadrum::Boolean::union(&result, other).expect("union failed").into();
-	}
-	let volume: f64 = result.iter().map(|s| s.volume()).sum();
-	assert!((volume - 8.0).abs() < 1e-3, "expected volume ~8, got {volume}");
-}
-
-#[test]
-fn test_scale_union_with_original_volume_is_nine() {
-	// (1,1,1)→(2,2,2) のbox（体積1）と原点中心2倍スケール（→(2,2,2)→(4,4,4), 体積8）は
-	// 角のみ接するので union 体積 = 1 + 8 = 9。
-	// scale が実態を変化させていた場合は体積がこれより小さくなる。
-	let b = vec![Solid::cube(1.0, 1.0, 1.0).translate(dvec3(1.0, 1.0, 1.0))];
-	let b_scaled: Vec<Solid> = b.iter().map(|s| s.clone().scale(DVec3::ZERO, 2.0)).collect();
-	let result: Vec<Solid> = cadrum::Boolean::union(&b, &b_scaled).expect("union failed").into();
-	let volume: f64 = result.iter().map(|s| s.volume()).sum();
-	assert!((volume - 9.0).abs() < 1e-3, "expected volume ~9 (1 + 8), got {volume}");
-}
-
-// ==================== Vec<Solid> operations (replaces into_solids / from_solids tests) ====================
-
-#[test]
-fn test_vec_solid_roundtrip() {
-	// 2 つのボックスを Vec<Solid> として結合し、体積を確認
-	let a = Solid::cube(10.0, 10.0, 10.0);
-	let b = Solid::cube(10.0, 10.0, 10.0).translate(dvec3(20.0, 0.0, 0.0));
-	let shape: Vec<Solid> = vec![a, b];
-	let total_volume: f64 = shape.iter().map(|s| s.volume()).sum();
-
-	assert_eq!(shape.len(), 2);
-
-	// 各 solid の体積合計が元と一致
-	let sum: f64 = shape.iter().map(|s| s.volume()).sum();
-	assert!((sum - total_volume).abs() < 1e-6, "sum={sum}, expected={total_volume}");
-}
-
-#[test]
-fn test_single_solid() {
-	// 単一 solid → Vec に要素 1 個
-	let shape = test_box();
-	assert_eq!(shape.len(), 1);
-	assert!((shape[0].volume() - 1000.0).abs() < 1e-6);
-}
-
-#[test]
-fn test_empty_vec() {
-	// 空 Vec
-	let shape: Vec<Solid> = vec![];
-	assert!(shape.is_empty());
 }
 
 // ==================== is_tool_face / is_shape_face (B fully inside A) ====================

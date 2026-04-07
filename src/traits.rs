@@ -2,11 +2,11 @@
 //! バックエンド共通のトレイト定義（pub(crate) — ユーザーに非公開）。
 //!
 //! build_delegation.rs parses this file and auto-generates pub inherent methods
-//! on concrete types (Solid, Face, Edge). Trait names must follow the `<Type>Trait`
-//! convention (e.g. SolidTrait → Solid).
+//! on concrete types (Solid, Face, Edge). Trait names must follow the `<Type>Struct`
+//! convention (e.g. SolidStruct → Solid).
 //!
 //! build_delegation.rs がこのファイルをパースして、具象型 (Solid, Face, Edge) の
-//! pub inherent methods を自動生成する。トレイト名は `<Type>Trait` 規則に従うこと。
+//! pub inherent methods を自動生成する。トレイト名は `<Type>Struct` 規則に従うこと。
 //!
 //! Constraints (build_delegation.rs uses a line-based text parser):
 //! パーサー制約（行ベースのテキスト処理）:
@@ -22,20 +22,20 @@ use crate::{Edge, Face, Solid};
 use glam::DVec3;
 
 /// Backend-independent face trait.
-pub trait FaceTrait {
+pub trait FaceStruct {
 	fn normal_at_center(&self) -> DVec3;
 	fn center_of_mass(&self) -> DVec3;
 }
 
 /// Backend-independent edge trait.
-pub trait EdgeTrait {
+pub trait EdgeStruct {
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
 }
 
 /// Backend-independent solid trait.
 ///
 /// Defines the common interface that both OCCT and Pure Rust backends must implement.
-pub trait SolidTrait: Sized + Clone {
+pub trait SolidStruct: Sized + Clone {
 	// --- Constructors ---
 	fn cube(x: f64, y: f64, z: f64) -> Self;
 	fn sphere(radius: f64) -> Self;
@@ -72,7 +72,7 @@ pub trait SolidTrait: Sized + Clone {
 }
 
 /// Backend-independent boolean operation trait.
-pub trait BooleanTrait: Sized {
+pub trait BooleanStruct: Sized {
 	fn union<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
 	fn subtract<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
 	fn intersect<'a>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'a Solid>) -> Result<Self, Error>;
