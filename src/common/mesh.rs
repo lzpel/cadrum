@@ -13,7 +13,7 @@ pub struct EdgeData {
 	pub polylines: Vec<Vec<DVec3>>,
 }
 
-/// A triangle mesh produced by [`SolidTrait::mesh_with_tolerance`](crate::traits::SolidTrait::mesh_with_tolerance).
+/// A triangle mesh produced by meshing a solid shape.
 ///
 /// All vectors have the same length: one entry per vertex.
 /// `indices` contains triangle indices (groups of 3).

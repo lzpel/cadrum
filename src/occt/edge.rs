@@ -1,6 +1,6 @@
 use super::ffi;
 use super::iterators::ApproximationSegmentIterator;
-use crate::traits::EdgeTrait;
+use crate::traits::EdgeStruct;
 use glam::DVec3;
 
 /// An edge topology shape.
@@ -8,7 +8,7 @@ pub struct Edge {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Edge>,
 }
 
-impl EdgeTrait for Edge {
+impl EdgeStruct for Edge {
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
 		let approx = ffi::edge_approximation_segments(&self.inner, tolerance);
 		ApproximationSegmentIterator::new(approx).collect()

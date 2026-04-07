@@ -1,10 +1,10 @@
 use super::ffi;
 use super::solid::Solid;
 use crate::common::error::Error;
-use crate::traits::FaceTrait;
+use crate::traits::FaceStruct;
 use glam::DVec3;
 
-impl FaceTrait for Face {
+impl FaceStruct for Face {
 	fn normal_at_center(&self) -> DVec3 {
 		let mut nx = 0.0;
 		let mut ny = 0.0;
