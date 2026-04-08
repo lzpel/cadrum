@@ -366,7 +366,7 @@ fn main() -> Result<(), cadrum::Error> {
 ```
 
 <p align="center">
-  <img src="figure/examples/05_chijin.svg" alt="05_chijin" width="360"/>
+  <img src="figure/examples/10_chijin.svg" alt="10_chijin" width="360"/>
 </p>
 
 ## License
