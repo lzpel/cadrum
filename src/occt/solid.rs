@@ -4,7 +4,7 @@ use super::face::Face;
 use super::ffi;
 use super::iterators::{EdgeIterator, FaceIterator};
 use crate::common::error::Error;
-use crate::traits::SolidStruct;
+use crate::traits::{ProfileOrient, SolidExt, SolidStruct, Transform};
 use glam::DVec3;
 
 #[cfg(feature = "color")]
@@ -89,6 +89,9 @@ impl Solid {
 }
 
 impl SolidStruct for Solid {
+	type Edge = Edge;
+	type Face = Face;
+
 	// ==================== Constructors ====================
 
 	fn cube(x: f64, y: f64, z: f64) -> Solid {
@@ -145,8 +148,63 @@ impl SolidStruct for Solid {
 		)
 	}
 
-	// ==================== Transforms ====================
+	// ==================== Topology ====================
 
+	fn faces(&self) -> Vec<Face> {
+		FaceIterator::new(ffi::explore_faces(&self.inner)).collect()
+	}
+
+	fn edges(&self) -> Vec<Edge> {
+		EdgeIterator::new(ffi::explore_edges(&self.inner)).collect()
+	}
+
+	// ==================== Sweep ====================
+
+	fn sweep<'a, 'b>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient) -> Result<Self, Error> {
+		let mut profile_vec = ffi::edge_vec_new();
+		for e in profile {
+			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+		}
+		let mut spine_vec = ffi::edge_vec_new();
+		for e in spine {
+			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner);
+		}
+		// Encode the variant + payload into the FFI's (orient: u32, ux, uy, uz) signature.
+		// Up's vector is only meaningful when orient == 2; the other variants pass zeros.
+		let (kind, ux, uy, uz) = match orient {
+			ProfileOrient::Fixed => (0u32, 0.0, 0.0, 0.0),
+			ProfileOrient::Torsion => (1u32, 0.0, 0.0, 0.0),
+			ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
+		};
+		let shape = ffi::make_pipe_from_edges(&profile_vec, &spine_vec, kind, ux, uy, uz);
+		if shape.is_null() {
+			return Err(Error::SweepFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
+	// ==================== Boolean primitives ====================
+
+	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+		Self::boolean_union_impl(a, b)
+	}
+
+	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+		Self::boolean_subtract_impl(a, b)
+	}
+
+	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+		Self::boolean_intersect_impl(a, b)
+	}
+}
+
+// ==================== impl Transform for Solid ====================
+
+impl Transform for Solid {
 	fn translate(self, translation: DVec3) -> Self {
 		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
 		Solid {
@@ -196,6 +254,14 @@ impl SolidStruct for Solid {
 			colormap,
 		)
 	}
+}
+
+// ==================== impl SolidExt for Solid ====================
+//
+// Solid-specific per-element ops (queries / color / boolean wrappers / clean).
+// `Vec<Solid>` and `[Solid; N]` impls live in src/traits.rs and delegate to this one.
+impl SolidExt for Solid {
+	type Elem = Solid;
 
 	fn clean(&self) -> Result<Self, Error> {
 		#[cfg(feature = "color")]
@@ -250,16 +316,6 @@ impl SolidStruct for Solid {
 		[DVec3::new(xmin, ymin, zmin), DVec3::new(xmax, ymax, zmax)]
 	}
 
-	// ==================== Topology ====================
-
-	fn faces(&self) -> Vec<Face> {
-		FaceIterator::new(ffi::explore_faces(&self.inner)).collect()
-	}
-
-	fn edges(&self) -> Vec<Edge> {
-		EdgeIterator::new(ffi::explore_edges(&self.inner)).collect()
-	}
-
 	// ==================== Color ====================
 
 	#[cfg(feature = "color")]
@@ -274,18 +330,21 @@ impl SolidStruct for Solid {
 		Self::new(self.inner, std::collections::HashMap::new())
 	}
 
-	// ==================== Boolean ====================
+	// ==================== Boolean wrappers ====================
 
-	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
-		Self::boolean_union_impl(a, b)
+	fn union_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+		let arr = [self];
+		<Solid as SolidStruct>::boolean_union(arr.iter(), tool)
 	}
 
-	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
-		Self::boolean_subtract_impl(a, b)
+	fn subtract_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+		let arr = [self];
+		<Solid as SolidStruct>::boolean_subtract(arr.iter(), tool)
 	}
 
-	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
-		Self::boolean_intersect_impl(a, b)
+	fn intersect_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+		let arr = [self];
+		<Solid as SolidStruct>::boolean_intersect(arr.iter(), tool)
 	}
 }
 

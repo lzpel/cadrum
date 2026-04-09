@@ -193,10 +193,6 @@ std::unique_ptr<TopoDS_Shape> face_revolve(const TopoDS_Face& face,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
     double angle);
-std::unique_ptr<TopoDS_Shape> face_helix(const TopoDS_Face& face,
-    double ox, double oy, double oz,
-    double dx, double dy, double dz,
-    double pitch, double turns, bool align_to_spine);
 
 // ==================== Edge Methods ====================
 
@@ -204,6 +200,90 @@ ApproxPoints edge_approximation_segments(
     const TopoDS_Edge& edge, double tolerance);
 ApproxPoints edge_approximation_segments_ex(
     const TopoDS_Edge& edge, double angular, double chord);
+
+// Construct a single helical edge on a cylindrical surface centered at the
+// world origin. `axis` is the cylinder axis direction; `x_ref` is the
+// reference direction that anchors the local +X axis of the cylindrical
+// frame. The helix starts at `radius * normalize(x_ref - project_on(axis))`
+// (i.e. at the +X side of the local frame, z=0) and rises by `height` over
+// `height/pitch` turns. `x_ref` must not be parallel to `axis`.
+std::unique_ptr<TopoDS_Edge> make_helix_edge(
+    double ax, double ay, double az,
+    double xrx, double xry, double xrz,
+    double radius, double pitch, double height);
+
+// Build a closed polygon from `coords` (flat xyz triples, ≥3 points) and
+// return its constituent edges in order. The closing edge from the last
+// point back to the first is included.
+std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(
+    rust::Slice<const double> coords);
+
+// Construct a closed circular edge of `radius` centered at the world origin,
+// lying in the plane normal to `axis`. The local +X axis of the circle's
+// frame (which determines the parametric start point) is chosen by OCCT
+// from an arbitrary orthogonal direction to `axis`.
+std::unique_ptr<TopoDS_Edge> make_circle_edge(
+    double ax, double ay, double az, double radius);
+
+// Construct a straight line segment edge from point a to point b.
+std::unique_ptr<TopoDS_Edge> make_line_edge(
+    double ax, double ay, double az,
+    double bx, double by, double bz);
+
+// Construct a circular arc edge through three points (start, mid, end).
+// `mid` must not be collinear with `start` and `end`. On degenerate input
+// OCCT returns nullptr.
+std::unique_ptr<TopoDS_Edge> make_arc_edge(
+    double sx, double sy, double sz,
+    double mx, double my, double mz,
+    double ex, double ey, double ez);
+
+// Edge query helpers.
+void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z);
+void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z);
+bool edge_is_closed(const TopoDS_Edge& edge);
+
+// Edge clone (deep copy of underlying TShape).
+std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge);
+
+// Edge spatial transforms. Mirror the shape-level helpers but operate on
+// TopoDS_Edge directly so the Rust wrapper can stay edge-typed.
+std::unique_ptr<TopoDS_Edge> translate_edge(
+    const TopoDS_Edge& edge, double tx, double ty, double tz);
+std::unique_ptr<TopoDS_Edge> rotate_edge(
+    const TopoDS_Edge& edge,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle);
+std::unique_ptr<TopoDS_Edge> scale_edge(
+    const TopoDS_Edge& edge,
+    double cx, double cy, double cz,
+    double factor);
+std::unique_ptr<TopoDS_Edge> mirror_edge(
+    const TopoDS_Edge& edge,
+    double ox, double oy, double oz,
+    double nx, double ny, double nz);
+
+// Sweep a closed profile wire (built from `profile_edges`) along a spine
+// wire (built from `spine_edges`) using BRepOffsetAPI_MakePipeShell. The
+// profile is wrapped in a face before sweeping so the result is a Solid.
+//
+// `orient` selects how the profile is oriented along the spine:
+//   0 = Fixed   — fix the trihedron to the spine-start frame (no rotation)
+//   1 = Torsion — raw Frenet trihedron (helices, springs)
+//   2 = Up      — keep `(ux, uy, uz)` as the constant binormal direction
+//                 (`ux/uy/uz` are ignored unless orient == 2)
+// Any other value falls back to Torsion.
+std::unique_ptr<TopoDS_Shape> make_pipe_from_edges(
+    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Edge>& spine_edges,
+    uint32_t orient,
+    double ux, double uy, double uz);
+
+// Helpers for the Rust side to construct a std::vector<TopoDS_Edge> and
+// pass it into make_pipe_from_edges. Equivalent to a small builder.
+std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 
 // ==================== Face Methods ====================
 

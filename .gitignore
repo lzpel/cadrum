@@ -2,8 +2,8 @@ target/
 out/
 linkedin.md
 .venv/
-/*.brep
-/*.step
-/*.stl
-/*.svg
+*.brep
+*.step
+*.stl
+*.svg
 uv.lock
