@@ -69,6 +69,10 @@
 // --- Curve adaptation / approximation ---
 #include <BRepAdaptor_Curve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
+#include <GeomAPI_Interpolate.hxx>
+#include <TColgp_HArray1OfPnt.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <Precision.hxx>
 
 // --- I/O (BREP / STEP / progress) ---
 #include <BRepTools.hxx>
@@ -906,6 +910,70 @@ std::unique_ptr<TopoDS_Edge> make_arc_edge(
         GC_MakeArcOfCircle maker(p_start, p_mid, p_end);
         if (!maker.IsDone()) return nullptr;
         BRepBuilderAPI_MakeEdge edgeMaker(maker.Value());
+        if (!edgeMaker.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Edge>(edgeMaker.Edge());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Cubic B-spline edge interpolating the given data points.
+//
+// `coords` is a flat array of xyz triples (length must be a multiple of 3
+// and ≥ 6). Each (x, y, z) triple is one interpolation target — the
+// resulting curve passes through every input point.
+//
+// `end_kind` selects the end-condition variant of `BSplineEnd`:
+//   0 = Periodic — wraps around with C² continuity. Periodic is encoded
+//       in the basis; the caller must NOT duplicate the first point at
+//       the end. Needs ≥ 3 points (Rust side validates).
+//   1 = NotAKnot — open curve, OCCT default end condition (the boundary
+//       cubic is fit to 3 data points instead of being constrained by
+//       an artificial derivative). Needs ≥ 2 points.
+//   2 = Clamped — open curve with explicit start/end tangent vectors
+//       passed in (sx, sy, sz) and (ex, ey, ez). Needs ≥ 2 points.
+//
+// For end_kind 0 and 1, the tangent arguments are ignored.
+//
+// Returns null on any failure (out-of-range end_kind, OCCT internal
+// failure, degenerate point distribution).
+std::unique_ptr<TopoDS_Edge> make_bspline_edge(
+    rust::Slice<const double> coords,
+    uint32_t end_kind,
+    double sx, double sy, double sz,
+    double ex, double ey, double ez)
+{
+    if (coords.size() < 6 || coords.size() % 3 != 0) return nullptr;
+    try {
+        const Standard_Integer n = static_cast<Standard_Integer>(coords.size() / 3);
+        Handle(TColgp_HArray1OfPnt) pts = new TColgp_HArray1OfPnt(1, n);
+        for (Standard_Integer i = 0; i < n; ++i) {
+            pts->SetValue(i + 1, gp_Pnt(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]));
+        }
+
+        const Standard_Boolean periodic = (end_kind == 0) ? Standard_True : Standard_False;
+        GeomAPI_Interpolate interp(pts, periodic, Precision::Confusion());
+
+        if (end_kind == 2) {
+            // Clamped: load explicit start and end tangent vectors.
+            // Scale = Standard_True lets OCCT scale the tangent magnitude
+            // by the chord length, which usually gives more intuitive
+            // pull strength than the raw vector magnitude.
+            gp_Vec start_tan(sx, sy, sz);
+            gp_Vec end_tan(ex, ey, ez);
+            interp.Load(start_tan, end_tan, Standard_True);
+        } else if (end_kind != 0 && end_kind != 1) {
+            // Unknown end_kind; fail rather than silently picking a default.
+            return nullptr;
+        }
+
+        interp.Perform();
+        if (!interp.IsDone()) return nullptr;
+
+        Handle(Geom_BSplineCurve) curve = interp.Curve();
+        if (curve.IsNull()) return nullptr;
+
+        BRepBuilderAPI_MakeEdge edgeMaker(curve);
         if (!edgeMaker.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Edge>(edgeMaker.Edge());
     } catch (const Standard_Failure&) {

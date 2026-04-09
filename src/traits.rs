@@ -203,6 +203,57 @@ pub enum ProfileOrient {
 	Up(DVec3),
 }
 
+// ==================== BSplineEnd ====================
+
+/// End-condition selector for [`EdgeStruct::bspline`].
+///
+/// A cubic B-spline interpolating N data points has 4(N−1) coefficient
+/// degrees of freedom. The interpolation conditions plus C¹/C² continuity
+/// at internal knots fix all but **2** of those. This enum chooses how
+/// the remaining 2 degrees are determined.
+///
+/// **どれを選ぶか:**
+///
+/// | やりたいこと | 選ぶ variant |
+/// |---|---|
+/// | 閉じた断面プロファイル (プラズマ poloidal section, 自由曲線リング) | [`Periodic`](Self::Periodic) |
+/// | 開いた自由曲線で端点接線が分からない | [`NotAKnot`](Self::NotAKnot) |
+/// | 開いた自由曲線で端点接線が物理的に決まっている | [`Clamped`](Self::Clamped) |
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BSplineEnd {
+	/// Build a periodic curve. Start and end coincide with **C² continuity**
+	/// (position + tangent + curvature all match at the wrap-around).
+	/// The first data point must NOT be repeated at the end — periodicity
+	/// is encoded in the basis function structure. Passing a duplicated
+	/// endpoint yields [`Error::InvalidEdge`].
+	///
+	/// Requires ≥ 3 distinct points. The most common choice for closed
+	/// profile curves (plasma poloidal sections, screw threads, gear teeth)
+	/// where the start/end seam should be invisible.
+	Periodic,
+
+	/// Open curve, end conditions chosen so that the cubics on the first
+	/// two intervals collapse into a single cubic (and likewise at the
+	/// other end). The 2nd and (N−1)th data points behave as plain
+	/// interpolation targets that do not act as real knots.
+	///
+	/// This is the default in MATLAB, SciPy, and OCCT itself. Best when
+	/// nothing is known about end behavior — gives the most "natural"
+	/// looking boundary because the boundary cubic is fit to 3 data
+	/// points instead of being constrained by an artificial derivative
+	/// condition. Requires ≥ 2 points.
+	NotAKnot,
+
+	/// Open curve with explicit start/end tangent vectors. The magnitude
+	/// of each vector controls how strongly the curve is pulled along
+	/// that direction near the boundary — a unit vector gives a gentle
+	/// hint, a longer vector pulls more aggressively. Requires ≥ 2 points.
+	Clamped {
+		start: DVec3,
+		end: DVec3,
+	},
+}
+
 // ==================== EdgeExt / EdgeStruct ====================
 
 /// Public trait: edge/wire-level operations on `Edge`, `Vec<Edge>` and `[Edge; N]`.
@@ -288,6 +339,29 @@ pub trait EdgeStruct: Sized + Clone + EdgeExt {
 	/// `mid`). Fails with `InvalidEdge` if `mid` is collinear with `start`
 	/// and `end`, or if any pair of points coincides.
 	fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<Self, Error>;
+
+	/// Cubic B-spline curve interpolating the given data points.
+	///
+	/// **The points are interpolation targets, not control points.** OCCT's
+	/// `GeomAPI_Interpolate` solves a linear system so the resulting curve
+	/// passes through every input point exactly. The internal control points
+	/// and knots are computed automatically and not exposed.
+	///
+	/// - Degree: 3 (cubic)
+	/// - Parameterization: chord-length
+	/// - End behavior: chosen by `end` (see [`BSplineEnd`])
+	///
+	/// Returns one `Edge` wrapping a single `Geom_BSplineCurve`. Use as a
+	/// sweep/loft section by wrapping in `vec![...]` or `&[edge]`.
+	///
+	/// # Errors
+	///
+	/// Returns [`Error::InvalidEdge`] if:
+	/// - point count is below the minimum (≥3 for `Periodic`, ≥2 otherwise)
+	/// - `BSplineEnd::Periodic` is requested but the first and last points
+	///   coincide (periodicity is encoded in the basis; do not duplicate)
+	/// - OCCT's interpolation fails (degenerate point distribution, etc.)
+	fn bspline(points: impl IntoIterator<Item = DVec3>, end: BSplineEnd) -> Result<Self, Error>;
 }
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).

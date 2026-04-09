@@ -232,6 +232,22 @@ std::unique_ptr<TopoDS_Edge> make_arc_edge(
     double mx, double my, double mz,
     double ex, double ey, double ez);
 
+// Cubic B-spline edge interpolating data points.
+//
+// `coords` is a flat array of xyz triples (length must be a multiple of 3
+// and ≥ 6). Each (x, y, z) is one interpolation target — the resulting
+// curve passes through every input point exactly. `end_kind` selects the
+// end-condition variant of `BSplineEnd`:
+//   0 = Periodic (C² periodic; tangent args ignored)
+//   1 = NotAKnot (open, OCCT default; tangent args ignored)
+//   2 = Clamped  (open, explicit start/end tangents in (sx,sy,sz)/(ex,ey,ez))
+// Returns nullptr on any failure.
+std::unique_ptr<TopoDS_Edge> make_bspline_edge(
+    rust::Slice<const double> coords,
+    uint32_t end_kind,
+    double sx, double sy, double sz,
+    double ex, double ey, double ez);
+
 // Edge query helpers.
 void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z);
 void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z);
