@@ -8,7 +8,7 @@
 
 #![cfg(feature = "color")]
 
-use cadrum::{Color, Solid, SolidExt};
+use cadrum::{Color, Solid, Transform, SolidExt};
 use glam::DVec3;
 
 /// Assign a distinct color to every face of `shape` based on its outward normal.
@@ -257,7 +257,7 @@ fn stl_svg_preserve_colors() {
 	}
 
 	// --- SVG検証 ---
-	let svg = mesh.to_svg(DVec3::new(1.0, 1.0, 2.0));
+	let svg = mesh.to_svg(DVec3::new(1.0, 1.0, 2.0), true);
 	std::fs::write(format!("{manifest_dir}/target/color_box.svg"), &svg).expect("write svg file");
 	eprintln!("SVG出力: target/color_box.svg");
 

@@ -1,5 +1,5 @@
 use super::error::Error;
-use crate::{Solid, SolidExt};
+use crate::{Solid, SolidExt, Transform};
 use glam::DVec3;
 
 /// Extrude only the tool-side faces of a boolean result by `delta` to create a filler solid.
@@ -25,24 +25,6 @@ pub fn revolve_section(solids: &[Solid], origin: DVec3, axis_direction: DVec3, p
 	let mut result: Vec<Solid> = Vec::new();
 	for face in intersect_solids.iter().flat_map(|s| s.face_iter()).filter(|f| intersect_meta[1].contains(&f.tshape_id())) {
 		let solid = face.revolve(origin, axis_direction, angle)?;
-		result = if result.is_empty() {
-			vec![solid]
-		} else {
-			result.union(&[solid])?
-		};
-	}
-	Ok(result)
-}
-
-/// Cut `shape` with the plane through `origin` with normal `plane_normal`, then sweep
-/// the cut face along a helix around `axis_direction` through `origin`.
-pub fn helix_section(shape: &[Solid], origin: DVec3, axis_direction: DVec3, plane_normal: DVec3, pitch: f64, turns: f64) -> Result<Vec<Solid>, Error> {
-	let half = vec![Solid::half_space(origin, -plane_normal.normalize())];
-	let (intersect_solids, intersect_meta) = shape.to_vec().intersect_with_metadata(&half)?;
-
-	let mut result: Vec<Solid> = Vec::new();
-	for face in intersect_solids.iter().flat_map(|s| s.face_iter()).filter(|f| intersect_meta[1].contains(&f.tshape_id())) {
-		let solid = face.helix(origin, axis_direction, pitch, turns, false)?;
 		result = if result.is_empty() {
 			vec![solid]
 		} else {

@@ -155,13 +155,33 @@ mod ffi_bridge {
 		fn face_normal_at_center(face: &TopoDS_Face, nx: &mut f64, ny: &mut f64, nz: &mut f64);
 		fn face_extrude(face: &TopoDS_Face, dx: f64, dy: f64, dz: f64) -> UniquePtr<TopoDS_Shape>;
 		fn face_revolve(face: &TopoDS_Face, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
-		fn face_helix(face: &TopoDS_Face, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, pitch: f64, turns: f64, align_to_spine: bool) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Edge Methods ====================
 
 		fn edge_approximation_segments(edge: &TopoDS_Edge, tolerance: f64) -> ApproxPoints;
 		fn edge_approximation_segments_ex(edge: &TopoDS_Edge, angular: f64, chord: f64) -> ApproxPoints;
 
+		fn make_helix_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, radius: f64, pitch: f64, height: f64) -> UniquePtr<TopoDS_Edge>;
+		fn make_polygon_edges(coords: &[f64]) -> UniquePtr<CxxVector<TopoDS_Edge>>;
+		fn make_circle_edge(ax: f64, ay: f64, az: f64, radius: f64) -> UniquePtr<TopoDS_Edge>;
+		fn make_line_edge(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> UniquePtr<TopoDS_Edge>;
+		fn make_arc_edge(sx: f64, sy: f64, sz: f64, mx: f64, my: f64, mz: f64, ex: f64, ey: f64, ez: f64) -> UniquePtr<TopoDS_Edge>;
+
+		fn edge_start_point(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);
+		fn edge_start_tangent(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);
+		fn edge_is_closed(edge: &TopoDS_Edge) -> bool;
+
+		fn deep_copy_edge(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
+
+		fn translate_edge(edge: &TopoDS_Edge, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Edge>;
+		fn rotate_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Edge>;
+		fn scale_edge(edge: &TopoDS_Edge, cx: f64, cy: f64, cz: f64, factor: f64) -> UniquePtr<TopoDS_Edge>;
+		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Edge>;
+
+		fn make_pipe_from_edges(profile_edges: &CxxVector<TopoDS_Edge>, spine_edges: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64) -> UniquePtr<TopoDS_Shape>;
+
+		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
+		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);
 	}
 }
 
