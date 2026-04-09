@@ -30,7 +30,7 @@ fn build_m2_screw(orient: ProfileOrient) -> Result<Vec<Solid>, Error> {
 	// helix では Torsion (raw Frenet) と Up(axis) が等価で、両方とも正しい
 	// ねじ山を作る。Fixed は profile を回転させないので、ねじ山にならない
 	// 「壊れた」ねじが出力される (これは Fixed の仕様どおりの挙動)。
-	let thread = Solid::sweep(&profile, std::slice::from_ref(&helix), orient)?;
+	let thread = Solid::sweep(&profile, &[helix], orient)?;
 
 	// ねじ山と軸心円柱を合体。外側クリップ円柱は試行錯誤しやすいよう off。
 	let shaft = Solid::cylinder(r_root, DVec3::Z, h_thread);
