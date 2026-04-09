@@ -295,6 +295,22 @@ std::unique_ptr<TopoDS_Shape> make_pipe_from_edges(
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
 void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 
+// Loft (skin) a smooth solid through N cross-section wires.
+//
+// `all_edges` is the flattened concatenation of all section edges, and
+// `section_sizes` carries the per-section edge count so the C++ side can
+// re-split. `closed=true` makes OCCT build a v-direction periodic surface
+// (C² across the wrap-around) by re-adding the first wire object at the
+// end so OCCT's internal `IsSame()` detection fires. See the C++ impl
+// comment for the closed-loft trick details.
+//
+// Returns nullptr on any failure (section count < 2, wire build failure,
+// OCCT internal error during ThruSections::Build).
+std::unique_ptr<TopoDS_Shape> make_loft(
+    const std::vector<TopoDS_Edge>& all_edges,
+    rust::Slice<const uint32_t> section_sizes,
+    bool closed);
+
 // ==================== Face Methods ====================
 
 // Both helpers return the underlying TopoDS_TShape* address as a u64 — used

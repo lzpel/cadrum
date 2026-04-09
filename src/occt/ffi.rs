@@ -181,6 +181,7 @@ mod ffi_bridge {
 		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Edge>;
 
 		fn make_pipe_from_edges(profile_edges: &CxxVector<TopoDS_Edge>, spine_edges: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64) -> UniquePtr<TopoDS_Shape>;
+		fn make_loft(all_edges: &CxxVector<TopoDS_Edge>, section_sizes: &[u32], closed: bool) -> UniquePtr<TopoDS_Shape>;
 
 		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);

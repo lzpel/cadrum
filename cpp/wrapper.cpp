@@ -53,8 +53,9 @@
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 
-// --- Sweep / pipe ---
+// --- Sweep / pipe / loft ---
 #include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
 
 // --- Mesh, classification, mass / surface properties ---
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -1163,6 +1164,72 @@ std::unique_ptr<TopoDS_Shape> make_pipe_from_edges(
         if (!shell.IsDone()) return nullptr;
         if (!shell.MakeSolid()) return nullptr;
         return std::make_unique<TopoDS_Shape>(shell.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Loft (skin) a smooth solid through a sequence of cross-section wires.
+//
+// `all_edges` is a flattened list of all edges across all sections; the
+// `section_sizes` array tells how many edges belong to each section. Example:
+//   sections [[a, b, c], [d, e], [f, g, h, i]]
+//   → all_edges = [a, b, c, d, e, f, g, h, i]
+//     section_sizes = [3, 2, 4]
+//
+// When `closed == true`, the first section's TopoDS_Wire is reused (NOT
+// copied) as the last section. OCCT's BRepOffsetAPI_ThruSections checks
+// `myWires(1).IsSame(myWires(nbSects))` (TShape* pointer identity) and
+// switches to a v-direction periodic surface internally — see
+// BRepOffsetAPI_ThruSections.cxx lines 539, 691, and 1187-1189. The
+// resulting surface is C² continuous across the wrap-around because the
+// underlying GeomFill_AppSurf processes all sections at once with periodic
+// boundary conditions. Crucially we must NOT BRepBuilderAPI_Copy the wire
+// — that would assign a fresh TShape* and the IsSame() check would fail,
+// silently degrading to an open loft.
+//
+// `isSolid=true` requests OCCT cap the open ends with planar faces (when
+// `closed=false`); `isRuled=false` requests B-spline (smoothed) interpolation
+// rather than panel-by-panel ruled surfaces — necessary for the C² guarantee.
+std::unique_ptr<TopoDS_Shape> make_loft(
+    const std::vector<TopoDS_Edge>& all_edges,
+    rust::Slice<const uint32_t> section_sizes,
+    bool closed)
+{
+    if (section_sizes.size() < 2) return nullptr;
+
+    try {
+        BRepOffsetAPI_ThruSections loft(
+            /*isSolid=*/Standard_True,
+            /*isRuled=*/Standard_False,
+            Precision::Confusion());
+
+        size_t edge_idx = 0;
+        TopoDS_Wire first_wire;  // preserved with original TShape* identity
+
+        for (size_t s = 0; s < section_sizes.size(); ++s) {
+            BRepBuilderAPI_MakeWire wire_maker;
+            for (uint32_t i = 0; i < section_sizes[s]; ++i) {
+                if (edge_idx + i >= all_edges.size()) return nullptr;
+                wire_maker.Add(all_edges[edge_idx + i]);
+            }
+            edge_idx += section_sizes[s];
+            if (!wire_maker.IsDone()) return nullptr;
+
+            TopoDS_Wire wire = wire_maker.Wire();
+            loft.AddWire(wire);
+            if (s == 0) first_wire = wire;
+        }
+
+        if (closed) {
+            // Re-add the same wire object (not a copy) so OCCT detects the
+            // periodic case via IsSame() and builds a v-periodic surface.
+            loft.AddWire(first_wire);
+        }
+
+        loft.Build();
+        if (!loft.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(loft.Shape());
     } catch (const Standard_Failure&) {
         return nullptr;
     }

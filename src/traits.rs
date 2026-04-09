@@ -408,6 +408,44 @@ pub trait SolidStruct: Sized + Clone + SolidExt {
 	// 想定外ケースに当たったら `Solid::new` の debug_assert で気付ける。
 	fn sweep<'a, 'b>(profile: impl IntoIterator<Item = &'a Self::Edge>, spine: impl IntoIterator<Item = &'b Self::Edge>, orient: ProfileOrient) -> Result<Self, Error> where Self::Edge: 'a + 'b;
 
+	/// Loft (skin) a smooth solid through a sequence of cross-section wires.
+	///
+	/// Each `section` is an ordered list of edges forming a closed wire (a
+	/// "rib"). The lofter interpolates a B-spline surface through all sections
+	/// in order, then caps the ends to form a `Solid`.
+	///
+	/// `closed = true` builds a v-direction periodic surface: the result loops
+	/// back from the last section to the first with C² continuity. The first
+	/// section's `TopoDS_Wire` is reused at the end via OCCT's `IsSame()`-based
+	/// auto-detection in `BRepOffsetAPI_ThruSections`, so no boolean fuse is
+	/// needed (cf. parastell, which composes via boolean rotate+fuse because
+	/// CadQuery does not expose this OCCT path).
+	///
+	/// `closed = false` builds an open loft and OCCT caps the first/last
+	/// sections with planar faces to form a closed solid (the standard
+	/// "trunk" / "frustum" shape).
+	///
+	/// # Arguments
+	///
+	/// - `sections`: any nested iterator yielding edge references. Accepts
+	///   `&Vec<Vec<Edge>>`, `(0..N).map(|i| [&edges[i]])`, `&[&[Edge]]`, etc.
+	///   Each section must contain ≥1 edge and the sections must form valid
+	///   closed wires for the result to be a meaningful solid.
+	/// - `closed`: see above.
+	///
+	/// # Errors
+	///
+	/// Returns [`Error::LoftFailed`] if:
+	/// - fewer than 2 sections are supplied
+	/// - any section is empty
+	/// - OCCT's `BRepOffsetAPI_ThruSections::Build()` fails (degenerate
+	///   sections, ill-formed wires, etc.)
+	///
+	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=false)`
+	/// for smooth (B-spline) interpolation; ruled lofts are not currently
+	/// exposed as a parameter.
+	fn loft<'a, S, I>(sections: S, closed: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a;
+
 	// --- Boolean primitives (consumed by SolidExt::*_with_metadata wrappers) ---
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
 	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;

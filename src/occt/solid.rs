@@ -6,6 +6,15 @@ use super::iterators::{EdgeIterator, FaceIterator};
 use crate::common::error::Error;
 use crate::traits::{ProfileOrient, SolidExt, SolidStruct, Transform};
 use glam::DVec3;
+use std::sync::Mutex;
+
+// OCCT の BRepOffsetAPI_ThruSections は内部で global state (おそらく
+// BSplCLib のキャッシュや GeomFill_AppSurf の作業バッファ) を使うため、
+// 複数スレッドから同時に呼び出すと heap corruption を起こす。
+// 並列テスト実行下で再現する症状で、loft 呼び出し全体を Mutex で
+// serialize すれば回避できる。性能劣化はあるが loft は重い操作なので
+// ロック粒度の粗さは現実的に問題にならない。
+static LOFT_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(feature = "color")]
 fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Shape, new_inner: &ffi::TopoDS_Shape, old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
@@ -179,6 +188,56 @@ impl SolidStruct for Solid {
 		let shape = ffi::make_pipe_from_edges(&profile_vec, &spine_vec, kind, ux, uy, uz);
 		if shape.is_null() {
 			return Err(Error::SweepFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
+	// ==================== Loft ====================
+
+	fn loft<'a, S, I>(sections: S, closed: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {
+		// 並列実行下での heap corruption を避けるため OCCT 呼び出し全体を
+		// serialize する (LOFT_LOCK 定義のコメント参照)。
+		let _guard = LOFT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+		// Flatten the nested iterator into one CxxVector + per-section sizes.
+		// Stream as we go so the user's closure-style sections (e.g.
+		// `(0..N).map(|i| [&edges[i]])`) work without an extra collect.
+		let mut all_edges = ffi::edge_vec_new();
+		let mut sizes: Vec<u32> = Vec::new();
+
+		for sec in sections {
+			let mut count = 0u32;
+			for edge in sec {
+				ffi::edge_vec_push(all_edges.pin_mut(), &edge.inner);
+				count += 1;
+			}
+			if count == 0 {
+				return Err(Error::LoftFailed(format!(
+					"loft: section {} is empty (each section must contain ≥1 edge)",
+					sizes.len()
+				)));
+			}
+			sizes.push(count);
+		}
+
+		if sizes.len() < 2 {
+			return Err(Error::LoftFailed(format!(
+				"loft: need ≥2 sections, got {} (a single section has no thickness to skin across)",
+				sizes.len()
+			)));
+		}
+
+		let shape = ffi::make_loft(&all_edges, &sizes, closed);
+		if shape.is_null() {
+			return Err(Error::LoftFailed(format!(
+				"loft: OCCT BRepOffsetAPI_ThruSections failed (sections={}, closed={}). \
+				 Check that each section forms a valid closed wire and sections are not coplanar.",
+				sizes.len(), closed
+			)));
 		}
 		Ok(Solid::new(
 			shape,
