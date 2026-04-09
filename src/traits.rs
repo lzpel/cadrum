@@ -3,12 +3,16 @@
 //! Trait hierarchy:
 //!
 //! ```text
-//! Transform  ─┐
-//!             ├─  SolidExt  ─┐
-//!             │              ├─  SolidStruct (pub(crate))
-//!             │              │
-//!             └──────────────┘
+//! Transform  ─┬─  SolidExt   ──  SolidStruct  (pub(crate))
+//!             └─  EdgeExt    ──  EdgeStruct   (pub(crate))
+//!
+//! FaceStruct (standalone, no Transform yet)
 //! ```
+//!
+//! `Edge` / `Vec<Edge>` の対称関係は `Solid` / `Vec<Solid>` と同じ:
+//!   - 単一エッジ向け constructor は `EdgeStruct` (cube/sphere に対応)
+//!   - エッジ列 (= Wire) を含む共通操作は `EdgeExt` (volume/clean に対応)
+//!   - `Vec<Edge>` がそのまま Wire — 専用型は無い (`Vec<Solid>` = Compound と同様)
 //!
 //! - `Transform` (pub): spatial ops (translate/rotate/scale/mirror). Geometry-agnostic.
 //!   Implemented for shapes (`Solid`, future `Edge` etc.) and collections.
@@ -135,6 +139,69 @@ pub trait Transform: Sized {
 	}
 }
 
+// ==================== ProfileOrient ====================
+
+/// Controls how the cross-section profile is oriented as it travels along the
+/// spine in [`SolidStruct::sweep`]. The three variants cover the practical
+/// majority of sweep use cases without requiring the user to think about the
+/// underlying differential geometry.
+///
+/// **どれを選ぶか:**
+///
+/// | やりたいこと | 選ぶ variant |
+/// |---|---|
+/// | 直線押し出し / profile を回したくない | [`Fixed`](Self::Fixed) |
+/// | ねじ・バネ・つる (helix 系) | [`Torsion`](Self::Torsion) または [`Up`](Self::Up)`(axis)` |
+/// | 道路・線路・パイプ (重力方向を保ちたい) | [`Up`](Self::Up)`(DVec3::Z)` |
+/// | 上記に当てはまらない 3D 自由曲線 | [`Torsion`](Self::Torsion) |
+///
+/// **`Torsion` と `Up(axis)` の関係**: helix のような定曲率・定 torsion 曲線では、
+/// この 2 つは数学的に等価なトリヘドロンを生成します。`Torsion` は曲線の主法線
+/// (= `d²C/dt²` の T 直交成分) に profile を貼り付け、`Up` はユーザが渡した
+/// 方向を T 直交平面に射影して binormal にする — helix 上ではこの 2 つが
+/// 同じ axis を指すため、結果が一致します。helix 以外の曲線では一致しません。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ProfileOrient {
+	/// Profile is parallel-transported along the spine **without rotating**.
+	/// All cross-sections stay parallel to the starting orientation.
+	///
+	/// - **適**: 直線 spine (押し出し)
+	/// - **不適**: 曲がる spine (profile が tangent と直交しなくなり、見た目が壊れる)
+	///
+	/// 注意: helix にこれを適用すると profile が回転しないのでねじ山にならない。
+	/// その「壊れ方」自体は仕様どおりで、`Fixed` のデモンストレーションとして
+	/// `examples/05_screw.rs` で確認できる。
+	Fixed,
+
+	/// Profile rotates following the spine's principal normal direction
+	/// (= the T-perpendicular component of `d²C/dt²`). Equivalent to OCCT's
+	/// raw Frenet–Serret frame.
+	///
+	/// - **適**: helix, spring, screw thread, twisted ribbon — 定曲率・
+	///   定 torsion な曲線、および 3D 自由曲線で「曲線の自然な捻れ」を
+	///   profile に反映させたいケース
+	/// - **不適**: 変曲点 (curvature → 0) を含む 2D / 3D スプライン。
+	///   変曲点で N が不定になり profile が 180° flip しうる。その場合は
+	///   `Up` を使う
+	Torsion,
+
+	/// Profile keeps the given direction as its "up" axis (binormal). At every
+	/// point along the spine, the profile is rotated around the tangent so
+	/// that one of its in-plane axes lies in the plane spanned by the tangent
+	/// and the supplied vector.
+	///
+	/// 不変式: 始点で `up` と tangent に直交していたベクトルは、spine 上の
+	/// 任意の点でも (その点の) tangent と `up` の両方に直交し続ける。
+	///
+	/// - **適**: 道路 (`up = DVec3::Z`), 線路, パイプ, 運河 — 重力方向を
+	///   保ちたい sweep 全般
+	/// - **適 (helix の場合)**: `up = helix の軸方向` を渡せば `Torsion` と
+	///   等価な結果になる (helix axis が profile の binormal と一致するため)
+	/// - **不適**: 任意の点で `up` が tangent と平行になる spine (例: 真上に
+	///   登る道路)。orthogonalize が破綻して [`Error::SweepFailed`] を返す
+	Up(DVec3),
+}
+
 // ==================== Per-type traits ====================
 
 /// Backend-independent face trait.
@@ -143,9 +210,64 @@ pub trait FaceStruct {
 	fn center_of_mass(&self) -> DVec3;
 }
 
-/// Backend-independent edge trait.
-pub trait EdgeStruct {
+// ==================== EdgeExt / EdgeStruct ====================
+
+/// Public trait: edge/wire-level operations on `Edge`, `Vec<Edge>` and `[Edge; N]`.
+///
+/// `Vec<Edge>` plays the role of a wire in this library — there is no
+/// dedicated `Wire` type, mirroring how `Compound` is just `Vec<Solid>`.
+/// Methods on `EdgeExt` therefore have meaningful semantics for both a single
+/// edge and an ordered edge list:
+///
+/// - `start_point` / `start_tangent` — the wire's starting position/direction.
+///   For a single edge, the edge's first point and tangent.
+///   For a `Vec<Edge>`, the first edge's start.
+/// - `is_closed` — does the geometry form a closed loop?
+///   For a single edge, whether start == end (e.g. a circle).
+///   For a `Vec<Edge>`, whether the first edge's start equals the last edge's end.
+/// - `approximation_segments` — polyline approximation. For a wire, all
+///   sub-edges' segments are concatenated in order.
+///
+/// Spatial transforms live on the supertrait `Transform`. As with `SolidExt`,
+/// `EdgeStruct: EdgeExt` so users of `Edge` get these methods inherently;
+/// importing `EdgeExt` is only required when chaining on `Vec<Edge>` / `[Edge; N]`.
+pub trait EdgeExt: Transform {
+	type Elem: EdgeStruct;
+
+	fn start_point(&self) -> DVec3;
+	fn start_tangent(&self) -> DVec3;
+	fn is_closed(&self) -> bool;
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
+}
+
+/// Backend-independent edge trait (pub(crate) — not exposed to users).
+///
+/// Single-edge constructors only. Wire/edge-list operations live on `EdgeExt`
+/// and are inherited via the supertrait bound, in symmetry with `SolidStruct`.
+pub trait EdgeStruct: Sized + Clone + EdgeExt {
+	/// Construct a single helical edge on a cylindrical surface centered at
+	/// the world origin.
+	///
+	/// - `radius`: cylinder radius
+	/// - `pitch`: rise per full revolution
+	/// - `height`: total rise (number of turns = `height / pitch`)
+	/// - `axis`: cylinder axis direction (must be non-zero)
+	/// - `x_ref`: reference direction that anchors the local +X axis of the
+	///   cylindrical frame. The helix start point is
+	///   `radius * normalize(component of x_ref orthogonal to axis)`.
+	///   `x_ref` must not be parallel to `axis`.
+	///
+	/// Making `x_ref` explicit guarantees the start point is deterministic
+	/// rather than depending on whatever orthogonal direction OCCT picks
+	/// from `axis` alone.
+	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Self;
+
+	/// Build a closed polygon from a sequence of points and return its
+	/// constituent edges in order. The polygon is **always closed**: the
+	/// last point is automatically connected back to the first.
+	// 非平面の点列も受理する (検証しない) — `Solid::sweep` で face 化に失敗
+	// したとき `Error::SweepFailed` で気付ける想定なので、入力側での事前検査は省略。
+	fn polygon(points: impl IntoIterator<Item = DVec3>) -> Vec<Self>;
 }
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).
@@ -174,6 +296,23 @@ pub trait SolidStruct: Sized + Clone + SolidExt {
 	// --- Topology ---
 	fn faces(&self) -> Vec<Self::Face>;
 	fn edges(&self) -> Vec<Self::Edge>;
+
+	// --- Sweep ---
+	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
+	/// to create a solid. Both inputs are accepted as `IntoIterator` of edge
+	/// references so a single `&Edge` (via `std::slice::from_ref`) and a
+	/// `&Vec<Edge>` work uniformly.
+	///
+	/// The profile must be closed; otherwise the underlying pipe operation
+	/// produces a shell rather than a solid and an error is returned.
+	///
+	/// `orient` selects how the profile is oriented along the spine. See
+	/// [`ProfileOrient`] for the trade-offs between [`Fixed`](ProfileOrient::Fixed),
+	/// [`Torsion`](ProfileOrient::Torsion), and [`Up`](ProfileOrient::Up).
+	// 戻り型は単一 `Self` 固定。MakePipeShell が compound を返すことは closed
+	// face 入力に対しては実質起きないため、`Vec<Self>` に拡張する手間を省いた。
+	// 想定外ケースに当たったら `Solid::new` の debug_assert で気付ける。
+	fn sweep<'a, 'b>(profile: impl IntoIterator<Item = &'a Self::Edge>, spine: impl IntoIterator<Item = &'b Self::Edge>, orient: ProfileOrient) -> Result<Self, Error> where Self::Edge: 'a + 'b;
 
 	// --- Boolean primitives (consumed by SolidExt::*_with_metadata wrappers) ---
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
@@ -297,6 +436,98 @@ impl<T: SolidStruct, const N: usize> SolidExt for [T; N] {
 	}
 	fn intersect_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a T>) -> Result<(Vec<T>, [Vec<u64>; 2]), Error> where T: 'a {
 		T::boolean_intersect(self.iter(), tool)
+	}
+}
+
+// ==================== impl EdgeExt for Vec<T> / [T; N] ====================
+//
+// Vec<Edge> is the wire representation in this library — these impls give
+// `Vec<Edge>` and `[Edge; N]` the same EdgeExt methods that single Edge has.
+
+impl<T: EdgeStruct> EdgeExt for Vec<T> {
+	type Elem = T;
+
+	fn start_point(&self) -> DVec3 {
+		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn start_tangent(&self) -> DVec3 {
+		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn is_closed(&self) -> bool {
+		// Empty wire: not closed. Single-edge wire: defer to that edge.
+		// Multi-edge wire: walk the polyline approximation of the last edge to
+		// find its end point, and compare with the first edge's start.
+		// 1e-6 はモデル単位 (mm) を想定したハードコード — 引数化は API が
+		// 増えるため後回し。極小/極大スケールのモデルで誤判定したら直す。
+		match self.len() {
+			0 => false,
+			1 => self[0].is_closed(),
+			_ => {
+				let start = self[0].start_point();
+				let last_pts = self[self.len() - 1].approximation_segments(1e-3);
+				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
+				(start - end).length() < 1e-6
+			}
+		}
+	}
+
+	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
+		let mut out: Vec<DVec3> = Vec::new();
+		for e in self {
+			let pts = e.approximation_segments(tolerance);
+			if let Some((first, rest)) = pts.split_first() {
+				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
+					out.extend_from_slice(rest);
+				} else {
+					out.push(*first);
+					out.extend_from_slice(rest);
+				}
+			}
+		}
+		out
+	}
+}
+
+impl<T: EdgeStruct, const N: usize> EdgeExt for [T; N] {
+	type Elem = T;
+
+	fn start_point(&self) -> DVec3 {
+		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn start_tangent(&self) -> DVec3 {
+		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn is_closed(&self) -> bool {
+		match N {
+			0 => false,
+			1 => self[0].is_closed(),
+			_ => {
+				let start = self[0].start_point();
+				let last_pts = self[N - 1].approximation_segments(1e-3);
+				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
+				(start - end).length() < 1e-6
+			}
+		}
+	}
+
+	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
+		let mut out: Vec<DVec3> = Vec::new();
+		for e in self {
+			let pts = e.approximation_segments(tolerance);
+			if let Some((first, rest)) = pts.split_first() {
+				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
+					out.extend_from_slice(rest);
+				} else {
+					out.push(*first);
+					out.extend_from_slice(rest);
+				}
+			}
+		}
+		out
 	}
 }
 

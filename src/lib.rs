@@ -12,7 +12,7 @@ pub mod occt;
 #[cfg(feature = "pure")]
 pub mod pure;
 pub(crate) mod traits;
-pub use traits::{SolidExt, Transform};
+pub use traits::{ProfileOrient, SolidExt, Transform};
 
 // Re-export backend types at crate root
 #[cfg(not(feature = "pure"))]

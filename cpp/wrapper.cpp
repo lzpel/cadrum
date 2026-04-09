@@ -852,61 +852,6 @@ std::unique_ptr<TopoDS_Shape> face_revolve(const TopoDS_Face& face,
     }
 }
 
-std::unique_ptr<TopoDS_Shape> face_helix(const TopoDS_Face& face,
-    double ox, double oy, double oz,
-    double dx, double dy, double dz,
-    double pitch, double turns, bool align_to_spine)
-{
-    try {
-        // Compute radius from face centroid to axis
-        GProp_GProps props;
-        BRepGProp::SurfaceProperties(face, props);
-        gp_Pnt centroid = props.CentreOfMass();
-
-        gp_Pnt origin(ox, oy, oz);
-        gp_Dir dir(dx, dy, dz);
-        gp_Lin axis_line(origin, dir);
-        double radius = axis_line.Distance(centroid);
-        if (radius < Precision::Confusion()) return nullptr;
-
-        // Build helix spine on a cylindrical surface
-        gp_Ax2 ax2(origin, dir);
-        Handle(Geom_CylindricalSurface) cylinder =
-            new Geom_CylindricalSurface(ax2, radius);
-
-        double total_angle = turns * 2.0 * M_PI;
-        double height = pitch * turns;
-        gp_Pnt2d line_origin(0.0, 0.0);
-        gp_Dir2d line_dir(total_angle, height);
-        Handle(Geom2d_Line) line2d = new Geom2d_Line(line_origin, line_dir);
-
-        double param_end = std::sqrt(total_angle * total_angle + height * height);
-
-        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, param_end);
-        if (!edgeMaker.IsDone()) return nullptr;
-        TopoDS_Edge edge = edgeMaker.Edge();
-        BRepLib::BuildCurve3d(edge);
-
-        BRepBuilderAPI_MakeWire wireMaker(edge);
-        if (!wireMaker.IsDone()) return nullptr;
-        TopoDS_Wire spine = wireMaker.Wire();
-
-        // Sweep profile along spine using MakePipeShell (Frenet trihedron)
-        TopoDS_Wire profile = BRepTools::OuterWire(face);
-        BRepOffsetAPI_MakePipeShell pipeShell(spine);
-        pipeShell.SetMode(Standard_True); // Frenet trihedron
-        Standard_Boolean correction = align_to_spine ? Standard_True : Standard_False;
-        pipeShell.Add(profile, Standard_True, correction);
-        pipeShell.Build();
-        if (!pipeShell.IsDone()) return nullptr;
-        pipeShell.MakeSolid();
-
-        return std::make_unique<TopoDS_Shape>(pipeShell.Shape());
-    } catch (const Standard_Failure&) {
-        return nullptr;
-    }
-}
-
 // ==================== Edge Methods ====================
 
 ApproxPoints edge_approximation_segments_ex(
@@ -942,6 +887,254 @@ ApproxPoints edge_approximation_segments(
     // Bug 4 fix: tolerance is now a parameter instead of hardcoded 0.1.
     // Delegate to the ex variant with angular == chord == tolerance.
     return edge_approximation_segments_ex(edge, tolerance, tolerance);
+}
+
+std::unique_ptr<TopoDS_Edge> make_helix_edge(
+    double ax, double ay, double az,
+    double xrx, double xry, double xrz,
+    double radius, double pitch, double height)
+{
+    try {
+        if (radius < Precision::Confusion()) return nullptr;
+        if (pitch < Precision::Confusion()) return nullptr;
+        if (height < Precision::Confusion()) return nullptr;
+
+        // Build a deterministic local frame: the cylinder's local +X is the
+        // user-supplied x_ref (orthogonalized against axis by gp_Ax2). The
+        // helix then starts at (radius, 0, 0) in this frame, which is
+        // origin + radius * normalize(x_ref ⊥ axis) in world coordinates.
+        gp_Dir axis_dir(ax, ay, az);
+        gp_Dir x_ref(xrx, xry, xrz);
+        if (axis_dir.IsParallel(x_ref, Precision::Angular())) return nullptr;
+        gp_Ax2 ax2(gp_Pnt(0.0, 0.0, 0.0), axis_dir, x_ref);
+        Handle(Geom_CylindricalSurface) cylinder =
+            new Geom_CylindricalSurface(ax2, radius);
+
+        double turns = height / pitch;
+        double total_angle = turns * 2.0 * M_PI;
+        gp_Pnt2d line_origin(0.0, 0.0);
+        gp_Dir2d line_dir(total_angle, height);
+        Handle(Geom2d_Line) line2d = new Geom2d_Line(line_origin, line_dir);
+
+        double param_end = std::sqrt(total_angle * total_angle + height * height);
+
+        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, param_end);
+        if (!edgeMaker.IsDone()) return nullptr;
+        TopoDS_Edge edge = edgeMaker.Edge();
+        BRepLib::BuildCurve3d(edge);
+        return std::make_unique<TopoDS_Edge>(edge);
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(rust::Slice<const double> coords) {
+    auto out = std::make_unique<std::vector<TopoDS_Edge>>();
+    if (coords.size() < 9 || coords.size() % 3 != 0) return out;
+    try {
+        BRepBuilderAPI_MakePolygon poly;
+        for (size_t i = 0; i + 2 < coords.size(); i += 3) {
+            poly.Add(gp_Pnt(coords[i], coords[i + 1], coords[i + 2]));
+        }
+        poly.Close();
+        if (!poly.IsDone()) return out;
+        TopoDS_Wire wire = poly.Wire();
+        // Walk the wire's edges in order using TopExp_Explorer.
+        for (TopExp_Explorer ex(wire, TopAbs_EDGE); ex.More(); ex.Next()) {
+            out->push_back(TopoDS::Edge(ex.Current()));
+        }
+        return out;
+    } catch (const Standard_Failure&) {
+        out->clear();
+        return out;
+    }
+}
+
+void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z) {
+    x = 0.0; y = 0.0; z = 0.0;
+    try {
+        BRepAdaptor_Curve curve(edge);
+        gp_Pnt p = curve.Value(curve.FirstParameter());
+        x = p.X(); y = p.Y(); z = p.Z();
+    } catch (const Standard_Failure&) {}
+}
+
+void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z) {
+    x = 0.0; y = 0.0; z = 0.0;
+    try {
+        BRepAdaptor_Curve curve(edge);
+        gp_Pnt p;
+        gp_Vec v;
+        curve.D1(curve.FirstParameter(), p, v);
+        if (v.Magnitude() > Precision::Confusion()) {
+            v.Normalize();
+            x = v.X(); y = v.Y(); z = v.Z();
+        }
+    } catch (const Standard_Failure&) {}
+}
+
+bool edge_is_closed(const TopoDS_Edge& edge) {
+    try {
+        BRepAdaptor_Curve curve(edge);
+        gp_Pnt p_start = curve.Value(curve.FirstParameter());
+        gp_Pnt p_end   = curve.Value(curve.LastParameter());
+        return p_start.Distance(p_end) < Precision::Confusion();
+    } catch (const Standard_Failure&) {
+        return false;
+    }
+}
+
+std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge) {
+    try {
+        BRepBuilderAPI_Copy copier(edge);
+        return std::make_unique<TopoDS_Edge>(TopoDS::Edge(copier.Shape()));
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Helper: apply a gp_Trsf to an edge via BRepBuilderAPI_Transform.
+// Used for all four edge transforms below.
+static std::unique_ptr<TopoDS_Edge> transform_edge_impl(
+    const TopoDS_Edge& edge, const gp_Trsf& trsf)
+{
+    try {
+        BRepBuilderAPI_Transform transform(edge, trsf, Standard_True);
+        return std::make_unique<TopoDS_Edge>(TopoDS::Edge(transform.Shape()));
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Edge> translate_edge(
+    const TopoDS_Edge& edge, double tx, double ty, double tz)
+{
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(tx, ty, tz));
+    return transform_edge_impl(edge, trsf);
+}
+
+std::unique_ptr<TopoDS_Edge> rotate_edge(
+    const TopoDS_Edge& edge,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle)
+{
+    try {
+        gp_Trsf trsf;
+        trsf.SetRotation(gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz)), angle);
+        return transform_edge_impl(edge, trsf);
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Edge> scale_edge(
+    const TopoDS_Edge& edge,
+    double cx, double cy, double cz,
+    double factor)
+{
+    gp_Trsf trsf;
+    trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
+    return transform_edge_impl(edge, trsf);
+}
+
+std::unique_ptr<TopoDS_Edge> mirror_edge(
+    const TopoDS_Edge& edge,
+    double ox, double oy, double oz,
+    double nx, double ny, double nz)
+{
+    try {
+        gp_Trsf trsf;
+        trsf.SetMirror(gp_Ax2(gp_Pnt(ox, oy, oz), gp_Dir(nx, ny, nz)));
+        return transform_edge_impl(edge, trsf);
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new() {
+    return std::make_unique<std::vector<TopoDS_Edge>>();
+}
+
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
+    v.push_back(e);
+}
+
+std::unique_ptr<TopoDS_Shape> make_pipe_from_edges(
+    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Edge>& spine_edges,
+    uint32_t orient,
+    double ux, double uy, double uz)
+{
+    try {
+        if (profile_edges.empty() || spine_edges.empty()) return nullptr;
+
+        // Build the spine wire by chaining all spine edges.
+        BRepBuilderAPI_MakeWire spineMaker;
+        for (const auto& e : spine_edges) spineMaker.Add(e);
+        if (!spineMaker.IsDone()) return nullptr;
+        TopoDS_Wire spine = spineMaker.Wire();
+
+        // Build the profile wire similarly. The profile must be closed so
+        // that MakeSolid() can close the swept shell into a solid.
+        BRepBuilderAPI_MakeWire profileMaker;
+        for (const auto& e : profile_edges) profileMaker.Add(e);
+        if (!profileMaker.IsDone()) return nullptr;
+        TopoDS_Wire profile_wire = profileMaker.Wire();
+
+        // MakePipeShell sweeps a Wire along the spine to produce a Shell,
+        // which we then close into a Solid via MakeSolid(). Unlike MakePipe
+        // which takes a Face directly, MakePipeShell wants the boundary wire.
+        BRepOffsetAPI_MakePipeShell shell(spine);
+
+        // Configure trihedron law based on the orient discriminant.
+        switch (orient) {
+            case 0: {
+                // Fixed: lock the trihedron to the spine-start frame.
+                // We need an Ax2 = (origin, Z=tangent, X=any perpendicular).
+                BRepAdaptor_Curve curve(spine_edges.front());
+                gp_Pnt start_pnt;
+                gp_Vec start_tan;
+                curve.D1(curve.FirstParameter(), start_pnt, start_tan);
+                if (start_tan.Magnitude() < Precision::Confusion()) return nullptr;
+                gp_Dir tdir(start_tan);
+                // Pick any direction not parallel to tdir for the X reference.
+                gp_Dir xref = (std::abs(tdir.X()) < 0.9) ? gp_Dir(1, 0, 0) : gp_Dir(0, 1, 0);
+                gp_Ax2 fixed_ax2(start_pnt, tdir, xref);
+                shell.SetMode(fixed_ax2);
+                break;
+            }
+            case 1: {
+                // Torsion: raw Frenet. SetMode(true) = Frenet,
+                // SetMode(false) = CorrectedFrenet (default).
+                shell.SetMode(Standard_True);
+                break;
+            }
+            case 2: {
+                // Up(v): fix the binormal direction to the user vector.
+                gp_Vec up_vec(ux, uy, uz);
+                if (up_vec.Magnitude() < Precision::Confusion()) return nullptr;
+                shell.SetMode(gp_Dir(up_vec));
+                break;
+            }
+            default: {
+                shell.SetMode(Standard_True); // fallback to raw Frenet (Torsion)
+                break;
+            }
+        }
+
+        // Add the profile wire. WithContact=false / WithCorrection=false
+        // because the caller has already placed the profile at the spine
+        // start (via Edge::polygon + align_z + translate on the Rust side).
+        shell.Add(profile_wire, Standard_False, Standard_False);
+        shell.Build();
+        if (!shell.IsDone()) return nullptr;
+        if (!shell.MakeSolid()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(shell.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {

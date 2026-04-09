@@ -4,7 +4,7 @@ use super::face::Face;
 use super::ffi;
 use super::iterators::{EdgeIterator, FaceIterator};
 use crate::common::error::Error;
-use crate::traits::{SolidExt, SolidStruct, Transform};
+use crate::traits::{ProfileOrient, SolidExt, SolidStruct, Transform};
 use glam::DVec3;
 
 #[cfg(feature = "color")]
@@ -156,6 +156,35 @@ impl SolidStruct for Solid {
 
 	fn edges(&self) -> Vec<Edge> {
 		EdgeIterator::new(ffi::explore_edges(&self.inner)).collect()
+	}
+
+	// ==================== Sweep ====================
+
+	fn sweep<'a, 'b>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient) -> Result<Self, Error> {
+		let mut profile_vec = ffi::edge_vec_new();
+		for e in profile {
+			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+		}
+		let mut spine_vec = ffi::edge_vec_new();
+		for e in spine {
+			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner);
+		}
+		// Encode the variant + payload into the FFI's (orient: u32, ux, uy, uz) signature.
+		// Up's vector is only meaningful when orient == 2; the other variants pass zeros.
+		let (kind, ux, uy, uz) = match orient {
+			ProfileOrient::Fixed => (0u32, 0.0, 0.0, 0.0),
+			ProfileOrient::Torsion => (1u32, 0.0, 0.0, 0.0),
+			ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
+		};
+		let shape = ffi::make_pipe_from_edges(&profile_vec, &spine_vec, kind, ux, uy, uz);
+		if shape.is_null() {
+			return Err(Error::SweepFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
 	}
 
 	// ==================== Boolean primitives ====================

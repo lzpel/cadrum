@@ -28,8 +28,12 @@ pub enum Error {
 	/// Face revolution (MakeRevol) failed.
 	RevolveFailed,
 
-	/// Helix sweep (MakePipeShell) failed.
+	/// Helix edge construction failed (e.g. degenerate parameters).
 	HelixFailed,
+
+	/// Pipe sweep (`Solid::sweep`) failed: profile not closed, edges not
+	/// connectable into a wire, or `BRepOffsetAPI_MakePipe` returned no shape.
+	SweepFailed,
 
 	/// Face creation from polygon points failed (non-planar or degenerate points).
 	InvalidPolygon,
@@ -60,6 +64,7 @@ impl std::fmt::Display for Error {
 			Error::ExtrudeFailed => write!(f, "Extrude failed"),
 			Error::RevolveFailed => write!(f, "Revolve failed"),
 			Error::HelixFailed => write!(f, "Helix failed"),
+			Error::SweepFailed => write!(f, "Sweep failed"),
 			Error::InvalidPolygon => write!(f, "Invalid polygon"),
 			Error::SvgExportFailed => write!(f, "SVG export failed"),
 			Error::StlWriteFailed => write!(f, "STL write failed"),
