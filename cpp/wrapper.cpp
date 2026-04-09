@@ -28,6 +28,7 @@
 #include <BRepLib.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
+#include <gp_Circ.hxx>
 
 #include <BRepAlgoAPI_BooleanOperation.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -947,6 +948,26 @@ std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(rust::Slice<const d
     } catch (const Standard_Failure&) {
         out->clear();
         return out;
+    }
+}
+
+std::unique_ptr<TopoDS_Edge> make_circle_edge(
+    double ax, double ay, double az, double radius)
+{
+    try {
+        if (radius < Precision::Confusion()) return nullptr;
+        gp_Dir axis_dir(ax, ay, az);
+        // Single-arg gp_Ax2(origin, N): OCCT picks an arbitrary X direction
+        // orthogonal to the normal. The circle's parametric start is then at
+        // (radius, 0, 0) in that implicit local frame. Callers that need a
+        // specific start direction should rotate the result into place.
+        gp_Ax2 ax2(gp_Pnt(0.0, 0.0, 0.0), axis_dir);
+        gp_Circ circ(ax2, radius);
+        BRepBuilderAPI_MakeEdge edgeMaker(circ);
+        if (!edgeMaker.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Edge>(edgeMaker.Edge());
+    } catch (const Standard_Failure&) {
+        return nullptr;
     }
 }
 

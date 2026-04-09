@@ -163,6 +163,7 @@ mod ffi_bridge {
 
 		fn make_helix_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, radius: f64, pitch: f64, height: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_polygon_edges(coords: &[f64]) -> UniquePtr<CxxVector<TopoDS_Edge>>;
+		fn make_circle_edge(ax: f64, ay: f64, az: f64, radius: f64) -> UniquePtr<TopoDS_Edge>;
 
 		fn edge_start_point(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);
 		fn edge_start_tangent(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);

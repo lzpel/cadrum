@@ -55,6 +55,11 @@ impl EdgeStruct for Edge {
 		// UniquePtr<TopoDS_Edge> via deep_copy_edge so we own the topology.
 		cxx_vec.iter().map(|e| Edge::new(ffi::deep_copy_edge(e))).collect()
 	}
+
+	fn circle(radius: f64, axis: DVec3) -> Self {
+		let inner = ffi::make_circle_edge(axis.x, axis.y, axis.z, radius);
+		Edge::new(inner)
+	}
 }
 
 impl EdgeExt for Edge {
