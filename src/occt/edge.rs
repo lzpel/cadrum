@@ -1,7 +1,7 @@
 use super::ffi;
 use super::iterators::ApproximationSegmentIterator;
 use crate::common::error::Error;
-use crate::traits::{EdgeExt, EdgeStruct, Transform};
+use crate::traits::{BSplineEnd, EdgeExt, EdgeStruct, Transform};
 use glam::DVec3;
 
 /// An edge topology shape.
@@ -101,6 +101,55 @@ impl EdgeStruct for Edge {
 	fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_arc_edge(start.x, start.y, start.z, mid.x, mid.y, mid.z, end.x, end.y, end.z);
 		Edge::try_from_ffi(inner, format!("arc_3pts: collinear or degenerate points (start={start:?}, mid={mid:?}, end={end:?})"))
+	}
+
+	fn bspline(points: impl IntoIterator<Item = DVec3>, end: BSplineEnd) -> Result<Self, Error> {
+		let pts: Vec<DVec3> = points.into_iter().collect();
+
+		// 最低点数チェック: Periodic は cubic 周期 spline の構造上 ≥ 3、その他は ≥ 2。
+		let min_required = match end {
+			BSplineEnd::Periodic => 3,
+			BSplineEnd::NotAKnot | BSplineEnd::Clamped { .. } => 2,
+		};
+		if pts.len() < min_required {
+			return Err(Error::InvalidEdge(format!(
+				"bspline: need ≥{} points for {:?}, got {}",
+				min_required,
+				end,
+				pts.len()
+			)));
+		}
+
+		// Periodic では先頭と末尾が一致してはならない。OCCT は周期性を基底関数に
+		// 組み込むので、ユーザーが点を重複させると行列が特異化して失敗する。
+		// 自動除去はせず InvalidEdge で誤用を明示する (AGENTS.md "誤解 vs 手間" 方針)。
+		if matches!(end, BSplineEnd::Periodic) {
+			let first = pts.first().expect("checked above");
+			let last = pts.last().expect("checked above");
+			if first == last {
+				return Err(Error::InvalidEdge(format!(
+					"bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point"
+				)));
+			}
+		}
+
+		// FFI 用に flat な xyz 列にパック。
+		let coords: Vec<f64> = pts.iter().flat_map(|p| [p.x, p.y, p.z]).collect();
+
+		// BSplineEnd を (kind, start_tangent, end_tangent) にエンコード。
+		// kind: 0 = Periodic, 1 = NotAKnot, 2 = Clamped。
+		// 接線ベクトルは Clamped 以外では使われない (C++ 側で無視)。
+		let (kind, sx, sy, sz, ex, ey, ez) = match end {
+			BSplineEnd::Periodic => (0u32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+			BSplineEnd::NotAKnot => (1u32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+			BSplineEnd::Clamped { start: s, end: e } => (2u32, s.x, s.y, s.z, e.x, e.y, e.z),
+		};
+
+		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez);
+		Edge::try_from_ffi(
+			inner,
+			format!("bspline: OCCT GeomAPI_Interpolate failed ({} points, end={end:?})", pts.len()),
+		)
 	}
 }
 
