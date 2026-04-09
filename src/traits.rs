@@ -1,16 +1,51 @@
 //! Backend-independent trait definitions.
 //!
-//! - `SolidStruct` (pub(crate)): backend implementation trait.
-//!   build_delegation.rs parses this and generates pub inherent methods on Solid.
-//!   Trait name follows `<Type>Struct` convention (SolidStruct → Solid).
+//! Trait hierarchy:
 //!
-//! - `SolidExt` (pub): operations available on Solid, Vec<T>, and [T; N].
-//!   Not processed by build_delegation. Users import this trait for collection ops.
+//! ```text
+//! Transform  ─┐
+//!             ├─  SolidExt  ─┐
+//!             │              ├─  SolidStruct (pub(crate))
+//!             │              │
+//!             └──────────────┘
+//! ```
 //!
-//! パーサー制約（build_delegation.rs — 行ベースのテキスト処理）:
-//! - fn シグネチャは1行に収めること
-//! - ライフタイム付きメソッドはスキップされる
-//! - #[cfg] は直前1行のみ認識
+//! - `Transform` (pub): spatial ops (translate/rotate/scale/mirror). Geometry-agnostic.
+//!   Implemented for shapes (`Solid`, future `Edge` etc.) and collections.
+//!
+//! - `SolidExt: Transform` (pub): solid-specific operations on Solid, Vec<T>, and [T; N]
+//!   (clean/volume/contains/color/boolean wrappers). Inherits Transform's methods.
+//!
+//! - `SolidStruct: Sized + Clone + SolidExt` (pub(crate)): backend implementation trait.
+//!   Adds Solid-only operations (constructors, topology accessors, boolean primitives).
+//!   build_delegation.rs parses this and generates pub inherent methods on Solid,
+//!   walking the supertrait chain so all `SolidExt` and `Transform` methods are also
+//!   exposed inherently. Trait name follows `<Type>Struct` convention (SolidStruct → Solid).
+//!
+//! パーサー挙動と制約（build_delegation.rs — 行ベースのテキスト処理）:
+//!
+//! トレイトヘッダ:
+//! - `pub trait Foo: A + B + C {` から名前と supertrait リスト（`+` 区切り）を抽出する
+//! - `Foo` が `Struct`/`Module` サフィックスを持つトレイトの supertrait に出現した場合、
+//!   `Foo` のメソッドも親側の inherent impl に取り込まれる（再帰的に祖先まで辿る）
+//! - 解析対象トレイト一覧に存在しない名前（`Sized`, `Clone`, ライフタイム束縛 `'a` 等）は
+//!   黙って無視される
+//! - 同名メソッドは子トレイト優先で重複排除される（親のオーバーライド）
+//! - ヘッダ行は1行に収めること（`where` 句を改行して書くと検出されない）
+//!
+//! メソッドシグネチャ:
+//! - fn シグネチャは1行に収めること（`where` 句・ライフタイム・ジェネリクス引数も同じ行）
+//! - default impl はサポート。本体が1行に収まる場合はそのまま、複数行の場合も
+//!   `{...}` ブロックを brace 深さでスキップする
+//! - ライフタイム引数 `<'a, 'b>` および `where Self: 'a` のような句はそのまま保持される。
+//!   `Self` は inherent impl 文脈では具象型と等価なので置換せず残す（`Self::Elem` のような
+//!   関連型のみ事前に concrete type へ置換される）
+//! - `Self::Elem` は impl 対象の具象型へ置換される。`Self::Face`/`Self::Edge` は
+//!   `Face`/`Edge` へ置換される
+//!
+//! その他:
+//! - `#[cfg(...)]` は直前1行のみ認識し、続く fn に付与される
+//! - `type Foo;` などの associated type 宣言は無視される（メソッド生成対象外）
 
 #[cfg(feature = "color")]
 use crate::common::color::Color;
@@ -18,6 +53,30 @@ use crate::common::error::Error;
 use crate::common::mesh::Mesh;
 use crate::{Edge, Face, Solid};
 use glam::DVec3;
+
+// ==================== Transform ====================
+
+/// Spatial-transform operations: translate / rotate / scale / mirror.
+///
+/// Orthogonal to any specific geometry kind. Implemented for individual
+/// shapes (`Solid`, eventually `Edge` etc.) and for collections (`Vec<T>`,
+/// `[T; N]`) where the element type is itself `Transform`.
+///
+/// `SolidExt: Transform`, so users of `Solid` get these methods inherently
+/// (via build_delegation's supertrait walk) and never need to import this trait
+/// explicitly. Importing it is only required when calling these methods on
+/// `Vec<T>` / `[T; N]` directly.
+pub trait Transform: Sized {
+	fn translate(self, translation: DVec3) -> Self;
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
+	fn rotate_x(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::X, angle) }
+	fn rotate_y(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Y, angle) }
+	fn rotate_z(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Z, angle) }
+	fn scale(self, center: DVec3, factor: f64) -> Self;
+	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
+}
+
+// ==================== Per-type traits ====================
 
 /// Backend-independent face trait.
 pub trait FaceStruct {
@@ -32,9 +91,13 @@ pub trait EdgeStruct {
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).
 ///
-/// build_delegation.rs generates `impl Solid { pub fn ... }` from this trait.
-/// Methods with lifetime parameters are skipped by the codegen.
-pub trait SolidStruct: Sized + Clone {
+/// `Solid`-specific operations only. The shared methods (transforms, queries,
+/// color, boolean wrappers) live on `SolidExt` and are inherited via the
+/// supertrait bound.
+///
+/// build_delegation.rs generates `impl Solid { pub fn ... }` from this trait
+/// and walks the supertrait chain to expose `SolidExt` methods inherently as well.
+pub trait SolidStruct: Sized + Clone + SolidExt {
 	// --- Constructors ---
 	fn cube(x: f64, y: f64, z: f64) -> Self;
 	fn sphere(radius: f64) -> Self;
@@ -43,33 +106,11 @@ pub trait SolidStruct: Sized + Clone {
 	fn torus(r1: f64, r2: f64, axis: DVec3) -> Self;
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Self;
 
-	// --- Transforms ---
-	fn translate(self, translation: DVec3) -> Self;
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
-	fn rotate_x(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::X, angle) }
-	fn rotate_y(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Y, angle) }
-	fn rotate_z(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Z, angle) }
-	fn scale(self, center: DVec3, factor: f64) -> Self;
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
-	fn clean(&self) -> Result<Self, Error>;
-
-	// --- Queries ---
-	fn volume(&self) -> f64;
-	fn bounding_box(&self) -> [DVec3; 2];
-	fn contains(&self, point: DVec3) -> bool;
-	fn shell_count(&self) -> u32;
-
 	// --- Topology ---
 	fn faces(&self) -> Vec<Face>;
 	fn edges(&self) -> Vec<Edge>;
 
-	// --- Color ---
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self;
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self;
-
-	// --- Boolean (skipped by build_delegation due to lifetime params) ---
+	// --- Boolean primitives (consumed by SolidExt::*_with_metadata wrappers) ---
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
 	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
 	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
@@ -77,20 +118,14 @@ pub trait SolidStruct: Sized + Clone {
 
 // ==================== SolidExt ====================
 
-/// Public trait: operations on Solid, Vec<Solid>, and [Solid; N].
+/// Public trait: solid-specific operations on Solid, Vec<Solid>, and [Solid; N].
 ///
-/// Users `use cadrum::SolidExt;` to enable method chaining on collections.
-pub trait SolidExt: Sized {
+/// Spatial transforms (translate/rotate/scale/mirror) live on the supertrait
+/// `Transform`. Users `use cadrum::SolidExt;` (and optionally `Transform`) to
+/// enable method chaining on collections.
+pub trait SolidExt: Transform {
 	type Elem: SolidStruct;
 
-	// --- Transforms (-> Self) ---
-	fn translate(self, translation: DVec3) -> Self;
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
-	fn rotate_x(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::X, angle) }
-	fn rotate_y(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Y, angle) }
-	fn rotate_z(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Z, angle) }
-	fn scale(self, center: DVec3, factor: f64) -> Self;
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
 	fn clean(&self) -> Result<Self, Error>;
 
 	// --- Queries ---
@@ -114,45 +149,20 @@ pub trait SolidExt: Sized {
 	fn intersect<'a>(self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a { Ok(self.intersect_with_metadata(tool)?.0) }
 }
 
-// ==================== impl SolidExt for Solid ====================
+// `impl SolidExt for Solid` lives in the backend module (e.g. src/occt/solid.rs)
+// because it needs direct access to the backend FFI for the per-element operations.
 
-impl SolidExt for Solid {
-	type Elem = Solid;
-	fn translate(self, v: DVec3) -> Self { <Self as SolidStruct>::translate(self, v) }
-	fn rotate(self, o: DVec3, d: DVec3, a: f64) -> Self { <Self as SolidStruct>::rotate(self, o, d, a) }
-	fn scale(self, c: DVec3, f: f64) -> Self { <Self as SolidStruct>::scale(self, c, f) }
-	fn mirror(self, o: DVec3, n: DVec3) -> Self { <Self as SolidStruct>::mirror(self, o, n) }
-	fn clean(&self) -> Result<Self, Error> { <Self as SolidStruct>::clean(self) }
-	fn volume(&self) -> f64 { <Self as SolidStruct>::volume(self) }
-	fn bounding_box(&self) -> [DVec3; 2] { <Self as SolidStruct>::bounding_box(self) }
-	fn contains(&self, p: DVec3) -> bool { <Self as SolidStruct>::contains(self, p) }
-	fn shell_count(&self) -> u32 { <Self as SolidStruct>::shell_count(self) }
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self { <Self as SolidStruct>::color(self, color) }
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self { <Self as SolidStruct>::color_clear(self) }
-	fn union_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
-		let arr = [self];
-		Solid::boolean_union(arr.iter(), tool)
-	}
-	fn subtract_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
-		let arr = [self];
-		Solid::boolean_subtract(arr.iter(), tool)
-	}
-	fn intersect_with_metadata<'a>(self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
-		let arr = [self];
-		Solid::boolean_intersect(arr.iter(), tool)
-	}
-}
+// ==================== impl Transform / SolidExt for Vec<T> ====================
 
-// ==================== impl SolidExt for Vec<T> ====================
-
-impl<T: SolidStruct> SolidExt for Vec<T> {
-	type Elem = T;
+impl<T: Transform> Transform for Vec<T> {
 	fn translate(self, v: DVec3) -> Self { self.into_iter().map(|s| s.translate(v)).collect() }
 	fn rotate(self, o: DVec3, d: DVec3, a: f64) -> Self { self.into_iter().map(|s| s.rotate(o, d, a)).collect() }
 	fn scale(self, c: DVec3, f: f64) -> Self { self.into_iter().map(|s| s.scale(c, f)).collect() }
 	fn mirror(self, o: DVec3, n: DVec3) -> Self { self.into_iter().map(|s| s.mirror(o, n)).collect() }
+}
+
+impl<T: SolidStruct> SolidExt for Vec<T> {
+	type Elem = T;
 	fn clean(&self) -> Result<Self, Error> { self.iter().map(|s| s.clean()).collect() }
 	fn volume(&self) -> f64 { self.iter().map(|s| s.volume()).sum() }
 	fn bounding_box(&self) -> [DVec3; 2] {
@@ -182,14 +192,17 @@ impl<T: SolidStruct> SolidExt for Vec<T> {
 	}
 }
 
-// ==================== impl SolidExt for [T; N] ====================
+// ==================== impl Transform / SolidExt for [T; N] ====================
 
-impl<T: SolidStruct, const N: usize> SolidExt for [T; N] {
-	type Elem = T;
+impl<T: Transform, const N: usize> Transform for [T; N] {
 	fn translate(self, v: DVec3) -> Self { self.map(|s| s.translate(v)) }
 	fn rotate(self, o: DVec3, d: DVec3, a: f64) -> Self { self.map(|s| s.rotate(o, d, a)) }
 	fn scale(self, c: DVec3, f: f64) -> Self { self.map(|s| s.scale(c, f)) }
 	fn mirror(self, o: DVec3, n: DVec3) -> Self { self.map(|s| s.mirror(o, n)) }
+}
+
+impl<T: SolidStruct, const N: usize> SolidExt for [T; N] {
+	type Elem = T;
 	fn clean(&self) -> Result<Self, Error> {
 		let v: Result<Vec<T>, Error> = self.iter().map(|s| s.clean()).collect();
 		v?.try_into().map_err(|_| unreachable!())

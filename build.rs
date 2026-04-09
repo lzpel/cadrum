@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-changed=src/traits.rs");
+	println!("cargo:rerun-if-changed=build_delegation.rs");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;

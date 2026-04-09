@@ -7,12 +7,19 @@
 //! How it works / 仕組み:
 //!   - "Struct" suffix (e.g. SolidStruct → crate::Solid): generates `impl crate::Solid { pub fn ... }`
 //!   - "Module" suffix (e.g. IoModule → mod io): generates `pub mod io { pub fn ... }`
+//!   - その他のサフィックス (e.g. SolidExt) はトップレベル委譲を生成しないが、
+//!     "Struct" トレイトのスーパートレイトとして参照された場合は、その中の
+//!     メソッドも inherent impl に取り込まれる
 //!
-//!   "Struct" → 具象型のinherent implを生成。"Module" → pub modを生成。
+//! パーサー制約（行ベースのテキスト処理）:
+//!   - fn シグネチャは1行に収めること
+//!   - #[cfg] は直前1行のみ認識
+//!   - ライフタイム・where 句・default impl は本体を1行で書けばサポートされる
 //!
 //! Called from / 呼び出し元:
 //!   build.rs: build_delegation(include_str!("src/traits.rs"), &out_dir)
 
+use std::collections::HashSet;
 use std::path::Path;
 
 enum DelegationKind {
@@ -31,7 +38,7 @@ fn delegation_kind(trait_name: &str) -> Option<DelegationKind> {
 		let mod_name = base[..1].to_lowercase() + &base[1..];
 		Some(DelegationKind::ModBlock { mod_name, struct_path: format!("crate::{}", base) })
 	} else {
-		None // skip traits with unrecognized suffix (e.g. SolidExt)
+		None // skip traits with unrecognized suffix (e.g. SolidExt) — only used as supertraits
 	}
 }
 
@@ -45,6 +52,15 @@ struct Method {
 	name: String,
 	args: Vec<String>,
 	has_self: bool,
+	/// Trait this method was originally declared in.
+	/// Used to emit `<Self as crate::traits::ORIGIN>::method(...)`.
+	origin_trait: String,
+}
+
+struct TraitDef {
+	name: String,
+	supertraits: Vec<String>,
+	methods: Vec<Method>,
 }
 
 pub fn build_delegation(traits_src: &str, out_dir: &Path) {
@@ -53,46 +69,36 @@ pub fn build_delegation(traits_src: &str, out_dir: &Path) {
 
 	let traits = parse_traits(traits_src);
 
-	for (trait_name, methods) in &traits {
-		let kind = match delegation_kind(trait_name) {
+	for td in &traits {
+		let kind = match delegation_kind(&td.name) {
 			Some(k) => k,
 			None => continue, // skip traits with unrecognized suffix
 		};
-		let trait_path = format!("crate::traits::{}", trait_name);
+
+		// Collect this trait's methods plus those from supertraits transitively.
+		// Child methods override parent methods of the same name.
+		let mut seen: HashSet<String> = HashSet::new();
+		let mut collected: Vec<&Method> = Vec::new();
+		for m in &td.methods {
+			if seen.insert(m.name.clone()) {
+				collected.push(m);
+			}
+		}
+		collect_super_methods(&td.supertraits, &traits, &mut seen, &mut collected);
 
 		match &kind {
 			DelegationKind::InherentImpl { concrete_type } => {
 				output.push_str(&format!("impl {} {{\n", concrete_type));
-				for method in methods {
-					if let Some(cfg) = &method.cfg {
-						output.push_str(&format!("    {}\n", cfg));
-					}
-					let sig = resolve_types(&method.signature, concrete_type);
-					output.push_str(&format!("    pub {}", sig));
-					output.push_str(" {\n");
-					let args_str = method.args.join(", ");
-					if method.has_self {
-						output.push_str(&format!("        <Self as {}>::{}(self, {})\n", trait_path, method.name, args_str));
-					} else {
-						output.push_str(&format!("        <Self as {}>::{}({})\n", trait_path, method.name, args_str));
-					}
-					output.push_str("    }\n");
+				for method in &collected {
+					emit_method(&mut output, method, concrete_type, false);
 				}
 				output.push_str("}\n\n");
 			}
 			DelegationKind::ModBlock { mod_name, struct_path } => {
 				output.push_str(&format!("pub mod {} {{\n", mod_name));
 				output.push_str("    use super::*;\n");
-				for method in methods {
-					if let Some(cfg) = &method.cfg {
-						output.push_str(&format!("    {}\n", cfg));
-					}
-					let sig = resolve_types(&method.signature, struct_path);
-					output.push_str(&format!("    pub {}", sig));
-					output.push_str(" {\n");
-					let args_str = method.args.join(", ");
-					output.push_str(&format!("        <{} as {}>::{}({})\n", struct_path, trait_path, method.name, args_str));
-					output.push_str("    }\n");
+				for method in &collected {
+					emit_method(&mut output, method, struct_path, true);
 				}
 				output.push_str("}\n\n");
 			}
@@ -103,9 +109,51 @@ pub fn build_delegation(traits_src: &str, out_dir: &Path) {
 	std::fs::write(&out_path, output).expect("Failed to write generated_delegation.rs");
 }
 
+/// Walk the supertrait list transitively, collecting methods that haven't already
+/// been seen (i.e., not overridden by a child trait).
+fn collect_super_methods<'a>(supers: &[String], all: &'a [TraitDef], seen: &mut HashSet<String>, out: &mut Vec<&'a Method>) {
+	for super_name in supers {
+		let parent = match all.iter().find(|t| &t.name == super_name) {
+			Some(p) => p,
+			None => continue, // not user-defined (e.g. Sized, Clone) — skip silently
+		};
+		for m in &parent.methods {
+			if seen.insert(m.name.clone()) {
+				out.push(m);
+			}
+		}
+		collect_super_methods(&parent.supertraits, all, seen, out);
+	}
+}
+
+fn emit_method(output: &mut String, method: &Method, concrete_type: &str, is_module: bool) {
+	if let Some(cfg) = &method.cfg {
+		output.push_str(&format!("    {}\n", cfg));
+	}
+	let sig = resolve_types(&method.signature, concrete_type);
+	output.push_str(&format!("    pub {}", sig));
+	output.push_str(" {\n");
+	let trait_path = format!("crate::traits::{}", method.origin_trait);
+	let args_str = method.args.join(", ");
+	if is_module {
+		output.push_str(&format!("        <{} as {}>::{}({})\n", concrete_type, trait_path, method.name, args_str));
+	} else if method.has_self {
+		output.push_str(&format!("        <Self as {}>::{}(self, {})\n", trait_path, method.name, args_str));
+	} else {
+		output.push_str(&format!("        <Self as {}>::{}({})\n", trait_path, method.name, args_str));
+	}
+	output.push_str("    }\n");
+}
+
 /// Replace short type names and `Self` with fully-qualified paths.
+///
+/// Order matters: `Self::Elem` / `Self::Face` / `Self::Edge` (associated types) MUST
+/// be replaced before bare `Self`, otherwise `Self` would be substituted first and
+/// produce `crate::Solid::Elem` etc.
 fn resolve_types(sig: &str, concrete_type: &str) -> String {
 	let mut s = sig.to_string();
+	// Self::Elem is per-impl, so replace dynamically with the concrete type.
+	s = replace_type_word(&s, "Self::Elem", concrete_type);
 	for (from, to) in TYPE_MAP {
 		s = replace_type_word(&s, from, to);
 	}
@@ -140,16 +188,23 @@ fn is_ident_char(b: u8) -> bool {
 	b.is_ascii_alphanumeric() || b == b'_'
 }
 
-/// Replace `Self` as a type (not `self` as a parameter) with the concrete type.
+/// Replace `Self` as a type (not `self` as a parameter, not `Self::Foo` as an
+/// associated type) with the concrete type.
 fn replace_self_type(sig: &str, concrete_type: &str) -> String {
 	let mut result = String::new();
 	let bytes = sig.as_bytes();
 	let mut i = 0;
 	while i < bytes.len() {
 		if i + 4 <= bytes.len() && &sig[i..i + 4] == "Self" {
-			// Check it's not `self` (lowercase)
 			let before_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
-			let after_ok = i + 4 >= bytes.len() || !bytes[i + 4].is_ascii_alphanumeric();
+			// Reject if followed by `:` (associated type path like `Self::Elem`) or
+			// by an identifier character (e.g. `SelfRef`). Associated types must be
+			// resolved by an earlier pass before reaching here.
+			let next = if i + 4 < bytes.len() { Some(bytes[i + 4]) } else { None };
+			let after_ok = match next {
+				None => true,
+				Some(b) => !b.is_ascii_alphanumeric() && b != b':',
+			};
 			if before_ok && after_ok {
 				result.push_str(concrete_type);
 				i += 4;
@@ -163,8 +218,7 @@ fn replace_self_type(sig: &str, concrete_type: &str) -> String {
 }
 
 /// Parse trait definitions from traits.rs source.
-/// Returns vec of (trait_name, methods).
-fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
+fn parse_traits(src: &str) -> Vec<TraitDef> {
 	let mut traits = Vec::new();
 	let lines: Vec<&str> = src.lines().collect();
 	let mut i = 0;
@@ -172,10 +226,11 @@ fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
 	while i < lines.len() {
 		let line = lines[i].trim();
 
-		// Look for trait definition
-		if line.contains("trait ") && line.contains('{') {
-			let trait_name = extract_trait_name(line);
-			if let Some(name) = trait_name {
+		// Look for trait definition. Skip comment lines so example snippets in
+		// doc-comments (e.g. `//! - \`pub trait Foo: ...{\``) aren't parsed as
+		// real trait definitions.
+		if !line.starts_with("//") && line.contains("trait ") && line.contains('{') {
+			if let Some((name, supertraits)) = extract_trait_header(line) {
 				let mut methods = Vec::new();
 				i += 1;
 
@@ -208,10 +263,10 @@ fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
 
 					// Parse fn signature
 					if line.starts_with("fn ") {
-						if let Some(method) = parse_method(line, pending_cfg.take()) {
+						if let Some(method) = parse_method(line, pending_cfg.take(), name.clone()) {
 							methods.push(method);
 						}
-						// Skip default impl body: if line ends with '{', skip until matching '}'
+						// Skip multi-line default impl body: if line ends with '{', skip until matching '}'
 						if line.ends_with('{') {
 							let mut depth = 1usize;
 							while depth > 0 && i + 1 < lines.len() {
@@ -228,7 +283,7 @@ fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
 					i += 1;
 				}
 
-				traits.push((name, methods));
+				traits.push(TraitDef { name, supertraits, methods });
 			}
 		}
 		i += 1;
@@ -236,16 +291,36 @@ fn parse_traits(src: &str) -> Vec<(String, Vec<Method>)> {
 	traits
 }
 
-fn extract_trait_name(line: &str) -> Option<String> {
-	// "pub trait SolidStruct: Sized + Clone {"
-	// "pub(crate) trait SolidStruct: Sized + Clone {"
+/// Extract `(trait_name, supertraits)` from a line like
+/// `pub trait SolidStruct: Sized + Clone + SolidExt {`.
+///
+/// Lifetime bounds (e.g. `'static`) are filtered out. Whether a returned name
+/// refers to a user-defined trait is decided later by lookup.
+fn extract_trait_header(line: &str) -> Option<(String, Vec<String>)> {
 	let idx = line.find("trait ")?;
 	let rest = &line[idx + 6..];
-	let end = rest.find(|c: char| c == ':' || c == '{' || c == ' ')?;
-	Some(rest[..end].trim().to_string())
+	let name_end = rest.find(|c: char| c == ':' || c == '{' || c == ' ')?;
+	let name = rest[..name_end].trim().to_string();
+
+	let mut supertraits = Vec::new();
+	if let Some(colon) = rest.find(':') {
+		if let Some(brace) = rest.find('{') {
+			if colon < brace {
+				let bounds_str = &rest[colon + 1..brace];
+				for s in bounds_str.split('+') {
+					let s = s.trim();
+					if s.is_empty() || s.starts_with('\'') {
+						continue;
+					}
+					supertraits.push(s.to_string());
+				}
+			}
+		}
+	}
+	Some((name, supertraits))
 }
 
-fn parse_method(line: &str, cfg: Option<String>) -> Option<Method> {
+fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option<Method> {
 	// "fn name(args) -> RetType;" or "fn name(args) -> RetType { default_impl }"
 	let line = line.trim().trim_end_matches(';');
 	// Strip default impl body: "-> Self { ... }" → "-> Self"
@@ -281,10 +356,10 @@ fn parse_method(line: &str, cfg: Option<String>) -> Option<Method> {
 		}
 	}
 
-	// Reconstruct signature: "fn name(self/&self, args) -> RetType"
+	// Reconstruct signature: "fn name(self/&self, args) -> RetType [where ...]"
 	let signature = line[fn_idx..].to_string();
 
-	Some(Method { cfg, signature, name, args, has_self })
+	Some(Method { cfg, signature, name, args, has_self, origin_trait })
 }
 
 /// Split arguments by ',' while respecting `<>` nesting.

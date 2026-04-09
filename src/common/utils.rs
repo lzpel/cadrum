@@ -1,5 +1,5 @@
 use super::error::Error;
-use crate::{Solid, SolidExt};
+use crate::{Solid, SolidExt, Transform};
 use glam::DVec3;
 
 /// Extrude only the tool-side faces of a boolean result by `delta` to create a filler solid.
