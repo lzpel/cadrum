@@ -268,6 +268,17 @@ pub trait EdgeStruct: Sized + Clone + EdgeExt {
 	// 非平面の点列も受理する (検証しない) — `Solid::sweep` で face 化に失敗
 	// したとき `Error::SweepFailed` で気付ける想定なので、入力側での事前検査は省略。
 	fn polygon(points: impl IntoIterator<Item = DVec3>) -> Vec<Self>;
+
+	/// Closed circle of radius `r` centered at the world origin, lying in
+	/// the plane normal to `axis`. Returns a single edge (one Geom_Circle
+	/// curve — not a polygon approximation).
+	///
+	/// The circle's start/end point (at which `start_point()` /
+	/// `start_tangent()` are evaluated) is chosen by the backend from an
+	/// arbitrary orthogonal direction to `axis`. Callers that need a
+	/// deterministic start point should translate/rotate the resulting
+	/// edge into place rather than relying on the implicit choice.
+	fn circle(radius: f64, axis: DVec3) -> Self;
 }
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).
@@ -547,6 +558,6 @@ pub trait IoModule {
 	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
 	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
 	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self::Solid: 'a;
-	fn write_svg<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, direction: DVec3, tolerance: f64, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { writer.write_all(Self::mesh(solids, tolerance)?.to_svg(direction).as_bytes()).map_err(|_| Error::SvgExportFailed) }
+	fn write_svg<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, direction: DVec3, tolerance: f64, hidden_lines: bool, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { writer.write_all(Self::mesh(solids, tolerance)?.to_svg(direction, hidden_lines).as_bytes()).map_err(|_| Error::SvgExportFailed) }
 	fn write_stl<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, tolerance: f64, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { Self::mesh(solids, tolerance)?.write_stl(writer) }
 }

@@ -218,6 +218,13 @@ std::unique_ptr<TopoDS_Edge> make_helix_edge(
 std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(
     rust::Slice<const double> coords);
 
+// Construct a closed circular edge of `radius` centered at the world origin,
+// lying in the plane normal to `axis`. The local +X axis of the circle's
+// frame (which determines the parametric start point) is chosen by OCCT
+// from an arbitrary orthogonal direction to `axis`.
+std::unique_ptr<TopoDS_Edge> make_circle_edge(
+    double ax, double ay, double az, double radius);
+
 // Edge query helpers.
 void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z);
 void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z);
