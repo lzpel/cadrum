@@ -180,6 +180,7 @@ mod ffi_bridge {
 		fn scale_edge(edge: &TopoDS_Edge, cx: f64, cy: f64, cz: f64, factor: f64) -> UniquePtr<TopoDS_Edge>;
 		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Edge>;
 
+		fn make_extrude(profile_edges: &CxxVector<TopoDS_Edge>, dx: f64, dy: f64, dz: f64) -> UniquePtr<TopoDS_Shape>;
 		fn make_pipe_shell(all_edges: &CxxVector<TopoDS_Edge>, spine_edges: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine_edges: &CxxVector<TopoDS_Edge>) -> UniquePtr<TopoDS_Shape>;
 		fn make_loft(all_edges: &CxxVector<TopoDS_Edge>) -> UniquePtr<TopoDS_Shape>;
 
