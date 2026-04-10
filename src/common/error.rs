@@ -29,6 +29,11 @@ pub enum Error {
 	/// connectable into a wire, or `BRepOffsetAPI_MakePipe` returned no shape.
 	SweepFailed,
 
+	/// Lofting (`Solid::loft` / `BRepOffsetAPI_ThruSections`) failed: section
+	/// count too low, section wire ill-formed, or OCCT internal failure.
+	/// The string identifies which precondition or stage failed.
+	LoftFailed(String),
+
 	/// Edge construction failed due to degenerate input (e.g. collinear arc
 	/// points, zero-length line, negative radius). The string describes which
 	/// constructor failed and with which parameters.
@@ -59,6 +64,7 @@ impl std::fmt::Display for Error {
 			Error::CleanFailed => write!(f, "Shape clean failed"),
 			Error::HelixFailed => write!(f, "Helix failed"),
 			Error::SweepFailed => write!(f, "Sweep failed"),
+			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
 			Error::SvgExportFailed => write!(f, "SVG export failed"),
 			Error::StlWriteFailed => write!(f, "STL write failed"),
