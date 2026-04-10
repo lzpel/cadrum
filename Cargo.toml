@@ -55,5 +55,9 @@ name = "05_sweep"
 required-features = ["color"]
 
 [[example]]
+name = "06_loft"
+required-features = ["color"]
+
+[[example]]
 name = "10_chijin"
 required-features = ["color"]
