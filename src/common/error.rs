@@ -25,6 +25,10 @@ pub enum Error {
 	/// Helix edge construction failed (e.g. degenerate parameters).
 	HelixFailed,
 
+	/// Extrusion (`Solid::extrude`) failed: empty profile, zero-length
+	/// direction, or profile not closed.
+	ExtrudeFailed,
+
 	/// Pipe sweep (`Solid::sweep`) failed: profile not closed, edges not
 	/// connectable into a wire, or `BRepOffsetAPI_MakePipe` returned no shape.
 	SweepFailed,
@@ -63,6 +67,7 @@ impl std::fmt::Display for Error {
 			Error::BooleanOperationFailed => write!(f, "Boolean operation failed"),
 			Error::CleanFailed => write!(f, "Shape clean failed"),
 			Error::HelixFailed => write!(f, "Helix failed"),
+			Error::ExtrudeFailed => write!(f, "Extrude failed"),
 			Error::SweepFailed => write!(f, "Sweep failed"),
 			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),

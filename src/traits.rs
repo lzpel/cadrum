@@ -384,6 +384,12 @@ pub trait SolidStruct: Sized + Clone + SolidExt {
 	fn faces(&self) -> Vec<Self::Face>;
 	fn edges(&self) -> Vec<Self::Edge>;
 
+	/// Extrude a closed profile wire along a direction vector to form a solid.
+	///
+	/// Internally builds a face from the wire and uses `BRepPrimAPI_MakePrism`.
+	/// Fails if the profile is empty, not closed, or the direction is zero-length.
+	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Self::Edge>, dir: DVec3) -> Result<Self, Error> where Self::Edge: 'a;
+
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
 	/// to create a solid. Both inputs are accepted as `IntoIterator` of edge
