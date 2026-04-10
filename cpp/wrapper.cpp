@@ -71,7 +71,7 @@
 #include <BRepAdaptor_Curve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
-#include <NCollection_HArray1.hxx>
+#include <TColgp_HArray1OfPnt.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Precision.hxx>
 
@@ -946,7 +946,7 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
     if (coords.size() < 6 || coords.size() % 3 != 0) return nullptr;
     try {
         const int n = static_cast<int>(coords.size() / 3);
-        Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, n);
+        Handle(TColgp_HArray1OfPnt) pts = new TColgp_HArray1OfPnt(1, n);
         for (int i = 0; i < n; ++i) {
             pts->SetValue(i + 1, gp_Pnt(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]));
         }
