@@ -184,6 +184,24 @@ impl SolidStruct for Solid {
 		EdgeIterator::new(ffi::explore_edges(&self.inner)).collect()
 	}
 
+	// ==================== Extrude ====================
+
+	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
+		let mut profile_vec = ffi::edge_vec_new();
+		for e in profile {
+			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+		}
+		let shape = ffi::make_extrude(&profile_vec, dir.x, dir.y, dir.z);
+		if shape.is_null() {
+			return Err(Error::ExtrudeFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
 	// ==================== Sweep ====================
 
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {

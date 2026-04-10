@@ -51,14 +51,18 @@ name = "04_boolean"
 required-features = ["color"]
 
 [[example]]
-name = "05_loft"
-
-[[example]]
-name = "06_sweep"
+name = "05_extrude"
 required-features = ["color"]
 
 [[example]]
-name = "07_sweep_sections"
+name = "06_loft"
+
+[[example]]
+name = "07_sweep"
+required-features = ["color"]
+
+[[example]]
+name = "08_sweep_sections"
 
 [[example]]
 name = "10_chijin"

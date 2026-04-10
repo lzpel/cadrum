@@ -44,6 +44,7 @@
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeHalfSpace.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
 
 // --- Boolean operations & shape cleanup ---
@@ -1094,6 +1095,29 @@ void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
 
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
     v.push_back(TopoDS_Edge());
+}
+
+// Extrude a closed profile wire into a solid via BRepPrimAPI_MakePrism.
+// Edges → Wire → Face → Prism (solid).
+std::unique_ptr<TopoDS_Shape> make_extrude(
+    const std::vector<TopoDS_Edge>& profile_edges,
+    double dx, double dy, double dz)
+{
+    try {
+        if (profile_edges.empty()) return nullptr;
+        BRepBuilderAPI_MakeWire wire_maker;
+        for (const auto& e : profile_edges) wire_maker.Add(e);
+        if (!wire_maker.IsDone()) return nullptr;
+        BRepBuilderAPI_MakeFace face_maker(wire_maker.Wire());
+        if (!face_maker.IsDone()) return nullptr;
+        gp_Vec dir(dx, dy, dz);
+        BRepPrimAPI_MakePrism prism(face_maker.Face(), dir);
+        prism.Build();
+        if (!prism.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(prism.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 // Unified MakePipeShell wrapper.  Handles both single-profile sweep and
