@@ -92,26 +92,8 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 		println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
 	}
 
-	// TKernel's OSD_WNT.cxx registers a static initialiser (Init_OSD_WNT) that
-	// calls advapi32 functions (AllocateAndInitializeSid etc.) at program startup.
-	// Standard_Macro.hxx forcibly undefs OCCT_UWP unless WINAPI_FAMILY_APP is set,
-	// so the dependency cannot be removed via compiler flags alone.
-	// Rust passes -nodefaultlibs, bypassing GCC's spec that normally adds -ladvapi32.
-	//
-	// Additional Windows system libs required by OCCT static libs (color feature only):
-	//   ole32         — Image_AlienPixMap uses CoInitializeEx / CoCreateInstance /
-	//                   CreateStreamOnHGlobal / GetHGlobalFromStream (WIC image I/O)
-	//   windowscodecs — GUID_WICPixelFormat* / CLSID_WICImagingFactory data symbols
-	//                   (pulled in transitively via TKService → Image_AlienPixMap)
-	if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-		// Use rustc-link-lib (not rustc-link-arg) so Cargo translates correctly
-		// for both toolchains: MSVC gets advapi32.lib, GNU gets -ladvapi32.
-		println!("cargo:rustc-link-lib=advapi32");
-		// OSD_signal.cxx (TKernel) uses MessageBoxA / MessageBeep on MSVC Windows
-		// (#if !defined(__MINGW32__) && !defined(__CYGWIN32__) block).
-		// MinGW links user32 implicitly; MSVC requires explicit declaration.
-		println!("cargo:rustc-link-lib=user32");
-	}
+	// advapi32 / user32: no longer needed — patch_occt_sources() stubs the OSD
+	// files (OSD_WNT, OSD_File, OSD_Protection, OSD_signal) that reference them.
 
 	// Build cxx bridge + C++ wrapper
 	let mut build = cxx_build::bridge("src/occt/ffi.rs");
@@ -278,17 +260,19 @@ fn find_occt_lib_dir(occt_root: &Path) -> PathBuf {
 	occt_root.join("lib")
 }
 
-/// Patch two OCCT source files that pull in Graphic3d_* (TKService) symbols even
-/// when BUILD_MODULE_Visualization=OFF:
+/// Patch OCCT source files to remove unwanted link dependencies:
 ///
-///  - XCAFDoc/XCAFDoc_VisMaterial.cxx: remove #include lines for Graphic3d_Aspects,
-///    Graphic3d_MaterialAspect and XCAFPrs_Texture, then empty the bodies of
-///    FillMaterialAspect() and FillAspect() — the only methods that use those types.
-///    All TDF_Attribute interface methods (GetID, Restore, Paste, …) are left intact.
+/// 1. TKService (Visualization) — even with BUILD_MODULE_Visualization=OFF:
+///    - XCAFDoc_VisMaterial.cxx: stub bodies that use Graphic3d_* types.
+///    - XCAFPrs_Texture.cxx: empty entirely (inherits Graphic3d_Texture2D).
 ///
-///  - XCAFPrs/XCAFPrs_Texture.cxx: replaced with an empty file because it defines
-///    XCAFPrs_Texture which inherits from Graphic3d_Texture2D (TKService).
-///    The only caller was FillAspect(), which is now empty.
+/// 2. advapi32 / user32 (Windows system libs) — TKernel's OSD package:
+///    - OSD_WNT.cxx: empty entirely (static initialiser calls AllocateAndInitializeSid).
+///    - OSD_File.cxx: stub bodies (OpenProcessToken, SetSecurityDescriptorDacl, etc.).
+///    - OSD_Protection.cxx: stub bodies (EqualSid, LookupAccountNameW, etc.).
+///    - OSD_signal.cxx: stub bodies (MessageBoxA / MessageBeep on MSVC).
+///    - OSD_FileNode.cxx: stub bodies (SetFileSecurityW + OSD_WNT helpers).
+///    - OSD_Process.cxx: stub bodies (OpenProcessToken, GetUserNameW, EqualSid).
 fn patch_occt_sources(source_dir: &Path) {
 	// OCCT 8.0.0 moved sources under src/<Module>/<Toolkit>/<Package>/ hierarchy.
 	// Try the new layout first, fall back to the legacy flat layout (≤7.9.x).
@@ -305,6 +289,42 @@ fn patch_occt_sources(source_dir: &Path) {
 	// body stubs alone cannot cut the TKService dependency.
 	if let Some(path) = find(&prs_texture) {
 		stub_out_methods(&path, false);
+	}
+
+	// --- Eliminate advapi32 / user32 dependencies from TKernel's OSD package ---
+	let osd = |name: &str| [
+		format!("src/FoundationClasses/TKernel/OSD/{name}"),
+		format!("src/OSD/{name}"),
+	];
+	let find_osd = |name: &str| {
+		let candidates = osd(name);
+		candidates.into_iter().map(|p| source_dir.join(p)).find(|p| p.exists())
+	};
+
+	// OSD_WNT.cxx: static initialiser calls AllocateAndInitializeSid (advapi32).
+	// Module-internal only — no external interface needed.
+	if let Some(path) = find_osd("OSD_WNT.cxx") {
+		stub_out_methods(&path, false);
+	}
+	// OSD_File.cxx: OpenProcessToken, SetSecurityDescriptorDacl, etc. (advapi32).
+	if let Some(path) = find_osd("OSD_File.cxx") {
+		stub_out_methods(&path, true);
+	}
+	// OSD_Protection.cxx: EqualSid, LookupAccountNameW, etc. (advapi32).
+	if let Some(path) = find_osd("OSD_Protection.cxx") {
+		stub_out_methods(&path, true);
+	}
+	// OSD_signal.cxx: MessageBoxA / MessageBeep (user32) on MSVC.
+	if let Some(path) = find_osd("OSD_signal.cxx") {
+		stub_out_methods(&path, true);
+	}
+	// OSD_FileNode.cxx: SetFileSecurityW (advapi32) + OSD_WNT helpers.
+	if let Some(path) = find_osd("OSD_FileNode.cxx") {
+		stub_out_methods(&path, true);
+	}
+	// OSD_Process.cxx: OpenProcessToken, GetUserNameW, EqualSid (advapi32).
+	if let Some(path) = find_osd("OSD_Process.cxx") {
+		stub_out_methods(&path, true);
 	}
 }
 
@@ -360,6 +380,11 @@ fn stub_out_methods(path: &Path, keep_signatures: bool) {
 
 /// Replace every top-level (brace depth 0) `{ … }` block in `content` with
 /// `{}` or `{ return {}; }` and return the result.
+///
+/// Brace-initialised variables (`static int x{0};`, `std::atomic<T> y{...};`)
+/// are preserved verbatim: a `{` preceded by `=`, or whose prefix line has no
+/// `(` (not a function signature), is treated as a variable initialiser and
+/// skipped rather than stubbed.
 fn stub_all_top_level_bodies(content: &str) -> String {
 	let bytes = content.as_bytes();
 	let mut result = String::new();
@@ -370,9 +395,37 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 	while i < bytes.len() {
 		match bytes[i] {
 			b'{' if depth == 0 => {
-				// Top-level block start: check the preceding signature for return type.
 				let prefix = &content[last_end..i];
-				let stub_body = if is_void_return(prefix) { "{}" } else { "{ return {}; }" };
+
+				// Detect brace-initialised variables: if the non-whitespace
+				// character immediately before '{' is '=' or the prefix since
+				// the last statement terminator contains no '(' (i.e. it is
+				// not a function/method signature), treat as variable init
+				// and skip the block without stubbing.
+				let sig = prefix.rfind(|c| c == ';' || c == '}').map(|p| &prefix[p + 1..]).unwrap_or(prefix);
+				let trimmed = sig.trim_end();
+				let is_var_init = trimmed.ends_with('=') || !sig.contains('(');
+
+				if is_var_init {
+					// Walk forward to find the matching '}' and preserve verbatim.
+					depth = 1;
+					i += 1;
+					while i < bytes.len() && depth > 0 {
+						match bytes[i] {
+							b'{' => depth += 1,
+							b'}' => depth -= 1,
+							_ => {}
+						}
+						i += 1;
+					}
+					// Keep the original text (prefix + braced block).
+					continue;
+				}
+
+				// Function/method body: stub it.
+				// Always use "{}" — "{ return {}; }" would fail on constructors,
+				// and the CMake build uses -w to suppress missing-return warnings.
+				let stub_body = "{}";
 
 				// Walk forward with brace counting to find the matching closing brace.
 				depth = 1;
@@ -405,40 +458,3 @@ fn stub_all_top_level_bodies(content: &str) -> String {
 	result
 }
 
-/// Return `true` if the signature string indicates the body should be stubbed as `{}`.
-///
-/// Returns `true` for any of:
-/// 1. `void` return type — the identifier "void" appears in the signature
-/// 2. Destructor — signature contains `::`~`
-/// 3. Constructor — `ClassName::ClassName(` pattern (identifier before and after `::` match)
-///
-/// Returns `false` otherwise → stub as `{ return {}; }` (value-initialize).
-fn is_void_return(prefix: &str) -> bool {
-	// Only examine the signature after the last definition terminator (';' or '}').
-	let sig = prefix.rfind(|c| c == ';' || c == '}').map(|p| &prefix[p + 1..]).unwrap_or(prefix);
-
-	// 1. void return type
-	if sig.split(|c: char| !c.is_alphanumeric() && c != '_').any(|w| w == "void") {
-		return true;
-	}
-
-	// 2. Destructor: contains ::~
-	if sig.contains("::~") {
-		return true;
-	}
-
-	// 3. Constructor: ClassName::ClassName( pattern
-	//    Look at everything before '(' and compare the identifiers around the last '::'.`
-	if let Some(paren) = sig.find('(') {
-		let before_paren = sig[..paren].trim_end();
-		if let Some(dc) = before_paren.rfind("::") {
-			let method_name = before_paren[dc + 2..].trim();
-			let class_name = before_paren[..dc].split(|c: char| !c.is_alphanumeric() && c != '_').filter(|s| !s.is_empty()).last().unwrap_or("");
-			if !method_name.is_empty() && method_name == class_name {
-				return true;
-			}
-		}
-	}
-
-	false
-}
