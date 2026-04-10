@@ -1,18 +1,18 @@
-//! Demo of `Solid::loft` and `Solid::sweep_sections`.
+//! Demo of `Solid::sweep_sections`: morph between cross-section profiles
+//! along an explicit spine curve.
 //!
-//! - **Plasma (sweep_sections)**: 8 elliptical poloidal sections swept along
-//!   a circular spine with `ProfileOrient::Torsion` — a stellarator-like
-//!   helical twist. Using `sweep_sections` with an explicit spine preserves
-//!   rotational symmetry that loft's implicit spine interpolation can break.
-//! - **Stack (loft)**: 5 elliptical sections stacked along Z with varying
-//!   aspect ratio. OCCT caps the ends with planar faces for a tapered
-//!   "cooling tower" shape.
+//! - **Plasma**: 8 elliptical poloidal ribs swept along a circular spine
+//!   with `ProfileOrient::Torsion` — a stellarator-like helical twist.
+//! - **Morphing pipe**: circle-to-square transition swept along a straight
+//!   spine — demonstrates cross-section morphing between dissimilar shapes.
 
 use cadrum::{BSplineEnd, Edge, Error, ProfileOrient, Solid};
 use glam::DVec3;
 use std::f64::consts::TAU;
 
-/// Build one elliptical poloidal rib for the plasma sweep.
+// ==================== Plasma: stellarator-like torus ====================
+
+/// Build one elliptical poloidal rib at toroidal angle `phi`.
 fn plasma_rib(phi: f64, ring_r: f64, a: f64, b: f64, twist_per_phi: f64, n: usize) -> Edge {
 	let center = DVec3::new(ring_r * phi.cos(), ring_r * phi.sin(), 0.0);
 	let radial = DVec3::new(phi.cos(), phi.sin(), 0.0);
@@ -50,40 +50,51 @@ fn build_plasma() -> Result<Solid, Error> {
 	Ok(Solid::sweep_sections(&sections, std::slice::from_ref(&spine), ProfileOrient::Torsion)?.color("#87ceeb"))
 }
 
-/// One elliptical section in an XY-parallel plane at height `z`.
-fn elliptic_ring(a: f64, b: f64, z: f64, n: usize) -> Edge {
-	let pts: Vec<DVec3> = (0..n)
+// ==================== Morphing pipe: circle → square ====================
+
+/// Rounded-polygon section with `n_pts` points and corner radius blending
+/// controlled by `squareness` (0.0 = circle, 1.0 = square-ish).
+fn blended_section(radius: f64, squareness: f64, z: f64, n_pts: usize) -> Edge {
+	let pts: Vec<DVec3> = (0..n_pts)
 		.map(|i| {
-			let t = TAU * i as f64 / n as f64;
-			DVec3::new(a * t.cos(), b * t.sin(), z)
+			let theta = TAU * i as f64 / n_pts as f64;
+			// Superellipse: |x/a|^p + |y/b|^p = 1, p=2 → circle, p→∞ → square
+			let p = 2.0 + 8.0 * squareness; // 2.0 .. 10.0
+			let ct = theta.cos();
+			let st = theta.sin();
+			let x = radius * ct.abs().powf(2.0 / p) * ct.signum();
+			let y = radius * st.abs().powf(2.0 / p) * st.signum();
+			DVec3::new(x, y, z)
 		})
 		.collect();
-	Edge::bspline(pts, BSplineEnd::Periodic).expect("elliptic ring bspline")
+	Edge::bspline(pts, BSplineEnd::Periodic).expect("blended section bspline")
 }
 
-/// 5 elliptical sections stacked along Z, open loft.
-fn build_stack() -> Result<Solid, Error> {
+/// Straight-spine sweep morphing from circle to square over 5 sections.
+fn build_morphing_pipe() -> Result<Solid, Error> {
 	const N_SECTIONS: usize = 5;
 	const N_POINTS: usize = 32;
+	const RADIUS: f64 = 2.0;
+	const LENGTH: f64 = 16.0;
+
+	let spine = Edge::line(DVec3::ZERO, DVec3::Z * LENGTH)?;
 	let sections: Vec<Vec<Edge>> = (0..N_SECTIONS)
 		.map(|i| {
 			let t = i as f64 / (N_SECTIONS - 1) as f64;
-			let z = i as f64 * 4.0;
-			let a = 2.0 + 0.8 * t;
-			let b = 1.6 - 0.5 * t;
-			vec![elliptic_ring(a, b, z, N_POINTS)]
+			let z = t * LENGTH;
+			vec![blended_section(RADIUS, t, z, N_POINTS)]
 		})
 		.collect();
-	Ok(Solid::loft(&sections)?.color("#808000"))
+	Ok(Solid::sweep_sections(&sections, std::slice::from_ref(&spine), ProfileOrient::Fixed)?.color("#d2691e"))
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
 	let plasma = build_plasma()?;
-	let stack = build_stack()?.translate(DVec3::new(20.0, 0.0, -8.0));
+	let morphing = build_morphing_pipe()?.translate(DVec3::new(18.0, 0.0, -8.0));
 
-	let result = [plasma, stack];
+	let result = [plasma, morphing];
 
 	let step_path = format!("{example_name}.step");
 	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
