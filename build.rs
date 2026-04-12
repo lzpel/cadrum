@@ -99,6 +99,33 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, color: bool) {
 	let mut build = cxx_build::bridge("src/occt/ffi.rs");
 	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
+	// --- Vendored occ_gordon (Apache-2.0, DLR / rainman110) ---
+	// Provides a working Gordon surface implementation that OCCT's own
+	// GeomFill_Gordon fails on for toroidal curve networks.
+	let og_root = PathBuf::from("cpp/third_party/occ_gordon/src");
+	let og_internal = og_root.join("internal");
+	build.include(&og_root).include(&og_internal);
+	// Inject the compat shim into every .cpp so legacy `Handle_<Type>`
+	// typedefs are visible without modifying upstream sources.
+	let compat_header = og_internal.join("occ_gordon_compat.h");
+	let compat_str = compat_header.to_string_lossy().into_owned();
+	build.flag("-include").flag(&compat_str);
+	for f in [
+		"occ_gordon/occ_gordon.cpp",
+		"internal/BSplineAlgorithms.cpp",
+		"internal/BSplineApproxInterp.cpp",
+		"internal/CurveNetworkSorter.cpp",
+		"internal/CurvesToSurface.cpp",
+		"internal/Error.cpp",
+		"internal/GordonSurfaceBuilder.cpp",
+		"internal/InterpolateCurveNetwork.cpp",
+		"internal/IntersectBSplines.cpp",
+		"internal/PointsToBSplineInterpolation.cpp",
+	] {
+		build.file(og_root.join(f));
+	}
+	println!("cargo:rerun-if-changed=cpp/third_party/occ_gordon/src");
+
 	// Define CADRUM_COLOR for C++ when the "color" feature is enabled.
 	if color {
 		build.define("CADRUM_COLOR", None);

@@ -80,8 +80,13 @@
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
 #include <GeomAPI_PointsToBSplineSurface.hxx>
+#include <GeomFill_GordonBuilder.hxx>
+
+// Vendored occ_gordon — true Gordon surface (Apache-2.0, DLR/rainman110).
+#include "occ_gordon/occ_gordon.h"
 #include <TColgp_Array2OfPnt.hxx>
 #include <TColgp_HArray1OfPnt.hxx>
+#include <TColStd_HArray1OfReal.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Precision.hxx>
 
@@ -1291,6 +1296,274 @@ std::unique_ptr<TopoDS_Shape> make_loft(
     }
 }
 
+// Rebuilds a curve as a cubic BSpline interpolated through `nSamples` uniformly
+// distributed sample points in normalized parameter space [0, 1]. When the
+// same `nSamples` and `periodic` flag are used for multiple curves, the
+// resulting BSplines share identical degree and knot vectors — the compatibility
+// requirement for GeomFill_GordonBuilder.
+//
+// For curves already parameterized by chord length on equidistant points (e.g.
+// a circle through N equi-spaced samples), uniform resampling reproduces the
+// original interpolation points exactly, so the resulting BSpline is
+// geometrically identical to the input.
+static occ::handle<Geom_BSplineCurve> make_compatible_bspline(
+    const occ::handle<Geom_Curve>& src, int nSamples, bool periodic)
+{
+    if (src.IsNull() || nSamples < 2) return occ::handle<Geom_BSplineCurve>();
+    const double f = src->FirstParameter();
+    const double l = src->LastParameter();
+
+    // OCCT convention (GeomAPI_Interpolate.hxx L76-80): for PeriodicFlag=true,
+    // the Parameters array must have ONE MORE entry than Points. The extra
+    // entry gives the parameter of the wrap-around junction point.
+    const int nParams = periodic ? nSamples + 1 : nSamples;
+    occ::handle<TColgp_HArray1OfPnt>   points = new TColgp_HArray1OfPnt(1, nSamples);
+    occ::handle<TColStd_HArray1OfReal> params = new TColStd_HArray1OfReal(1, nParams);
+    for (int k = 0; k < nSamples; ++k) {
+        const double alpha = periodic
+            ? (double)k / (double)nSamples             // [0, 1)
+            : (double)k / (double)(nSamples - 1);      // [0, 1]
+        gp_Pnt p;
+        src->D0(f + (l - f) * alpha, p);
+        points->SetValue(k + 1, p);
+        params->SetValue(k + 1, alpha);
+    }
+    if (periodic) {
+        // Wrap point parameter = period (1.0 in normalized space).
+        params->SetValue(nSamples + 1, 1.0);
+    }
+    try {
+        GeomAPI_Interpolate interp(points, params,
+                                   periodic ? Standard_True : Standard_False,
+                                   Precision::Confusion());
+        interp.Perform();
+        if (!interp.IsDone()) return occ::handle<Geom_BSplineCurve>();
+        return interp.Curve();
+    } catch (const Standard_Failure&) {
+        return occ::handle<Geom_BSplineCurve>();
+    }
+}
+
+// Option D — true Gordon surface via GeomFill_GordonBuilder (OCCT low-level
+// kernel). Bypasses the broken `GeomFill_Gordon::computeIntersections` by
+// supplying pre-compatible curves and analytic intersection parameters.
+// Returns null on failure.
+static occ::handle<Geom_BSplineSurface> make_gordon_direct(
+    const std::vector<occ::handle<Geom_Curve>>& src_profiles,
+    const std::vector<occ::handle<Geom_Curve>>& src_guides)
+{
+    const int N = (int)src_profiles.size();
+    const int M = (int)src_guides.size();
+    if (N < 2 || M < 2) return occ::handle<Geom_BSplineSurface>();
+
+    // Experimental probe: iterate through (nSamplesProf, nSamplesGuide,
+    // profPer, guidePer) combinations, log the result (pole counts,
+    // IsDone, error message), and return the FIRST successful surface.
+    //
+    // Hypothesis: GeomFill_GordonBuilder wants profile's pole count P to
+    // equal guide count M (so the tensor grid's U direction matches the
+    // profile's U control structure). For cubic interpolation:
+    //   - non-periodic K points → K+2 poles  ⇒  K = M-2 gives P = M
+    //   - periodic     K points → K+1 poles  ⇒  K = M-1 gives P = M
+    // Similarly guide's pole count should match N.
+    //
+    // The probe iterates nSamples across these candidate values.
+
+    // Wide sweep to capture all passing combos (not just the first).
+    const int candidates_p[] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20 };
+    const int candidates_g[] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20 };
+    const bool periods[] = { false, true };
+
+    occ::handle<Geom_BSplineSurface> best_surf;
+    int best_fidelity = -1;  // = poleP * poleG for passing combos
+
+    std::fprintf(stderr, "[probe] GordonBuilder N=%d M=%d\n", N, M);
+
+    for (bool prof_per : periods) {
+        for (bool guide_per : periods) {
+            for (int sprof : candidates_p) {
+                if (sprof < (prof_per ? 3 : 2)) continue;
+                for (int sguide : candidates_g) {
+                    if (sguide < (guide_per ? 3 : 2)) continue;
+
+                    NCollection_Array1<occ::handle<Geom_BSplineCurve>> profArr(1, N);
+                    bool ok = true;
+                    for (int i = 0; i < N && ok; ++i) {
+                        auto c = make_compatible_bspline(src_profiles[i], sprof, prof_per);
+                        if (c.IsNull()) { ok = false; break; }
+                        profArr.SetValue(i + 1, c);
+                    }
+                    if (!ok) continue;
+
+                    NCollection_Array1<occ::handle<Geom_BSplineCurve>> guideArr(1, M);
+                    for (int j = 0; j < M && ok; ++j) {
+                        auto c = make_compatible_bspline(src_guides[j], sguide, guide_per);
+                        if (c.IsNull()) { ok = false; break; }
+                        guideArr.SetValue(j + 1, c);
+                    }
+                    if (!ok) continue;
+
+                    NCollection_Array1<double> profileParams(1, N);
+                    for (int i = 0; i < N; ++i) {
+                        const double v = guide_per
+                            ? (double)i / (double)N
+                            : (double)i / (double)(N - 1);
+                        profileParams.SetValue(i + 1, v);
+                    }
+                    NCollection_Array1<double> guideParams(1, M);
+                    for (int j = 0; j < M; ++j) {
+                        const double u = prof_per
+                            ? (double)j / (double)M
+                            : (double)j / (double)(M - 1);
+                        guideParams.SetValue(j + 1, u);
+                    }
+
+                    const int poleProf  = profArr.Value(1)->NbPoles();
+                    const int poleGuide = guideArr.Value(1)->NbPoles();
+
+                    const char* err_tag = "ok";
+                    bool is_done = false;
+                    occ::handle<Geom_BSplineSurface> surf_try;
+                    try {
+                        GeomFill_GordonBuilder gb;
+                        gb.Init(profArr, guideArr, profileParams, guideParams,
+                                Precision::Confusion(),
+                                prof_per, guide_per);
+                        gb.Perform();
+                        is_done = gb.IsDone();
+                        if (is_done) surf_try = gb.Surface();
+                    } catch (const Standard_Failure& ex) {
+                        err_tag = ex.GetMessageString();
+                        if (!err_tag || !*err_tag) err_tag = "(empty throw)";
+                    }
+
+                    std::fprintf(stderr,
+                        "[probe] sP=%2d sG=%2d pP=%d pG=%d | poleP=%2d poleG=%2d | IsDone=%d | %s\n",
+                        sprof, sguide, (int)prof_per, (int)guide_per,
+                        poleProf, poleGuide, (int)is_done, err_tag);
+
+                    if (is_done && !surf_try.IsNull()) {
+                        const int fidelity = poleProf * poleGuide;
+                        if (fidelity > best_fidelity) {
+                            best_fidelity = fidelity;
+                            best_surf = surf_try;
+                            std::fprintf(stderr,
+                                "[probe] ★ UPDATE: sP=%d sG=%d pP=%d pG=%d poleP=%d poleG=%d fid=%d\n",
+                                sprof, sguide, (int)prof_per, (int)guide_per,
+                                poleProf, poleGuide, fidelity);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (best_surf.IsNull()) {
+        std::fprintf(stderr, "[probe] no combo passed GordonBuilder for N=%d M=%d\n", N, M);
+    } else {
+        std::fprintf(stderr, "[probe] best fidelity = %d\n", best_fidelity);
+    }
+    return best_surf;
+}
+
+// Option C — true Gordon surface via vendored occ_gordon (TiGL-derived).
+// Uses its own Newton-based IntersectBSplines so it bypasses the known-broken
+// OCCT GeomAPI_ExtremaCurveCurve bug. Returns null on failure.
+//
+// Note: occ_gordon's public API takes (ucurves, vcurves). In OCCT's Gordon
+// convention used elsewhere here, profiles are V-sections and guides are
+// U-sections. So we pass profiles → vcurves, guides → ucurves.
+//
+// occ_gordon's internal IntersectBSplines recursive subdivision has an
+// adjacency assertion that fires on periodic BSplines (because its
+// `trimCurve` helper loses exact parameter alignment for periodic input).
+// We unfold periodic inputs to non-periodic BEFORE passing them in. The
+// geometry is preserved — only the parameter representation changes.
+static occ::handle<Geom_BSplineCurve> unfold_periodic(const occ::handle<Geom_Curve>& c)
+{
+    auto bsp = occ::handle<Geom_BSplineCurve>::DownCast(c);
+    if (bsp.IsNull()) return occ::handle<Geom_BSplineCurve>();
+    auto copy = occ::handle<Geom_BSplineCurve>::DownCast(bsp->Copy());
+    if (copy->IsPeriodic()) copy->SetNotPeriodic();
+    return copy;
+}
+
+static occ::handle<Geom_BSplineSurface> make_gordon_tigl(
+    const std::vector<occ::handle<Geom_Curve>>& src_profiles,
+    const std::vector<occ::handle<Geom_Curve>>& src_guides)
+{
+    if (src_profiles.size() < 2 || src_guides.size() < 2) {
+        return occ::handle<Geom_BSplineSurface>();
+    }
+    // Build a fresh sample-based BSpline for each curve that covers the
+    // *entire* original curve WITHOUT the wrap-around seam duplicate that
+    // break occ_gordon's intersection search on periodic input.
+    //
+    // For each curve we sample `nSamples` points at uniform parameter
+    // positions that stop JUST BEFORE the period: alpha = k/nSamples for
+    // k = 0..nSamples-1. This guarantees sample[0] != sample[nSamples-1]
+    // for a periodic source and gives a non-periodic BSpline with a
+    // small (one-chord) gap at the seam.
+    auto is_periodic = [](const occ::handle<Geom_Curve>& c) {
+        auto bsp = occ::handle<Geom_BSplineCurve>::DownCast(c);
+        return !bsp.IsNull() && bsp->IsPeriodic();
+    };
+    auto sample_open = [](const occ::handle<Geom_Curve>& c, int nSamples, bool wrap)
+        -> occ::handle<Geom_BSplineCurve>
+    {
+        const double f = c->FirstParameter();
+        const double l = c->LastParameter();
+        occ::handle<TColgp_HArray1OfPnt>   pts = new TColgp_HArray1OfPnt(1, nSamples);
+        occ::handle<TColStd_HArray1OfReal> prm = new TColStd_HArray1OfReal(1, nSamples);
+        for (int k = 0; k < nSamples; ++k) {
+            const double alpha = wrap
+                ? (double)k / (double)nSamples            // [0, 1), skip wrap
+                : (double)k / (double)(nSamples - 1);     // [0, 1]
+            gp_Pnt p;
+            c->D0(f + (l - f) * alpha, p);
+            pts->SetValue(k + 1, p);
+            prm->SetValue(k + 1, alpha);
+        }
+        try {
+            GeomAPI_Interpolate interp(pts, prm, Standard_False, Precision::Confusion());
+            interp.Perform();
+            if (!interp.IsDone()) return occ::handle<Geom_BSplineCurve>();
+            return interp.Curve();
+        } catch (const Standard_Failure&) {
+            return occ::handle<Geom_BSplineCurve>();
+        }
+    };
+
+    const int N = (int)src_profiles.size();
+    const int M = (int)src_guides.size();
+    const int nSamplesProf  = std::max(M, 4);
+    const int nSamplesGuide = std::max(N, 4);
+    std::vector<occ::handle<Geom_BSplineCurve>> prof_bsp, guide_bsp;
+    prof_bsp.reserve(N);
+    guide_bsp.reserve(M);
+    for (const auto& c : src_profiles) {
+        auto b = sample_open(c, nSamplesProf, is_periodic(c));
+        if (b.IsNull()) return occ::handle<Geom_BSplineSurface>();
+        prof_bsp.push_back(b);
+    }
+    for (const auto& c : src_guides) {
+        auto b = sample_open(c, nSamplesGuide, is_periodic(c));
+        if (b.IsNull()) return occ::handle<Geom_BSplineSurface>();
+        guide_bsp.push_back(b);
+    }
+    try {
+        // TiGL convention: ucurves run along U (= profiles, which are
+        // U-parameterized at fixed V); vcurves run along V (= guides).
+        return occ_gordon::interpolate_curve_network(
+            prof_bsp,      // ucurves
+            guide_bsp,     // vcurves
+            Precision::Confusion());
+    } catch (const std::exception&) {
+        return occ::handle<Geom_BSplineSurface>();
+    } catch (const Standard_Failure&) {
+        return occ::handle<Geom_BSplineSurface>();
+    }
+}
+
 // Gordon surface solid from a network of profile and guide curves.
 // Both profile_edges and guide_edges use null-edge sentinels to separate
 // individual curves (each curve may consist of multiple edges forming a wire).
@@ -1376,21 +1649,9 @@ std::unique_ptr<TopoDS_Shape> make_gordon(
 
         if (profiles.size() < 2 || guides.size() < 2) return nullptr;
 
-        // --- Build surface by sampling profiles on a uniform grid and
-        //     interpolating with GeomAPI_PointsToBSplineSurface.
-        //     OCCT's GeomFill_Gordon fails on torus-like networks because its
-        //     internal GeomAPI_ExtremaCurveCurve-based intersection discovery
-        //     can't reliably find all N×M intersections. The point-grid
-        //     approach sidesteps that entirely. ---
         const int nProfs  = (int)profiles.size();
         const int nGuides = (int)guides.size();
 
-        // Profile periodicity → U-periodicity of the sample grid.
-        // Guide  periodicity → V direction closes on itself (handled by duplicating
-        //                     profile[0] at the end column so first and last
-        //                     V-isocurves coincide; later sewing merges them).
-        // (Rows = along-profile samples = U direction;
-        //  Cols = profile index        = V direction in the surface.)
         bool profile_periodic = false;
         {
             auto bsp0 = occ::handle<Geom_BSplineCurve>::DownCast(profiles[0]);
@@ -1402,54 +1663,15 @@ std::unique_ptr<TopoDS_Shape> make_gordon(
             if (!bsp0.IsNull() && bsp0->IsPeriodic()) guide_periodic = true;
         }
 
-        // Number of samples along each profile. Use 4× guide count for
-        // a dense grid so surface interpolation captures the shape well.
-        const int nSamples = std::max(16, nGuides * 4);
-        const int nCols    = guide_periodic ? nProfs + 1 : nProfs;
-
-        TColgp_Array2OfPnt grid(1, nSamples, 1, nCols);
-        for (int j = 0; j < nCols; ++j) {
-            const int profIdx = j % nProfs; // wrap for the extra closing column
-            const double f = profiles[profIdx]->FirstParameter();
-            const double l = profiles[profIdx]->LastParameter();
-            for (int i = 0; i < nSamples; ++i) {
-                double t;
-                if (profile_periodic) {
-                    // Periodic: sample [f, l) not including endpoint
-                    t = f + (l - f) * (double)i / (double)nSamples;
-                } else {
-                    // Non-periodic: include both endpoints
-                    t = (nSamples == 1) ? f : f + (l - f) * (double)i / (double)(nSamples - 1);
-                }
-                gp_Pnt p;
-                profiles[profIdx]->D0(t, p);
-                grid.SetValue(i + 1, j + 1, p);
-            }
-        }
-
-        occ::handle<Geom_BSplineSurface> surf;
-        try {
-            GeomAPI_PointsToBSplineSurface fitter;
-            fitter.Interpolate(grid, profile_periodic);
-            if (!fitter.IsDone()) return nullptr;
-            surf = fitter.Surface();
-        } catch (const Standard_Failure&) {
-            return nullptr;
-        }
+        // --- Option D (GeomFill_GordonBuilder) is the primary path.
+        //     Option C (occ_gordon, vendored) is an available fallback
+        //     for inputs D cannot handle. For the toroidal example 08,
+        //     D produces a correct (topologically closed-V) surface;
+        //     occ_gordon does not support doubly-periodic networks
+        //     (upstream TODO).
+        occ::handle<Geom_BSplineSurface> surf = make_gordon_direct(profiles, guides);
+        if (surf.IsNull()) surf = make_gordon_tigl(profiles, guides);
         if (surf.IsNull()) return nullptr;
-
-        // If guide is periodic we sampled nProfs+1 columns with column
-        // nProfs duplicating column 0, producing a surface whose V=start and
-        // V=end iso curves coincide geometrically. Promote that to true
-        // BSpline V-periodicity so MakeFace/MakeSolid see a closed torus.
-        if (guide_periodic) {
-            try {
-                surf->SetVPeriodic();
-            } catch (const Standard_Failure&) {
-                // Fall through — leave non-periodic, shell construction will
-                // attempt to close it via sewing.
-            }
-        }
 
         // --- Build face from surface ---
         BRepBuilderAPI_MakeFace faceMaker(surf, Precision::Confusion());
@@ -1493,20 +1715,29 @@ std::unique_ptr<TopoDS_Shape> make_gordon(
             return TopoDS_Wire();
         };
 
+        (void)build_cap_wire;  // legacy helper, unused now
         size_t n_profiles = profiles.size();
         if (!guide_periodic) {
-            // V direction is open → cap first/last profile wires with planar faces.
-            TopoDS_Wire first_wire = build_cap_wire(profile_edges, 0);
-            TopoDS_Wire last_wire  = build_cap_wire(profile_edges, n_profiles - 1);
-
-            if (!first_wire.IsNull()) {
-                BRepBuilderAPI_MakeFace cap1(first_wire, /*onlyPlane=*/true);
-                if (cap1.IsDone()) sewing.Add(cap1.Face());
-            }
-            if (!last_wire.IsNull() && n_profiles > 1) {
-                BRepBuilderAPI_MakeFace cap2(last_wire, /*onlyPlane=*/true);
-                if (cap2.IsDone()) sewing.Add(cap2.Face());
-            }
+            // V direction is open → cap the surface's V=Vmin and V=Vmax
+            // iso curves with planar faces. Building caps from the surface's
+            // own boundary (rather than the raw profile edges) guarantees
+            // they match gordonFace within any tolerance.
+            double uMin, uMax, vMin, vMax;
+            surf->Bounds(uMin, uMax, vMin, vMax);
+            auto make_cap = [&](double v) -> TopoDS_Face {
+                occ::handle<Geom_Curve> iso = surf->VIso(v);
+                if (iso.IsNull()) return TopoDS_Face();
+                BRepBuilderAPI_MakeEdge em(iso);
+                if (!em.IsDone()) return TopoDS_Face();
+                BRepBuilderAPI_MakeWire wm(em.Edge());
+                if (!wm.IsDone()) return TopoDS_Face();
+                BRepBuilderAPI_MakeFace fm(wm.Wire(), /*onlyPlane=*/true);
+                return fm.IsDone() ? fm.Face() : TopoDS_Face();
+            };
+            TopoDS_Face cap_vmin = make_cap(vMin);
+            TopoDS_Face cap_vmax = make_cap(vMax);
+            if (!cap_vmin.IsNull()) sewing.Add(cap_vmin);
+            if (!cap_vmax.IsNull()) sewing.Add(cap_vmax);
         }
 
         sewing.Perform();
@@ -1536,7 +1767,6 @@ std::unique_ptr<TopoDS_Shape> make_gordon(
         }
 
         BRepBuilderAPI_MakeSolid solidMaker(shell);
-        std::fprintf(stderr, "[gordon] MakeSolid IsDone=%d\n", (int)solidMaker.IsDone());
         if (!solidMaker.IsDone()) return nullptr;
         TopoDS_Shape result = solidMaker.Shape();
 
