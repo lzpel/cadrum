@@ -1,4 +1,4 @@
-use cadrum::{BSplineEnd, Edge, EdgeExt, ProfileOrient, Solid, Transform};
+use cadrum::{BSplineEnd, Edge, EdgeExt, Error, ProfileOrient, Solid, Transform};
 use glam::{DQuat, DVec3};
 
 const I_MAX: usize = 10;
@@ -15,24 +15,27 @@ fn profile(j: usize) -> [Edge;1]{
     let points: [DVec3; I_MAX] = std::array::from_fn(|i| s(i, j));
     [Edge::bspline(points, BSplineEnd::Periodic).unwrap()]
 }
-fn guides(i: usize) -> [Edge;1]{
+fn guides(i: usize, closed: bool) -> [Edge;1]{
     let points: [DVec3; J_MAX] = std::array::from_fn(|j| s(i, j));
-    [Edge::bspline(points, BSplineEnd::Periodic).unwrap()]
+    [Edge::bspline(points, if closed {BSplineEnd::Periodic} else {BSplineEnd::NotAKnot}).unwrap()]
 }
 fn pipe(w: &[Edge; 1]) -> Solid {
     let circle: Edge = Edge::circle(0.1, DVec3::Z).unwrap().align_z(w.start_tangent(), DVec3::X).translate(w.start_point());
     Solid::sweep([&circle], w, ProfileOrient::Torsion).unwrap()
 }
+fn gordon_surface(closed: bool) -> Result<Solid, Error> {
+    let edges_profile: [[Edge; 1]; I_MAX] = std::array::from_fn(|i| profile(i));
+    let edges_guide: [[Edge; 1]; J_MAX] = std::array::from_fn(|j| guides(j, closed));
+    Solid::gordon(&edges_profile, &edges_guide)
+}
 fn main() {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
     let points: [Solid; I_MAX*J_MAX] = std::array::from_fn(|i| Solid::sphere(0.1).translate(s(i/J_MAX, i%J_MAX)));
-    let edges_profile: [[Edge; 1]; I_MAX] = std::array::from_fn(|i| profile(i));
-    let edges_guide: [[Edge; 1]; J_MAX] = std::array::from_fn(|j| guides(j));
-    let profiles: [Solid; J_MAX+I_MAX] = std::array::from_fn(|j| if j<J_MAX {pipe(&profile(j))} else {pipe(&guides(j-J_MAX))});
+    let profiles: [Solid; J_MAX+I_MAX] = std::array::from_fn(|j| if j<J_MAX {pipe(&profile(j))} else {pipe(&guides(j-J_MAX, false))});
     // gordon surface
     let mut objects: Vec<Solid> = points.into_iter().chain(profiles.translate(DVec3::Y*6.0)).collect();
-    if let Ok(gordon_surface) = Solid::gordon(&edges_profile, &edges_guide) {
-        objects.push(gordon_surface.translate(DVec3::Y*12.0));
+    if let Ok(g) = gordon_surface(false) {
+        objects.push(g.translate(DVec3::Y*12.0));
     }
     let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
     cadrum::io::write_step(&objects, &mut f).unwrap();
