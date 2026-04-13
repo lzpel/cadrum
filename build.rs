@@ -394,6 +394,14 @@ fn patch_occt_sources(source_dir: &Path) {
 
 	let find = |candidates: &[&str]| candidates.iter().map(|p| source_dir.join(p)).find(|p| p.exists());
 
+	let osd = |name: &str| [
+		format!("src/FoundationClasses/TKernel/OSD/{name}"),
+		format!("src/OSD/{name}"),
+	];
+	let find_osd = |name: &str| {
+		let candidates = osd(name);
+		candidates.into_iter().map(|p| source_dir.join(p)).find(|p| p.exists())
+	};
 	// Stub method bodies only: keep #includes and signatures, empty the bodies.
 	if let Some(path) = find(&vis_material) {
 		stub_out_methods(&path, true);
@@ -403,41 +411,42 @@ fn patch_occt_sources(source_dir: &Path) {
 	if let Some(path) = find(&prs_texture) {
 		stub_out_methods(&path, false);
 	}
-
 	// --- Eliminate advapi32 / user32 dependencies from TKernel's OSD package ---
-	let osd = |name: &str| [
-		format!("src/FoundationClasses/TKernel/OSD/{name}"),
-		format!("src/OSD/{name}"),
-	];
-	let find_osd = |name: &str| {
-		let candidates = osd(name);
-		candidates.into_iter().map(|p| source_dir.join(p)).find(|p| p.exists())
-	};
-
-	// OSD_WNT.cxx: static initialiser calls AllocateAndInitializeSid (advapi32).
-	// Module-internal only — no external interface needed.
-	if let Some(path) = find_osd("OSD_WNT.cxx") {
-		stub_out_methods(&path, false);
-	}
-	// OSD_File.cxx: OpenProcessToken, SetSecurityDescriptorDacl, etc. (advapi32).
-	if let Some(path) = find_osd("OSD_File.cxx") {
-		stub_out_methods(&path, true);
-	}
-	// OSD_Protection.cxx: EqualSid, LookupAccountNameW, etc. (advapi32).
-	if let Some(path) = find_osd("OSD_Protection.cxx") {
-		stub_out_methods(&path, true);
-	}
-	// OSD_signal.cxx: MessageBoxA / MessageBeep (user32) on MSVC.
-	if let Some(path) = find_osd("OSD_signal.cxx") {
-		stub_out_methods(&path, true);
-	}
-	// OSD_FileNode.cxx: SetFileSecurityW (advapi32) + OSD_WNT helpers.
-	if let Some(path) = find_osd("OSD_FileNode.cxx") {
-		stub_out_methods(&path, true);
-	}
-	// OSD_Process.cxx: OpenProcessToken, GetUserNameW, EqualSid (advapi32).
-	if let Some(path) = find_osd("OSD_Process.cxx") {
-		stub_out_methods(&path, true);
+	//
+	// These stubs are only needed when building OCCT for a Windows target: the
+	// advapi32/user32 symbols they reference (GetUserNameW, MessageBoxA, etc.)
+	// are Windows-only. On Linux the very same source files compile to real,
+	// working POSIX implementations via `#ifdef _WIN32`, so stubbing them on
+	// Linux deletes those implementations and — because `stub_out_methods`
+	// replaces non-void bodies with `{}` which is UB — GCC -O3 emits trap
+	// instructions that crash the moment any STEP/threadpool code path reaches
+	// `OSD_Process::SystemDate`, `OSD::SignalMode`, etc.
+	if env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().contains("windows") {
+		// OSD_WNT.cxx: static initialiser calls AllocateAndInitializeSid (advapi32).
+		// Module-internal only — no external interface needed.
+		if let Some(path) = find_osd("OSD_WNT.cxx") {
+			stub_out_methods(&path, false);
+		}
+		// OSD_File.cxx: OpenProcessToken, SetSecurityDescriptorDacl, etc. (advapi32).
+		if let Some(path) = find_osd("OSD_File.cxx") {
+			stub_out_methods(&path, true);
+		}
+		// OSD_Protection.cxx: EqualSid, LookupAccountNameW, etc. (advapi32).
+		if let Some(path) = find_osd("OSD_Protection.cxx") {
+			stub_out_methods(&path, true);
+		}
+		// OSD_signal.cxx: MessageBoxA / MessageBeep (user32) on MSVC.
+		if let Some(path) = find_osd("OSD_signal.cxx") {
+			stub_out_methods(&path, true);
+		}
+		// OSD_FileNode.cxx: SetFileSecurityW (advapi32) + OSD_WNT helpers.
+		if let Some(path) = find_osd("OSD_FileNode.cxx") {
+			stub_out_methods(&path, true);
+		}
+		// OSD_Process.cxx: OpenProcessToken, GetUserNameW, EqualSid (advapi32).
+		if let Some(path) = find_osd("OSD_Process.cxx") {
+			stub_out_methods(&path, true);
+		}
 	}
 }
 
