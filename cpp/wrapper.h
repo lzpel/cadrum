@@ -310,6 +310,17 @@ void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
 std::unique_ptr<TopoDS_Shape> make_loft(
     const std::vector<TopoDS_Edge>& all_edges);
 
+// Build a B-spline surface solid from a 2D point grid.
+// `coords` is a flat array of xyz triples, length = 3 * nu * nv.
+// V direction (cross-section, j index) is always periodic.
+// U direction (longitudinal, i index) is periodic iff `u_periodic=true`
+// (producing a torus); otherwise the U-ends are capped with planar faces
+// (producing a pipe). Returns nullptr on any OCCT failure.
+std::unique_ptr<TopoDS_Shape> make_bspline_solid(
+    rust::Slice<const double> coords,
+    uint32_t nu, uint32_t nv,
+    bool u_periodic);
+
 // ==================== Face Methods ====================
 
 // Both helpers return the underlying TopoDS_TShape* address as a u64 — used

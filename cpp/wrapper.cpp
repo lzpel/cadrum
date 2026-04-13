@@ -38,7 +38,10 @@
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -72,8 +75,11 @@
 #include <BRepAdaptor_Curve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
-#include <TColgp_HArray1OfPnt.hxx>
+#include <GeomAPI_PointsToBSplineSurface.hxx>
 #include <Geom_BSplineCurve.hxx>
+#include <Geom_BSplineSurface.hxx>
+#include <NCollection_Array2.hxx>
+#include <NCollection_HArray1.hxx>
 #include <Precision.hxx>
 
 // --- I/O (BREP / STEP / progress) ---
@@ -946,8 +952,12 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
 {
     if (coords.size() < 6 || coords.size() % 3 != 0) return nullptr;
     try {
+        // Local alias: `Handle(NCollection_HArray1<gp_Pnt>)` は Handle マクロが
+        // template 内のカンマで引数を分割してしまうので、using alias を噛ませて
+        // 単一トークン化する(コミット a72e330 で deprecated 型に戻した時の回避策)。
+        using HPntArray = NCollection_HArray1<gp_Pnt>;
         const int n = static_cast<int>(coords.size() / 3);
-        Handle(TColgp_HArray1OfPnt) pts = new TColgp_HArray1OfPnt(1, n);
+        Handle(HPntArray) pts = new HPntArray(1, n);
         for (int i = 0; i < n; ++i) {
             pts->SetValue(i + 1, gp_Pnt(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]));
         }
@@ -1277,6 +1287,135 @@ std::unique_ptr<TopoDS_Shape> make_loft(
         loft.Build();
         if (!loft.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Shape>(loft.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> make_bspline_solid(
+    rust::Slice<const double> coords,
+    uint32_t nu, uint32_t nv,
+    bool u_periodic)
+{
+    try {
+        if (coords.size() != static_cast<size_t>(nu) * nv * 3) return nullptr;
+        if (nu < 2 || nv < 3) return nullptr;
+
+        // Augment for periodicity: duplicate first row/col at the end so that
+        // the grid is geometrically closed in the periodic direction(s).
+        // V is ALWAYS periodic (closed cross-section); U only when u_periodic.
+        const uint32_t u_extra = u_periodic ? 1u : 0u;
+        const uint32_t v_extra = 1u;
+        const uint32_t total_u = nu + u_extra;
+        const uint32_t total_v = nv + v_extra;
+
+        NCollection_Array2<gp_Pnt> pts(1, static_cast<int>(total_u), 1, static_cast<int>(total_v));
+        for (uint32_t i = 0; i < total_u; ++i) {
+            const uint32_t src_i = (i >= nu) ? 0u : i;
+            for (uint32_t j = 0; j < total_v; ++j) {
+                const uint32_t src_j = (j >= nv) ? 0u : j;
+                const size_t idx = (static_cast<size_t>(src_i) * nv + src_j) * 3;
+                pts.SetValue(
+                    static_cast<int>(i) + 1,
+                    static_cast<int>(j) + 1,
+                    gp_Pnt(coords[idx], coords[idx + 1], coords[idx + 2]));
+            }
+        }
+
+        // Interpolate a B-spline surface through the augmented grid.
+        Handle(Geom_BSplineSurface) surface;
+        try {
+            GeomAPI_PointsToBSplineSurface fitter;
+            fitter.Interpolate(pts);
+            if (!fitter.IsDone()) return nullptr;
+            surface = fitter.Surface();
+        } catch (const Standard_Failure&) {
+            return nullptr;
+        }
+        if (surface.IsNull()) return nullptr;
+
+        // Promote geometric closure to B-spline periodicity.
+        // SetVPeriodic/SetUPeriodic require pole rows/cols to match within
+        // tolerance — the augmentation above ensures that.
+        try {
+            surface->SetVPeriodic();
+        } catch (const Standard_Failure&) {
+            // Fall through: non-periodic V; sewing may still close it.
+        }
+        if (u_periodic) {
+            try {
+                surface->SetUPeriodic();
+            } catch (const Standard_Failure&) {
+                // Fall through.
+            }
+        }
+
+        // Side face spans the full parametric domain.
+        double u1, u2, v1, v2;
+        surface->Bounds(u1, u2, v1, v2);
+        BRepBuilderAPI_MakeFace face_maker(surface, Precision::Confusion());
+        if (!face_maker.IsDone()) return nullptr;
+        TopoDS_Face side_face = face_maker.Face();
+
+        BRepBuilderAPI_Sewing sewing(1.0e-3);
+        sewing.Add(side_face);
+
+        // For non-periodic U, cap the two U-boundary loops with planar faces.
+        // For periodic U the surface is already closed into a torus — no caps.
+        if (!u_periodic) {
+            auto make_cap = [&](double u_at) -> TopoDS_Face {
+                Handle(Geom_Curve) iso = surface->UIso(u_at);
+                if (iso.IsNull()) return TopoDS_Face();
+                BRepBuilderAPI_MakeEdge em(iso, v1, v2);
+                if (!em.IsDone()) return TopoDS_Face();
+                BRepBuilderAPI_MakeWire wm(em.Edge());
+                if (!wm.IsDone()) return TopoDS_Face();
+                BRepBuilderAPI_MakeFace mf(wm.Wire(), true);
+                return mf.IsDone() ? mf.Face() : TopoDS_Face();
+            };
+            TopoDS_Face cap1 = make_cap(u1);
+            TopoDS_Face cap2 = make_cap(u2);
+            if (cap1.IsNull() || cap2.IsNull()) return nullptr;
+            sewing.Add(cap1);
+            sewing.Add(cap2);
+        }
+
+        sewing.Perform();
+        TopoDS_Shape sewn = sewing.SewedShape();
+        if (sewn.IsNull()) return nullptr;
+
+        TopoDS_Shell shell;
+        if (sewn.ShapeType() == TopAbs_SHELL) {
+            shell = TopoDS::Shell(sewn);
+        } else if (sewn.ShapeType() == TopAbs_SOLID) {
+            return std::make_unique<TopoDS_Shape>(sewn);
+        } else if (sewn.ShapeType() == TopAbs_FACE && u_periodic) {
+            // Full torus: single closed face → wrap manually.
+            BRep_Builder bb;
+            bb.MakeShell(shell);
+            bb.Add(shell, TopoDS::Face(sewn));
+            shell.Closed(true);
+        } else {
+            TopExp_Explorer exp(sewn, TopAbs_SHELL);
+            if (exp.More()) {
+                shell = TopoDS::Shell(exp.Current());
+            } else {
+                return nullptr;
+            }
+        }
+
+        BRepBuilderAPI_MakeSolid solid_maker(shell);
+        if (!solid_maker.IsDone()) return nullptr;
+        TopoDS_Solid solid = solid_maker.Solid();
+
+        // Ensure outward-facing orientation.
+        BRepClass3d_SolidClassifier classifier(
+            solid, gp_Pnt(0, 0, 0), Precision::Confusion());
+        if (classifier.State() == TopAbs_IN) {
+            solid.Reverse();
+        }
+
+        return std::make_unique<TopoDS_Shape>(solid);
     } catch (const Standard_Failure&) {
         return nullptr;
     }

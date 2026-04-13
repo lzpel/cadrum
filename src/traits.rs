@@ -419,6 +419,20 @@ pub trait SolidStruct: Sized + Clone + SolidExt {
 	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=false)`.
 	fn loft<'a, S, I>(sections: S) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a;
 
+	/// Build a B-spline surface solid from a 2D control-point grid.
+	///
+	/// `grid[i][j]` — index `i` (0..M) runs along the longitudinal (U) direction,
+	/// index `j` (0..N) runs along the cross-section (V) direction. V is always
+	/// periodic (the cross-section is a closed loop); U is periodic iff
+	/// `periodic=true`, producing a torus. When `periodic=false` the U-ends are
+	/// capped with planar faces, producing a pipe.
+	///
+	/// Internally builds a `Geom_BSplineSurface` via `GeomAPI_PointsToBSplineSurface::Interpolate`
+	/// on an augmented grid (first row/column duplicated at the end to satisfy
+	/// the `SetUPeriodic`/`SetVPeriodic` pole-matching precondition), then
+	/// wraps the surface in a face, caps it if needed, sews, and makes a solid.
+	fn bspline<const M: usize, const N: usize>(grid: [[DVec3; N]; M], periodic: bool) -> Result<Self, Error>;
+
 	// --- Boolean primitives (consumed by SolidExt::*_with_metadata wrappers) ---
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
 	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b;
@@ -652,6 +666,6 @@ pub trait IoModule {
 	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
 	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
 	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self::Solid: 'a;
-	fn write_svg<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, direction: DVec3, tolerance: f64, hidden_lines: bool, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { writer.write_all(Self::mesh(solids, tolerance)?.to_svg(direction, hidden_lines).as_bytes()).map_err(|_| Error::SvgExportFailed) }
+	fn write_svg<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, direction: DVec3, tolerance: f64, hidden_lines: bool, shading: bool, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { writer.write_all(Self::mesh(solids, tolerance)?.to_svg(direction, hidden_lines, shading).as_bytes()).map_err(|_| Error::SvgExportFailed) }
 	fn write_stl<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, tolerance: f64, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a { Self::mesh(solids, tolerance)?.write_stl(writer) }
 }

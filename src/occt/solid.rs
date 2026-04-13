@@ -273,6 +273,33 @@ impl SolidStruct for Solid {
 		))
 	}
 
+	// ==================== Bspline ====================
+
+	fn bspline<const M: usize, const N: usize>(grid: [[DVec3; N]; M], periodic: bool) -> Result<Self, Error> {
+		if M < 2 || N < 3 {
+			return Err(Error::BsplineFailed(format!("grid must be at least 2x3 (M={}, N={})", M, N)));
+		}
+
+		let mut coords = Vec::with_capacity(3 * M * N);
+		for row in &grid {
+			for p in row {
+				coords.push(p.x);
+				coords.push(p.y);
+				coords.push(p.z);
+			}
+		}
+
+		let shape = ffi::make_bspline_solid(&coords, M as u32, N as u32, periodic);
+		if shape.is_null() {
+			return Err(Error::BsplineFailed(format!("OCCT construction failed (M={}, N={}, periodic={})", M, N, periodic)));
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
 	// ==================== Boolean primitives ====================
 
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
