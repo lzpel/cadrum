@@ -96,17 +96,24 @@ impl Mesh {
 	/// lines. Set to `false` for cleaner output on dense models (e.g. helical
 	/// sweeps) where hidden lines dominate the image.
 	///
+	/// `shading` enables Lambertian shading with head-on light
+	/// (light direction == `direction`). Front-facing triangles get
+	/// `shade = 0.5 + 0.5 * (normal · dir)`, so glancing faces darken to
+	/// half intensity. Turn this on for curved/organic shapes where flat
+	/// fill makes the 3D form hard to read; leave it off for clean flat
+	/// rendering matching earlier cadrum output.
+	///
 	/// The method:
 	/// 1. Projects triangles onto the plane perpendicular to `direction`
 	/// 2. Detects silhouette edges from mesh adjacency
 	/// 3. Classifies edges as visible or hidden (only when `hidden_lines`)
 	/// 4. Renders colored triangles, visible edges (black), and optionally hidden edges
-	pub fn to_svg(&self, direction: DVec3, hidden_lines: bool) -> String {
+	pub fn to_svg(&self, direction: DVec3, hidden_lines: bool, shading: bool) -> String {
 		let dir = direction.normalize();
 		let (u, v) = projection_basis(dir);
 
 		// 1. Project and sort triangles for rendering
-		let face_triangles = project_and_sort_triangles(self, dir, u, v);
+		let face_triangles = project_and_sort_triangles(self, dir, u, v, shading);
 
 		// 2. Detect silhouette edges from mesh adjacency
 		let silhouette_edges = detect_silhouette_edges(self, dir);
@@ -172,7 +179,7 @@ fn projection_basis(dir: DVec3) -> (DVec3, DVec3) {
 	(x_dir, y_dir)
 }
 
-fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<SvgTriangle> {
+fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shading: bool) -> Vec<SvgTriangle> {
 	let tri_count = mesh.indices.len() / 3;
 	let mut triangles = Vec::with_capacity(tri_count);
 
@@ -196,17 +203,43 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Ve
 
 		let depth = (v0.dot(dir) + v1.dot(dir) + v2.dot(dir)) / 3.0;
 
+		// Lambertian shading with head-on light (light direction == view direction).
+		// Front-facing triangles get `normal · dir ∈ (0, 1]`; normalize to handle
+		// the averaged normal's non-unit length. Shade maps [0, 1] → [0.5, 1.0]
+		// so glancing faces darken to half-intensity (not black) — enough to
+		// read the 3D shape without swallowing the silhouette into the stroke.
+		// When `shading` is false, every triangle gets shade=1.0 → flat fill,
+		// matching the pre-shading output (`#ddd` for no-color path).
+		let shade = if shading {
+			let dot = avg_normal.normalize_or_zero().dot(dir).clamp(0.0, 1.0);
+			0.5 + 0.5 * dot
+		} else {
+			1.0
+		};
+
+		let gray = 0xdd as f64 / 255.0;
 		#[cfg(feature = "color")]
-		let fill = {
+		let (base_r, base_g, base_b) = {
 			let face_id = mesh.face_ids[ti];
 			if let Some(c) = mesh.colormap.get(&face_id) {
-				format!("rgb({},{},{})", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)
+				(c.r as f64, c.g as f64, c.b as f64)
 			} else {
-				"#ddd".to_string()
+				(gray, gray, gray)
 			}
 		};
 		#[cfg(not(feature = "color"))]
-		let fill = "#ddd".to_string();
+		let (base_r, base_g, base_b) = (gray, gray, gray);
+
+		// Emit fill as `#rrggbb` hex (7 chars) — shorter than `rgb(R,G,B)`.
+		// When `shading` is off, `shade == 1.0` so the formula collapses to
+		// the base color (every front-facing triangle shares the same fill
+		// and the SVG stays compact).
+		let fill = format!(
+			"#{:02x}{:02x}{:02x}",
+			(base_r * shade * 255.0) as u8,
+			(base_g * shade * 255.0) as u8,
+			(base_b * shade * 255.0) as u8,
+		);
 
 		triangles.push(SvgTriangle { pts: [p0, p1, p2], depth, fill });
 	}

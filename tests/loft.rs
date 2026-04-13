@@ -18,7 +18,7 @@ fn write_outputs(solids: &[Solid], name: &str) {
 	let mut f = std::fs::File::create(format!("out/{name}.stl")).unwrap();
 	cadrum::io::write_stl(solids, 0.1, &mut f).expect("stl write");
 	let mut f = std::fs::File::create(format!("out/{name}.svg")).unwrap();
-	cadrum::io::write_svg(solids, DVec3::new(1.0, 1.0, 2.0), 0.5, true, &mut f).expect("svg write");
+	cadrum::io::write_svg(solids, DVec3::new(1.0, 1.0, 2.0), 0.5, true, false, &mut f).expect("svg write");
 }
 
 // ==================== (1) 数値検証: 円錐台 ====================
