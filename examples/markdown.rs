@@ -132,16 +132,7 @@ fn write_summary(summary_path: &Path, entries: &[Entry], outputs: &HashMap<PathB
 		summary.push_str(&format!("- [{}]({}.md)\n", title, stem));
 
 		// Format assets as markdown / 生成物を markdown 形式に変換
-		let assets: String = assets_for(outputs, stem).iter()
-			.map(|p| {
-				let name = p.to_str().unwrap();
-				match p.extension().and_then(|e| e.to_str()) {
-					Some("svg" | "png") => format!("- {name}\n![img]({name})"),
-					_ => format!("- [{name}]({name})"),
-				}
-			})
-			.collect::<Vec<_>>()
-			.join("\n\n");
+		let assets = render_assets(entry, outputs);
 
 		let desc_section = if desc.is_empty() { String::new() } else { format!("\n{}\n", desc) };
 		let assets_section = if assets.is_empty() { String::new() } else { format!("\n{}", assets) };
@@ -164,13 +155,28 @@ fn render_example(entry: &Entry, outputs: &HashMap<PathBuf, Vec<u8>>) -> String 
 	}
 	s.push_str(&format!("\n```sh\ncargo run --example {}\n```\n", stem));
 	s.push_str(&format!("\n```rust\n{}\n```\n", entry.content));
-	if let Some(img) = first_image(outputs, stem) {
-		s.push_str(&format!(
-			"\n<p align=\"center\">\n  <img src=\"https://lzpel.github.io/cadrum/{}\" alt=\"{}\" width=\"360\"/>\n</p>\n",
-			img, stem
-		));
-	}
+	s.push_str(&render_assets(entry, outputs));
+	s.push('\n');
 	s
+}
+
+/// Render sorted README asset markdown (images + download links) for an entry.
+/// entry に属するアセットを GitHub Pages URL 付きの markdown にし、ソート済みで連結して返す。
+fn render_assets(entry: &Entry, outputs: &HashMap<PathBuf, Vec<u8>>) -> String {
+	let stem = entry.stem();
+	let mut parts: Vec<String> = outputs.keys()
+		.filter(|p| p.to_str().map_or(false, |n| n.starts_with(stem)))
+		.filter_map(|p| {
+			let name = p.to_str().unwrap();
+			match p.extension().and_then(|e| e.to_str()) {
+				Some("svg" | "png") => Some(format!("\n<p align=\"center\">\n  <img src=\"https://lzpel.github.io/cadrum/{name}\" alt=\"{stem}\" width=\"360\"/>\n</p>")),
+				Some("step" | "brep" | "stl") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
+				_ => None,
+			}
+		})
+		.collect();
+	parts.sort();
+	parts.join("\n")
 }
 
 /// Find the first SVG/PNG asset for a given stem.
@@ -245,7 +251,7 @@ fn render_usage(entries: &[Entry], outputs: &HashMap<PathBuf, Vec<u8>>) -> Strin
 
 /// Render the `## Example` section: every entry listed with `#### Title`.
 fn render_example_section(entries: &[Entry], outputs: &HashMap<PathBuf, Vec<u8>>) -> String {
-	let mut s = String::from("## Example\n");
+	let mut s = String::from("## Examples\n");
 	for entry in entries {
 		s.push_str(&format!("\n#### {}\n", entry.title()));
 		s.push_str(&render_example(entry, outputs));
@@ -265,7 +271,7 @@ fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &HashMap<PathBuf
 	for (i, line) in readme.lines().enumerate() {
 		let content = match line.trim() {
 			"## Usage" => render_usage(entries, outputs),
-			"## Example" => render_example_section(entries, outputs),
+			"## Examples" => render_example_section(entries, outputs),
 			_ => continue,
 		};
 

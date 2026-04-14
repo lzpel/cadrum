@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 cadrum = "^0.4"
 ```
 
-## Example
+## Examples
 
 #### Primitives
 
