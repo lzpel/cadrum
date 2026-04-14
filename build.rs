@@ -193,6 +193,37 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 		println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
 	}
 
+	// windows-gnu: absorb libgcc / libstdc++ / libwinpthread statically so
+	// the final exe's only runtime dep is msvcrt.dll (OS-bundled on every
+	// Windows since NT4.0). Safe because wrapper.cpp exposes only a C ABI
+	// via cxx — no libstdc++ types cross the boundary, so downstream's
+	// libstdc++ version cannot conflict with the one frozen inside our
+	// objects.
+	//
+	// `-static` as a link-arg covers libgcc and libwinpthread cleanly: gcc
+	// driver rewrites `-lgcc`/`-lwinpthread` to their static .a variants.
+	// libstdc++ is NOT absorbed by this flag alone — rustc hardcodes
+	// `-Wl,-Bdynamic` before the native-library block and link-cplusplus
+	// emits plain `-lstdc++` there, so ld resolves it against
+	// libstdc++.dll.a regardless of a trailing `-static`. Fully absorbing
+	// libstdc++ additionally requires the build environment to set
+	//   CXXSTDLIB_x86_64_pc_windows_gnu=static=stdc++
+	//   RUSTFLAGS=-L <dir containing libstdc++.a>
+	// The first flips link-cplusplus to static-mode emission; the second
+	// satisfies rustc's compile-time check on link-cplusplus itself (which
+	// runs long before this build.rs, so a cargo:rustc-link-search from
+	// here would arrive too late). `docker/Dockerfile_x86_64-pc-windows-gnu`
+	// does both for the prebuilt Docker build; downstream consumers on
+	// windows-gnu need to replicate them (see README).
+	//
+	// Gated to windows+gnu because `-static` on linux-gnu would try to
+	// statically link glibc, which is neither shipped as a .a nor desired.
+	if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+		&& env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("gnu")
+	{
+		println!("cargo:rustc-link-arg=-static");
+	}
+
 	// advapi32 / user32: no longer needed — patch_occt_sources() stubs the OSD
 	// files (OSD_WNT, OSD_File, OSD_Protection, OSD_signal) that reference them.
 
