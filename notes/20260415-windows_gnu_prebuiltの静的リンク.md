@@ -1,5 +1,11 @@
 # windows-gnu prebuilt の静的リンク
 
+前提としてRustのターゲットx86_64-pc-windows-gnuは以下でビルドされることを前提としている。
+- posix スレッドモデル
+- msvcrt/ucrt Cランタイム
+
+何らかのC/C++ライブラリを同封する場合もこれらのスレッドモデルとCランタイムに合わせて静的ライブラリをビルドする必要がある。さもなくばスレッドモデルとCランタイムに相違があるバイナリをリンクしようとしてリンクエラーになる。
+
 ## 課題
 
 `docker/Dockerfile_x86_64-pc-windows-gnu` が生成する OCCT prebuilt を `stable-x86_64-pc-windows-gnu` ユーザーが取り込んでできる exe を、配布時に追加 DLL を同梱せずとも動作する「自己完結バイナリ」にしたい。具体的には `libgcc_s_seh-1.dll` / `libstdc++-6.dll` / `libwinpthread-1.dll` の 3 つの mingw ランタイム DLL を全て静的に吸収し、最終 exe の runtime dep を `msvcrt.dll` (OS 同梱) と Win32 API DLL のみに絞る。
