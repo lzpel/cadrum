@@ -1,4 +1,5 @@
-//! Sweep showcase: M2 screw (helix spine) + U-shaped pipe (line+arc+line spine).
+//! Sweep showcase: M2 screw (helix spine) + U-shaped pipe (line+arc+line spine)
+//! + twisted ribbon (`Auxiliary` aux-spine mode).
 //!
 //! `ProfileOrient` controls how the profile is oriented as it travels along the spine:
 //!
@@ -14,6 +15,9 @@
 //!   tangent–`axis` plane. Suited for roads/rails/pipes that must preserve a
 //!   gravity direction. On a helix, `Up(helix_axis)` is equivalent to `Torsion`.
 //!   Fails when the tangent becomes parallel to `axis`.
+//! - `Auxiliary(aux_spine)`: profile's tracked axis points from the main spine
+//!   toward a parallel auxiliary spine. Arbitrary twist control — e.g. a
+//!   helical `aux_spine` on a straight `spine` produces a twisted ribbon.
 
 use cadrum::{Compound, Edge, Error, ProfileOrient, Solid, Transform};
 use glam::DVec3;
@@ -82,13 +86,37 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 	Ok(vec![pipe])
 }
 
+// ==================== Component 3: Auxiliary-spine twisted ribbon ====================
+
+// 直線 spine を `Auxiliary(&[helix])` で掃引すると、各点で profile の tracked 軸が
+// 対応するヘリックス点を向くように回転される。pitch=h のヘリックスは [0, h] の
+// あいだにちょうど 360° 一周するので、平たい長方形 profile は 1 回捻れた
+// リボンになる — `Fixed` や `Torsion` だと直線 spine では profile は全く
+// 回転しないので、ねじれが見えれば Auxiliary が効いている証拠。
+fn build_twisted_ribbon() -> Result<Solid, Error> {
+	let h = 8.0;
+	let aux_r = 3.0;
+
+	let spine = Edge::line(DVec3::ZERO, DVec3::Z * h)?;
+	let aux = Edge::helix(aux_r, h, h, DVec3::Z, DVec3::X)?;
+
+	// 平たい長方形 (10:1 アスペクト) — 円や正方形ではねじれが見えない。
+	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
+
+	Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))
+}
+
 // ==================== main: side-by-side layout ====================
 
 fn main() {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	// Screw at origin, U-pipe offset along +X.
+	// Screw at origin, U-pipe at +x_offset. Ribbon at 2.5·x_offset so the
+	// ribbon→U-pipe gap roughly matches the U-pipe→screw gap (screw visual
+	// center ≈ 0, U-pipe visual center ≈ x_offset + gap/2 ≈ 7.5, ribbon
+	// visual center = ribbon_x ≈ 15).
 	let x_offset = 6.0;
+	let ribbon_x = x_offset * 2.5;
 
 	let mut all: Vec<Solid> = Vec::new();
 
@@ -107,6 +135,14 @@ fn main() {
 			println!("✓ U-pipe built (blue, offset x={x_offset})");
 		}
 		Err(e) => eprintln!("✗ U-pipe failed: {e}"),
+	}
+
+	match build_twisted_ribbon() {
+		Ok(ribbon) => {
+			all.push(ribbon.translate(DVec3::X * ribbon_x).color("green"));
+			println!("✓ twisted ribbon built (green, offset x={ribbon_x})");
+		}
+		Err(e) => eprintln!("✗ twisted ribbon failed: {e}"),
 	}
 
 	if all.is_empty() {
