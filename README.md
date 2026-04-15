@@ -24,10 +24,10 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cadrum = "^0.4"
+cadrum = "^0.5"
 ```
 
-## Example
+## Examples
 
 #### Primitives
 
@@ -64,13 +64,14 @@ fn main() {
     ];
 
     let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
-    cadrum::io::write_step(&solids, &mut f).expect("failed to write STEP");
+    cadrum::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::io::write_svg(&solids, DVec3::new(1.0, 1.0, 1.0), 0.5, true, false, &mut svg).expect("failed to write SVG");
+    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut svg)).expect("failed to write SVG");
 }
 
 ```
+- [01_primitives.step](https://lzpel.github.io/cadrum/01_primitives.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/01_primitives.svg" alt="01_primitives" width="360"/>
@@ -99,24 +100,24 @@ fn main() -> Result<(), cadrum::Error> {
 
     // 0. Original: read colored_box.step
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let original = cadrum::io::read_step(
+    let original = cadrum::read_step(
         &mut std::fs::File::open(format!("{manifest_dir}/steps/colored_box.step")).expect("open file"),
     )?;
 
     // 1. STEP round-trip: rotate 30° → write → read
     let a_written = original.clone().rotate_x(FRAC_PI_8);
-    cadrum::io::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
-    let a = cadrum::io::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
+    cadrum::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
+    let a = cadrum::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
 
     // 2. BRep text round-trip: rotate another 30° → write → read
     let b_written = a.clone().rotate_x(FRAC_PI_8);
-    cadrum::io::write_brep_text(&b_written, &mut std::fs::File::create(&text_path).expect("create file"))?;
-    let b = cadrum::io::read_brep_text(&mut std::fs::File::open(&text_path).expect("open file"))?;
+    cadrum::write_brep_text(&b_written, &mut std::fs::File::create(&text_path).expect("create file"))?;
+    let b = cadrum::read_brep_text(&mut std::fs::File::open(&text_path).expect("open file"))?;
 
     // 3. BRep binary round-trip: rotate another 30° → write → read
     let c_written = b.clone().rotate_x(FRAC_PI_8);
-    cadrum::io::write_brep_binary(&c_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
-    let c = cadrum::io::read_brep_binary(&mut std::fs::File::open(&brep_path).expect("open file"))?;
+    cadrum::write_brep_binary(&c_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
+    let c = cadrum::read_brep_binary(&mut std::fs::File::open(&brep_path).expect("open file"))?;
 
     // 4. Arrange side by side and export SVG + STL
     let [min, max] = original[0].bounding_box();
@@ -127,10 +128,10 @@ fn main() -> Result<(), cadrum::Error> {
         .collect();
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("create file");
-    cadrum::io::write_svg(&all, DVec3::new(1.0, 1.0, 2.0), 0.5, true, false, &mut svg)?;
+    cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut svg))?;
 
     let mut stl = std::fs::File::create(format!("{example_name}.stl")).expect("create file");
-    cadrum::io::write_stl(&all, 0.1, &mut stl)?;
+    cadrum::mesh(&all, 0.1).and_then(|m| m.write_stl(&mut stl))?;
 
     // 5. Print summary
     let stl_path = format!("{example_name}.stl");
@@ -143,10 +144,14 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+- [02_write_read.brep](https://lzpel.github.io/cadrum/02_write_read.brep)
+- [02_write_read.step](https://lzpel.github.io/cadrum/02_write_read.step)
+- [02_write_read.stl](https://lzpel.github.io/cadrum/02_write_read.stl)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/02_write_read.svg" alt="02_write_read" width="360"/>
 </p>
+- [02_write_read_text.brep](https://lzpel.github.io/cadrum/02_write_read_text.brep)
 
 #### Transform
 
@@ -194,13 +199,14 @@ fn main() {
     ];
 
     let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
-    cadrum::io::write_step(&solids, &mut f).expect("failed to write STEP");
+    cadrum::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::io::write_svg(&solids, DVec3::new(1.0, 1.0, 1.0), 0.5, true, false, &mut svg).expect("failed to write SVG");
+    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut svg)).expect("failed to write SVG");
 }
 
 ```
+- [03_transform.step](https://lzpel.github.io/cadrum/03_transform.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/03_transform.svg" alt="03_transform" width="360"/>
@@ -246,15 +252,16 @@ fn main() -> Result<(), cadrum::Error> {
     let shapes: Vec<Solid> = [union, subtract, intersect].concat();
 
     let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
-    cadrum::io::write_step(&shapes, &mut f).expect("failed to write STEP");
+    cadrum::write_step(&shapes, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::io::write_svg(&shapes, DVec3::new(1.0, 1.0, 2.0), 0.5, true, false, &mut svg).expect("failed to write SVG");
+    cadrum::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut svg)).expect("failed to write SVG");
 
     Ok(())
 }
 
 ```
+- [04_boolean.step](https://lzpel.github.io/cadrum/04_boolean.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/04_boolean.svg" alt="04_boolean" width="360"/>
@@ -281,7 +288,7 @@ use glam::DVec3;
 
 /// Square polygon → box (simplest extrude).
 fn build_box() -> Result<Solid, Error> {
-	let profile = Edge::polygon([
+	let profile = Edge::polygon(&[
 		DVec3::new(0.0, 0.0, 0.0),
 		DVec3::new(5.0, 0.0, 0.0),
 		DVec3::new(5.0, 5.0, 0.0),
@@ -298,7 +305,7 @@ fn build_oblique_cylinder() -> Result<Solid, Error> {
 
 /// L-shaped polygon → L-beam.
 fn build_l_beam() -> Result<Solid, Error> {
-	let profile = Edge::polygon([
+	let profile = Edge::polygon(&[
 		DVec3::new(0.0, 0.0, 0.0),
 		DVec3::new(4.0, 0.0, 0.0),
 		DVec3::new(4.0, 1.0, 0.0),
@@ -312,7 +319,7 @@ fn build_l_beam() -> Result<Solid, Error> {
 /// Heart-shaped BSpline profile extruded along Z.
 fn build_heart() -> Result<Solid, Error> {
 	let profile = [Edge::bspline(
-		[
+		&[
 			DVec3::new(0.0, -4.0, 0.0),   // bottom tip
 			DVec3::new(2.0, -1.5, 0.0),
 			DVec3::new(4.0, 1.5, 0.0),
@@ -339,18 +346,19 @@ fn main() -> Result<(), Error> {
 
 	let step_path = format!("{example_name}.step");
 	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
-	cadrum::io::write_step(&result, &mut f).expect("failed to write STEP");
+	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 	println!("wrote {step_path}");
 
 	let svg_path = format!("{example_name}.svg");
 	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
-	cadrum::io::write_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5, true, false, &mut f).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut f)).expect("failed to write SVG");
 	println!("wrote {svg_path}");
 
 	Ok(())
 }
 
 ```
+- [05_extrude.step](https://lzpel.github.io/cadrum/05_extrude.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/05_extrude.svg" alt="05_extrude" width="360"/>
@@ -384,7 +392,7 @@ fn build_frustum() -> Result<Solid, Error> {
 /// Square polygon → circle (2-section morph loft).
 fn build_morph() -> Result<Solid, Error> {
 	let r = 2.5;
-	let square = Edge::polygon([
+	let square = Edge::polygon(&[
 		DVec3::new(-r, -r, 0.0),
 		DVec3::new(r, -r, 0.0),
 		DVec3::new(r, r, 0.0),
@@ -417,18 +425,19 @@ fn main() -> Result<(), Error> {
 
 	let step_path = format!("{example_name}.step");
 	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
-	cadrum::io::write_step(&result, &mut f).expect("failed to write STEP");
+	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 	println!("wrote {step_path}");
 
 	let svg_path = format!("{example_name}.svg");
 	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
-	cadrum::io::write_svg(&result, DVec3::new(1.0, 1.0, 1.0), 0.5, true, false, &mut f).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut f)).expect("failed to write SVG");
 	println!("wrote {svg_path}");
 
 	Ok(())
 }
 
 ```
+- [06_loft.step](https://lzpel.github.io/cadrum/06_loft.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/06_loft.svg" alt="06_loft" width="360"/>
@@ -478,7 +487,7 @@ fn build_m2_screw() -> Result<Vec<Solid>, Error> {
 	let helix = Edge::helix(r - r_delta, h_pitch, h_thread, DVec3::Z, DVec3::X)?;
 
 	// Closed triangular profile in local coords (x: radial, y: along helix tangent).
-	let profile = Edge::polygon([DVec3::new(0.0, -h_pitch / 2.0, 0.0), DVec3::new(r_delta, 0.0, 0.0), DVec3::new(0.0, h_pitch / 2.0, 0.0)])?;
+	let profile = Edge::polygon(&[DVec3::new(0.0, -h_pitch / 2.0, 0.0), DVec3::new(r_delta, 0.0, 0.0), DVec3::new(0.0, h_pitch / 2.0, 0.0)])?;
 
 	// Align profile +Z with the helix start tangent, then translate to the start point.
 	let profile = profile.align_z(helix.start_tangent(), helix.start_point()).translate(helix.start_point());
@@ -560,14 +569,15 @@ fn main() {
 	}
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::io::write_step(&all, &mut f).expect("failed to write STEP");
+	cadrum::write_step(&all, &mut f).expect("failed to write STEP");
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
-	cadrum::io::write_svg(&all, DVec3::new(1.0, 1.0, -1.0), 0.5, false, false, &mut f_svg).expect("failed to write SVG");
+	cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, -1.0), false, false, &mut f_svg)).expect("failed to write SVG");
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
 }
 
 ```
+- [07_sweep.step](https://lzpel.github.io/cadrum/07_sweep.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/07_sweep.svg" alt="07_sweep" width="360"/>
@@ -623,13 +633,14 @@ fn main() {
 	let plasma = Solid::bspline(grid, true).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
-	cadrum::io::write_step(&objects, &mut f).unwrap();
+	cadrum::write_step(&objects, &mut f).unwrap();
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	cadrum::io::write_svg(&objects, DVec3::new(0.05, 0.05, 1.0), 0.1, false, true, &mut f_svg).unwrap();
+	cadrum::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), false, true, &mut f_svg)).unwrap();
 	eprintln!("wrote {0}.step / {0}.svg", example_name);
 }
 
 ```
+- [08_bspline.step](https://lzpel.github.io/cadrum/08_bspline.step)
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/08_bspline.svg" alt="08_bspline" width="360"/>
