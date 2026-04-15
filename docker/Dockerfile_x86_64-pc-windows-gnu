@@ -1,9 +1,7 @@
 # Prebuild OCCT for x86_64-pc-windows-gnu using the MinGW-w64 cross toolchain.
 FROM rust:latest
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        mingw-w64 cmake \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends mingw-w64 cmake && rm -rf /var/lib/apt/lists/*
 
 # control cc crate and cargo command
 #
@@ -54,19 +52,6 @@ ENV CXXSTDLIB_x86_64_pc_windows_gnu=static=stdc++
 RUN rustup target add ${CARGO_BUILD_TARGET}
 
 # copy source and build OCCT prebuilt
-#
-# libstdc++.a path resolution: link-cplusplus declares
-# `#[link(name="stdc++", kind="static")]` when the CXXSTDLIB override above
-# flips it to static mode, and rustc verifies that libstdc++.a exists on the
-# `-L` search path at link-cplusplus's own compile time (well before cadrum's
-# build.rs runs, so a build.rs-emitted rustc-link-search arrives too late).
-# We query the installed cross g++ for its libstdc++.a sysroot and inject it
-# via RUSTFLAGS -L for this single RUN.
-COPY . /src
-WORKDIR /src/docker
-RUN LIBSTDCXX_DIR="$(dirname "$(x86_64-w64-mingw32-g++-posix -print-file-name=libstdc++.a)")" && \
-    export RUSTFLAGS="-L $LIBSTDCXX_DIR ${RUSTFLAGS:-}" && \
-    make cadrum-occt-${CARGO_BUILD_TARGET}
-
-# on `docker run -v $PWD/out:/out ...`, extract the tarball from /src
-CMD ["sh", "-c", "cp /src/cadrum-occt-*.tar.gz /out/"]
+COPY . /
+WORKDIR /
+CMD ["make", "cadrum-occt"]

@@ -1,6 +1,7 @@
 PATH_DOCS=out/markdown
-generate: 
-	@:
+generate: # 事前準備
+	mkdir -p out
+	find . -maxdepth 1 -name .gitignore | xargs -IX sed '/^#\s*EOF_DOCKERIGNORE.*/q' X > .dockerignore
 test:
 	cargo test
 deploy: generate # generate out/markdown from examples, then build out/html
@@ -9,5 +10,11 @@ deploy: generate # generate out/markdown from examples, then build out/html
 	./out/bin/mdbook build
 publish: # --no-verify skips the full OCCT build verification which takes a very long time
 	cargo publish --no-verify
-deploy-docker:
-	docker build . -t lzpel/cadrum && docker push lzpel/cadrum
+cadrum-occt-%: # cross build ( = native build in container )
+	docker build -f docker/Dockerfile_$(*) -t cadrum-occt-$(*) .
+	docker run --rm -v $(PWD)/out/$(*):/out cadrum-occt-$(*)
+cadrum-occt-all:
+	make -j3 cadrum-occt-aarch64-unknown-linux-gnu cadrum-occt-x86_64-pc-windows-gnu cadrum-occt-x86_64-unknown-linux-gnu
+cadrum-occt: generate # native build (01_primitivesのテストも兼ねる)
+	cargo run --example 01_primitives --release --features source-build 2>&1 | tee log.txt || true # colorはdefaultの一部なのでfeature指定不要
+	find target -maxdepth 1 -type d -name 'cadrum*' | xargs -IX sh -c "tar -czvf X.tar.gz -C out/$$(basename X) . && cp log.txt out/$$(basename X).txt"
