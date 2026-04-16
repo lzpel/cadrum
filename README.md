@@ -24,7 +24,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cadrum = "^0.5"
+cadrum = "^0.6"
 ```
 
 ## Build
@@ -693,6 +693,15 @@ fn main() {
 A browser-based configurator that lets you tweak dimensions of a STEP model and get an instant 3D preview and quote. cadrum powers the parametric reshaping and meshing on the backend.
 
 ## Release Notes
+
+### 0.6.0
+
+- **`source-build` feature now gates `cmake`/`walkdir` as optional build-dependencies.** Default `cargo build` no longer compiles them, significantly reducing build time on prebuilt targets. Users on unsupported targets must enable `--features source-build` (behavior unchanged — previously these targets also failed, just with a download error instead of a clear message).
+- **`x86_64-pc-windows-gnu` prebuilt added** via Docker cross-compilation with Debian mingw-w64 (posix thread model). All MinGW runtime DLLs are statically absorbed — the resulting exe depends only on Windows OS DLLs.
+- **LGPL 2.1 §2 compliance:** source builds now retain only the ~9 patched OCCT source files alongside the `.a` libraries, removing the unmodified bulk (~88 MB of data/dox/tests). The patched files carry timestamped headers per §2(a).
+- **`OCCT_ROOT` relative path handling fixed:** resolved via `env::current_dir()` instead of the unreliable `CARGO_TARGET_DIR` heuristic. `--target <triple>` flag now works correctly.
+- **`build.rs` restructured:** `resolve_occt` uses match chains with `#[cfg]` for source-build vs prebuilt paths. Source-build code lives in `#[cfg(feature = "source-build")] mod source`. `patch_occt_sources` split into `walk_occt_sources` + `patch_or_none` (side-effect-free).
+- **README simplified:** Build section moved after Usage with a prebuilt target table + OS icons.
 
 ### 0.5.1
 
