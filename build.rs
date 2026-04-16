@@ -222,13 +222,12 @@ mod source {
 		let occt_version = OCCT_VERSION;
 		let occt_url = format!("https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/{}.tar.gz", occt_version);
 
-		let download_dir = effective_root.join("occt-source");
-		let extraction_sentinel = download_dir.join(".extraction_done");
+		let extraction_sentinel = effective_root.join(".occt_extraction_done");
 
 		if !extraction_sentinel.exists() {
-			std::fs::create_dir_all(&download_dir).unwrap();
+			std::fs::create_dir_all(effective_root).unwrap();
 
-			if let Ok(entries) = std::fs::read_dir(&download_dir) {
+			if let Ok(entries) = std::fs::read_dir(effective_root) {
 				for entry in entries.flatten() {
 					let name = entry.file_name();
 					if name.to_string_lossy().starts_with("OCCT") && entry.path().is_dir() {
@@ -239,14 +238,14 @@ mod source {
 			}
 
 			eprintln!("Downloading OCCT {} from {} ...", occt_version, occt_url);
-			download_and_extract_tar_gz(&occt_url, &download_dir).expect("Failed to download/extract OCCT source tarball");
+			download_and_extract_tar_gz(&occt_url, effective_root).expect("Failed to download/extract OCCT source tarball");
 
 			std::fs::write(&extraction_sentinel, "done").unwrap();
 			eprintln!("OCCT source extracted successfully.");
 		}
 
-		let source_dir = std::fs::read_dir(&download_dir)
-			.expect("Failed to read occt-source directory")
+		let source_dir = std::fs::read_dir(effective_root)
+			.expect("Failed to read effective_root directory")
 			.flatten()
 			.find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir())
 			.map(|e| e.path())
@@ -315,19 +314,21 @@ mod source {
 
 	/// Walk the OCCT source tree.
 	/// - `src/` and `adm/`: recurse and yield every **file**
-	/// - other top-level directories (`data/`, `dox/`, `tests/`, …): yield the **directory** itself
-	/// - top-level files (`CMakeLists.txt`, `LICENSE_LGPL_21.txt`, …): skipped
+	/// - other top-level directories: yield the **directory** itself
+	/// - top-level files: skipped
 	fn walk_occt_sources(source_dir: &Path, mut f: impl FnMut(&Path)) {
 		for entry in walkdir::WalkDir::new(source_dir).min_depth(1).max_depth(1).into_iter().flatten() {
-			let name = entry.file_name().to_string_lossy();
-			if name == "src" || name == "adm" {
-				for child in walkdir::WalkDir::new(entry.path()).into_iter().flatten() {
-					if child.file_type().is_file() {
-						f(child.path());
+			let e = entry.path();
+			match entry {
+				_ if !entry.file_type().is_dir() => {}
+				_ if "src|adm".contains(&*entry.file_name().to_string_lossy()) => {
+					for child in walkdir::WalkDir::new(e).into_iter().flatten() {
+						if child.file_type().is_file() {
+							f(child.path());
+						}
 					}
 				}
-			} else if entry.file_type().is_dir() {
-				f(entry.path());
+				_ => f(e),
 			}
 		}
 	}
