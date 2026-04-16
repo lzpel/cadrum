@@ -318,17 +318,16 @@ mod source {
 	/// - top-level files: skipped
 	fn walk_occt_sources(source_dir: &Path, mut f: impl FnMut(&Path)) {
 		for entry in walkdir::WalkDir::new(source_dir).min_depth(1).max_depth(1).into_iter().flatten() {
-			let e = entry.path();
 			match entry {
-				_ if !entry.file_type().is_dir() => {}
-				_ if "src|adm".contains(&*entry.file_name().to_string_lossy()) => {
-					for child in walkdir::WalkDir::new(e).into_iter().flatten() {
+				entry if "src|adm".contains(&*entry.file_name().to_string_lossy()) => {
+					for child in walkdir::WalkDir::new(entry.path()).into_iter().flatten() {
 						if child.file_type().is_file() {
 							f(child.path());
 						}
 					}
 				}
-				_ => f(e),
+				entry if entry.file_type().is_dir() => f(entry.path()),
+				_ => {},
 			}
 		}
 	}
