@@ -16,11 +16,11 @@ cadrum-occt-%: # cross build ( = native build in container )
 cadrum-occt-all: # cross all build
 	make -j3 cadrum-occt-aarch64-unknown-linux-gnu cadrum-occt-x86_64-pc-windows-gnu cadrum-occt-x86_64-unknown-linux-gnu
 cadrum-occt: generate # native build (01_primitivesのテストも兼ねる)
-	cargo run --example 01_primitives --release --features source-build 2>&1 | tee out/log.txt || true # colorはdefaultの一部なのでfeature指定不要
+	cargo build --release --features source-build 2>&1 | tee out/log.txt # colorはdefaultの一部なのでfeature指定不要
 	echo "is is ok that 01_primitives fails in windows-gnu target." >> out/log.txt
 	find target -maxdepth 1 -type d -name 'cadrum*' | xargs -IX sh -c 'tar -czvf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
-check-%: # cross build ( = native build in container )
+check-%: generate # 
+	find out target -name '*-windows-gnu' -or -name '*/examples/*' | xargs -IX rm -rf X
 	$(MAKE) cadrum-occt-$(*)
-	find target -type d -name "cadrum-*" -delete
-	find out -type f -name '*-windows-gnu.tar.gz' | xargs -IX tar -xzf X target
+	find out -type f -name '*-windows-gnu.tar.gz' | xargs -IX tar -xzf X -C target
 	cargo run --example 01_primitives
