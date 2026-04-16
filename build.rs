@@ -9,6 +9,7 @@ const OCCT_VERSION: &str = "V8_0_0_rc5";
 
 /// GitHub Release tag under `lzpel/cadrum` that hosts the prebuilt tarballs.
 /// Bump this when rebuilding prebuilts for the same OCCT version.
+#[cfg(not(feature = "source-build"))]
 const OCCT_PREBUILT_TAG: &str = "occt-v800rc5";
 
 /// `V8_0_0_rc5` → `v800rc5`. Shared rule: lowercase and drop underscores.
@@ -61,7 +62,12 @@ fn target_dir_from_out_dir(out_dir: &Path, target: &str) -> PathBuf {
 fn resolve_occt(out_dir: &Path, target: &str) -> [PathBuf; 2] {
 	let target_dir = target_dir_from_out_dir(out_dir, target);
 	let default_root = target_dir.join(format!("cadrum-occt-{}-{}", slug(OCCT_VERSION), target));
-	let effective_root = env::var("OCCT_ROOT").map(PathBuf::from).unwrap_or(default_root);
+	let effective_root = env::var("OCCT_ROOT")
+		.map(|r| {
+			let p = PathBuf::from(r);
+			if p.is_relative() { env::current_dir().unwrap().join(p) } else { p }
+		})
+		.unwrap_or(default_root);
 
 	println!("cargo:rerun-if-changed={}", effective_root.display());
 
@@ -166,6 +172,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 }
 
 /// Download a prebuilt OCCT tarball for `target` into `dest`.
+#[cfg(not(feature = "source-build"))]
 fn download_prebuilt(out_dir: &Path, dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
 	let slug_ver = slug(OCCT_VERSION);
 	let top_name = format!("cadrum-occt-{}-{}", slug_ver, target);
