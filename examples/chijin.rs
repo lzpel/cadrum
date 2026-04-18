@@ -1,7 +1,6 @@
 //! Build a chijin (hand drum from Amami Oshima) with colors, boolean ops, and SVG export.
 
-use cadrum::{Color, Compound, Edge, ProfileOrient, Solid};
-use glam::DVec3;
+use cadrum::{Color, Compound, DVec3, Edge, ProfileOrient, Solid};
 use std::f64::consts::PI;
 
 pub fn chijin() -> Result<Solid, cadrum::Error> {
@@ -58,15 +57,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let result = [chijin()?];
 
-	let step_path = format!("{example_name}.step");
-	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
-	println!("wrote {step_path}");
 
-	let svg_path = format!("{example_name}.svg");
-	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
+	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut f)).expect("failed to write SVG");
-	println!("wrote {svg_path}");
 
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }
