@@ -4,8 +4,7 @@
 //! - **Morph**: square polygon → circle (cross-section shape transition)
 //! - **Tilted**: three non-parallel circular sections → twisted loft
 
-use cadrum::{Edge, Error, Solid};
-use glam::DVec3;
+use cadrum::{DVec3, Edge, Error, Solid};
 
 /// Two circles → frustum (minimal loft example).
 fn build_frustum() -> Result<Solid, Error> {
@@ -48,15 +47,12 @@ fn main() -> Result<(), Error> {
 
 	let result = [frustum, morph, tilted];
 
-	let step_path = format!("{example_name}.step");
-	let mut f = std::fs::File::create(&step_path).expect("failed to create STEP file");
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
-	println!("wrote {step_path}");
 
-	let svg_path = format!("{example_name}.svg");
-	let mut f = std::fs::File::create(&svg_path).expect("failed to create SVG file");
+	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 1.0), true, false, &mut f)).expect("failed to write SVG");
-	println!("wrote {svg_path}");
 
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }

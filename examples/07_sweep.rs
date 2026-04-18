@@ -19,8 +19,7 @@
 //!   toward a parallel auxiliary spine. Arbitrary twist control — e.g. a
 //!   helical `aux_spine` on a straight `spine` produces a twisted ribbon.
 
-use cadrum::{Compound, Edge, Error, ProfileOrient, Solid, Wire};
-use glam::DVec3;
+use cadrum::{Compound, DVec3, Edge, Error, ProfileOrient, Solid, Wire};
 
 // ==================== Component 1: M2 ISO screw ====================
 
@@ -90,11 +89,12 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 
 // ==================== Component 3: Auxiliary-spine twisted ribbon ====================
 
-// 直線 spine を `Auxiliary(&[helix])` で掃引すると、各点で profile の tracked 軸が
-// 対応するヘリックス点を向くように回転される。pitch=h のヘリックスは [0, h] の
-// あいだにちょうど 360° 一周するので、平たい長方形 profile は 1 回捻れた
-// リボンになる — `Fixed` や `Torsion` だと直線 spine では profile は全く
-// 回転しないので、ねじれが見えれば Auxiliary が効いている証拠。
+// Sweeping a straight spine with `Auxiliary(&[helix])` rotates the tracked
+// axis of the profile at each point to face the corresponding helix point.
+// A pitch=h helix makes exactly one 360° turn over [0, h], so a flat
+// rectangular profile becomes a ribbon twisted once. With `Fixed` or
+// `Torsion` the profile wouldn't rotate along a straight spine — visible
+// twist is therefore proof that Auxiliary is in effect.
 fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 	let h = 8.0;
 	let aux_r = 3.0;
@@ -102,7 +102,7 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 	let spine = Edge::line(DVec3::ZERO, DVec3::Z * h)?;
 	let aux = Edge::helix(aux_r, h, h, DVec3::Z, DVec3::X)?;
 
-	// 平たい長方形 (10:1 アスペクト) — 円や正方形ではねじれが見えない。
+	// Flat rectangle (10:1 aspect) — circles or squares wouldn't reveal any twist.
 	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
 
 	let ribbon = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
@@ -115,13 +115,13 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 // origin, U-pipe at x=6, ribbon at x=12) and applies its color, so main
 // just concatenates them.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let all: Vec<Solid> = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?].concat();
 
-	let mut f = std::fs::File::create(format!("{example_name}.step"))?;
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	cadrum::write_step(&all, &mut f)?;
-	let mut f_svg = std::fs::File::create(format!("{example_name}.svg"))?;
+	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
 	cadrum::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), false, false, &mut f_svg)?;
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
