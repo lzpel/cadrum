@@ -115,13 +115,13 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 // origin, U-pipe at x=6, ribbon at x=12) and applies its color, so main
 // just concatenates them.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let all: Vec<Solid> = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?].concat();
 
-	let mut f = std::fs::File::create(format!("{example_name}.step"))?;
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	cadrum::write_step(&all, &mut f)?;
-	let mut f_svg = std::fs::File::create(format!("{example_name}.svg"))?;
+	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
 	cadrum::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), false, false, &mut f_svg)?;
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
