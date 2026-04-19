@@ -106,7 +106,7 @@ fn find_occt_dirs(occt_root: &Path) -> Option<[PathBuf; 2]> {
 const OCC_LIBS: &[&str] = &[
 	"TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim", "TKBO", "TKBool",
 	"TKShHealing", "TKMesh", "TKGeomBase", "TKGeomAlgo", "TKG3d", "TKG2d",
-	"TKBin", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKDESTEP",
+	"TKBin", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKFillet", "TKDESTEP",
 	#[cfg(feature = "color")] "TKLCAF",
 	#[cfg(feature = "color")] "TKXCAF",
 	#[cfg(feature = "color")] "TKCAF",
