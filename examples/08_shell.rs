@@ -39,10 +39,10 @@ fn main() -> Result<(), Error> {
 
 	// Isometric view from (1, 1, 2): camera sits above-front-right so the top
 	// (+Z) opening is in-frame and the inner walls of the cavity are visible.
-	// `hidden_lines = true` draws far-side edges dashed so the back wall is
-	// also readable.
+	// `shading = true` fills faces with per-face lighting so the cavity depth
+	// reads naturally.
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), false, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
