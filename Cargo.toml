@@ -36,10 +36,6 @@ walkdir = "2"
 # source-build only: build OCCT from upstream sources
 cmake = { version = "0.1", optional = true }
 
-[package.metadata.docs.rs]
-targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-rustdoc-args = ["--cfg", "docsrs"]
-
 # Examples that depend on the `color` feature. Cargo will skip building these
 # under `--no-default-features`. Examples without a `[[example]]` entry
 # (02_write_read, markdown) build under all feature configurations.
