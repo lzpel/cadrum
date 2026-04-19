@@ -314,6 +314,19 @@ std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
 void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
 
+// Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
+std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
+void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
+
+// Shell (hollow) the solid by removing `open_faces` and offsetting the
+// remaining faces by `thickness` via BRepOffsetAPI_MakeThickSolid. Negative
+// thickness hollows inward, positive thickens outward. Returns nullptr on
+// failure (e.g. self-intersecting offset at sharp corners).
+std::unique_ptr<TopoDS_Shape> make_thick_solid(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Face>& open_faces,
+    double thickness);
+
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
 std::unique_ptr<TopoDS_Shape> make_loft(

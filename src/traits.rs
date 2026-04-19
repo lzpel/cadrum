@@ -440,6 +440,19 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// Fails if the profile is empty, not closed, or the direction is zero-length.
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Self::Edge>, dir: DVec3) -> Result<Self, Error> where Self::Edge: 'a;
 
+	/// Hollow this solid into a thin-walled shell by removing `open_faces`
+	/// (they become openings) and building a wall of signed `thickness` along
+	/// each remaining face. Wraps OCCT's `BRepOffsetAPI_MakeThickSolid`.
+	///
+	/// `thickness` is the wall thickness with direction encoded in its sign:
+	/// negative → wall grows inward (carve cavity inside the original volume),
+	/// positive → wall grows outward (shell sits outside the original surface,
+	/// enclosing the original as its inner boundary).
+	///
+	/// `open_faces` must be faces of `self` (e.g. selected via `self.iter_face()`).
+	/// Fails on OCCT rejection (self-intersecting offset at sharp corners, etc).
+	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error> where Self::Face: 'a;
+
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
 	/// to create a solid. Both inputs are accepted as `IntoIterator` of edge

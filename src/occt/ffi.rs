@@ -177,6 +177,11 @@ mod ffi_bridge {
 		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);
 		fn edge_vec_push_null(v: Pin<&mut CxxVector<TopoDS_Edge>>);
+
+		fn face_vec_new() -> UniquePtr<CxxVector<TopoDS_Face>>;
+		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);
+
+		fn make_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
 	}
 }
 

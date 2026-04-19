@@ -60,7 +60,10 @@
 
 // --- Sweep / pipe / loft ---
 #include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepOffset_Mode.hxx>
+#include <GeomAbs_JoinType.hxx>
 
 // --- Mesh, classification, mass / surface properties ---
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -1103,6 +1106,39 @@ void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
 
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
     v.push_back(TopoDS_Edge());
+}
+
+std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {
+    return std::make_unique<std::vector<TopoDS_Face>>();
+}
+
+void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f) {
+    v.push_back(f);
+}
+
+std::unique_ptr<TopoDS_Shape> make_thick_solid(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Face>& open_faces,
+    double thickness)
+{
+    try {
+        NCollection_List<TopoDS_Shape> faces_to_remove;
+        for (const auto& f : open_faces) faces_to_remove.Append(f);
+
+        BRepOffsetAPI_MakeThickSolid builder;
+        builder.MakeThickSolidByJoin(
+            solid, faces_to_remove, thickness,
+            /*tolerance=*/ 1.0e-6,
+            /*mode=*/ BRepOffset_Skin,
+            /*intersection=*/ false,
+            /*selfInter=*/ false,
+            /*join=*/ GeomAbs_Arc);
+        builder.Build();
+        if (!builder.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(builder.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
 }
 
 // Extrude a closed profile wire into a solid via BRepPrimAPI_MakePrism.

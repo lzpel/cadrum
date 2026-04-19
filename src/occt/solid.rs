@@ -223,6 +223,24 @@ impl SolidStruct for Solid {
 		))
 	}
 
+	// ==================== Shell ====================
+
+	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<Self, Error> {
+		let mut face_vec = ffi::face_vec_new();
+		for f in open_faces {
+			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
+		}
+		let shape = ffi::make_thick_solid(&self.inner, &face_vec, thickness);
+		if shape.is_null() {
+			return Err(Error::ShellFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
 	// ==================== Sweep ====================
 
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {
