@@ -544,7 +544,16 @@ pub trait Compound: Transform {
 	fn volume(&self) -> f64;
 	fn bounding_box(&self) -> [DVec3; 2];
 	fn contains(&self, point: DVec3) -> bool;
-	fn shell_count(&self) -> u32;
+	/// Total surface area. Aggregates as a simple sum across elements.
+	fn area(&self) -> f64;
+	/// Center of mass (uniform density). Aggregates as a volume-weighted
+	/// average of per-element centers: `Σ(vol_i · center_i) / Σ vol_i`.
+	fn center(&self) -> DVec3;
+	/// Inertia tensor about the **world origin** (uniform density).
+	/// World-origin referencing makes aggregation a straight matrix sum
+	/// (parallel-axis theorem is already folded in). Translate to the
+	/// center-of-mass frame manually if needed.
+	fn inertia(&self) -> DMat3;
 
 	// --- Color ---
 	#[cfg(feature = "color")]
@@ -583,7 +592,13 @@ impl<T: SolidStruct> Compound for Vec<T> {
 			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
 	}
 	fn contains(&self, p: DVec3) -> bool { self.iter().any(|s| s.contains(p)) }
-	fn shell_count(&self) -> u32 { self.iter().map(|s| s.shell_count()).sum() }
+	fn area(&self) -> f64 { self.iter().map(|s| s.area()).sum() }
+	fn center(&self) -> DVec3 {
+		let total_vol: f64 = self.iter().map(|s| s.volume()).sum();
+		if total_vol == 0.0 { return DVec3::ZERO; }
+		self.iter().map(|s| s.center() * s.volume()).sum::<DVec3>() / total_vol
+	}
+	fn inertia(&self) -> DMat3 { self.iter().map(|s| s.inertia()).fold(DMat3::ZERO, |a, b| a + b) }
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self {
 		let c: Color = color.into();
@@ -626,7 +641,13 @@ impl<T: SolidStruct, const N: usize> Compound for [T; N] {
 			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
 	}
 	fn contains(&self, p: DVec3) -> bool { self.iter().any(|s| s.contains(p)) }
-	fn shell_count(&self) -> u32 { self.iter().map(|s| s.shell_count()).sum() }
+	fn area(&self) -> f64 { self.iter().map(|s| s.area()).sum() }
+	fn center(&self) -> DVec3 {
+		let total_vol: f64 = self.iter().map(|s| s.volume()).sum();
+		if total_vol == 0.0 { return DVec3::ZERO; }
+		self.iter().map(|s| s.center() * s.volume()).sum::<DVec3>() / total_vol
+	}
+	fn inertia(&self) -> DMat3 { self.iter().map(|s| s.inertia()).fold(DMat3::ZERO, |a, b| a + b) }
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self {
 		let c: Color = color.into();

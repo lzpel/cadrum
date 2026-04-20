@@ -604,18 +604,51 @@ bool shape_is_solid(const TopoDS_Shape& shape) {
     return !shape.IsNull() && shape.ShapeType() == TopAbs_SOLID;
 }
 
-uint32_t shape_shell_count(const TopoDS_Shape& shape) {
-    uint32_t count = 0;
-    for (TopExp_Explorer ex(shape, TopAbs_SHELL); ex.More(); ex.Next()) {
-        ++count;
-    }
-    return count;
-}
-
 double shape_volume(const TopoDS_Shape& shape) {
     GProp_GProps props;
     BRepGProp::VolumeProperties(shape, props);
     return props.Mass();
+}
+
+double shape_surface_area(const TopoDS_Shape& shape) {
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(shape, props);
+    return props.Mass();
+}
+
+void shape_center_of_mass(const TopoDS_Shape& shape,
+    double& x, double& y, double& z)
+{
+    GProp_GProps props;
+    BRepGProp::VolumeProperties(shape, props);
+    gp_Pnt com = props.CentreOfMass();
+    x = com.X(); y = com.Y(); z = com.Z();
+}
+
+void shape_inertia_tensor(const TopoDS_Shape& shape,
+    double& m00, double& m01, double& m02,
+    double& m10, double& m11, double& m12,
+    double& m20, double& m21, double& m22)
+{
+    // OCCT's MatrixOfInertia() is expressed about the center of mass, but the
+    // Rust-side API returns the tensor about the world origin so collections
+    // can aggregate by plain matrix sum (parallel-axis theorem is already
+    // folded in). Shift here with I_world = I_com + m·(|d|² I - d⊗d),
+    // where d = COM vector from world origin, m = volume (uniform density).
+    GProp_GProps props;
+    BRepGProp::VolumeProperties(shape, props);
+    gp_Mat ic = props.MatrixOfInertia();
+    gp_Pnt com = props.CentreOfMass();
+    double mass = props.Mass();
+    double dx = com.X(), dy = com.Y(), dz = com.Z();
+    double d2 = dx*dx + dy*dy + dz*dz;
+    m00 = ic.Value(1,1) + mass * (d2 - dx*dx);
+    m11 = ic.Value(2,2) + mass * (d2 - dy*dy);
+    m22 = ic.Value(3,3) + mass * (d2 - dz*dz);
+    m01 = ic.Value(1,2) - mass * dx * dy;
+    m02 = ic.Value(1,3) - mass * dx * dz;
+    m12 = ic.Value(2,3) - mass * dy * dz;
+    m10 = m01; m20 = m02; m21 = m12;
 }
 
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z) {
