@@ -23,12 +23,12 @@ fn main() {
 	println!("cargo:rerun-if-changed=src/traits.rs");
 	println!("cargo:rerun-if-changed=build_delegation.rs");
 
+	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+	build_delegation::build_delegation(include_str!("src/traits.rs"), &out_dir);
+
 	if env::var("DOCS_RS").is_ok() {
 		return;
 	}
-
-	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-	build_delegation::build_delegation(include_str!("src/traits.rs"), &out_dir);
 
 	let target = env::var("TARGET").unwrap();
 
