@@ -241,7 +241,7 @@ impl SolidStruct for Solid {
 		))
 	}
 
-	// ==================== Fillet ====================
+	// ==================== Fillet / Chamfer ====================
 
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
@@ -251,6 +251,22 @@ impl SolidStruct for Solid {
 		let shape = ffi::make_fillet(&self.inner, &edge_vec, radius);
 		if shape.is_null() {
 			return Err(Error::FilletFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
+	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
+		let mut edge_vec = ffi::edge_vec_new();
+		for e in edges {
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+		}
+		let shape = ffi::make_chamfer(&self.inner, &edge_vec, distance);
+		if shape.is_null() {
+			return Err(Error::ChamferFailed);
 		}
 		Ok(Solid::new(
 			shape,
