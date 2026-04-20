@@ -1,5 +1,7 @@
 //! Demo of `Solid::shell`:
 //! - Cube: remove top face, offset inward → open-top container
+//! - Sealed cube: empty open_faces → solid with an internal void (outer skin
+//!   + reversed inner shell)
 //! - Torus: bisect with a half-space to introduce planar cut faces, then
 //!   shell using those cut faces as the openings → thin-walled half-ring
 //!   with both cross-sections exposed
@@ -11,6 +13,11 @@ fn hollow_cube() -> Result<Solid, Error> {
 	// TopExp_Explorer order on a box is stable; +Z face ends up last.
 	let top = cube.iter_face().last().expect("cube has faces");
 	cube.shell(-1.0, [top])
+}
+
+fn sealed_cube() -> Result<Solid, Error> {
+	let cube = Solid::cube(8.0, 8.0, 8.0);
+	cube.shell(-1.0, std::iter::empty::<&cadrum::Face>())
 }
 
 fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
@@ -30,6 +37,7 @@ fn main() -> Result<(), Error> {
 
 	let result = [
 		hollow_cube()?.color("#d0a878"),
+		sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0),
 		halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0),
 		halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0),
 	];

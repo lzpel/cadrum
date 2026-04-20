@@ -450,6 +450,12 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// enclosing the original as its inner boundary).
 	///
 	/// `open_faces` must be faces of `self` (e.g. selected via `self.iter_face()`).
+	/// When `open_faces` is empty, `BRepOffsetAPI_MakeThickSolid` degenerates to
+	/// a plain offset shape (no cavity) because it needs at least one removed
+	/// face to build the inner wall. The wrapper detects this and falls back to
+	/// `BRepOffsetAPI_MakeOffsetShape` + `BRepBuilderAPI_MakeSolid`, assembling
+	/// an outer shell and a reversed inner shell into a sealed multi-shell
+	/// solid with an internal void (the void is inaccessible from outside).
 	/// Fails on OCCT rejection (self-intersecting offset at sharp corners, etc).
 	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error> where Self::Face: 'a;
 

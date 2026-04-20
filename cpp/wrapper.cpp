@@ -59,6 +59,7 @@
 #include <BRepTools_History.hxx>
 
 // --- Sweep / pipe / loft ---
+#include <BRepOffsetAPI_MakeOffsetShape.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
@@ -1122,6 +1123,46 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
     double thickness)
 {
     try {
+        // Empty open_faces: MakeThickSolidByJoin degenerates to a plain offset
+        // shape (no cavity) because it needs at least one removed face to
+        // build the first wall W1. Instead, build the solid explicitly as
+        // outer_shell + reversed inner_shell so the result is a sealed solid
+        // with an internal void (OCCT permits multi-shell solids).
+        if (open_faces.empty()) {
+            BRepOffsetAPI_MakeOffsetShape offset;
+            offset.PerformByJoin(
+                solid, thickness,
+                /*tolerance=*/ 1.0e-6,
+                /*mode=*/ BRepOffset_Skin,
+                /*intersection=*/ false,
+                /*selfInter=*/ false,
+                /*join=*/ GeomAbs_Arc);
+            if (!offset.IsDone()) return nullptr;
+            TopoDS_Shape offset_shape = offset.Shape();
+
+            auto extract_shell = [](const TopoDS_Shape& s) -> TopoDS_Shell {
+                if (s.ShapeType() == TopAbs_SHELL) return TopoDS::Shell(s);
+                TopExp_Explorer ex(s, TopAbs_SHELL);
+                if (!ex.More()) return TopoDS_Shell();
+                return TopoDS::Shell(ex.Current());
+            };
+
+            TopoDS_Shell original_shell = extract_shell(solid);
+            TopoDS_Shell offset_shell = extract_shell(offset_shape);
+            if (original_shell.IsNull() || offset_shell.IsNull()) return nullptr;
+
+            // thickness sign determines which shell is outer:
+            //   negative → offset shrinks inward: original = outer, offset = inner cavity
+            //   positive → offset expands outward: offset = outer, original = inner cavity
+            TopoDS_Shell outer = thickness < 0.0 ? original_shell : offset_shell;
+            TopoDS_Shell inner = thickness < 0.0 ? offset_shell : original_shell;
+
+            BRepBuilderAPI_MakeSolid solid_maker(outer);
+            solid_maker.Add(TopoDS::Shell(inner.Reversed()));
+            if (!solid_maker.IsDone()) return nullptr;
+            return std::make_unique<TopoDS_Shape>(solid_maker.Solid());
+        }
+
         NCollection_List<TopoDS_Shape> faces_to_remove;
         for (const auto& f : open_faces) faces_to_remove.Append(f);
 
