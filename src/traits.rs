@@ -459,6 +459,18 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// Fails on OCCT rejection (self-intersecting offset at sharp corners, etc).
 	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error> where Self::Face: 'a;
 
+	/// Round the given edges of `self` with a uniform radius. Edges are
+	/// typically selected via `self.iter_edge().filter(...)`.
+	///
+	/// Wraps `BRepFilletAPI_MakeFillet`. Fails (`Error::FilletFailed`) if
+	/// the radius is too large for the local geometry, if tangent
+	/// discontinuity prevents OCCT from building the fillet surface, or
+	/// if an edge not belonging to `self` is passed.
+	///
+	/// Empty `edges` is a no-op and returns a clone of `self` — handy when
+	/// a selector chain legitimately yields zero edges.
+	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
+
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
 	/// to create a solid. Both inputs are accepted as `IntoIterator` of edge

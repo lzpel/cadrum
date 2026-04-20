@@ -333,6 +333,15 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
     const std::vector<TopoDS_Face>& open_faces,
     double thickness);
 
+// Fillet the given edges of `solid` with a uniform radius using
+// BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
+// copy of `solid`). Returns nullptr on OCCT failure (radius too large,
+// tangent discontinuity, edges not belonging to `solid`, etc.).
+std::unique_ptr<TopoDS_Shape> make_fillet(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double radius);
+
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
 std::unique_ptr<TopoDS_Shape> make_loft(

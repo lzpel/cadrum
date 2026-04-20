@@ -59,6 +59,7 @@
 #include <BRepTools_History.hxx>
 
 // --- Sweep / pipe / loft ---
+#include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_MakeOffsetShape.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
@@ -1210,6 +1211,39 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
         builder.Build();
         if (!builder.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Shape>(builder.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> make_fillet(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double radius)
+{
+    try {
+        if (edges.empty()) {
+            // No-op: hand back an independent shallow copy so the Rust side
+            // always gets a fresh owned handle (matches the non-empty path).
+            return std::make_unique<TopoDS_Shape>(solid);
+        }
+        BRepFilletAPI_MakeFillet mk(solid);
+        for (const TopoDS_Edge& e : edges) {
+            if (e.IsNull()) continue;
+            mk.Add(radius, e);
+        }
+        mk.Build();
+        if (!mk.IsDone()) return nullptr;
+        TopoDS_Shape result = mk.Shape();
+        if (result.IsNull()) return nullptr;
+        // MakeFillet can wrap the solid in a compound; Solid::new requires a
+        // TopAbs_SOLID, so extract the first one if we got a container.
+        if (result.ShapeType() != TopAbs_SOLID) {
+            TopExp_Explorer ex(result, TopAbs_SOLID);
+            if (!ex.More()) return nullptr;
+            result = ex.Current();
+        }
+        return std::make_unique<TopoDS_Shape>(result);
     } catch (const Standard_Failure&) {
         return nullptr;
     }
