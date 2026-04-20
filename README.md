@@ -17,8 +17,8 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE](https://de
 | [<img src="https://lzpel.github.io/cadrum/01_primitives.svg" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.svg" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.svg" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.svg" width="180" alt="boolean"/>](#boolean) |
 | [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
 | [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
-| [bspline](#bspline) |  |  |  |
-| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) |  |  |  |
+| [bspline](#bspline) | [fillet](#fillet) |  |  |
+| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) |  |  |
 
 More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
 
@@ -612,6 +612,8 @@ cargo run --example 08_shell
 ```rust
 //! Demo of `Solid::shell`:
 //! - Cube: remove top face, offset inward → open-top container
+//! - Sealed cube: empty open_faces → solid with an internal void (outer skin
+//!   + reversed inner shell)
 //! - Torus: bisect with a half-space to introduce planar cut faces, then
 //!   shell using those cut faces as the openings → thin-walled half-ring
 //!   with both cross-sections exposed
@@ -623,6 +625,11 @@ fn hollow_cube() -> Result<Solid, Error> {
 	// TopExp_Explorer order on a box is stable; +Z face ends up last.
 	let top = cube.iter_face().last().expect("cube has faces");
 	cube.shell(-1.0, [top])
+}
+
+fn sealed_cube() -> Result<Solid, Error> {
+	let cube = Solid::cube(8.0, 8.0, 8.0);
+	cube.shell(-1.0, std::iter::empty::<&cadrum::Face>())
 }
 
 fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
@@ -642,6 +649,7 @@ fn main() -> Result<(), Error> {
 
 	let result = [
 		hollow_cube()?.color("#d0a878"),
+		sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0),
 		halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0),
 		halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0),
 	];
@@ -652,7 +660,7 @@ fn main() -> Result<(), Error> {
 	// Isometric view from (1, 1, 2) with shading so the cavity depth reads
 	// naturally.
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), false, true, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -725,6 +733,75 @@ fn main() {
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/09_bspline.svg" alt="09_bspline" width="360"/>
+</p>
+
+#### Fillet
+
+Demo of `Solid::fillet_edges`:
+
+```sh
+cargo run --example 10_fillet
+```
+
+```rust
+//! Demo of `Solid::fillet_edges`:
+//! - All 12 cube edges filleted uniformly (rounded cube)
+//! - Only top 4 edges filleted (soft top, sharp base)
+//! - Cylinder top circular edge filleted (coin shape)
+
+use cadrum::{DVec3, Error, Solid};
+
+fn rounded_cube(size: f64) -> Result<Solid, Error> {
+	let cube = Solid::cube(size, size, size);
+	let radius = size * 0.2;
+	cube.fillet_edges(radius, cube.iter_edge())
+}
+
+fn soft_top_cube(size: f64) -> Result<Solid, Error> {
+	let cube = Solid::cube(size, size, size);
+	let radius = size * 0.2;
+	// Top edges: straight segments whose both endpoints lie at z ≈ size.
+	let top_edges: Vec<_> = cube
+		.iter_edge()
+		.filter(|e| (e.start_point().z - size).abs() < 1e-6 && (e.end_point().z - size).abs() < 1e-6)
+		.collect();
+	cube.fillet_edges(radius, top_edges)
+}
+
+fn coin(radius: f64, height: f64) -> Result<Solid, Error> {
+	let cyl = Solid::cylinder(radius, DVec3::Z, height);
+	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
+	let top_circle: Vec<_> = cyl
+		.iter_edge()
+		.filter(|e| (e.start_point().z - height).abs() < 1e-6)
+		.collect();
+	cyl.fillet_edges(height * 0.3, top_circle)
+}
+
+fn main() -> Result<(), Error> {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+
+	let result = [
+		rounded_cube(8.0)?.color("#d0a878"),
+		soft_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0),
+		coin(6.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0),
+	];
+
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
+	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
+
+	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, true, &mut f)).expect("failed to write SVG");
+
+	println!("wrote {example_name}.step / {example_name}.svg");
+	Ok(())
+}
+
+```
+- [10_fillet.step](https://lzpel.github.io/cadrum/10_fillet.step)
+
+<p align="center">
+  <img src="https://lzpel.github.io/cadrum/10_fillet.svg" alt="10_fillet" width="360"/>
 </p>
 
 

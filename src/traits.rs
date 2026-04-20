@@ -299,6 +299,7 @@ pub trait Wire: Transform {
 	type Elem: EdgeStruct;
 
 	fn start_point(&self) -> DVec3;
+	fn end_point(&self) -> DVec3;
 	fn start_tangent(&self) -> DVec3;
 	fn is_closed(&self) -> bool;
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
@@ -692,25 +693,23 @@ impl<T: EdgeStruct> Wire for Vec<T> {
 		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_point(&self) -> DVec3 {
+		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn start_tangent(&self) -> DVec3 {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
 	}
 
 	fn is_closed(&self) -> bool {
 		// Empty wire: not closed. Single-edge wire: defer to that edge.
-		// Multi-edge wire: walk the polyline approximation of the last edge to
-		// find its end point, and compare with the first edge's start.
+		// Multi-edge wire: the first edge's start equals the last edge's end.
 		// 1e-6 はモデル単位 (mm) を想定したハードコード — 引数化は API が
 		// 増えるため後回し。極小/極大スケールのモデルで誤判定したら直す。
 		match self.len() {
 			0 => false,
 			1 => self[0].is_closed(),
-			_ => {
-				let start = self[0].start_point();
-				let last_pts = self[self.len() - 1].approximation_segments(1e-3);
-				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
-				(start - end).length() < 1e-6
-			}
+			_ => (self[0].start_point() - self[self.len() - 1].end_point()).length() < 1e-6,
 		}
 	}
 
@@ -738,6 +737,10 @@ impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_point(&self) -> DVec3 {
+		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn start_tangent(&self) -> DVec3 {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
 	}
@@ -746,12 +749,7 @@ impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 		match N {
 			0 => false,
 			1 => self[0].is_closed(),
-			_ => {
-				let start = self[0].start_point();
-				let last_pts = self[N - 1].approximation_segments(1e-3);
-				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
-				(start - end).length() < 1e-6
-			}
+			_ => (self[0].start_point() - self[N - 1].end_point()).length() < 1e-6,
 		}
 	}
 

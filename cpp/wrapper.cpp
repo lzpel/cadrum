@@ -1028,12 +1028,18 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
     }
 }
 
-void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z) {
-    x = 0.0; y = 0.0; z = 0.0;
+void edge_endpoints(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez)
+{
+    sx = 0.0; sy = 0.0; sz = 0.0;
+    ex = 0.0; ey = 0.0; ez = 0.0;
     try {
         BRepAdaptor_Curve curve(edge);
-        gp_Pnt p = curve.Value(curve.FirstParameter());
-        x = p.X(); y = p.Y(); z = p.Z();
+        gp_Pnt start = curve.Value(curve.FirstParameter());
+        gp_Pnt end = curve.Value(curve.LastParameter());
+        sx = start.X(); sy = start.Y(); sz = start.Z();
+        ex = end.X();   ey = end.Y();   ez = end.Z();
     } catch (const Standard_Failure&) {}
 }
 

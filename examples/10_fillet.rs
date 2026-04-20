@@ -5,43 +5,40 @@
 
 use cadrum::{DVec3, Error, Solid};
 
-fn rounded_cube() -> Result<Solid, Error> {
-	let a = 8.0;
-	let cube = Solid::cube(a, a, a);
-	let edges: Vec<_> = cube.iter_edge().collect();
-	cube.fillet_edges(1.2, edges)
+fn rounded_cube(size: f64) -> Result<Solid, Error> {
+	let cube = Solid::cube(size, size, size);
+	let radius = size * 0.2;
+	cube.fillet_edges(radius, cube.iter_edge())
 }
 
-fn soft_top_cube() -> Result<Solid, Error> {
-	let a = 8.0;
-	let cube = Solid::cube(a, a, a);
-	// Top edges of a cube are straight segments — polyline approximation has
-	// exactly 2 samples, both at z ≈ a. Filter on that.
+fn soft_top_cube(size: f64) -> Result<Solid, Error> {
+	let cube = Solid::cube(size, size, size);
+	let radius = size * 0.2;
+	// Top edges: straight segments whose both endpoints lie at z ≈ size.
 	let top_edges: Vec<_> = cube
 		.iter_edge()
-		.filter(|e| e.approximation_segments(0.01).iter().all(|p| (p.z - a).abs() < 1e-3))
+		.filter(|e| (e.start_point().z - size).abs() < 1e-6 && (e.end_point().z - size).abs() < 1e-6)
 		.collect();
-	cube.fillet_edges(1.5, top_edges)
+	cube.fillet_edges(radius, top_edges)
 }
 
-fn coin() -> Result<Solid, Error> {
-	let h = 2.0;
-	let cyl = Solid::cylinder(6.0, DVec3::Z, h);
-	// Circular edges on a cylinder live at z = 0 and z = h. Pick the top cap.
+fn coin(radius: f64, height: f64) -> Result<Solid, Error> {
+	let cyl = Solid::cylinder(radius, DVec3::Z, height);
+	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_circle: Vec<_> = cyl
 		.iter_edge()
-		.filter(|e| e.approximation_segments(0.05).iter().all(|p| (p.z - h).abs() < 1e-3))
+		.filter(|e| (e.start_point().z - height).abs() < 1e-6)
 		.collect();
-	cyl.fillet_edges(0.6, top_circle)
+	cyl.fillet_edges(height * 0.3, top_circle)
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
 	let result = [
-		rounded_cube()?.color("#d0a878"),
-		soft_top_cube()?.color("#6fbf73").translate(DVec3::X * 12.0),
-		coin()?.color("#0052ff").translate(DVec3::X * 24.0),
+		rounded_cube(8.0)?.color("#d0a878"),
+		soft_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0),
+		coin(6.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0),
 	];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
