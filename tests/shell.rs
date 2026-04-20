@@ -31,3 +31,32 @@ fn test_shell_outward_produces_wall() {
 	assert_eq!(shell.shell_count(), 1);
 }
 
+#[test]
+fn test_shell_empty_open_faces_inward_seals_cavity() {
+	let cube = Solid::cube(10.0, 10.0, 10.0);
+	// Negative thickness + empty open_faces: sealed solid with an internal void.
+	// Expected wall-material volume = 10³ − 9³ = 271.
+	let sealed = cube.shell(-0.5, std::iter::empty::<&cadrum::Face>()).expect("inward empty-open shell should succeed");
+	assert_eq!(sealed.shell_count(), 2, "outer + reversed inner shell");
+	assert!((sealed.volume() - 271.0).abs() < 1e-3, "inward empty shell volume = 10³ − 9³, got {}", sealed.volume());
+}
+
+#[test]
+fn test_shell_empty_open_faces_outward_seals_cavity() {
+	let cube = Solid::cube(10.0, 10.0, 10.0);
+	// Positive thickness + empty open_faces: outer shell expands outward with
+	// GeomAbs_Arc join (spheres at corners, quarter-cylinders along edges),
+	// original surface becomes the internal cavity wall.
+	// Outer offset volume = 10³ + 6·(10²·0.5) [face slabs]
+	//                     + 12·(π·0.5²·10/4) [quarter-cylinder edges]
+	//                     + 8·((4/3)π·0.5³/8) [sphere-octant corners]
+	//                   = 1000 + 300 + 7.5π/4·... = 1000 + 300 + 7.5π + π/6.
+	// Wait: quarter-cyl vol per edge = π·r²·L/4 = π·0.25·10/4 = 0.625π; 12 edges = 7.5π.
+	// Sphere-octant per corner = (4/3)π·0.5³/8 = π/48; 8 corners = π/6.
+	// Shell material = 300 + 7.5π + π/6 ≈ 324.086.
+	let sealed = cube.shell(0.5, std::iter::empty::<&cadrum::Face>()).expect("outward empty-open shell should succeed");
+	assert_eq!(sealed.shell_count(), 2, "outer + reversed inner shell");
+	let expected = 300.0 + 7.5 * std::f64::consts::PI + std::f64::consts::PI / 6.0;
+	assert!((sealed.volume() - expected).abs() < 1e-3, "outward empty shell volume ≈ {expected:.3}, got {}", sealed.volume());
+}
+
