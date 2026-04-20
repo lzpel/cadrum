@@ -98,7 +98,6 @@ fn test_bspline_01_two_period_torus_point_symmetry() {
 	});
 
 	let plasma = Solid::bspline(grid, true).expect("2-period bspline torus should succeed");
-	assert_eq!(plasma.shell_count(), 1);
 	assert!(plasma.volume() > 0.0);
 
 	assert_quadrant_point_symmetry(&plasma, 0.01);

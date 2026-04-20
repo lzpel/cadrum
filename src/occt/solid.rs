@@ -456,8 +456,31 @@ impl Compound for Solid {
 		ffi::shape_volume(&self.inner)
 	}
 
-	fn shell_count(&self) -> u32 {
-		ffi::shape_shell_count(&self.inner)
+	fn area(&self) -> f64 {
+		ffi::shape_surface_area(&self.inner)
+	}
+
+	fn center(&self) -> DVec3 {
+		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
+		DVec3::new(x, y, z)
+	}
+
+	fn inertia(&self) -> glam::DMat3 {
+		let (mut m00, mut m01, mut m02) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut m10, mut m11, mut m12) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut m20, mut m21, mut m22) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::shape_inertia_tensor(&self.inner,
+			&mut m00, &mut m01, &mut m02,
+			&mut m10, &mut m11, &mut m12,
+			&mut m20, &mut m21, &mut m22);
+		// OCCT fills row-major; DMat3::from_cols_array is column-major so
+		// transpose when handing the components over.
+		glam::DMat3::from_cols_array(&[
+			m00, m10, m20,
+			m01, m11, m21,
+			m02, m12, m22,
+		])
 	}
 
 	fn contains(&self, point: DVec3) -> bool {

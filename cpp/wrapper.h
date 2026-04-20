@@ -166,8 +166,14 @@ std::unique_ptr<TopoDS_Shape> mirror_shape(
     double nx, double ny, double nz);
 bool shape_is_null(const TopoDS_Shape& shape);
 bool shape_is_solid(const TopoDS_Shape& shape);
-uint32_t shape_shell_count(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
+double shape_surface_area(const TopoDS_Shape& shape);
+void shape_center_of_mass(const TopoDS_Shape& shape,
+    double& x, double& y, double& z);
+void shape_inertia_tensor(const TopoDS_Shape& shape,
+    double& m00, double& m01, double& m02,
+    double& m10, double& m11, double& m12,
+    double& m20, double& m21, double& m22);
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
 void shape_bounding_box(const TopoDS_Shape& shape,
     double& xmin, double& ymin, double& zmin,

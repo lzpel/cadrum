@@ -20,13 +20,6 @@ fn test_translated_preserves_volume() {
 }
 
 #[test]
-fn test_translated_preserves_shell_count() {
-	let shape = test_box();
-	let moved = shape.translate(dvec3(5.0, 0.0, 0.0));
-	assert_eq!(moved.shell_count(), 1);
-}
-
-#[test]
 fn test_union_of_translated_overlapping_solids_has_single_volume() {
 	// 異なる場所に同じ大きさの立方体を2つ作り、translatedで同じ場所に重ねてからunionする。
 	// 結果のvolumeは1つ分（1000）になるはず。
@@ -70,10 +63,10 @@ fn test_rotated_full_turn_preserves_volume() {
 }
 
 #[test]
-fn test_rotated_preserves_shell_count() {
+fn test_rotated_y_preserves_volume() {
 	let shape = test_box();
 	let rotated = shape.rotate_y(std::f64::consts::FRAC_PI_2);
-	assert_eq!(rotated.shell_count(), 1);
+	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
 }
 
 // ==================== scale ====================
@@ -95,10 +88,11 @@ fn test_scale_half_volume() {
 }
 
 #[test]
-fn test_scale_preserves_shell_count() {
+fn test_scale_triple_volume() {
 	let shape = test_box();
+	// 3× uniform scale → volume × 27
 	let scaled = shape.scale(DVec3::ZERO, 3.0);
-	assert_eq!(scaled.shell_count(), 1);
+	assert!((scaled.volume() - 27_000.0).abs() < 1e-3);
 }
 
 // ==================== face id preservation ====================

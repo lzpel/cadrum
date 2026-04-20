@@ -42,7 +42,6 @@ fn test_loft_01_frustum_volume_matches_analytical() {
 		"frustum volume {:.4} vs analytical {:.4} (relative error {:.4})",
 		actual, expected, rel_err
 	);
-	assert_eq!(frustum.shell_count(), 1);
 
 	write_outputs(std::slice::from_ref(&frustum), "test_loft_01_frustum_volume_matches_analytical");
 	println!("frustum loft: volume = {:.4} (expected {:.4})", actual, expected);
@@ -105,7 +104,6 @@ fn test_loft_04_closure_iterator_form() {
 
 	let plasma = Solid::loft(ribs.iter().map(|e| [e])).expect("closure-form loft should succeed");
 
-	assert_eq!(plasma.shell_count(), 1);
 	assert!(plasma.volume() > 0.0);
 
 	write_outputs(std::slice::from_ref(&plasma), "test_loft_05_closure_iterator_form");
