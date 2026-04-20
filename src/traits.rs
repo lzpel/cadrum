@@ -474,6 +474,17 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// a selector chain legitimately yields zero edges.
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
 
+	/// Chamfer (bevel) the given edges of `self` with a uniform distance.
+	/// Edges are typically selected via `self.iter_edge().filter(...)`.
+	///
+	/// Wraps `BRepFilletAPI_MakeChamfer`. The chamfer plane is symmetric —
+	/// the same `distance` is taken off along each of the two faces
+	/// adjacent to the edge. Fails (`Error::ChamferFailed`) under the same
+	/// conditions as `fillet_edges`.
+	///
+	/// Empty `edges` is a no-op and returns a clone of `self`.
+	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
+
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
 	/// to create a solid. Both inputs are accepted as `IntoIterator` of edge

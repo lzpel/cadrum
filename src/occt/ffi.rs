@@ -185,6 +185,7 @@ mod ffi_bridge {
 
 		fn make_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
 		fn make_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64) -> UniquePtr<TopoDS_Shape>;
+		fn make_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64) -> UniquePtr<TopoDS_Shape>;
 	}
 }
 

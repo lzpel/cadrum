@@ -346,6 +346,16 @@ std::unique_ptr<TopoDS_Shape> make_fillet(
     const std::vector<TopoDS_Edge>& edges,
     double radius);
 
+// Chamfer (symmetric bevel) the given edges of `solid` with a uniform
+// distance using BRepFilletAPI_MakeChamfer. Empty `edges` is a no-op
+// (returns a shallow copy of `solid`). Returns nullptr on OCCT failure
+// (distance too large, tangent discontinuity, edges not belonging to
+// `solid`, etc.).
+std::unique_ptr<TopoDS_Shape> make_chamfer(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double distance);
+
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
 std::unique_ptr<TopoDS_Shape> make_loft(

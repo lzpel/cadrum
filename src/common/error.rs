@@ -43,6 +43,11 @@ pub enum Error {
 	/// the selected edge chain, or an edge not belonging to `self` was passed.
 	FilletFailed,
 
+	/// Chamfer (`Solid::chamfer_edges` via `BRepFilletAPI_MakeChamfer`) failed:
+	/// distance too large for the local geometry, tangent discontinuity along
+	/// the selected edge chain, or an edge not belonging to `self` was passed.
+	ChamferFailed,
+
 	/// Lofting (`Solid::loft` / `BRepOffsetAPI_ThruSections`) failed: section
 	/// count too low, section wire ill-formed, or OCCT internal failure.
 	/// The string identifies which precondition or stage failed.
@@ -86,6 +91,7 @@ impl std::fmt::Display for Error {
 			Error::SweepFailed => write!(f, "Sweep failed"),
 			Error::ShellFailed => write!(f, "Shell failed"),
 			Error::FilletFailed => write!(f, "Fillet failed"),
+			Error::ChamferFailed => write!(f, "Chamfer failed"),
 			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
 			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
