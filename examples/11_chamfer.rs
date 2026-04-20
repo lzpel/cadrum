@@ -14,6 +14,7 @@ fn beveled_cube(size: f64) -> Result<Solid, Error> {
 fn beveled_top_cube(size: f64) -> Result<Solid, Error> {
 	let cube = Solid::cube(size, size, size).translate(-DVec3::ONE * (size / 2.0));
 	let distance = size * 0.2;
+	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_edges = cube
 		.iter_edge()
 		.filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));

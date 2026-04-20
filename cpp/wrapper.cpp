@@ -1252,8 +1252,8 @@ std::unique_ptr<TopoDS_Shape> make_fillet(
         if (!mk.IsDone()) return nullptr;
         TopoDS_Shape result = mk.Shape();
         if (result.IsNull()) return nullptr;
-        // MakeFillet can wrap the solid in a compound; Solid::new requires a
-        // TopAbs_SOLID, so extract the first one if we got a container.
+        // MakeFillet can wrap the solid in a compound even if it contains only one solid.
+        // Solid::new requires a TopAbs_SOLID, so extract the first one if we got a container.
         if (result.ShapeType() != TopAbs_SOLID) {
             TopExp_Explorer ex(result, TopAbs_SOLID);
             if (!ex.More()) return nullptr;
@@ -1283,7 +1283,7 @@ std::unique_ptr<TopoDS_Shape> make_chamfer(
         if (!mk.IsDone()) return nullptr;
         TopoDS_Shape result = mk.Shape();
         if (result.IsNull()) return nullptr;
-        // Like MakeFillet, MakeChamfer may wrap the result in a compound.
+        // Like MakeFillet, MakeChamfer may wrap the result in a compound even if it contains only one solid.
         // Extract the first solid so Solid::new's TopAbs_SOLID invariant holds.
         if (result.ShapeType() != TopAbs_SOLID) {
             TopExp_Explorer ex(result, TopAbs_SOLID);
