@@ -277,9 +277,10 @@ pub enum BSplineEnd {
 /// Methods on `Wire` therefore have meaningful semantics for both a single
 /// edge and an ordered edge list:
 ///
-/// - `start_point` / `start_tangent` — the wire's starting position/direction.
-///   For a single edge, the edge's first point and tangent.
-///   For a `Vec<Edge>`, the first edge's start.
+/// - `start_point` / `end_point` / `start_tangent` / `end_tangent` — the
+///   wire's endpoint positions and tangent directions.
+///   For a single edge, the edge's first/last point and tangent.
+///   For a `Vec<Edge>`, the first edge's start and the last edge's end.
 /// - `is_closed` — does the geometry form a closed loop?
 ///   For a single edge, whether start == end (e.g. a circle).
 ///   For a `Vec<Edge>`, whether the first edge's start equals the last edge's end.
@@ -299,7 +300,9 @@ pub trait Wire: Transform {
 	type Elem: EdgeStruct;
 
 	fn start_point(&self) -> DVec3;
+	fn end_point(&self) -> DVec3;
 	fn start_tangent(&self) -> DVec3;
+	fn end_tangent(&self) -> DVec3;
 	fn is_closed(&self) -> bool;
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
 
@@ -458,6 +461,18 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// solid with an internal void (the void is inaccessible from outside).
 	/// Fails on OCCT rejection (self-intersecting offset at sharp corners, etc).
 	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error> where Self::Face: 'a;
+
+	/// Round the given edges of `self` with a uniform radius. Edges are
+	/// typically selected via `self.iter_edge().filter(...)`.
+	///
+	/// Wraps `BRepFilletAPI_MakeFillet`. Fails (`Error::FilletFailed`) if
+	/// the radius is too large for the local geometry, if tangent
+	/// discontinuity prevents OCCT from building the fillet surface, or
+	/// if an edge not belonging to `self` is passed.
+	///
+	/// Empty `edges` is a no-op and returns a clone of `self` — handy when
+	/// a selector chain legitimately yields zero edges.
+	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
 
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
@@ -680,25 +695,27 @@ impl<T: EdgeStruct> Wire for Vec<T> {
 		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_point(&self) -> DVec3 {
+		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn start_tangent(&self) -> DVec3 {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_tangent(&self) -> DVec3 {
+		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn is_closed(&self) -> bool {
 		// Empty wire: not closed. Single-edge wire: defer to that edge.
-		// Multi-edge wire: walk the polyline approximation of the last edge to
-		// find its end point, and compare with the first edge's start.
+		// Multi-edge wire: the first edge's start equals the last edge's end.
 		// 1e-6 はモデル単位 (mm) を想定したハードコード — 引数化は API が
 		// 増えるため後回し。極小/極大スケールのモデルで誤判定したら直す。
 		match self.len() {
 			0 => false,
 			1 => self[0].is_closed(),
-			_ => {
-				let start = self[0].start_point();
-				let last_pts = self[self.len() - 1].approximation_segments(1e-3);
-				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
-				(start - end).length() < 1e-6
-			}
+			_ => (self[0].start_point() - self[self.len() - 1].end_point()).length() < 1e-6,
 		}
 	}
 
@@ -726,20 +743,23 @@ impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_point(&self) -> DVec3 {
+		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn start_tangent(&self) -> DVec3 {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn end_tangent(&self) -> DVec3 {
+		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
 	}
 
 	fn is_closed(&self) -> bool {
 		match N {
 			0 => false,
 			1 => self[0].is_closed(),
-			_ => {
-				let start = self[0].start_point();
-				let last_pts = self[N - 1].approximation_segments(1e-3);
-				let end = last_pts.last().copied().unwrap_or(DVec3::ZERO);
-				(start - end).length() < 1e-6
-			}
+			_ => (self[0].start_point() - self[N - 1].end_point()).length() < 1e-6,
 		}
 	}
 

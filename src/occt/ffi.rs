@@ -160,8 +160,8 @@ mod ffi_bridge {
 		fn make_arc_edge(sx: f64, sy: f64, sz: f64, mx: f64, my: f64, mz: f64, ex: f64, ey: f64, ez: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_bspline_edge(coords: &[f64], end_kind: u32, sx: f64, sy: f64, sz: f64, ex: f64, ey: f64, ez: f64) -> UniquePtr<TopoDS_Edge>;
 
-		fn edge_start_point(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);
-		fn edge_start_tangent(edge: &TopoDS_Edge, x: &mut f64, y: &mut f64, z: &mut f64);
+		fn edge_endpoints(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64);
+		fn edge_tangents(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64);
 		fn edge_is_closed(edge: &TopoDS_Edge) -> bool;
 
 		fn deep_copy_edge(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
@@ -184,6 +184,7 @@ mod ffi_bridge {
 		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);
 
 		fn make_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
+		fn make_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64) -> UniquePtr<TopoDS_Shape>;
 	}
 }
 

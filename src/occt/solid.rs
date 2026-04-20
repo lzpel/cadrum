@@ -241,6 +241,24 @@ impl SolidStruct for Solid {
 		))
 	}
 
+	// ==================== Fillet ====================
+
+	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
+		let mut edge_vec = ffi::edge_vec_new();
+		for e in edges {
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+		}
+		let shape = ffi::make_fillet(&self.inner, &edge_vec, radius);
+		if shape.is_null() {
+			return Err(Error::FilletFailed);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+		))
+	}
+
 	// ==================== Sweep ====================
 
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {

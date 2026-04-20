@@ -59,6 +59,7 @@
 #include <BRepTools_History.hxx>
 
 // --- Sweep / pipe / loft ---
+#include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_MakeOffsetShape.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
@@ -1027,25 +1028,40 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
     }
 }
 
-void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z) {
-    x = 0.0; y = 0.0; z = 0.0;
+void edge_endpoints(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez)
+{
+    sx = 0.0; sy = 0.0; sz = 0.0;
+    ex = 0.0; ey = 0.0; ez = 0.0;
     try {
         BRepAdaptor_Curve curve(edge);
-        gp_Pnt p = curve.Value(curve.FirstParameter());
-        x = p.X(); y = p.Y(); z = p.Z();
+        gp_Pnt start = curve.Value(curve.FirstParameter());
+        gp_Pnt end = curve.Value(curve.LastParameter());
+        sx = start.X(); sy = start.Y(); sz = start.Z();
+        ex = end.X();   ey = end.Y();   ez = end.Z();
     } catch (const Standard_Failure&) {}
 }
 
-void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z) {
-    x = 0.0; y = 0.0; z = 0.0;
+void edge_tangents(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez)
+{
+    sx = 0.0; sy = 0.0; sz = 0.0;
+    ex = 0.0; ey = 0.0; ez = 0.0;
     try {
         BRepAdaptor_Curve curve(edge);
         gp_Pnt p;
-        gp_Vec v;
-        curve.D1(curve.FirstParameter(), p, v);
-        if (v.Magnitude() > Precision::Confusion()) {
-            v.Normalize();
-            x = v.X(); y = v.Y(); z = v.Z();
+        gp_Vec vs, ve;
+        curve.D1(curve.FirstParameter(), p, vs);
+        curve.D1(curve.LastParameter(), p, ve);
+        if (vs.Magnitude() > Precision::Confusion()) {
+            vs.Normalize();
+            sx = vs.X(); sy = vs.Y(); sz = vs.Z();
+        }
+        if (ve.Magnitude() > Precision::Confusion()) {
+            ve.Normalize();
+            ex = ve.X(); ey = ve.Y(); ez = ve.Z();
         }
     } catch (const Standard_Failure&) {}
 }
@@ -1210,6 +1226,39 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
         builder.Build();
         if (!builder.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Shape>(builder.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+std::unique_ptr<TopoDS_Shape> make_fillet(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double radius)
+{
+    try {
+        if (edges.empty()) {
+            // No-op: hand back an independent shallow copy so the Rust side
+            // always gets a fresh owned handle (matches the non-empty path).
+            return std::make_unique<TopoDS_Shape>(solid);
+        }
+        BRepFilletAPI_MakeFillet mk(solid);
+        for (const TopoDS_Edge& e : edges) {
+            if (e.IsNull()) continue;
+            mk.Add(radius, e);
+        }
+        mk.Build();
+        if (!mk.IsDone()) return nullptr;
+        TopoDS_Shape result = mk.Shape();
+        if (result.IsNull()) return nullptr;
+        // MakeFillet can wrap the solid in a compound; Solid::new requires a
+        // TopAbs_SOLID, so extract the first one if we got a container.
+        if (result.ShapeType() != TopAbs_SOLID) {
+            TopExp_Explorer ex(result, TopAbs_SOLID);
+            if (!ex.More()) return nullptr;
+            result = ex.Current();
+        }
+        return std::make_unique<TopoDS_Shape>(result);
     } catch (const Standard_Failure&) {
         return nullptr;
     }

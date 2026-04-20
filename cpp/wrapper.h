@@ -264,8 +264,12 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
     double ex, double ey, double ez);
 
 // Edge query helpers.
-void edge_start_point(const TopoDS_Edge& edge, double& x, double& y, double& z);
-void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z);
+void edge_endpoints(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez);
+void edge_tangents(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez);
 bool edge_is_closed(const TopoDS_Edge& edge);
 
 // Edge clone (deep copy of underlying TShape).
@@ -332,6 +336,15 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
     double thickness);
+
+// Fillet the given edges of `solid` with a uniform radius using
+// BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
+// copy of `solid`). Returns nullptr on OCCT failure (radius too large,
+// tangent discontinuity, edges not belonging to `solid`, etc.).
+std::unique_ptr<TopoDS_Shape> make_fillet(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double radius);
 
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.

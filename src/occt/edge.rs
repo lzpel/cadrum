@@ -136,19 +136,31 @@ impl Wire for Edge {
 	type Elem = Edge;
 
 	fn start_point(&self) -> DVec3 {
-		let mut x = 0.0;
-		let mut y = 0.0;
-		let mut z = 0.0;
-		ffi::edge_start_point(&self.inner, &mut x, &mut y, &mut z);
-		DVec3::new(x, y, z)
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(sx, sy, sz)
+	}
+
+	fn end_point(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(ex, ey, ez)
 	}
 
 	fn start_tangent(&self) -> DVec3 {
-		let mut x = 0.0;
-		let mut y = 0.0;
-		let mut z = 0.0;
-		ffi::edge_start_tangent(&self.inner, &mut x, &mut y, &mut z);
-		DVec3::new(x, y, z)
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(sx, sy, sz)
+	}
+
+	fn end_tangent(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(ex, ey, ez)
 	}
 
 	fn is_closed(&self) -> bool {

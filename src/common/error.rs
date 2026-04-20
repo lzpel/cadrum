@@ -38,6 +38,11 @@ pub enum Error {
 	/// yielding a self-intersecting offset surface, or OCCT internal failure.
 	ShellFailed,
 
+	/// Fillet (`Solid::fillet_edges` via `BRepFilletAPI_MakeFillet`) failed:
+	/// radius too large for the local geometry, tangent discontinuity along
+	/// the selected edge chain, or an edge not belonging to `self` was passed.
+	FilletFailed,
+
 	/// Lofting (`Solid::loft` / `BRepOffsetAPI_ThruSections`) failed: section
 	/// count too low, section wire ill-formed, or OCCT internal failure.
 	/// The string identifies which precondition or stage failed.
@@ -80,6 +85,7 @@ impl std::fmt::Display for Error {
 			Error::ExtrudeFailed => write!(f, "Extrude failed"),
 			Error::SweepFailed => write!(f, "Sweep failed"),
 			Error::ShellFailed => write!(f, "Shell failed"),
+			Error::FilletFailed => write!(f, "Fillet failed"),
 			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
 			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
