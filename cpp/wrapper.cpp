@@ -1043,16 +1043,25 @@ void edge_endpoints(const TopoDS_Edge& edge,
     } catch (const Standard_Failure&) {}
 }
 
-void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z) {
-    x = 0.0; y = 0.0; z = 0.0;
+void edge_tangents(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez)
+{
+    sx = 0.0; sy = 0.0; sz = 0.0;
+    ex = 0.0; ey = 0.0; ez = 0.0;
     try {
         BRepAdaptor_Curve curve(edge);
         gp_Pnt p;
-        gp_Vec v;
-        curve.D1(curve.FirstParameter(), p, v);
-        if (v.Magnitude() > Precision::Confusion()) {
-            v.Normalize();
-            x = v.X(); y = v.Y(); z = v.Z();
+        gp_Vec vs, ve;
+        curve.D1(curve.FirstParameter(), p, vs);
+        curve.D1(curve.LastParameter(), p, ve);
+        if (vs.Magnitude() > Precision::Confusion()) {
+            vs.Normalize();
+            sx = vs.X(); sy = vs.Y(); sz = vs.Z();
+        }
+        if (ve.Magnitude() > Precision::Confusion()) {
+            ve.Normalize();
+            ex = ve.X(); ey = ve.Y(); ez = ve.Z();
         }
     } catch (const Standard_Failure&) {}
 }

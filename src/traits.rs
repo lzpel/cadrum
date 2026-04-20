@@ -277,9 +277,10 @@ pub enum BSplineEnd {
 /// Methods on `Wire` therefore have meaningful semantics for both a single
 /// edge and an ordered edge list:
 ///
-/// - `start_point` / `start_tangent` — the wire's starting position/direction.
-///   For a single edge, the edge's first point and tangent.
-///   For a `Vec<Edge>`, the first edge's start.
+/// - `start_point` / `end_point` / `start_tangent` / `end_tangent` — the
+///   wire's endpoint positions and tangent directions.
+///   For a single edge, the edge's first/last point and tangent.
+///   For a `Vec<Edge>`, the first edge's start and the last edge's end.
 /// - `is_closed` — does the geometry form a closed loop?
 ///   For a single edge, whether start == end (e.g. a circle).
 ///   For a `Vec<Edge>`, whether the first edge's start equals the last edge's end.
@@ -301,6 +302,7 @@ pub trait Wire: Transform {
 	fn start_point(&self) -> DVec3;
 	fn end_point(&self) -> DVec3;
 	fn start_tangent(&self) -> DVec3;
+	fn end_tangent(&self) -> DVec3;
 	fn is_closed(&self) -> bool;
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
 
@@ -701,6 +703,10 @@ impl<T: EdgeStruct> Wire for Vec<T> {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
 	}
 
+	fn end_tangent(&self) -> DVec3 {
+		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
 	fn is_closed(&self) -> bool {
 		// Empty wire: not closed. Single-edge wire: defer to that edge.
 		// Multi-edge wire: the first edge's start equals the last edge's end.
@@ -743,6 +749,10 @@ impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 
 	fn start_tangent(&self) -> DVec3 {
 		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
+	}
+
+	fn end_tangent(&self) -> DVec3 {
+		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
 	}
 
 	fn is_closed(&self) -> bool {

@@ -267,7 +267,9 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
 void edge_endpoints(const TopoDS_Edge& edge,
     double& sx, double& sy, double& sz,
     double& ex, double& ey, double& ez);
-void edge_start_tangent(const TopoDS_Edge& edge, double& x, double& y, double& z);
+void edge_tangents(const TopoDS_Edge& edge,
+    double& sx, double& sy, double& sz,
+    double& ex, double& ey, double& ez);
 bool edge_is_closed(const TopoDS_Edge& edge);
 
 // Edge clone (deep copy of underlying TShape).
