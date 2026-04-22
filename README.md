@@ -7,8 +7,13 @@
 Rust CAD library powered by statically linked, headless [OpenCASCADE](https://dev.opencascade.org/) (OCCT 8.0.0-rc5).
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/lzpel/alphastell/4a32ffd0ca81665d94b072894daf1d3b661ed981/figure/image.png" alt="cadrum" width="360"/>
+</p>
+<!--
+<p align="center">
   <img src="figure/chijin.svg" alt="chijin — a drum of Amami Oshima" width="360"/>
 </p>
+-->
 
 ## Usage
 
@@ -19,6 +24,8 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE](https://de
 | [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
 | [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
 | [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
+
+The image at the top is a stellarator built with cadrum — see [lzpel/alphastell](https://github.com/lzpel/alphastell).
 
 More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
 
