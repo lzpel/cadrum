@@ -89,32 +89,40 @@ impl Mesh {
 impl Mesh {
 	/// Render this mesh as an SVG string.
 	///
-	/// `direction` is the viewing direction (the direction the camera looks from;
-	/// points with higher `dot(direction)` are closer to the camera).
+	/// `view_dir` is the viewing direction (the direction the camera looks from;
+	/// points with higher `dot(view_dir)` are closer to the camera).
+	///
+	/// `up_dir` controls which world-space direction points up on the output
+	/// SVG. It is Gram-Schmidt-orthogonalized against `view_dir`, so it need
+	/// not be exactly perpendicular — only non-zero and non-parallel to
+	/// `view_dir`. Engineering convention (Z-up, e.g. VMEC / parastell / most
+	/// CAD tools) maps directly: pass `DVec3::Z`. Panics if `view_dir` is
+	/// zero, `up_dir` is zero, or `up_dir` is parallel to `view_dir` — all of
+	/// which are programmer errors, treated like the degenerate-input panics
+	/// in `Transform::align_x`.
 	///
 	/// `hidden_lines` controls whether occluded edges are rendered as faint dashed
 	/// lines. Set to `false` for cleaner output on dense models (e.g. helical
 	/// sweeps) where hidden lines dominate the image.
 	///
 	/// `shading` enables Lambertian shading with head-on light
-	/// (light direction == `direction`). Front-facing triangles get
+	/// (light direction == `view_dir`). Front-facing triangles get
 	/// `shade = 0.5 + 0.5 * (normal · dir)`, so glancing faces darken to
 	/// half intensity. Turn this on for curved/organic shapes where flat
 	/// fill makes the 3D form hard to read; leave it off for clean flat
 	/// rendering matching earlier cadrum output.
 	///
 	/// The method:
-	/// 1. Projects triangles onto the plane perpendicular to `direction`
+	/// 1. Projects triangles onto the plane perpendicular to `view_dir`
 	/// 2. Detects silhouette edges from mesh adjacency
 	/// 3. Classifies edges as visible or hidden (only when `hidden_lines`)
 	/// 4. Renders colored triangles, visible edges (black), and optionally hidden edges
-	pub fn write_svg<W: std::io::Write>(&self, direction: DVec3, hidden_lines: bool, shading: bool, writer: &mut W) -> Result<(), super::error::Error> {
-		writer.write_all(self.to_svg(direction, hidden_lines, shading).as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
+	pub fn write_svg<W: std::io::Write>(&self, view_dir: DVec3, up_dir: DVec3, hidden_lines: bool, shading: bool, writer: &mut W) -> Result<(), super::error::Error> {
+		writer.write_all(self.to_svg(view_dir, up_dir, hidden_lines, shading).as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
 	}
 
-	pub fn to_svg(&self, direction: DVec3, hidden_lines: bool, shading: bool) -> String {
-		let dir = direction.normalize();
-		let (u, v) = projection_basis(dir);
+	pub fn to_svg(&self, view_dir: DVec3, up_dir: DVec3, hidden_lines: bool, shading: bool) -> String {
+		let (u, v, dir) = projection_basis(view_dir, up_dir);
 
 		// 1. Project and sort triangles for rendering
 		let face_triangles = project_and_sort_triangles(self, dir, u, v, shading);
@@ -152,35 +160,26 @@ struct OcclusionTri {
 	depths: [f64; 3],
 }
 
-/// Compute an orthonormal basis (x_dir, y_dir) for the projection plane
-/// perpendicular to `dir`. Matches OpenCASCADE's gp_Ax2 convention.
-fn projection_basis(dir: DVec3) -> (DVec3, DVec3) {
-	let (a, b, c) = (dir.x, dir.y, dir.z);
-	let (a_abs, b_abs, c_abs) = (a.abs(), b.abs(), c.abs());
-
-	let perp = if b_abs <= a_abs && b_abs <= c_abs {
-		if a_abs > c_abs {
-			DVec3::new(-c, 0.0, a)
-		} else {
-			DVec3::new(c, 0.0, -a)
-		}
-	} else if a_abs <= b_abs && a_abs <= c_abs {
-		if b_abs > c_abs {
-			DVec3::new(0.0, -c, b)
-		} else {
-			DVec3::new(0.0, c, -b)
-		}
-	} else {
-		if a_abs > b_abs {
-			DVec3::new(-b, a, 0.0)
-		} else {
-			DVec3::new(b, -a, 0.0)
-		}
-	};
-
-	let x_dir = perp.normalize();
-	let y_dir = dir.cross(x_dir);
-	(x_dir, y_dir)
+/// Build an orthonormal camera frame `(u, v, dir)` from user-supplied
+/// `view_dir` and `up_dir`:
+///
+/// - `dir` = normalized `view_dir` (points from the scene toward the camera)
+/// - `v`   = `up_dir` Gram-Schmidt-orthogonalized against `dir` and normalized
+///           (the "up" axis on the output SVG)
+/// - `u`   = `v × dir` (the "right" axis on the output SVG; right-handed)
+///
+/// Panics with a descriptive `expect` message when any input is degenerate
+/// (`view_dir` zero, `up_dir` zero, or `up_dir` parallel to `view_dir`) —
+/// consistent with `Transform::align_x` / `align_y` / `align_z` which also
+/// treat degenerate geometric inputs as programmer errors rather than
+/// recoverable runtime conditions.
+fn projection_basis(view_dir: DVec3, up_dir: DVec3) -> (DVec3, DVec3, DVec3) {
+	let dir = view_dir.try_normalize().expect("write_svg: view_dir is zero");
+	let v = (up_dir - dir * up_dir.dot(dir))
+		.try_normalize()
+		.expect("write_svg: up_dir is zero or parallel to view_dir");
+	let u = v.cross(dir);
+	(u, v, dir)
 }
 
 fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shading: bool) -> Vec<SvgTriangle> {
