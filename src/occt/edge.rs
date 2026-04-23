@@ -173,6 +173,20 @@ impl Wire for Edge {
 			.map(|c| DVec3::new(c[0], c[1], c[2]))
 			.collect()
 	}
+
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut tx, mut ty, mut tz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		// FFI returns false only on truly degenerate edges (no 3D Geom_Curve,
+		// or OCCT internal exception). All cadrum-constructed edges carry a
+		// Geom_Curve, so this is effectively unreachable — treat as a bug and
+		// fail fast rather than returning silent zero.
+		assert!(
+			ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz),
+			"Edge::project: edge has no 3D curve or OCCT projector threw (this is a bug)"
+		);
+		(DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz))
+	}
 }
 
 // Transform は trait 要件で `-> Self` を返すため Result にできない。

@@ -272,6 +272,13 @@ void edge_tangents(const TopoDS_Edge& edge,
     double& ex, double& ey, double& ez);
 bool edge_is_closed(const TopoDS_Edge& edge);
 
+// Project a world point onto the edge's underlying curve. Returns false if
+// the curve is missing or the projector cannot converge (leaves outputs 0).
+bool edge_project_point(const TopoDS_Edge& edge,
+    double px, double py, double pz,
+    double& cpx, double& cpy, double& cpz,
+    double& tx, double& ty, double& tz);
+
 // Edge clone (deep copy of underlying TShape).
 std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge);
 

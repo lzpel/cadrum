@@ -82,6 +82,7 @@
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
 #include <GeomAPI_PointsToBSplineSurface.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
 #include <NCollection_Array2.hxx>
@@ -1073,6 +1074,44 @@ bool edge_is_closed(const TopoDS_Edge& edge) {
         gp_Pnt p_start = curve.Value(curve.FirstParameter());
         gp_Pnt p_end   = curve.Value(curve.LastParameter());
         return p_start.Distance(p_end) < Precision::Confusion();
+    } catch (const Standard_Failure&) {
+        return false;
+    }
+}
+
+bool edge_project_point(const TopoDS_Edge& edge,
+    double px, double py, double pz,
+    double& cpx, double& cpy, double& cpz,
+    double& tx, double& ty, double& tz)
+{
+    cpx = 0.0; cpy = 0.0; cpz = 0.0;
+    tx = 0.0; ty = 0.0; tz = 0.0;
+    try {
+        double first = 0.0, last = 0.0;
+        Handle(Geom_Curve) gcurve = BRep_Tool::Curve(edge, first, last);
+        if (gcurve.IsNull()) return false;
+        gp_Pnt target(px, py, pz);
+        GeomAPI_ProjectPointOnCurve projector(target, gcurve, first, last);
+        double u;
+        if (projector.NbPoints() > 0) {
+            u = projector.LowerDistanceParameter();
+        } else {
+            // No interior extremum within [first, last] — distance is monotonic
+            // along the curve segment (e.g. line segment with target beyond an
+            // endpoint). Clamp to whichever endpoint is closer.
+            double d_first = target.Distance(gcurve->Value(first));
+            double d_last  = target.Distance(gcurve->Value(last));
+            u = (d_first <= d_last) ? first : last;
+        }
+        gp_Pnt p;
+        gp_Vec v;
+        gcurve->D1(u, p, v);
+        cpx = p.X(); cpy = p.Y(); cpz = p.Z();
+        if (v.Magnitude() > Precision::Confusion()) {
+            v.Normalize();
+            tx = v.X(); ty = v.Y(); tz = v.Z();
+        }
+        return true;
     } catch (const Standard_Failure&) {
         return false;
     }
