@@ -7,7 +7,10 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 
 fn svg_string(shape: &[Solid], direction: DVec3, tol: f64) -> String {
 	let mut buf = Vec::new();
-	cadrum::mesh(shape, tol).and_then(|m| m.write_svg(direction, true, false, &mut buf)).unwrap();
+	// Pick a sensible up for each view: Z-up for oblique/side views,
+	// Y-up when looking straight down Z (view_dir ‖ Z would make Z-up degenerate).
+	let up = if direction.normalize().dot(DVec3::Z).abs() > 0.999 { DVec3::Y } else { DVec3::Z };
+	cadrum::mesh(shape, tol).and_then(|m| m.write_svg(direction, up, true, false, &mut buf)).unwrap();
 	String::from_utf8(buf).unwrap()
 }
 

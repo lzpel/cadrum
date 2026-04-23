@@ -25,15 +25,13 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE](https://de
 | [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
 | [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
 
-The image at the top is a stellarator built with cadrum — see [lzpel/alphastell](https://github.com/lzpel/alphastell).
-
 More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cadrum = "^0.6"
+cadrum = "^0.7"
 ```
 
 ## Build
@@ -97,7 +95,7 @@ fn main() {
     cadrum::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, true, false, &mut svg)).expect("failed to write SVG");
+    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
 }
 
 ```
@@ -157,7 +155,7 @@ fn main() -> Result<(), cadrum::Error> {
         .collect();
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("create file");
-    cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut svg))?;
+    cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg))?;
 
     let mut stl = std::fs::File::create(format!("{example_name}.stl")).expect("create file");
     cadrum::mesh(&all, 0.1).and_then(|m| m.write_stl(&mut stl))?;
@@ -230,7 +228,7 @@ fn main() {
     cadrum::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, true, false, &mut svg)).expect("failed to write SVG");
+    cadrum::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
 }
 
 ```
@@ -282,7 +280,7 @@ fn main() -> Result<(), cadrum::Error> {
     cadrum::write_step(&shapes, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut svg)).expect("failed to write SVG");
+    cadrum::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
 
     Ok(())
 }
@@ -374,7 +372,7 @@ fn main() -> Result<(), Error> {
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, true, false, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -449,7 +447,7 @@ fn main() -> Result<(), Error> {
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, true, false, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -596,7 +594,7 @@ fn main() -> Result<(), Error> {
 	cadrum::write_step(&all, &mut f)?;
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
-	cadrum::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), false, false, &mut f_svg)?;
+	cadrum::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false, &mut f_svg)?;
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
 	Ok(())
 }
@@ -667,7 +665,7 @@ fn main() -> Result<(), Error> {
 	// Isometric view from (1, 1, 2) with shading so the cavity depth reads
 	// naturally.
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, true, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -731,7 +729,7 @@ fn main() {
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
 	cadrum::write_step(&objects, &mut f).unwrap();
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	cadrum::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), false, true, &mut f_svg)).unwrap();
+	cadrum::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true, &mut f_svg)).unwrap();
 	println!("wrote {example_name}.step / {example_name}.svg");
 }
 
@@ -797,7 +795,7 @@ fn main() -> Result<(), Error> {
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, true, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -865,7 +863,7 @@ fn main() -> Result<(), Error> {
 	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, true, &mut f)).expect("failed to write SVG");
+	cadrum::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())

@@ -39,7 +39,7 @@ fn main() -> Result<(), cadrum::Error> {
         .collect();
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("create file");
-    cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), true, false, &mut svg))?;
+    cadrum::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg))?;
 
     let mut stl = std::fs::File::create(format!("{example_name}.stl")).expect("create file");
     cadrum::mesh(&all, 0.1).and_then(|m| m.write_stl(&mut stl))?;
