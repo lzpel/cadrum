@@ -286,6 +286,9 @@ pub enum BSplineEnd {
 ///   For a `Vec<Edge>`, whether the first edge's start equals the last edge's end.
 /// - `approximation_segments` — polyline approximation. For a wire, all
 ///   sub-edges' segments are concatenated in order.
+/// - `project` — closest point on the wire to a given world point, with the
+///   unit tangent at that point. For a `Vec<Edge>`, projects onto every
+///   sub-edge and returns the result with the smallest distance to `p`.
 ///
 /// Spatial transforms live on the (crate-private) supertrait `Transform`.
 /// Since `Transform` is not re-exported from the crate root, users cannot
@@ -305,6 +308,15 @@ pub trait Wire: Transform {
 	fn end_tangent(&self) -> DVec3;
 	fn is_closed(&self) -> bool;
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
+	/// Project `p` onto the wire and return `(closest_point, unit_tangent)`.
+	/// The tangent follows the curve's native parameter direction.
+	///
+	/// An empty wire returns `(DVec3::ZERO, DVec3::ZERO)`, matching the
+	/// silent-zero convention of `start_point` / `start_tangent`. A single
+	/// `Edge` that lacks a 3D geometric curve (i.e. FFI-level failure,
+	/// which cadrum-built edges never produce) panics — that case
+	/// indicates a bug, not a degenerate user input.
+	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
 	// --- Transform forwarders ---
 	// Let `use cadrum::Wire;` alone pull the Transform surface into scope.
@@ -745,6 +757,10 @@ impl<T: EdgeStruct> Wire for Vec<T> {
 		}
 		out
 	}
+
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		project_over_edges(self.iter(), p)
+	}
 }
 
 impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
@@ -789,6 +805,18 @@ impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 		}
 		out
 	}
+
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		project_over_edges(self.iter(), p)
+	}
+}
+
+fn project_over_edges<'a, T: 'a + EdgeStruct + Wire>(edges: impl IntoIterator<Item = &'a T>, p: DVec3) -> (DVec3, DVec3) {
+	edges
+		.into_iter()
+		.map(|e| e.project(p))
+		.min_by(|(a, _), (b, _)| (a - p).length_squared().partial_cmp(&(b - p).length_squared()).unwrap_or(std::cmp::Ordering::Equal))
+		.unwrap_or((DVec3::ZERO, DVec3::ZERO))
 }
 
 // ==================== I/O ====================
