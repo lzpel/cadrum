@@ -7,7 +7,7 @@
 Rust CAD library powered by statically linked, headless [OpenCASCADE](https://dev.opencascade.org/) (OCCT 8.0.0-rc5).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lzpel/alphastell/4a32ffd0ca81665d94b072894daf1d3b661ed981/figure/image.png" alt="cadrum"/>
+  <img src="https://raw.githubusercontent.com/lzpel/alphastell/main/figure/image.png" alt="cadrum"/>
 </p>
 <!--
 <p align="center">
