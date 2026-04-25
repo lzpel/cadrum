@@ -72,7 +72,7 @@ impl CompoundShape {
 			.iter()
 			.map(|s| {
 				Solid::new(
-					ffi::shallow_copy(s),
+					ffi::clone_shape_handle(s),
 					#[cfg(feature = "color")]
 					self.colormap.clone(),
 					self.history.clone(),

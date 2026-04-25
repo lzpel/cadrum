@@ -61,7 +61,6 @@ mod ffi_bridge {
 		fn make_empty() -> UniquePtr<TopoDS_Shape>;
 
 		fn deep_copy(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
-		fn shallow_copy(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Boolean Operations ====================
 
@@ -115,6 +114,7 @@ mod ffi_bridge {
 		fn shape_edges(shape: &TopoDS_Shape) -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn shape_faces(shape: &TopoDS_Shape) -> UniquePtr<CxxVector<TopoDS_Face>>;
 
+		fn clone_shape_handle(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 		fn clone_edge_handle(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
 		fn clone_face_handle(face: &TopoDS_Face) -> UniquePtr<TopoDS_Face>;
 

@@ -118,7 +118,6 @@ std::unique_ptr<TopoDS_Shape> make_torus(
 
 std::unique_ptr<TopoDS_Shape> make_empty();
 std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
-std::unique_ptr<TopoDS_Shape> shallow_copy(const TopoDS_Shape& shape);
 
 // ==================== Boolean Operations ====================
 
@@ -192,9 +191,11 @@ std::unique_ptr<std::vector<TopoDS_Edge>> shape_edges(const TopoDS_Shape& shape)
 std::unique_ptr<std::vector<TopoDS_Face>> shape_faces(const TopoDS_Shape& shape);
 
 // Shallow handle clone — C++ copy-ctor shares the underlying TShape via
-// OCCT's ref count. Needed when Rust materializes owned `Edge` / `Face`
-// wrappers from the `&TopoDS_*` references yielded by `CxxVector::iter()`.
-// Distinct from `deep_copy_edge` which creates a new TShape.
+// OCCT's ref count. Needed when Rust materializes owned `Shape` / `Edge` /
+// `Face` wrappers from the `&TopoDS_*` references yielded by
+// `CxxVector::iter()`. Distinct from `deep_copy` / `deep_copy_edge` which
+// create new TShapes.
+std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
 std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);
 
