@@ -107,8 +107,8 @@ fn clean_colored_step_preserves_colors() {
 /// no Solid because adjacent faces don't share EDGE_CURVE entities. The
 /// Sewing post-process should recover 1 Solid AND preserve per-face colors.
 ///
-/// Writes the recovered shape to STEP + STL (binary STL with RGB555 attribute
-/// bytes, viewable in MeshLab/SolidView etc.) for visual verification.
+/// Writes the recovered shape to STEP / STL (RGB555 attribute bytes, MeshLab
+/// readable) / SVG (DVec3::ONE viewpoint) for visual verification.
 #[test]
 fn multicolor_solvespace_step_recovers_solid_with_colors() {
 	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
@@ -122,4 +122,9 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 
 	let mut stl = std::fs::File::create("out/multicolor_solvespace_recovered.stl").expect("stl file");
 	cadrum::mesh(&solids, 0.1).and_then(|m| m.write_stl(&mut stl)).expect("stl write should succeed");
+
+	let mut svg = std::fs::File::create("out/multicolor_solvespace_recovered.svg").expect("svg file");
+	cadrum::mesh(&solids, 0.1)
+		.and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, true, &mut svg))
+		.expect("svg write should succeed");
 }
