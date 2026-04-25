@@ -109,6 +109,7 @@ fn clean_colored_step_preserves_colors() {
 ///
 /// Writes the recovered shape to STEP / STL (RGB555 attribute bytes, MeshLab
 /// readable) / SVG (DVec3::ONE viewpoint) for visual verification.
+/// Blue, light green, red faces should be preserved.
 #[test]
 fn multicolor_solvespace_step_recovers_solid_with_colors() {
 	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
