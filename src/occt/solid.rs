@@ -61,6 +61,20 @@ pub struct Solid {
 	faces: OnceLock<Vec<Face>>,
 	#[cfg(feature = "color")]
 	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
+	/// Face-derivation history from the most recent boolean operation.
+	///
+	/// Flat `[post_id, src_id, post_id, src_id, ...]` pairs:
+	/// - `post_id` is the TShape* of a face in this Solid (or, after
+	///   decompose, possibly in a sibling result Solid — over-inclusion
+	///   is harmless because consumers filter by `src_id`).
+	/// - `src_id` is the TShape* of the originating face in either
+	///   boolean input (a or b — distinction is intentionally lost;
+	///   TShape* is globally unique so callers filter by membership).
+	///
+	/// Empty for primitives, builders (extrude/sweep/loft/bspline/shell/
+	/// fillet/chamfer), I/O reads, and after scale/mirror/Clone (which
+	/// rebuild topology). Preserved across translate/rotate/color.
+	history: Vec<u64>,
 }
 
 impl Solid {
@@ -68,7 +82,11 @@ impl Solid {
 	///
 	/// # Panics
 	/// Panics if `inner` is not `TopAbs_SOLID` (and not null).
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>) -> Self {
+	pub(crate) fn new(
+		inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
+		#[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>,
+		history: Vec<u64>,
+	) -> Self {
 		debug_assert!(ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner), "Solid::new called with a non-SOLID shape");
 		Solid {
 			inner,
@@ -76,6 +94,7 @@ impl Solid {
 			faces: OnceLock::new(),
 			#[cfg(feature = "color")]
 			colormap,
+			history,
 		}
 	}
 
@@ -89,6 +108,16 @@ impl Solid {
 	/// Return the underlying `TopoDS_TShape*` address as a `u64`.
 	pub fn tshape_id(&self) -> u64 {
 		ffi::shape_tshape_id(&self.inner)
+	}
+
+	/// Iterate over face-derivation pairs `[post_id, src_id]` from the most
+	/// recent boolean operation that produced this Solid (or its source
+	/// chain, while it stays through translate/rotate/color).
+	///
+	/// Empty after primitive/builder construction, I/O read, scale/mirror,
+	/// or Clone. See the `history` field doc on `Solid` for the full list.
+	pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
+		self.history.chunks_exact(2).map(|c| [c[0], c[1]])
 	}
 
 	// ==================== Color accessors ====================
@@ -157,6 +186,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -166,6 +196,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -175,6 +206,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -184,6 +216,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -193,6 +226,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -202,6 +236,7 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		)
 	}
 
@@ -220,6 +255,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -238,6 +274,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -256,6 +293,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -272,6 +310,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -295,6 +334,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -343,6 +383,7 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
@@ -370,20 +411,21 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			Default::default(),
 		))
 	}
 
 	// ==================== Boolean primitives ====================
 
-	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
 		Self::boolean_union_impl(a, b)
 	}
 
-	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
 		Self::boolean_subtract_impl(a, b)
 	}
 
-	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<(Vec<Self>, [Vec<u64>; 2]), Error> where Self: 'a + 'b {
+	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
 		Self::boolean_intersect_impl(a, b)
 	}
 }
@@ -396,10 +438,12 @@ impl Transform for Solid {
 		// translate/rotate use shape.Moved() — TShape is shared but Location
 		// changes, so cached edges/faces (which embed Location) would go stale.
 		// Solid::new gives a fresh OnceLock::new() cache matching the new Location.
+		// `history` is preserved because TShape* (= post_id) is unchanged.
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
 			self.colormap,
+			self.history,
 		)
 	}
 
@@ -409,6 +453,7 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			self.colormap,
+			self.history,
 		)
 	}
 
@@ -426,10 +471,14 @@ impl Transform for Solid {
 		let inner = ffi::scale_shape(&self.inner, center.x, center.y, center.z, factor);
 		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		// scale/mirror rebuild topology via BRepBuilderAPI_Transform → post_ids
+		// in old `history` no longer exist. Drop history (caller must re-derive
+		// from a fresh boolean call).
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			Default::default(),
 		)
 	}
 
@@ -441,6 +490,7 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			Default::default(),
 		)
 	}
 }
@@ -455,24 +505,20 @@ impl Compound for Solid {
 	fn clean(&self) -> Result<Self, Error> {
 		#[cfg(feature = "color")]
 		{
-			let r = ffi::clean_shape_full(&self.inner);
-			if r.is_null() {
-				return Err(Error::CleanFailed);
-			}
-			let inner = ffi::clean_shape_get(&r);
+			let mut mapping: Vec<u64> = Default::default();
+			let inner = ffi::clean_shape_full(&self.inner, &mut mapping);
 			if inner.is_null() {
 				return Err(Error::CleanFailed);
 			}
-			let mapping = ffi::clean_shape_mapping(&r);
 			let mut colormap = std::collections::HashMap::new();
-			for pair in mapping.chunks(2) {
+			for pair in mapping.chunks_exact(2) {
 				let new_id = pair[0];
 				let old_id = pair[1];
 				if let Some(&color) = self.colormap.get(&old_id) {
 					colormap.entry(new_id).or_insert(color);
 				}
 			}
-			return Ok(Solid::new(inner, colormap));
+			return Ok(Solid::new(inner, colormap, Default::default()));
 		}
 		#[cfg(not(feature = "color"))]
 		{
@@ -480,7 +526,7 @@ impl Compound for Solid {
 			if inner.is_null() {
 				return Err(Error::CleanFailed);
 			}
-			Ok(Solid::new(inner))
+			Ok(Solid::new(inner, Default::default()))
 		}
 	}
 
@@ -534,25 +580,25 @@ impl Compound for Solid {
 	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
 		let c = color.into();
 		let colormap = ffi::shape_faces(&self.inner).iter().map(|f| (ffi::face_tshape_id(f), c)).collect();
-		Self::new(self.inner, colormap)
+		Self::new(self.inner, colormap, self.history)
 	}
 
 	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self {
-		Self::new(self.inner, std::collections::HashMap::new())
+		Self::new(self.inner, std::collections::HashMap::new(), self.history)
 	}
 
-	// ==================== Boolean wrappers ====================
+	// ==================== Boolean ====================
 
-	fn union_with_metadata<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
 		<Solid as SolidStruct>::boolean_union([self], tool)
 	}
 
-	fn subtract_with_metadata<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
 		<Solid as SolidStruct>::boolean_subtract([self], tool)
 	}
 
-	fn intersect_with_metadata<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
 		<Solid as SolidStruct>::boolean_intersect([self], tool)
 	}
 }
@@ -562,10 +608,13 @@ impl Clone for Solid {
 		let inner = ffi::deep_copy(&self.inner);
 		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
+		// deep_copy rebuilds topology — post_ids in `history` no longer point
+		// to faces of the new shape. Drop history rather than remapping.
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			Default::default(),
 		)
 	}
 }
@@ -573,15 +622,12 @@ impl Clone for Solid {
 // ==================== Boolean operations ====================
 
 #[cfg(feature = "color")]
-fn merge_colormaps(from_a: &[u64], from_b: &[u64], colormap_a: &std::collections::HashMap<u64, crate::common::color::Color>, colormap_b: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
+fn merge_colormaps(history: &[u64], colormap_a: &std::collections::HashMap<u64, crate::common::color::Color>, colormap_b: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
 	let mut result = std::collections::HashMap::new();
-	for pair in from_a.chunks(2) {
-		if let Some(&color) = colormap_a.get(&pair[1]) {
-			result.insert(pair[0], color);
-		}
-	}
-	for pair in from_b.chunks(2) {
-		if let Some(&color) = colormap_b.get(&pair[1]) {
+	for pair in history.chunks_exact(2) {
+		// TShape* pointers are globally unique across both inputs, so a
+		// single lookup against either colormap suffices (no collision).
+		if let Some(&color) = colormap_a.get(&pair[1]).or_else(|| colormap_b.get(&pair[1])) {
 			result.insert(pair[0], color);
 		}
 	}
@@ -589,24 +635,21 @@ fn merge_colormaps(from_a: &[u64], from_b: &[u64], colormap_a: &std::collections
 }
 
 // `ca` / `cb` carry the source colormaps and are only consulted by the
-// `color` feature; the boolean result and metadata are derived purely from
-// the FFI BooleanShape, so they go unused without `color`.
+// `color` feature; the boolean result and history are derived purely from
+// the FFI out-parameter, so they go unused without `color`.
 #[cfg_attr(not(feature = "color"), allow(unused_variables))]
-fn build_boolean_result(r: cxx::UniquePtr<ffi::BooleanShape>, ca: CompoundShape, cb: CompoundShape) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
-	let from_a = ffi::boolean_shape_from_a(&r);
-	let from_b = ffi::boolean_shape_from_b(&r);
-	let inner = ffi::boolean_shape_shape(&r);
-
+fn build_boolean_result(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, history: Vec<u64>, ca: CompoundShape, cb: CompoundShape) -> Result<Vec<Solid>, Error> {
 	#[cfg(feature = "color")]
-	let colormap = merge_colormaps(&from_a, &from_b, ca.colormap(), cb.colormap());
+	let colormap = merge_colormaps(&history, ca.colormap(), cb.colormap());
 
 	let compound = CompoundShape::from_raw(
 		inner,
 		#[cfg(feature = "color")]
 		colormap,
+		history,
 	);
 
-	Ok((compound.decompose(), [from_a, from_b]))
+	Ok(compound.decompose())
 }
 
 // Op kind tags matching the C++ side `boolean_op` switch.
@@ -615,23 +658,24 @@ const BOOLEAN_OP_CUT: u32 = 1;
 const BOOLEAN_OP_COMMON: u32 = 2;
 
 impl Solid {
-	fn boolean_op_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>, op_kind: u32) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	fn boolean_op_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>, op_kind: u32) -> Result<Vec<Solid>, Error> {
 		let ca = CompoundShape::new(a);
 		let cb = CompoundShape::new(b);
-		let r = ffi::boolean_op(ca.inner(), cb.inner(), op_kind);
-		if r.is_null() { return Err(Error::BooleanOperationFailed); }
-		build_boolean_result(r, ca, cb)
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::boolean_op(ca.inner(), cb.inner(), op_kind, &mut history);
+		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
+		build_boolean_result(inner, history, ca, cb)
 	}
 
-	pub(crate) fn boolean_union_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	pub(crate) fn boolean_union_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
 		Self::boolean_op_impl(a, b, BOOLEAN_OP_FUSE)
 	}
 
-	pub(crate) fn boolean_subtract_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	pub(crate) fn boolean_subtract_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
 		Self::boolean_op_impl(a, b, BOOLEAN_OP_CUT)
 	}
 
-	pub(crate) fn boolean_intersect_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<(Vec<Solid>, [Vec<u64>; 2]), Error> {
+	pub(crate) fn boolean_intersect_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
 		Self::boolean_op_impl(a, b, BOOLEAN_OP_COMMON)
 	}
 }
