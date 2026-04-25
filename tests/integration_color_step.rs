@@ -102,3 +102,23 @@ fn clean_colored_step_preserves_colors() {
 	assert_eq!(colormap_len(&cleaned), original_len, "clean should preserve all {} face colors", original_len);
 	write_colored(&cleaned, "out/colored_box_cleaned.step");
 }
+
+/// #129: multi-color STEP from SolveSpace lands as Compound{Shell×3} with
+/// no Solid because adjacent faces don't share EDGE_CURVE entities. The
+/// Sewing post-process should recover 1 Solid.
+#[test]
+fn multicolor_solvespace_step_recovers_one_solid() {
+	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
+	let solids = cadrum::read_step(&mut data.as_slice()).expect("read_step should succeed");
+	assert_eq!(solids.len(), 1, "expected 1 recovered solid, got {}", solids.len());
+	assert!(solids[0].volume() > 0.0, "recovered solid should have non-zero volume");
+}
+
+/// Color information should survive the sewing post-process (#129).
+#[test]
+fn multicolor_solvespace_step_preserves_colors() {
+	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
+	let solids = cadrum::read_step(&mut data.as_slice()).expect("read_step should succeed");
+	let total = colormap_len(&solids);
+	assert!(total > 0, "expected color info to survive sewing, got 0 colored faces");
+}
