@@ -519,21 +519,45 @@ std::unique_ptr<TopoDS_Shape> boolean_op(
 
 // ==================== Shape Methods ====================
 
-#ifndef CADRUM_COLOR
-// Plain clean — used only when CADRUM_COLOR is not defined.
-// With color, clean goes through `clean_shape_full` which also returns a
-// face-id remapping table so the colormap can follow merged faces.
-std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape) {
+// Unify shared faces / collinear edges. `out_history` is populated with
+// flat [new_id, old_id, ...] pairs covering every old face that survived
+// (either unchanged, or merged into a result face); identical layout to
+// `boolean_op`'s history.
+std::unique_ptr<TopoDS_Shape> clean_shape(
+    const TopoDS_Shape& shape,
+    rust::Vec<uint64_t>& out_history)
+{
     try {
         ShapeUpgrade_UnifySameDomain unifier(shape, true, true, true);
         unifier.AllowInternalEdges(false);
         unifier.Build();
-        return std::make_unique<TopoDS_Shape>(unifier.Shape());
+
+        auto result = std::make_unique<TopoDS_Shape>(unifier.Shape());
+
+        Handle(BRepTools_History) history = unifier.History();
+        if (!history.IsNull()) {
+            for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+                const TopoDS_Shape& old_face = ex.Current();
+                uint64_t old_id = reinterpret_cast<uint64_t>(old_face.TShape().get());
+                if (history->IsRemoved(old_face)) continue;
+                const NCollection_List<TopoDS_Shape>& mods = history->Modified(old_face);
+                if (mods.IsEmpty()) {
+                    // Unchanged: TShape* is the same in the result.
+                    out_history.push_back(old_id);
+                    out_history.push_back(old_id);
+                } else {
+                    // Merged: use only the first resulting face (first-found wins).
+                    uint64_t new_id = reinterpret_cast<uint64_t>(mods.First().TShape().get());
+                    out_history.push_back(new_id);
+                    out_history.push_back(old_id);
+                }
+            }
+        }
+        return result;
     } catch (const Standard_Failure&) {
         return nullptr;
     }
 }
-#endif // !CADRUM_COLOR
 
 std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape,
@@ -1793,44 +1817,6 @@ bool write_step_color_stream(
         return cafwriter.ChangeWriter().WriteStream(os) == IFSelect_RetDone;
     } catch (const Standard_Failure&) {
         return false;
-    }
-}
-
-// ==================== Clean with face-origin mapping ====================
-
-std::unique_ptr<TopoDS_Shape> clean_shape_full(
-    const TopoDS_Shape& shape,
-    rust::Vec<uint64_t>& out_mapping)
-{
-    try {
-        ShapeUpgrade_UnifySameDomain unifier(shape, true, true, true);
-        unifier.AllowInternalEdges(false);
-        unifier.Build();
-
-        auto result = std::make_unique<TopoDS_Shape>(unifier.Shape());
-
-        Handle(BRepTools_History) history = unifier.History();
-        if (!history.IsNull()) {
-            for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
-                const TopoDS_Shape& old_face = ex.Current();
-                uint64_t old_id = reinterpret_cast<uint64_t>(old_face.TShape().get());
-                if (history->IsRemoved(old_face)) continue;
-                const NCollection_List<TopoDS_Shape>& mods = history->Modified(old_face);
-                if (mods.IsEmpty()) {
-                    // Unchanged: TShape* is the same in the result.
-                    out_mapping.push_back(old_id);
-                    out_mapping.push_back(old_id);
-                } else {
-                    // Merged: use only the first resulting face (first-found wins).
-                    uint64_t new_id = reinterpret_cast<uint64_t>(mods.First().TShape().get());
-                    out_mapping.push_back(new_id);
-                    out_mapping.push_back(old_id);
-                }
-            }
-        }
-        return result;
-    } catch (const Standard_Failure&) {
-        return nullptr;
     }
 }
 
