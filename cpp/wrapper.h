@@ -7,7 +7,6 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
-#include <TopExp_Explorer.hxx>
 
 #include <cstdint>
 #include <streambuf>

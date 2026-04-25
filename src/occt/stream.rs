@@ -59,8 +59,3 @@ pub fn rust_reader_read(reader: &mut RustReader, buf: &mut [u8]) -> usize {
 pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
 }
-
-/// FFI callback: flush the RustWriter.
-pub fn rust_writer_flush(writer: &mut RustWriter) -> bool {
-	unsafe { (*writer.inner).flush().is_ok() }
-}

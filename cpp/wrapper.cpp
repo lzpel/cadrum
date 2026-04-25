@@ -13,6 +13,7 @@
 #include <TopoDS_Compound.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopLoc_Location.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <NCollection_List.hxx>
@@ -22,7 +23,6 @@
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Circ.hxx>
-#include <gp_Lin.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Trsf.hxx>
 #include <Geom_CylindricalSurface.hxx>
@@ -71,7 +71,6 @@
 // --- Mesh, classification, mass / surface properties ---
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <Poly_Triangulation.hxx>
-#include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepBndLib.hxx>
 #include <Bnd_Box.hxx>
 #include <BRepGProp.hxx>
@@ -90,11 +89,16 @@
 #include <Precision.hxx>
 
 // --- I/O (BREP / STEP / progress) ---
+// STEP-specific headers are only needed by the non-color STEP path
+// (`read_step_stream` / `write_step_stream`); with color, STEP routes
+// through XCAF in the CADRUM_COLOR section below.
 #include <BRepTools.hxx>
 #include <BinTools.hxx>
+#ifndef CADRUM_COLOR
 #include <STEPControl_Reader.hxx>
 #include <STEPControl_Writer.hxx>
 #include <Message_ProgressRange.hxx>
+#endif
 #include <Message.hxx>
 
 // --- C++ standard library ---
@@ -1468,28 +1472,11 @@ std::unique_ptr<TopoDS_Shape> make_pipe_shell(
 
 // Loft (skin) a smooth solid through a sequence of cross-section wires.
 //
-// `all_edges` is a flattened list of all edges across all sections; the
-// `section_sizes` array tells how many edges belong to each section. Example:
-//   sections [[a, b, c], [d, e], [f, g, h, i]]
-//   → all_edges = [a, b, c, d, e, f, g, h, i]
-//     section_sizes = [3, 2, 4]
-//
-// When `closed == true`, the first section's TopoDS_Wire is reused (NOT
-// copied) as the last section. OCCT's BRepOffsetAPI_ThruSections checks
-// `myWires(1).IsSame(myWires(nbSects))` (TShape* pointer identity) and
-// switches to a v-direction periodic surface internally — see
-// BRepOffsetAPI_ThruSections.cxx lines 539, 691, and 1187-1189. The
-// resulting surface is C² continuous across the wrap-around because the
-// underlying GeomFill_AppSurf processes all sections at once with periodic
-// boundary conditions. Crucially we must NOT BRepBuilderAPI_Copy the wire
-// — that would assign a fresh TShape* and the IsSame() check would fail,
-// silently degrading to an open loft.
-//
-// `isSolid=true` requests OCCT cap the open ends with planar faces (when
-// `closed=false`); `isRuled=false` requests B-spline (smoothed) interpolation
-// rather than panel-by-panel ruled surfaces — necessary for the C² guarantee.
-// Loft (skin) through cross-section wires.  Sections in `all_edges` are
-// separated by null-edge sentinels.
+// `all_edges` is a flat edge list with sections delimited by null-edge
+// sentinels (TopoDS_Edge().IsNull()); ≥2 sections required. Built via
+// BRepOffsetAPI_ThruSections with isSolid=true (cap open ends with planar
+// faces) and isRuled=false (B-spline / C² smoothed interpolation rather
+// than per-panel ruled surfaces).
 std::unique_ptr<TopoDS_Shape> make_loft(
     const std::vector<TopoDS_Edge>& all_edges)
 {
