@@ -34,8 +34,8 @@ fn assert_quadrant_point_symmetry(solid: &Solid, tol: f64) {
 	let minus_y = Solid::half_space(DVec3::ZERO, -DVec3::Y);
 
 	let quadrant = |hs1: &Solid, hs2: &Solid| -> f64 {
-		let (ab, _) = Solid::boolean_intersect(std::slice::from_ref(solid), std::slice::from_ref(hs1)).expect("intersect hs1");
-		let (q, _) = Solid::boolean_intersect(&ab, std::slice::from_ref(hs2)).expect("intersect hs2");
+		let ab = Solid::boolean_intersect(std::slice::from_ref(solid), std::slice::from_ref(hs1)).expect("intersect hs1");
+		let q = Solid::boolean_intersect(&ab, std::slice::from_ref(hs2)).expect("intersect hs2");
 		q.iter().map(|s| s.volume()).sum::<f64>()
 	};
 
