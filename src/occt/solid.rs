@@ -503,31 +503,22 @@ impl Compound for Solid {
 	type Elem = Solid;
 
 	fn clean(&self) -> Result<Self, Error> {
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::clean_shape(&self.inner, &mut history);
+		if inner.is_null() {
+			return Err(Error::CleanFailed);
+		}
 		#[cfg(feature = "color")]
-		{
-			let mut mapping: Vec<u64> = Default::default();
-			let inner = ffi::clean_shape_full(&self.inner, &mut mapping);
-			if inner.is_null() {
-				return Err(Error::CleanFailed);
-			}
-			let mut colormap = std::collections::HashMap::new();
-			for pair in mapping.chunks_exact(2) {
-				let new_id = pair[0];
-				let old_id = pair[1];
-				if let Some(&color) = self.colormap.get(&old_id) {
-					colormap.entry(new_id).or_insert(color);
+		let colormap = {
+			let mut m = std::collections::HashMap::new();
+			for pair in history.chunks_exact(2) {
+				if let Some(&color) = self.colormap.get(&pair[1]) {
+					m.entry(pair[0]).or_insert(color);
 				}
 			}
-			return Ok(Solid::new(inner, colormap, Default::default()));
-		}
-		#[cfg(not(feature = "color"))]
-		{
-			let inner = ffi::clean_shape(&self.inner);
-			if inner.is_null() {
-				return Err(Error::CleanFailed);
-			}
-			Ok(Solid::new(inner, Default::default()))
-		}
+			m
+		};
+		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
 	}
 
 	// ==================== Queries ====================
