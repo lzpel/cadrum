@@ -122,25 +122,17 @@ std::unique_ptr<TopoDS_Shape> shallow_copy(const TopoDS_Shape& shape);
 
 // ==================== Boolean Operations ====================
 
-/// Result of a boolean operation.
-///
-/// from_a / from_b encode face-origin pairs as flat arrays:
-///   [post_copy_tshape_id, source_tshape_id, ...]
-/// Used to remap colormaps and derive new_face_ids on the Rust side.
-class BooleanShape {
-public:
-    TopoDS_Shape shape;
-    std::vector<uint64_t> from_a;  // pairs: [post_id, src_a_id, ...]
-    std::vector<uint64_t> from_b;  // pairs: [post_id, src_b_id, ...]
-};
-
 // Unified boolean operation: 0=Fuse(union), 1=Cut(a−b), 2=Common(intersect).
-std::unique_ptr<BooleanShape> boolean_op(
-    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind);
-
-std::unique_ptr<TopoDS_Shape> boolean_shape_shape(const BooleanShape& r);
-rust::Vec<uint64_t> boolean_shape_from_a(const BooleanShape& r);
-rust::Vec<uint64_t> boolean_shape_from_b(const BooleanShape& r);
+//
+// `out_history` receives flat [post_id, src_id, post_id, src_id, ...] pairs
+// for every result face derived from either input (a or b). post_id is the
+// TShape* of the result face; src_id is the TShape* of the original face in
+// whichever input it came from. Self/tool distinction is intentionally
+// collapsed — TShape* pointers are globally unique so callers can filter by
+// matching src_id against either input's face id set.
+std::unique_ptr<TopoDS_Shape> boolean_op(
+    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
+    rust::Vec<uint64_t>& out_history);
 
 // ==================== Shape Methods ====================
 
@@ -422,17 +414,12 @@ bool write_step_color_stream(
 
 // ==================== Clean with face-origin mapping ====================
 
-/// Result of clean_shape_full: carries face-origin mapping for color remapping.
-/// mapping is a flat array of [new_tshape_id, old_tshape_id, ...] pairs.
-class CleanShape {
-public:
-    TopoDS_Shape shape;
-    std::vector<uint64_t> mapping; // pairs: [new_id, old_id, ...]
-};
-
-std::unique_ptr<CleanShape> clean_shape_full(const TopoDS_Shape& shape);
-std::unique_ptr<TopoDS_Shape> clean_shape_get(const CleanShape& r);
-rust::Vec<uint64_t> clean_shape_mapping(const CleanShape& r);
+// Returns the cleaned shape; `out_mapping` is appended with flat
+// [new_tshape_id, old_tshape_id, ...] pairs encoding how each old face
+// maps onto the unified result (used to remap the colormap on the Rust side).
+std::unique_ptr<TopoDS_Shape> clean_shape_full(
+    const TopoDS_Shape& shape,
+    rust::Vec<uint64_t>& out_mapping);
 
 } // namespace cadrum
 

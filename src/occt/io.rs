@@ -95,7 +95,7 @@ impl IoModule for Io {
 			for i in 0..ids.len() {
 				colormap.insert(ids[i], Color { r: r[i], g: g[i], b: b[i] });
 			}
-			Ok(CompoundShape::from_raw(inner, colormap).decompose())
+			Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 		}
 		#[cfg(not(feature = "color"))]
 		{
@@ -104,7 +104,7 @@ impl IoModule for Io {
 			if inner.is_null() {
 				return Err(Error::StepReadFailed);
 			}
-			Ok(CompoundShape::from_raw(inner).decompose())
+			Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
 		}
 	}
 
@@ -125,7 +125,7 @@ impl IoModule for Io {
 				return Err(Error::BrepReadFailed);
 			}
 			let colormap = resolve_color_trailer(&inner, &index_colormap);
-			Ok(CompoundShape::from_raw(inner, colormap).decompose())
+			Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 		}
 		#[cfg(not(feature = "color"))]
 		{
@@ -134,7 +134,7 @@ impl IoModule for Io {
 			if inner.is_null() {
 				return Err(Error::BrepReadFailed);
 			}
-			Ok(CompoundShape::from_raw(inner).decompose())
+			Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
 		}
 	}
 
@@ -155,7 +155,7 @@ impl IoModule for Io {
 				return Err(Error::BrepReadFailed);
 			}
 			let colormap = resolve_color_trailer(&inner, &index_colormap);
-			Ok(CompoundShape::from_raw(inner, colormap).decompose())
+			Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 		}
 		#[cfg(not(feature = "color"))]
 		{
@@ -164,7 +164,7 @@ impl IoModule for Io {
 			if inner.is_null() {
 				return Err(Error::BrepReadFailed);
 			}
-			Ok(CompoundShape::from_raw(inner).decompose())
+			Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
 		}
 	}
 

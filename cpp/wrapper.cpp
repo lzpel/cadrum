@@ -420,11 +420,14 @@ void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child) {
 //   the face still represents the same plane — it just has smaller bounds.
 //   Generated(tool_face) returns empty because no wholly NEW face was created.
 //
-// from_a / from_b (修正案2):
-//   For each face in src, collect_relay_mapping builds a map from the
-//   pre-copy TShape* of the result face to the TShape* of the original src face.
-//   After BRepBuilderAPI_Copy, copier.ModifiedShape() maps pre→post copy.
-//   The combined mapping (src → pre → post) is stored as flat [post_id, src_id] pairs.
+// out_history (rust::Vec<uint64_t>):
+//   For each face in src (both a and b), collect_relay_mapping builds a map
+//   from the pre-copy TShape* of the result face to the TShape* of the
+//   original src face. After BRepBuilderAPI_Copy, the pre→post mapping is
+//   resolved by index in the IndexedMap. emit_from_pairs pushes flat
+//   [post_id, src_id] pairs into out_history. a and b contributions are
+//   concatenated into the same out_history (no self/tool split — TShape*
+//   pointers are globally unique).
 
 // Helper: build relay map  pre_copy_result_tshape* → src_tshape*
 // Called before BRepBuilderAPI_Copy, while op history is alive.
@@ -457,7 +460,7 @@ static void emit_from_pairs(
     const TopoDS_Shape& pre_shape,
     const TopoDS_Shape& post_shape,
     const std::unordered_map<uint64_t, uint64_t>& relay,
-    std::vector<uint64_t>& out)
+    rust::Vec<uint64_t>& out)
 {
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> pre_map, post_map;
     TopExp::MapShapes(pre_shape, TopAbs_FACE, pre_map);
@@ -482,8 +485,12 @@ static void emit_from_pairs(
 // All three OCCT operations derive from BRepAlgoAPI_BooleanOperation, so the
 // post-build relay/copy logic is identical. Branching only at construction
 // avoids triplicating the bookkeeping.
-std::unique_ptr<BooleanShape> boolean_op(
-    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind)
+//
+// out_history is appended-to (not cleared) — caller passes an empty rust::Vec.
+// Both a and b contributions are pushed into the same flat sequence.
+std::unique_ptr<TopoDS_Shape> boolean_op(
+    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
+    rust::Vec<uint64_t>& out_history)
 {
     try {
         std::unique_ptr<BRepAlgoAPI_BooleanOperation> op;
@@ -501,30 +508,13 @@ std::unique_ptr<BooleanShape> boolean_op(
         collect_relay_mapping(*op, b, relay_b);
 
         BRepBuilderAPI_Copy copier(op->Shape(), true, false);
-        auto r = std::make_unique<BooleanShape>();
-        r->shape = copier.Shape();
-        emit_from_pairs(op->Shape(), copier.Shape(), relay_a, r->from_a);
-        emit_from_pairs(op->Shape(), copier.Shape(), relay_b, r->from_b);
-        return r;
+        auto shape = std::make_unique<TopoDS_Shape>(copier.Shape());
+        emit_from_pairs(op->Shape(), copier.Shape(), relay_a, out_history);
+        emit_from_pairs(op->Shape(), copier.Shape(), relay_b, out_history);
+        return shape;
     } catch (const Standard_Failure&) {
         return nullptr;
     }
-}
-
-std::unique_ptr<TopoDS_Shape> boolean_shape_shape(const BooleanShape& r) {
-    return std::make_unique<TopoDS_Shape>(r.shape);
-}
-
-rust::Vec<uint64_t> boolean_shape_from_a(const BooleanShape& r) {
-    rust::Vec<uint64_t> v;
-    for (uint64_t x : r.from_a) v.push_back(x);
-    return v;
-}
-
-rust::Vec<uint64_t> boolean_shape_from_b(const BooleanShape& r) {
-    rust::Vec<uint64_t> v;
-    for (uint64_t x : r.from_b) v.push_back(x);
-    return v;
 }
 
 // ==================== Shape Methods ====================
@@ -1837,14 +1827,16 @@ bool write_step_color_stream(
 
 // ==================== Clean with face-origin mapping ====================
 
-std::unique_ptr<CleanShape> clean_shape_full(const TopoDS_Shape& shape) {
+std::unique_ptr<TopoDS_Shape> clean_shape_full(
+    const TopoDS_Shape& shape,
+    rust::Vec<uint64_t>& out_mapping)
+{
     try {
         ShapeUpgrade_UnifySameDomain unifier(shape, true, true, true);
         unifier.AllowInternalEdges(false);
         unifier.Build();
 
-        auto r = std::make_unique<CleanShape>();
-        r->shape = unifier.Shape();
+        auto result = std::make_unique<TopoDS_Shape>(unifier.Shape());
 
         Handle(BRepTools_History) history = unifier.History();
         if (!history.IsNull()) {
@@ -1855,30 +1847,20 @@ std::unique_ptr<CleanShape> clean_shape_full(const TopoDS_Shape& shape) {
                 const NCollection_List<TopoDS_Shape>& mods = history->Modified(old_face);
                 if (mods.IsEmpty()) {
                     // Unchanged: TShape* is the same in the result.
-                    r->mapping.push_back(old_id);
-                    r->mapping.push_back(old_id);
+                    out_mapping.push_back(old_id);
+                    out_mapping.push_back(old_id);
                 } else {
                     // Merged: use only the first resulting face (first-found wins).
                     uint64_t new_id = reinterpret_cast<uint64_t>(mods.First().TShape().get());
-                    r->mapping.push_back(new_id);
-                    r->mapping.push_back(old_id);
+                    out_mapping.push_back(new_id);
+                    out_mapping.push_back(old_id);
                 }
             }
         }
-        return r;
+        return result;
     } catch (const Standard_Failure&) {
         return nullptr;
     }
-}
-
-std::unique_ptr<TopoDS_Shape> clean_shape_get(const CleanShape& r) {
-    return std::make_unique<TopoDS_Shape>(r.shape);
-}
-
-rust::Vec<uint64_t> clean_shape_mapping(const CleanShape& r) {
-    rust::Vec<uint64_t> v;
-    for (uint64_t x : r.mapping) v.push_back(x);
-    return v;
 }
 
 } // namespace cadrum

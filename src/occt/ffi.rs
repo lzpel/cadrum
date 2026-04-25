@@ -30,7 +30,6 @@ mod ffi_bridge {
 		type TopoDS_Shape;
 		type TopoDS_Face;
 		type TopoDS_Edge;
-		type BooleanShape;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -67,11 +66,8 @@ mod ffi_bridge {
 		// ==================== Boolean Operations ====================
 
 		// Unified boolean op. `op_kind`: 0 = fuse(union), 1 = cut(a − b), 2 = common(intersect).
-		fn boolean_op(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32) -> UniquePtr<BooleanShape>;
-
-		fn boolean_shape_shape(r: &BooleanShape) -> UniquePtr<TopoDS_Shape>;
-		fn boolean_shape_from_a(r: &BooleanShape) -> Vec<u64>;
-		fn boolean_shape_from_b(r: &BooleanShape) -> Vec<u64>;
+		// `out_history` is appended with flat [post_id, src_id, ...] pairs covering both inputs.
+		fn boolean_op(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Colored STEP I/O (color feature only) ====================
 
@@ -102,13 +98,7 @@ mod ffi_bridge {
 		fn clean_shape(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 
 		#[cfg(feature = "color")]
-		type CleanShape;
-		#[cfg(feature = "color")]
-		fn clean_shape_full(shape: &TopoDS_Shape) -> UniquePtr<CleanShape>;
-		#[cfg(feature = "color")]
-		fn clean_shape_get(r: &CleanShape) -> UniquePtr<TopoDS_Shape>;
-		#[cfg(feature = "color")]
-		fn clean_shape_mapping(r: &CleanShape) -> Vec<u64>;
+		fn clean_shape_full(shape: &TopoDS_Shape, out_mapping: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		fn translate_shape(shape: &TopoDS_Shape, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Shape>;
 
@@ -207,8 +197,5 @@ pub use ffi_bridge::*;
 unsafe impl Send for TopoDS_Shape {}
 unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
-unsafe impl Send for BooleanShape {}
-#[cfg(feature = "color")]
-unsafe impl Send for CleanShape {}
 #[cfg(feature = "color")]
 unsafe impl Send for ColoredStepData {}

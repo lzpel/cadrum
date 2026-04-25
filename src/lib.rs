@@ -42,20 +42,5 @@ pub use common::mesh::{EdgeData, Mesh};
 pub use glam::{DMat3, DMat4, DQuat, DVec2, DVec3};
 pub use glam;
 
-// ==================== Boolean metadata helpers ====================
-//
-// Free functions over the active backend's concrete `Face`. They live here
-// (not in `traits.rs`) so the trait layer stays free of backend type names.
-
-/// Check if a face came from the tool (b-side) of a boolean operation.
-pub fn is_tool_face(metadata: &[Vec<u64>; 2], face: &Face) -> bool {
-	metadata[1].contains(&face.tshape_id())
-}
-
-/// Check if a face came from the shape (a-side) of a boolean operation.
-pub fn is_shape_face(metadata: &[Vec<u64>; 2], face: &Face) -> bool {
-	metadata[0].contains(&face.tshape_id())
-}
-
 // Auto-generated inherent method delegations (trait methods → pub fn on concrete types)
 include!(concat!(env!("OUT_DIR"), "/generated_delegation.rs"));
