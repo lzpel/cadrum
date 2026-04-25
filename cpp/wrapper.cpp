@@ -1680,7 +1680,11 @@ static void collect_face_colors(
     }
 }
 
-std::unique_ptr<ColoredStepData> read_step_color_stream(RustReader& reader) {
+std::unique_ptr<TopoDS_Shape> read_step_color_stream(
+    RustReader&          reader,
+    rust::Vec<uint64_t>& out_ids,
+    rust::Vec<float>&    out_rgb)
+{
     try {
         // Create XDE document directly — avoids XCAFApp_Application which
         // pulls in visualization libs (TKXCAFPrs/TKTPrsStd) built with
@@ -1719,61 +1723,28 @@ std::unique_ptr<ColoredStepData> read_step_color_stream(RustReader& reader) {
         std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
         collect_face_colors(doc, colorTool, colorMap);
 
-        auto result = std::make_unique<ColoredStepData>();
-        result->shape = compound;
-
         // Emit colors for each face that has a color entry.
         for (TopExp_Explorer ex(compound, TopAbs_FACE); ex.More(); ex.Next()) {
             uint64_t id =
                 reinterpret_cast<uint64_t>(ex.Current().TShape().get());
             auto it = colorMap.find(id);
             if (it == colorMap.end()) continue;
-            result->ids.push_back(id);
-            result->r.push_back(it->second[0]);
-            result->g.push_back(it->second[1]);
-            result->b.push_back(it->second[2]);
+            out_ids.push_back(id);
+            out_rgb.push_back(it->second[0]);
+            out_rgb.push_back(it->second[1]);
+            out_rgb.push_back(it->second[2]);
         }
 
-        return result;
+        return std::make_unique<TopoDS_Shape>(compound);
     } catch (const Standard_Failure&) {
         return nullptr;
     }
 }
 
-std::unique_ptr<TopoDS_Shape> colored_step_shape(const ColoredStepData& d) {
-    return std::make_unique<TopoDS_Shape>(d.shape);
-}
-
-rust::Vec<uint64_t> colored_step_ids(const ColoredStepData& d) {
-    rust::Vec<uint64_t> v;
-    for (uint64_t x : d.ids) v.push_back(x);
-    return v;
-}
-
-rust::Vec<float> colored_step_colors_r(const ColoredStepData& d) {
-    rust::Vec<float> v;
-    for (float x : d.r) v.push_back(x);
-    return v;
-}
-
-rust::Vec<float> colored_step_colors_g(const ColoredStepData& d) {
-    rust::Vec<float> v;
-    for (float x : d.g) v.push_back(x);
-    return v;
-}
-
-rust::Vec<float> colored_step_colors_b(const ColoredStepData& d) {
-    rust::Vec<float> v;
-    for (float x : d.b) v.push_back(x);
-    return v;
-}
-
 bool write_step_color_stream(
     const TopoDS_Shape&         shape,
     rust::Slice<const uint64_t> ids,
-    rust::Slice<const float>    cr,
-    rust::Slice<const float>    cg,
-    rust::Slice<const float>    cb,
+    rust::Slice<const float>    rgb,
     RustWriter&                 writer)
 {
     try {
@@ -1790,7 +1761,7 @@ bool write_step_color_stream(
         // Build TShape* → color lookup from the Rust-supplied arrays.
         std::unordered_map<uint64_t, std::array<float, 3>> colorLookup;
         for (size_t i = 0; i < ids.size(); i++) {
-            colorLookup[ids[i]] = {cr[i], cg[i], cb[i]};
+            colorLookup[ids[i]] = {rgb[3*i], rgb[3*i+1], rgb[3*i+2]};
         }
 
         // For each colored face, find/create its sub-shape label and set color.

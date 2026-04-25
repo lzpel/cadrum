@@ -72,23 +72,10 @@ mod ffi_bridge {
 		// ==================== Colored STEP I/O (color feature only) ====================
 
 		#[cfg(feature = "color")]
-		type ColoredStepData;
+		fn read_step_color_stream(reader: &mut RustReader, out_ids: &mut Vec<u64>, out_rgb: &mut Vec<f32>) -> UniquePtr<TopoDS_Shape>;
 
 		#[cfg(feature = "color")]
-		fn read_step_color_stream(reader: &mut RustReader) -> UniquePtr<ColoredStepData>;
-		#[cfg(feature = "color")]
-		fn colored_step_shape(d: &ColoredStepData) -> UniquePtr<TopoDS_Shape>;
-		#[cfg(feature = "color")]
-		fn colored_step_ids(d: &ColoredStepData) -> Vec<u64>;
-		#[cfg(feature = "color")]
-		fn colored_step_colors_r(d: &ColoredStepData) -> Vec<f32>;
-		#[cfg(feature = "color")]
-		fn colored_step_colors_g(d: &ColoredStepData) -> Vec<f32>;
-		#[cfg(feature = "color")]
-		fn colored_step_colors_b(d: &ColoredStepData) -> Vec<f32>;
-
-		#[cfg(feature = "color")]
-		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], cr: &[f32], cg: &[f32], cb: &[f32], writer: &mut RustWriter) -> bool;
+		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], rgb: &[f32], writer: &mut RustWriter) -> bool;
 
 		// ==================== Shape Methods ====================
 
@@ -197,5 +184,3 @@ pub use ffi_bridge::*;
 unsafe impl Send for TopoDS_Shape {}
 unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
-#[cfg(feature = "color")]
-unsafe impl Send for ColoredStepData {}
