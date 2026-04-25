@@ -405,7 +405,7 @@ void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child) {
     builder.Add(compound, child);
 }
 
-// ==================== Boolean Operations ====================
+// ==================== Builders (solid → solid with history) ====================
 // Bug 1 fix: All boolean results are deep-copied via BRepBuilderAPI_Copy
 // so the result shares no Handle<Geom_XXX> with the input shapes.
 // This prevents STATUS_HEAP_CORRUPTION when shapes are dropped in any order.
@@ -488,7 +488,7 @@ static void emit_from_pairs(
 //
 // out_history is appended-to (not cleared) — caller passes an empty rust::Vec.
 // Both a and b contributions are pushed into the same flat sequence.
-std::unique_ptr<TopoDS_Shape> boolean_op(
+std::unique_ptr<TopoDS_Shape> builder_boolean(
     const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
     rust::Vec<uint64_t>& out_history)
 {
@@ -517,13 +517,11 @@ std::unique_ptr<TopoDS_Shape> boolean_op(
     }
 }
 
-// ==================== Shape Methods ====================
-
 // Unify shared faces / collinear edges. `out_history` is populated with
 // flat [new_id, old_id, ...] pairs covering every old face that survived
 // (either unchanged, or merged into a result face); identical layout to
-// `boolean_op`'s history.
-std::unique_ptr<TopoDS_Shape> clean_shape(
+// `builder_boolean`'s history.
+std::unique_ptr<TopoDS_Shape> builder_clean(
     const TopoDS_Shape& shape,
     rust::Vec<uint64_t>& out_history)
 {
@@ -559,7 +557,9 @@ std::unique_ptr<TopoDS_Shape> clean_shape(
     }
 }
 
-std::unique_ptr<TopoDS_Shape> translate_shape(
+// ==================== Transforms (solid → solid, no history) ====================
+
+std::unique_ptr<TopoDS_Shape> transform_translate(
     const TopoDS_Shape& shape,
     double tx, double ty, double tz)
 {
@@ -568,7 +568,7 @@ std::unique_ptr<TopoDS_Shape> translate_shape(
     return std::make_unique<TopoDS_Shape>(shape.Moved(TopLoc_Location(trsf)));
 }
 
-std::unique_ptr<TopoDS_Shape> rotate_shape(
+std::unique_ptr<TopoDS_Shape> transform_rotate(
     const TopoDS_Shape& shape,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
@@ -583,7 +583,7 @@ std::unique_ptr<TopoDS_Shape> rotate_shape(
     }
 }
 
-std::unique_ptr<TopoDS_Shape> scale_shape(
+std::unique_ptr<TopoDS_Shape> transform_scale(
     const TopoDS_Shape& shape,
     double cx, double cy, double cz,
     double factor)
@@ -598,7 +598,7 @@ std::unique_ptr<TopoDS_Shape> scale_shape(
     }
 }
 
-std::unique_ptr<TopoDS_Shape> mirror_shape(
+std::unique_ptr<TopoDS_Shape> transform_mirror(
     const TopoDS_Shape& shape,
     double ox, double oy, double oz,
     double nx, double ny, double nz)
@@ -612,6 +612,8 @@ std::unique_ptr<TopoDS_Shape> mirror_shape(
         return nullptr;
     }
 }
+
+// ==================== Shape Queries ====================
 
 bool shape_is_null(const TopoDS_Shape& shape) {
     return shape.IsNull();
@@ -1224,7 +1226,7 @@ void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f) {
     v.push_back(f);
 }
 
-std::unique_ptr<TopoDS_Shape> make_thick_solid(
+std::unique_ptr<TopoDS_Shape> builder_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
     double thickness)
@@ -1289,7 +1291,7 @@ std::unique_ptr<TopoDS_Shape> make_thick_solid(
     }
 }
 
-std::unique_ptr<TopoDS_Shape> make_fillet(
+std::unique_ptr<TopoDS_Shape> builder_fillet(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double radius)
@@ -1322,7 +1324,7 @@ std::unique_ptr<TopoDS_Shape> make_fillet(
     }
 }
 
-std::unique_ptr<TopoDS_Shape> make_chamfer(
+std::unique_ptr<TopoDS_Shape> builder_chamfer(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double distance)

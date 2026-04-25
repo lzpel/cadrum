@@ -61,12 +61,6 @@ mod ffi_bridge {
 
 		fn deep_copy(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 
-		// ==================== Boolean Operations ====================
-
-		// Unified boolean op. `op_kind`: 0 = fuse(union), 1 = cut(a − b), 2 = common(intersect).
-		// `out_history` is appended with flat [post_id, src_id, ...] pairs covering both inputs.
-		fn boolean_op(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
-
 		// ==================== Colored STEP I/O (color feature only) ====================
 
 		#[cfg(feature = "color")]
@@ -75,20 +69,35 @@ mod ffi_bridge {
 		#[cfg(feature = "color")]
 		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], rgb: &[f32], writer: &mut RustWriter) -> bool;
 
-		// ==================== Shape Methods ====================
+		// ==================== Builders (solid → solid with history) ====================
+
+		// Unified boolean op. `op_kind`: 0 = fuse(union), 1 = cut(a − b), 2 = common(intersect).
+		// `out_history` is appended with flat [post_id, src_id, ...] pairs covering both inputs.
+		fn builder_boolean(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		// Unify shared faces. `out_history` receives flat [new_id, old_id, ...]
-		// pairs (same layout as `boolean_op`), used by Solid::clean to populate
+		// pairs (same layout as `builder_boolean`), used by Solid::clean to populate
 		// `Solid::history` and remap the colormap when color is enabled.
-		fn clean_shape(shape: &TopoDS_Shape, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
+		fn builder_clean(shape: &TopoDS_Shape, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
-		fn translate_shape(shape: &TopoDS_Shape, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Shape>;
+		// TODO: builder_thick_solid / builder_fillet / builder_chamfer should
+		// also gain `out_history` populated via OCCT's Modified()/Generated()
+		// — currently no history (Rust side stores Default::default()).
+		fn builder_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
+		fn builder_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64) -> UniquePtr<TopoDS_Shape>;
+		fn builder_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn rotate_shape(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
+		// ==================== Transforms (solid → solid, no history) ====================
 
-		fn scale_shape(shape: &TopoDS_Shape, cx: f64, cy: f64, cz: f64, factor: f64) -> UniquePtr<TopoDS_Shape>;
+		fn transform_translate(shape: &TopoDS_Shape, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Shape>;
 
-		fn mirror_shape(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Shape>;
+		fn transform_rotate(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
+
+		fn transform_scale(shape: &TopoDS_Shape, cx: f64, cy: f64, cz: f64, factor: f64) -> UniquePtr<TopoDS_Shape>;
+
+		fn transform_mirror(shape: &TopoDS_Shape, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Shape>;
+
+		// ==================== Shape Queries ====================
 
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_is_solid(shape: &TopoDS_Shape) -> bool;
@@ -157,9 +166,6 @@ mod ffi_bridge {
 		fn face_vec_new() -> UniquePtr<CxxVector<TopoDS_Face>>;
 		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);
 
-		fn make_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
-		fn make_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64) -> UniquePtr<TopoDS_Shape>;
-		fn make_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64) -> UniquePtr<TopoDS_Shape>;
 	}
 }
 
