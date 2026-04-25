@@ -1,4 +1,4 @@
-use super::stream::{rust_reader_read, rust_writer_flush, rust_writer_write};
+use super::stream::{rust_reader_read, rust_writer_write};
 use super::stream::{RustReader, RustWriter};
 
 #[cxx::bridge(namespace = "cadrum")]
@@ -20,7 +20,6 @@ mod ffi_bridge {
 
 		fn rust_reader_read(reader: &mut RustReader, buf: &mut [u8]) -> usize;
 		fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize;
-		fn rust_writer_flush(writer: &mut RustWriter) -> bool;
 	}
 
 	unsafe extern "C++" {
