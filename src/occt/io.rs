@@ -79,22 +79,16 @@ impl IoModule for Io {
 		#[cfg(feature = "color")]
 		{
 			let mut rust_reader = RustReader::from_ref(reader);
-			let d = ffi::read_step_color_stream(&mut rust_reader);
-			if d.is_null() {
-				return Err(Error::StepReadFailed);
-			}
-			let inner = ffi::colored_step_shape(&d);
+			let mut ids: Vec<u64> = Default::default();
+			let mut rgb: Vec<f32> = Default::default();
+			let inner = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb);
 			if inner.is_null() {
 				return Err(Error::StepReadFailed);
 			}
-			let ids = ffi::colored_step_ids(&d);
-			let r = ffi::colored_step_colors_r(&d);
-			let g = ffi::colored_step_colors_g(&d);
-			let b = ffi::colored_step_colors_b(&d);
-			let mut colormap = std::collections::HashMap::new();
-			for i in 0..ids.len() {
-				colormap.insert(ids[i], Color { r: r[i], g: g[i], b: b[i] });
-			}
+			let colormap: std::collections::HashMap<u64, Color> = ids.into_iter()
+				.zip(rgb.chunks_exact(3))
+				.map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] }))
+				.collect();
 			Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 		}
 		#[cfg(not(feature = "color"))]
@@ -179,12 +173,14 @@ impl IoModule for Io {
 		#[cfg(feature = "color")]
 		{
 			let colormap = compound.colormap();
-			let ids: Vec<u64> = colormap.keys().copied().collect();
-			let r: Vec<f32> = ids.iter().map(|&id| colormap[&id].r).collect();
-			let g: Vec<f32> = ids.iter().map(|&id| colormap[&id].g).collect();
-			let b: Vec<f32> = ids.iter().map(|&id| colormap[&id].b).collect();
+			let mut ids: Vec<u64> = Vec::with_capacity(colormap.len());
+			let mut rgb: Vec<f32> = Vec::with_capacity(colormap.len() * 3);
+			for (&id, c) in colormap {
+				ids.push(id);
+				rgb.extend_from_slice(&[c.r, c.g, c.b]);
+			}
 			let mut rust_writer = RustWriter::from_ref(writer);
-			if ffi::write_step_color_stream(compound.inner(), &ids, &r, &g, &b, &mut rust_writer) {
+			if ffi::write_step_color_stream(compound.inner(), &ids, &rgb, &mut rust_writer) {
 				Ok(())
 			} else {
 				Err(Error::StepWriteFailed)
