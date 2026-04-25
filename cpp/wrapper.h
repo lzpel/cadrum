@@ -118,45 +118,92 @@ std::unique_ptr<TopoDS_Shape> make_torus(
 std::unique_ptr<TopoDS_Shape> make_empty();
 std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
 
-// ==================== Boolean Operations ====================
+// ==================== Builders (solid → solid with history) ====================
+//
+// Functions in this section take one or more solid inputs, rebuild topology,
+// and append flat [post_id, src_id, ...] face derivation pairs to
+// `out_history`. The Rust side stores these in `Solid::history`.
 
 // Unified boolean operation: 0=Fuse(union), 1=Cut(a−b), 2=Common(intersect).
 //
-// `out_history` receives flat [post_id, src_id, post_id, src_id, ...] pairs
-// for every result face derived from either input (a or b). post_id is the
-// TShape* of the result face; src_id is the TShape* of the original face in
-// whichever input it came from. Self/tool distinction is intentionally
+// `out_history` is appended with pairs covering every result face derived
+// from either input (a or b). Self/tool distinction is intentionally
 // collapsed — TShape* pointers are globally unique so callers can filter by
 // matching src_id against either input's face id set.
-std::unique_ptr<TopoDS_Shape> boolean_op(
+std::unique_ptr<TopoDS_Shape> builder_boolean(
     const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
     rust::Vec<uint64_t>& out_history);
 
-// ==================== Shape Methods ====================
-
 // Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
-// `out_history` is appended with flat [new_id, old_id, ...] pairs encoding
-// how each old face maps onto the unified result (mirrors `boolean_op`'s
-// history layout). The Rust side stores these in `Solid::history` and uses
-// them to remap the colormap when the `color` feature is enabled.
-std::unique_ptr<TopoDS_Shape> clean_shape(
+// `out_history` encodes how each old face maps onto the unified result.
+// Rust uses it to remap the colormap when the `color` feature is enabled.
+std::unique_ptr<TopoDS_Shape> builder_clean(
     const TopoDS_Shape& shape,
     rust::Vec<uint64_t>& out_history);
-std::unique_ptr<TopoDS_Shape> translate_shape(
+
+// Shell (hollow) the solid by removing `open_faces` and offsetting the
+// remaining faces by `thickness` via BRepOffsetAPI_MakeThickSolid. Negative
+// thickness hollows inward, positive thickens outward. Returns nullptr on
+// failure (e.g. self-intersecting offset at sharp corners).
+//
+// TODO: populate `out_history` via BRepOffsetAPI_MakeThickSolid::Modified()
+// — currently the Rust side stores an empty history.
+std::unique_ptr<TopoDS_Shape> builder_thick_solid(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Face>& open_faces,
+    double thickness);
+
+// Fillet the given edges of `solid` with a uniform radius using
+// BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
+// copy of `solid`). Returns nullptr on OCCT failure (radius too large,
+// tangent discontinuity, edges not belonging to `solid`, etc.).
+//
+// TODO: populate `out_history` via BRepFilletAPI_MakeFillet::Modified() /
+// Generated() — currently the Rust side stores an empty history.
+std::unique_ptr<TopoDS_Shape> builder_fillet(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double radius);
+
+// Chamfer (symmetric bevel) the given edges of `solid` with a uniform
+// distance using BRepFilletAPI_MakeChamfer. Empty `edges` is a no-op
+// (returns a shallow copy of `solid`). Returns nullptr on OCCT failure
+// (distance too large, tangent discontinuity, edges not belonging to
+// `solid`, etc.).
+//
+// TODO: populate `out_history` via BRepFilletAPI_MakeChamfer::Modified() /
+// Generated() — currently the Rust side stores an empty history.
+std::unique_ptr<TopoDS_Shape> builder_chamfer(
+    const TopoDS_Shape& solid,
+    const std::vector<TopoDS_Edge>& edges,
+    double distance);
+
+// ==================== Transforms (solid → solid, no history) ====================
+//
+// 3D transforms. translate/rotate use TopLoc_Location and preserve TShape*
+// (Rust side keeps colormap and history intact). scale/mirror rebuild
+// topology via BRepBuilderAPI_Transform; OCCT does not expose a face
+// derivation table, so out_history is intentionally absent and the Rust
+// side clears Solid::history (colormap is remapped by face order instead).
+
+std::unique_ptr<TopoDS_Shape> transform_translate(
     const TopoDS_Shape& shape, double tx, double ty, double tz);
-std::unique_ptr<TopoDS_Shape> rotate_shape(
+std::unique_ptr<TopoDS_Shape> transform_rotate(
     const TopoDS_Shape& shape,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
     double angle);
-std::unique_ptr<TopoDS_Shape> scale_shape(
+std::unique_ptr<TopoDS_Shape> transform_scale(
     const TopoDS_Shape& shape,
     double cx, double cy, double cz,
     double factor);
-std::unique_ptr<TopoDS_Shape> mirror_shape(
+std::unique_ptr<TopoDS_Shape> transform_mirror(
     const TopoDS_Shape& shape,
     double ox, double oy, double oz,
     double nx, double ny, double nz);
+
+// ==================== Shape Queries ====================
+
 bool shape_is_null(const TopoDS_Shape& shape);
 bool shape_is_solid(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
@@ -329,34 +376,6 @@ void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
 void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
-
-// Shell (hollow) the solid by removing `open_faces` and offsetting the
-// remaining faces by `thickness` via BRepOffsetAPI_MakeThickSolid. Negative
-// thickness hollows inward, positive thickens outward. Returns nullptr on
-// failure (e.g. self-intersecting offset at sharp corners).
-std::unique_ptr<TopoDS_Shape> make_thick_solid(
-    const TopoDS_Shape& solid,
-    const std::vector<TopoDS_Face>& open_faces,
-    double thickness);
-
-// Fillet the given edges of `solid` with a uniform radius using
-// BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
-// copy of `solid`). Returns nullptr on OCCT failure (radius too large,
-// tangent discontinuity, edges not belonging to `solid`, etc.).
-std::unique_ptr<TopoDS_Shape> make_fillet(
-    const TopoDS_Shape& solid,
-    const std::vector<TopoDS_Edge>& edges,
-    double radius);
-
-// Chamfer (symmetric bevel) the given edges of `solid` with a uniform
-// distance using BRepFilletAPI_MakeChamfer. Empty `edges` is a no-op
-// (returns a shallow copy of `solid`). Returns nullptr on OCCT failure
-// (distance too large, tangent discontinuity, edges not belonging to
-// `solid`, etc.).
-std::unique_ptr<TopoDS_Shape> make_chamfer(
-    const TopoDS_Shape& solid,
-    const std::vector<TopoDS_Edge>& edges,
-    double distance);
 
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
