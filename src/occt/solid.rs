@@ -266,7 +266,7 @@ impl SolidStruct for Solid {
 		for f in open_faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
 		}
-		let shape = ffi::make_thick_solid(&self.inner, &face_vec, thickness);
+		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness);
 		if shape.is_null() {
 			return Err(Error::ShellFailed);
 		}
@@ -285,7 +285,7 @@ impl SolidStruct for Solid {
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
-		let shape = ffi::make_fillet(&self.inner, &edge_vec, radius);
+		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius);
 		if shape.is_null() {
 			return Err(Error::FilletFailed);
 		}
@@ -302,7 +302,7 @@ impl SolidStruct for Solid {
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
-		let shape = ffi::make_chamfer(&self.inner, &edge_vec, distance);
+		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance);
 		if shape.is_null() {
 			return Err(Error::ChamferFailed);
 		}
@@ -434,7 +434,7 @@ impl SolidStruct for Solid {
 
 impl Transform for Solid {
 	fn translate(self, translation: DVec3) -> Self {
-		let inner = ffi::translate_shape(&self.inner, translation.x, translation.y, translation.z);
+		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z);
 		// translate/rotate use shape.Moved() — TShape is shared but Location
 		// changes, so cached edges/faces (which embed Location) would go stale.
 		// Solid::new gives a fresh OnceLock::new() cache matching the new Location.
@@ -448,7 +448,7 @@ impl Transform for Solid {
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		let inner = ffi::rotate_shape(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle);
+		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle);
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
@@ -463,12 +463,12 @@ impl Transform for Solid {
 	// rejects gp_Trsf with scale != 1 or negative determinant, because downstream
 	// algorithms (meshing, booleans) break on non-rigid transforms in locations.
 	// Therefore BRepBuilderAPI_Transform is required, which rebuilds topology.
-	// C++ impl: cpp/wrapper.cpp scale_shape() / mirror_shape()
+	// C++ impl: cpp/wrapper.cpp transform_scale() / transform_mirror()
 	// See: https://dev.opencascade.org/content/how-scale-or-mirror-shape
 	//      BRepBuilderAPI_Transform.cxx:48-49 (myUseModif branch)
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
-		let inner = ffi::scale_shape(&self.inner, center.x, center.y, center.z, factor);
+		let inner = ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor);
 		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// scale/mirror rebuild topology via BRepBuilderAPI_Transform → post_ids
@@ -483,7 +483,7 @@ impl Transform for Solid {
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		let inner = ffi::mirror_shape(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z);
+		let inner = ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z);
 		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(
@@ -504,7 +504,7 @@ impl Compound for Solid {
 
 	fn clean(&self) -> Result<Self, Error> {
 		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::clean_shape(&self.inner, &mut history);
+		let inner = ffi::builder_clean(&self.inner, &mut history);
 		if inner.is_null() {
 			return Err(Error::CleanFailed);
 		}
@@ -653,7 +653,7 @@ impl Solid {
 		let ca = CompoundShape::new(a);
 		let cb = CompoundShape::new(b);
 		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::boolean_op(ca.inner(), cb.inner(), op_kind, &mut history);
+		let inner = ffi::builder_boolean(ca.inner(), cb.inner(), op_kind, &mut history);
 		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
 		build_boolean_result(inner, history, ca, cb)
 	}
