@@ -79,13 +79,10 @@ mod ffi_bridge {
 
 		// ==================== Shape Methods ====================
 
-		// Plain clean — used only without `color` feature.
-		// With color, clean goes through `clean_shape_full` to remap face IDs.
-		#[cfg(not(feature = "color"))]
-		fn clean_shape(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
-
-		#[cfg(feature = "color")]
-		fn clean_shape_full(shape: &TopoDS_Shape, out_mapping: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
+		// Unify shared faces. `out_history` receives flat [new_id, old_id, ...]
+		// pairs (same layout as `boolean_op`), used by Solid::clean to populate
+		// `Solid::history` and remap the colormap when color is enabled.
+		fn clean_shape(shape: &TopoDS_Shape, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		fn translate_shape(shape: &TopoDS_Shape, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Shape>;
 

@@ -136,11 +136,14 @@ std::unique_ptr<TopoDS_Shape> boolean_op(
 
 // ==================== Shape Methods ====================
 
-// Plain clean — only built without CADRUM_COLOR; with color, clean goes
-// through `clean_shape_full` to remap face IDs onto the colormap.
-#ifndef CADRUM_COLOR
-std::unique_ptr<TopoDS_Shape> clean_shape(const TopoDS_Shape& shape);
-#endif
+// Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
+// `out_history` is appended with flat [new_id, old_id, ...] pairs encoding
+// how each old face maps onto the unified result (mirrors `boolean_op`'s
+// history layout). The Rust side stores these in `Solid::history` and uses
+// them to remap the colormap when the `color` feature is enabled.
+std::unique_ptr<TopoDS_Shape> clean_shape(
+    const TopoDS_Shape& shape,
+    rust::Vec<uint64_t>& out_history);
 std::unique_ptr<TopoDS_Shape> translate_shape(
     const TopoDS_Shape& shape, double tx, double ty, double tz);
 std::unique_ptr<TopoDS_Shape> rotate_shape(
@@ -403,15 +406,6 @@ bool write_step_color_stream(
     rust::Slice<const uint64_t> ids,
     rust::Slice<const float>    rgb,
     RustWriter&                 writer);
-
-// ==================== Clean with face-origin mapping ====================
-
-// Returns the cleaned shape; `out_mapping` is appended with flat
-// [new_tshape_id, old_tshape_id, ...] pairs encoding how each old face
-// maps onto the unified result (used to remap the colormap on the Rust side).
-std::unique_ptr<TopoDS_Shape> clean_shape_full(
-    const TopoDS_Shape& shape,
-    rust::Vec<uint64_t>& out_mapping);
 
 } // namespace cadrum
 
