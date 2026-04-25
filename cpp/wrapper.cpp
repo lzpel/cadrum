@@ -386,10 +386,6 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape) {
     return std::make_unique<TopoDS_Shape>(copier.Shape());
 }
 
-std::unique_ptr<TopoDS_Shape> shallow_copy(const TopoDS_Shape& shape) {
-    return std::make_unique<TopoDS_Shape>(shape);
-}
-
 // ==================== Compound Decompose/Compose ====================
 
 std::unique_ptr<std::vector<TopoDS_Shape>> decompose_into_solids(const TopoDS_Shape& shape) {
@@ -815,6 +811,10 @@ std::unique_ptr<std::vector<TopoDS_Face>> shape_faces(const TopoDS_Shape& shape)
         out->push_back(TopoDS::Face(ex.Current()));
     }
     return out;
+}
+
+std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape) {
+    return std::make_unique<TopoDS_Shape>(shape);
 }
 
 std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge) {
