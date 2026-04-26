@@ -102,3 +102,30 @@ fn clean_colored_step_preserves_colors() {
 	assert_eq!(colormap_len(&cleaned), original_len, "clean should preserve all {} face colors", original_len);
 	write_colored(&cleaned, "out/colored_box_cleaned.step");
 }
+
+/// #129: multi-color STEP from SolveSpace lands as Compound{Shell×3} with
+/// no Solid because adjacent faces don't share EDGE_CURVE entities. The
+/// Sewing post-process should recover 1 Solid AND preserve per-face colors.
+///
+/// Writes the recovered shape to STEP / STL (RGB555 attribute bytes, MeshLab
+/// readable) / SVG (DVec3::ONE viewpoint) for visual verification.
+/// Blue, light green, red faces should be preserved.
+#[test]
+fn multicolor_solvespace_step_recovers_solid_with_colors() {
+	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
+	let solids = cadrum::read_step(&mut data.as_slice()).expect("read_step should succeed");
+
+	assert_eq!(solids.len(), 1, "expected 1 recovered solid, got {}", solids.len());
+	assert!(solids[0].volume() > 0.0, "recovered solid should have non-zero volume");
+	assert!(colormap_len(&solids) > 0, "expected color info to survive sewing, got 0 colored faces");
+
+	write_colored(&solids, "out/multicolor_solvespace_recovered.step");
+
+	let mut stl = std::fs::File::create("out/multicolor_solvespace_recovered.stl").expect("stl file");
+	cadrum::mesh(&solids, 0.1).and_then(|m| m.write_stl(&mut stl)).expect("stl write should succeed");
+
+	let mut svg = std::fs::File::create("out/multicolor_solvespace_recovered.svg").expect("svg file");
+	cadrum::mesh(&solids, 0.1)
+		.and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, true, &mut svg))
+		.expect("svg write should succeed");
+}
