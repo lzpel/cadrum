@@ -188,6 +188,33 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 		"test_bspline_03_seam_dent_alternating_ellipse",
 	);
 
+	// #140 副タスク: u=0 (= φ=0) における surface normal の Y 成分を測定。
+	// 入力 a(φ), b(φ) は cos の偶関数で a'(0) = b'(0) = 0 → ∂P/∂θ は XZ 平面内、
+	// ∂P/∂φ は Y 軸方向 → 法線 = ∂P/∂θ × ∂P/∂φ ∈ XZ 平面 → N_y ≡ 0 が数学値。
+	// 真の C^1 周期補間が達成できていれば |N_y|/|N| は数値ノイズレベル。残差が
+	// 大きければ補間戦略を再検討する根拠。
+	//
+	// 解析点 (φ=0 の surface 直上) を直接 project すると seam edge ヒットで
+	// 失敗するため、解析的な外向き法線方向に小さくオフセットして project する。
+	// 投影先は元の点に十分近く、法線も近似的に同じ。
+	const N_THETA: usize = 16;
+	const OFFSET: f64 = 0.01;
+	let mut max_y_ratio = 0.0_f64;
+	for j in 0..N_THETA {
+		let theta = TAU * (j as f64) / (N_THETA as f64);
+		// φ=0 における解析的な surface 上の点 (a(0)=1.2, b(0)=0.6)
+		let surface_point = DVec3::new(R0 + 1.2 * theta.cos(), 0.0, 0.6 * theta.sin());
+		// 解析的な外向き法線 (XZ 平面内): N ∝ (-0.6 cosθ, 0, -1.2 sinθ) を
+		// 反転して外向きへ。長さは正規化。
+		let raw_normal = DVec3::new(-0.6 * theta.cos(), 0.0, -1.2 * theta.sin());
+		let outward = -raw_normal.normalize();
+		let target = surface_point + OFFSET * outward;
+		let (_cp, normal) = periodic.project(target);
+		let y_ratio = normal.y.abs() / normal.length();
+		max_y_ratio = max_y_ratio.max(y_ratio);
+	}
+	println!("seam |N_y|/|N| max over {N_THETA} θ samples at u=0: {max_y_ratio:.6}");
+
 	// 保存後に periodic 側で 4 象限の体積を比較。
 	// 入力グリッドは φ → -φ 対称 (cos のみ + sin·θ で z はゼロクロス) なので
 	// 数学上は 180° 回転対称が成立するはずだが、seam dent が +X (φ=0) 周辺
