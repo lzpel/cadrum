@@ -131,6 +131,8 @@ mod ffi_bridge {
 		fn face_tshape_id(face: &TopoDS_Face) -> u64;
 		fn shape_tshape_id(shape: &TopoDS_Shape) -> u64;
 
+		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> bool;
+
 		// ==================== Edge Methods ====================
 
 		fn edge_approximation_segments(edge: &TopoDS_Edge, angular: f64, chord: f64) -> Vec<f64>;

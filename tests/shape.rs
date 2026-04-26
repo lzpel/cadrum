@@ -100,21 +100,21 @@ fn test_scale_triple_volume() {
 #[test]
 fn test_preserves_face_ids() {
 	fn face_ids<'a>(s: impl IntoIterator<Item = &'a Solid>) -> Vec<u64> {
-		s.into_iter().flat_map(|s| s.iter_face()).map(|f| f.tshape_id()).collect()
+		s.into_iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect()
 	}
 
 	let shape = test_box();
-	let solid_id = shape.tshape_id();
+	let solid_id = shape.id();
 	let ids = face_ids([&shape]);
 	let moved = shape.translate(dvec3(10.0, 0.0, 0.0));
-	assert_eq!(solid_id, moved.tshape_id(), "translate should preserve solid tshape_id");
+	assert_eq!(solid_id, moved.id(), "translate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids([&moved]), "translate should preserve face IDs");
 
 	let shape = test_box();
-	let solid_id = shape.tshape_id();
+	let solid_id = shape.id();
 	let ids = face_ids([&shape]);
 	let rotated = shape.rotate_z(std::f64::consts::FRAC_PI_4);
-	assert_eq!(solid_id, rotated.tshape_id(), "rotate should preserve solid tshape_id");
+	assert_eq!(solid_id, rotated.id(), "rotate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids([&rotated]), "rotate should preserve face IDs");
 }
 
@@ -127,14 +127,14 @@ fn test_new_faces_subtract_b_inside_a() {
 	let big = [Solid::cube(10.0, 10.0, 10.0)];
 	let small = [Solid::cube(4.0, 4.0, 4.0).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> =
-		small.iter().flat_map(|s| s.iter_face()).map(|f| f.tshape_id()).collect();
+		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids = big.subtract(&small).unwrap();
 	let tool_post_ids: std::collections::HashSet<u64> = solids.iter()
 		.flat_map(|s| s.iter_history())
 		.filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post))
 		.collect();
 	assert_eq!(
-		solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.tshape_id())).count(),
+		solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count(),
 		6,
 		"subtract with B fully inside A: tool faces should be all 6 inner walls"
 	);
@@ -147,13 +147,13 @@ fn test_new_faces_intersect_b_inside_a() {
 	let big = [Solid::cube(10.0, 10.0, 10.0)];
 	let small = [Solid::cube(4.0, 4.0, 4.0).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> =
-		small.iter().flat_map(|s| s.iter_face()).map(|f| f.tshape_id()).collect();
+		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids = big.intersect(&small).unwrap();
 	let tool_post_ids: std::collections::HashSet<u64> = solids.iter()
 		.flat_map(|s| s.iter_history())
 		.filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post))
 		.collect();
-	let tool_count = solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.tshape_id())).count();
+	let tool_count = solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count();
 	assert_eq!(tool_count, 6, "intersect with B fully inside A: tool faces should equal all faces of result");
 	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).count(), tool_count, "intersect with B fully inside A: tool faces should cover all result faces");
 }
