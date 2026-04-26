@@ -914,6 +914,19 @@ std::unique_ptr<std::vector<TopoDS_Face>> shape_faces(const TopoDS_Shape& shape)
     return out;
 }
 
+std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face) {
+    // A face's outer wire and (optional) inner wires can share edges; collapse
+    // them into unique edges with the same IndexedMap trick used in shape_edges.
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edgeMap;
+    TopExp::MapShapes(face, TopAbs_EDGE, edgeMap);
+    auto out = std::make_unique<std::vector<TopoDS_Edge>>();
+    out->reserve(edgeMap.Extent());
+    for (int i = 1; i <= edgeMap.Extent(); i++) {
+        out->push_back(TopoDS::Edge(edgeMap(i)));
+    }
+    return out;
+}
+
 std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape) {
     return std::make_unique<TopoDS_Shape>(shape);
 }
@@ -934,6 +947,10 @@ uint64_t face_tshape_id(const TopoDS_Face& face) {
 
 uint64_t shape_tshape_id(const TopoDS_Shape& shape) {
     return reinterpret_cast<uint64_t>(shape.TShape().get());
+}
+
+uint64_t edge_tshape_id(const TopoDS_Edge& edge) {
+    return reinterpret_cast<uint64_t>(edge.TShape().get());
 }
 
 bool face_project_point(const TopoDS_Face& face,

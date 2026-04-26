@@ -121,6 +121,7 @@ mod ffi_bridge {
 
 		fn shape_edges(shape: &TopoDS_Shape) -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn shape_faces(shape: &TopoDS_Shape) -> UniquePtr<CxxVector<TopoDS_Face>>;
+		fn face_edges(face: &TopoDS_Face) -> UniquePtr<CxxVector<TopoDS_Edge>>;
 
 		fn clone_shape_handle(shape: &TopoDS_Shape) -> UniquePtr<TopoDS_Shape>;
 		fn clone_edge_handle(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
@@ -130,6 +131,7 @@ mod ffi_bridge {
 
 		fn face_tshape_id(face: &TopoDS_Face) -> u64;
 		fn shape_tshape_id(shape: &TopoDS_Shape) -> u64;
+		fn edge_tshape_id(edge: &TopoDS_Edge) -> u64;
 
 		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> bool;
 
