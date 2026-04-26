@@ -240,6 +240,22 @@ impl SolidStruct for Solid {
 		)
 	}
 
+	// ==================== Surface projection ====================
+
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		// FFI returns false only on truly catastrophic OCCT failure; for a
+		// well-formed solid this is effectively unreachable.
+		// Edge/vertex hits succeed with `normal == (0, 0, 0)` so the caller
+		// can detect ambiguous-normal cases via `normal.length() == 0`.
+		assert!(
+			ffi::solid_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz),
+			"Solid::project: BRepExtrema failed (this is a bug)"
+		);
+		(DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz))
+	}
+
 	// ==================== Extrude ====================
 
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {

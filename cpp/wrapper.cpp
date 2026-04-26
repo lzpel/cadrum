@@ -39,9 +39,13 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <BRepLProp_SLProps.hxx>
+#include <BRepAdaptor_Surface.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -773,6 +777,51 @@ void shape_bounding_box(const TopoDS_Shape& shape,
     Bnd_Box box;
     BRepBndLib::Add(shape, box);
     box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+}
+
+bool solid_project_point(const TopoDS_Shape& solid,
+    double px, double py, double pz,
+    double& cpx, double& cpy, double& cpz,
+    double& nx, double& ny, double& nz)
+{
+    // Default normal: zero. Used as fallback when the closest hit lands on
+    // an edge / vertex (where the normal is ambiguous between adjacent
+    // faces). The caller can detect this via `normal.length() == 0`.
+    nx = 0.0; ny = 0.0; nz = 0.0;
+
+    try {
+        TopoDS_Vertex vert = BRepBuilderAPI_MakeVertex(gp_Pnt(px, py, pz));
+        BRepExtrema_DistShapeShape ext(vert, solid);
+        if (!ext.IsDone() || ext.NbSolution() < 1) return false;
+
+        gp_Pnt cp = ext.PointOnShape2(1);
+        cpx = cp.X();
+        cpy = cp.Y();
+        cpz = cp.Z();
+
+        // Only IsInFace gives a unique surface (u, v) for normal evaluation.
+        // For IsOnEdge / IsVertex we keep cp but leave normal = 0 vector.
+        if (ext.SupportTypeShape2(1) != BRepExtrema_IsInFace) return true;
+
+        TopoDS_Face face = TopoDS::Face(ext.SupportOnShape2(1));
+        double u, v;
+        ext.ParOnFaceS2(1, u, v);
+
+        BRepAdaptor_Surface surf(face);
+        BRepLProp_SLProps props(surf, u, v, /*derivOrder=*/1, Precision::Confusion());
+        if (!props.IsNormalDefined()) return true;  // cp valid, normal stays 0.
+
+        gp_Dir n = props.Normal();
+        // BRepLProp returns the surface-orientation normal; flip to the
+        // face's outward direction when the face is REVERSED in the shell.
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        nx = n.X();
+        ny = n.Y();
+        nz = n.Z();
+        return true;
+    } catch (const Standard_Failure&) {
+        return false;
+    }
 }
 
 // ==================== Meshing ====================

@@ -440,6 +440,17 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	fn torus(r1: f64, r2: f64, axis: DVec3) -> Self;
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Self;
 
+	// --- Surface projection ---
+	/// Project a 3D point onto the solid's boundary. Returns `(closest_point,
+	/// outward_normal)`. Sister API of `Wire::project` which returns
+	/// `(closest, tangent)` on a 1D edge.
+	///
+	/// When the closest hit lands on an edge or vertex (where the normal is
+	/// ambiguous between adjacent faces) the closest_point is still valid
+	/// but the normal is the zero vector. Callers that need to discriminate
+	/// can check `normal.length() == 0`.
+	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+
 	// --- Topology iteration ---
 	//
 	// `iter_edge` / `iter_face` returning `std::slice::Iter<'_, T>` are exposed as

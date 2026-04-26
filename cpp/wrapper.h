@@ -219,6 +219,15 @@ void shape_bounding_box(const TopoDS_Shape& shape,
     double& xmin, double& ymin, double& zmin,
     double& xmax, double& ymax, double& zmax);
 
+// Project a 3D point onto the closest face of `solid`. Returns false if the
+// projector fails or the closest hit lands on an edge / vertex (where the
+// surface normal is not defined). On success, `cp*` is the closest point and
+// `n*` is the outward-facing unit normal at that point.
+bool solid_project_point(const TopoDS_Shape& solid,
+    double px, double py, double pz,
+    double& cpx, double& cpy, double& cpz,
+    double& nx, double& ny, double& nz);
+
 // ==================== Compound Decompose/Compose ====================
 
 std::unique_ptr<std::vector<TopoDS_Shape>> decompose_into_solids(const TopoDS_Shape& shape);
