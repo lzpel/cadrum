@@ -236,6 +236,10 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double tolerance);
 std::unique_ptr<std::vector<TopoDS_Edge>> shape_edges(const TopoDS_Shape& shape);
 std::unique_ptr<std::vector<TopoDS_Face>> shape_faces(const TopoDS_Shape& shape);
 
+// One-shot enumeration of the boundary edges of a single face. Edges shared
+// between this face's wires are deduplicated so each edge appears once.
+std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face);
+
 // Shallow handle clone — C++ copy-ctor shares the underlying TShape via
 // OCCT's ref count. Needed when Rust materializes owned `Shape` / `Edge` /
 // `Face` wrappers from the `&TopoDS_*` references yielded by
@@ -396,9 +400,10 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 // ==================== Face Methods ====================
 
 // Both helpers return the underlying TopoDS_TShape* address as a u64 — used
-// to track face/solid identity across boolean ops, color maps, and BREP I/O.
+// to track face/solid/edge identity across boolean ops, color maps, and BREP I/O.
 uint64_t face_tshape_id(const TopoDS_Face& face);
 uint64_t shape_tshape_id(const TopoDS_Shape& shape);
+uint64_t edge_tshape_id(const TopoDS_Edge& edge);
 
 // Project a 3D point onto `face`. Sister of `edge_project_point`.
 // Returns the closest point on the (trimmed) face surface and the outward
