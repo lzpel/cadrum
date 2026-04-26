@@ -118,6 +118,24 @@ fn test_preserves_face_ids() {
 	assert_eq!(ids, face_ids([&rotated]), "rotate should preserve face IDs");
 }
 
+// ==================== face-edge incidence (Edge::id + Face::iter_edge) ====================
+
+#[test]
+fn test_face_edge_incidence_via_id() {
+	// 立方体は 12 unique edge を持ち、各 face に 4 edge ずつ。
+	// 各 edge は 2 face で共有されるので Σ face.iter_edge() = 24 = 12*2。
+	let cube = test_box();
+	let total_face_edges: usize = cube.iter_face().map(|f| f.iter_edge().count()).sum();
+	assert_eq!(cube.iter_edge().count(), 12, "cube has 12 unique edges");
+	assert_eq!(total_face_edges, 24, "each edge is shared between 2 faces");
+
+	// ある edge が「どの face に属しているか」を id 比較で正しく判定できる。
+	for edge in cube.iter_edge() {
+		let owners = cube.iter_face().filter(|f| f.iter_edge().any(|e| e.id() == edge.id())).count();
+		assert_eq!(owners, 2, "every cube edge is shared by exactly 2 faces");
+	}
+}
+
 // ==================== iter_history (B fully inside A) ====================
 
 #[test]
