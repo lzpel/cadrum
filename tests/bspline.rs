@@ -194,4 +194,27 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 	// にのみ出るため s1 (+X+Y) ≠ s3 (-X-Y) が ~0.6% で検出される。
 	// 閾値 0.005 (0.5%) で seam dent を確実に拾う。
 	assert_quadrant_point_symmetry(&periodic, 0.005);
+
+	// #140 副タスク: u=0 (= φ=0) における surface normal の Y 成分を測定。
+	// 入力 a(φ), b(φ) は cos の偶関数で a'(0) = b'(0) = 0 → ∂P/∂θ は XZ 平面内、
+	// ∂P/∂φ は Y 軸方向 → 法線 = ∂P/∂θ × ∂P/∂φ ∈ XZ 平面 → N_y ≡ 0 が数学値。
+	// 真の C^1 周期補間が達成できていれば |N_y|/|N| は数値ノイズレベル。残差が
+	// 大きければ補間戦略を再検討する根拠 (#140)。
+	//
+	// 完全周期トーラスは 1 face しか持たないので iter_face().next() で取れる。
+	let face = periodic.iter_face().next().expect("periodic torus has at least one face");
+	const N_THETA: usize = 16;
+	let mut max_y_ratio = 0.0_f64;
+	for j in 0..N_THETA {
+		let theta = TAU * (j as f64) / (N_THETA as f64);
+		// φ=0 における解析的な surface 上の点 (a(0)=1.2, b(0)=0.6)
+		let target = DVec3::new(R0 + 1.2 * theta.cos(), 0.0, 0.6 * theta.sin());
+		let (_cp, normal) = face.project(target);
+		if normal.length() == 0.0 {
+			continue;  // BRepLProp が法線未定義 (degenerate point) → skip
+		}
+		let y_ratio = normal.y.abs() / normal.length();
+		max_y_ratio = max_y_ratio.max(y_ratio);
+	}
+	println!("seam |N_y|/|N| max over {N_THETA} θ samples at u=0: {max_y_ratio:.6}");
 }
