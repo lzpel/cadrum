@@ -168,7 +168,7 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 	const N: usize = 24;
 	const R0: f64 = 6.0;
 	const N_OSC: f64 = 15.0;
-	const AMP: f64 = 0.16;  // 0.17 以上にすると boolean intersect が +X 側で退化する
+	const AMP: f64 = 0.3;  // 周期補間 fix 前は 0.17 以上で +X 側 boolean が退化していた; fix 後は 0.3 でも安定
 
 	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| {
 		let phi = TAU * (i as f64) / (M as f64);
