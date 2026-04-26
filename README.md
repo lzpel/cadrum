@@ -646,14 +646,14 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// their post_ids — these are the planar cut faces in the result that we
 	// want to use as shell openings.
 	let cutter_face_ids: std::collections::HashSet<u64> =
-		cutter.iter_face().map(|f| f.tshape_id()).collect();
+		cutter.iter_face().map(|f| f.id()).collect();
 	let halves = torus.intersect(&[cutter])?;
 	let half = halves.into_iter().next().ok_or(Error::BooleanOperationFailed)?;
 	let from_cutter: std::collections::HashSet<u64> = half
 		.iter_history()
 		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
 		.collect();
-	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.tshape_id())))
+	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.id())))
 }
 
 fn main() -> Result<(), Error> {
@@ -730,8 +730,7 @@ fn point(i: usize, j: usize) -> DVec3 {
 fn main() {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| point(i, j)));
-	let plasma = Solid::bspline(grid, true).expect("2-period bspline torus should succeed");
+	let plasma = Solid::bspline(M, N, true, point).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
 	cadrum::write_step(&objects, &mut f).unwrap();
