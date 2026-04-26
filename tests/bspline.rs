@@ -75,34 +75,32 @@ fn test_bspline_01_two_period_torus_point_symmetry() {
 	// psi(phi+π) = 2phi+2π ≡ 2phi (mod 2π) → 楕円の向きは同じ
 	// z_shift(phi+π) = sin(2phi+2π) = sin(2phi) → 同じ高さ
 	// a/b も同様に同じ値 → 形状は phi+π でも同一 → Z 軸まわり 180° 対称。
-	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| {
-		std::array::from_fn(|j| {
-			let phi = TAU * (i as f64) / (M as f64);
-			let theta = TAU * (j as f64) / (N as f64);
-			let two_phi = 2.0 * phi;
-			let a = 1.8 + 0.6 * two_phi.sin();
-			let b = 1.0 + 0.4 * two_phi.cos();
-			let psi = two_phi; // ひねり 2 回転 per loop
-			let z_shift = 1.0 * two_phi.sin();
-			// 1. 局所断面(まだひねる前、(X,Z) 平面の楕円)
-			let local_raw = DVec3::X * (a * theta.cos()) + DVec3::Z * (b * theta.sin());
-			// 2. 局所 Y 軸(大径接線方向)まわりに psi 回転 — これが断面のひねり
-			let local_twisted = DQuat::from_axis_angle(DVec3::Y, psi) * local_raw;
-			// 3. 局所フレームで上下に揺らす
-			let local_shifted = local_twisted + DVec3::Z * z_shift;
-			// 4. 大径方向に RING_R だけ外へ
-			let translated = local_shifted + DVec3::X * RING_R;
-			// 5. 全体として Z 軸まわりに phi 回転
-			DQuat::from_axis_angle(DVec3::Z, phi) * translated
-		})
-	});
+	let point = |i: usize, j: usize| -> DVec3 {
+		let phi = TAU * (i as f64) / (M as f64);
+		let theta = TAU * (j as f64) / (N as f64);
+		let two_phi = 2.0 * phi;
+		let a = 1.8 + 0.6 * two_phi.sin();
+		let b = 1.0 + 0.4 * two_phi.cos();
+		let psi = two_phi; // ひねり 2 回転 per loop
+		let z_shift = 1.0 * two_phi.sin();
+		// 1. 局所断面(まだひねる前、(X,Z) 平面の楕円)
+		let local_raw = DVec3::X * (a * theta.cos()) + DVec3::Z * (b * theta.sin());
+		// 2. 局所 Y 軸(大径接線方向)まわりに psi 回転 — これが断面のひねり
+		let local_twisted = DQuat::from_axis_angle(DVec3::Y, psi) * local_raw;
+		// 3. 局所フレームで上下に揺らす
+		let local_shifted = local_twisted + DVec3::Z * z_shift;
+		// 4. 大径方向に RING_R だけ外へ
+		let translated = local_shifted + DVec3::X * RING_R;
+		// 5. 全体として Z 軸まわりに phi 回転
+		DQuat::from_axis_angle(DVec3::Z, phi) * translated
+	};
 
-	let plasma = Solid::bspline(grid, true).expect("2-period bspline torus should succeed");
+	let plasma = Solid::bspline(M, N, true, &point).expect("2-period bspline torus should succeed");
 	assert!(plasma.volume() > 0.0);
 
 	assert_quadrant_point_symmetry(&plasma, 0.01);
 
-	write_outputs(&[plasma, Solid::bspline(grid, false).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
+	write_outputs(&[plasma, Solid::bspline(M, N, false, &point).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
 }
 
 
@@ -146,8 +144,7 @@ fn test_bspline_02_seam_dent_120() {
 		DVec3::new(r * cp, r * sp, z)
 	};
 
-	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| point(i, j)));
-	let plasma = Solid::bspline(grid, true).expect("bspline should succeed");
+	let plasma = Solid::bspline(M, N, true, point).expect("bspline should succeed");
 
 	write_outputs(&[plasma], "test_bspline_02_seam_dent_120");
 }
@@ -170,20 +167,20 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 	const N_OSC: f64 = 15.0;
 	const AMP: f64 = 0.3;  // 周期補間 fix 前は 0.17 以上で +X 側 boolean が退化していた; fix 後は 0.3 でも安定
 
-	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| {
+	let point = |i: usize, j: usize| -> DVec3 {
 		let phi = TAU * (i as f64) / (M as f64);
 		let theta = TAU * (j as f64) / (N as f64);
-		// 0.8–1.0 で逆相振動: i 偶数 → (a,b)=(1.0,0.8) 微妙に横長、奇数 → (0.8,1.0) 微妙に縦長
+		// 0.6-1.2 で逆相振動: cos(N_OSC·φ) の符号で a, b が入れ替わる
 		let osc = (N_OSC * phi).cos();
 		let a = 0.9 + AMP * osc;
 		let b = 0.9 - AMP * osc;
 		// 局所断面 (x: 大径方向, z: 上下) → トロイダル φ 回転
 		let local = DVec3::new(a * theta.cos() + R0, 0.0, b * theta.sin());
 		DQuat::from_axis_angle(DVec3::Z, phi) * local
-	}));
+	};
 
-	let periodic = Solid::bspline(grid, true).expect("periodic bspline should succeed");
-	let nonperiodic = Solid::bspline(grid, false).expect("non-periodic bspline should succeed");
+	let periodic = Solid::bspline(M, N, true, &point).expect("periodic bspline should succeed");
+	let nonperiodic = Solid::bspline(M, N, false, &point).expect("non-periodic bspline should succeed");
 	// periodic を上 (Z=0)、non-periodic を下 (Z=-5) に並べて保存。
 	// 断面の z 範囲は ±1.2 なので 5 離せばクリアに分離する。
 	write_outputs(

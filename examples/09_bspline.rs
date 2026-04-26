@@ -36,8 +36,7 @@ fn point(i: usize, j: usize) -> DVec3 {
 fn main() {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| point(i, j)));
-	let plasma = Solid::bspline(grid, true).expect("2-period bspline torus should succeed");
+	let plasma = Solid::bspline(M, N, true, point).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
 	cadrum::write_step(&objects, &mut f).unwrap();
