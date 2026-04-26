@@ -389,23 +389,24 @@ impl SolidStruct for Solid {
 
 	// ==================== Bspline ====================
 
-	fn bspline<const M: usize, const N: usize>(grid: [[DVec3; N]; M], periodic: bool) -> Result<Self, Error> {
-		if M < 2 || N < 3 {
-			return Err(Error::BsplineFailed(format!("grid must be at least 2x3 (M={}, N={})", M, N)));
+	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error> {
+		if u < 2 || v < 3 {
+			return Err(Error::BsplineFailed(format!("grid must be at least 2x3 (u={}, v={})", u, v)));
 		}
 
-		let mut coords = Vec::with_capacity(3 * M * N);
-		for row in &grid {
-			for p in row {
+		let mut coords = Vec::with_capacity(3 * u * v);
+		for i in 0..u {
+			for j in 0..v {
+				let p = point(i, j);
 				coords.push(p.x);
 				coords.push(p.y);
 				coords.push(p.z);
 			}
 		}
 
-		let shape = ffi::make_bspline_solid(&coords, M as u32, N as u32, periodic);
+		let shape = ffi::make_bspline_solid(&coords, u as u32, v as u32, u_periodic);
 		if shape.is_null() {
-			return Err(Error::BsplineFailed(format!("OCCT construction failed (M={}, N={}, periodic={})", M, N, periodic)));
+			return Err(Error::BsplineFailed(format!("OCCT construction failed (u={}, v={}, u_periodic={})", u, v, u_periodic)));
 		}
 		Ok(Solid::new(
 			shape,

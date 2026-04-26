@@ -534,11 +534,14 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// `periodic=true`, producing a torus. When `periodic=false` the U-ends are
 	/// capped with planar faces, producing a pipe.
 	///
-	/// Internally builds a `Geom_BSplineSurface` via `GeomAPI_PointsToBSplineSurface::Interpolate`
-	/// on an augmented grid (first row/column duplicated at the end to satisfy
-	/// the `SetUPeriodic`/`SetVPeriodic` pole-matching precondition), then
-	/// wraps the surface in a face, caps it if needed, sews, and makes a solid.
-	fn bspline<const M: usize, const N: usize>(grid: [[DVec3; N]; M], periodic: bool) -> Result<Self, Error>;
+	/// Internally builds a `Geom_BSplineSurface` via tensor-product periodic
+	/// curve interpolation: per-V-column then per-U-row `GeomAPI_Interpolate`
+	/// with explicit uniform parameters. Yields C^(degree-1) continuity at
+	/// both seams. The closure `point(i, j)` is called for `i ∈ 0..u`,
+	/// `j ∈ 0..v` to produce the M×N control grid, where `u` is the
+	/// toroidal direction (closed iff `u_periodic`) and `v` is the
+	/// cross-section direction (always closed).
+	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error>;
 
 	// --- Boolean primitives (consumed by Compound::union/subtract/intersect wrappers) ---
 	// Per-result-Solid face derivation history is attached to each Solid via

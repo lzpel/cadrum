@@ -903,6 +903,27 @@ A browser-based configurator that lets you tweak dimensions of a STEP model and 
 
 ## Release Notes
 
+### 0.7.2
+
+Aggregated changes since 0.6.0 (no separate entries were written for 0.6.1 – 0.7.1).
+
+- **`Solid::shell(thickness, open_faces)`** — hollow a solid via `BRepOffsetAPI_MakeThickSolid`. Empty `open_faces` produces a sealed internal void (cavity). Example: `examples/08_shell.rs`.
+- **`Solid::fillet_edges(radius, edges)` / `Solid::chamfer_edges(distance, edges)`** — uniform fillet / chamfer on selected edges via `BRepFilletAPI_MakeFillet` / `MakeChamfer`.
+- **`Solid::area()` / `Solid::center()` / `Solid::inertia()`** — surface area, center of mass, inertia tensor. Replaces the previous `shell_count` query.
+- **`Wire::project(point)`** — closest-point + tangent query on `Edge` / `Vec<Edge>` / `[Edge; N]` via `GeomAPI_ProjectPointOnCurve`.
+- **`Edge::end_point()` / `Edge::end_tangent()`** — added as siblings to the existing `start_*` accessors.
+- **`Solid::iter_edge()` / `Solid::iter_face()`** — yield `&Edge` / `&Face` references through internal `OnceLock` caches; first call populates, subsequent calls are free.
+- **`Solid::history` + `Solid::iter_history()`** — face-derivation pairs `[post_id, src_id]` populated by boolean ops and `clean()`. Lets callers select result faces by their original input membership.
+- **Multi-color STEP read recovery (#129).** SolveSpace-style multi-color STEP files (which duplicate `EDGE_CURVE` entities at face boundaries instead of sharing them) used to land as `Compound{Shell×N}` with zero solids, breaking every downstream op. A `BRepBuilderAPI_Sewing` post-process now stitches coincident edges, promotes the result to one valid `Solid`, and remaps the colormap. The same STEP file is currently unfixable in CadQuery — see `sandbox-cadquery/read_step_fillet.py`.
+- **`Mesh::write_svg` / `Mesh::to_svg` gained `up_dir: DVec3`** between `view: DVec3` and `hidden_lines: bool` (#127). **Breaking vs 0.7.0**: pass `DVec3::Z` to reproduce earlier output.
+- **`Transform` trait no longer in the public prelude** (#91) — its methods reach you via `Compound` / `Wire` forwarders, so `use cadrum::{Compound, Wire};` is enough for every transform call. **Breaking vs 0.7.0** for code that imported `Transform` explicitly.
+- **`*_with_metadata` boolean variants removed** (#130) — the same information is now available via `Solid::iter_history()` on the result solid. **Breaking** for callers that consumed the metadata tuple.
+- **glam types re-exported from the crate root** (#94, #95) — downstream code no longer needs its own `glam` dependency for `DVec3` etc.
+- **OCCT `Statistics on Transfer` stdout chatter silenced** on every STEP read / write (#97).
+- **mingw prebuilt is now self-contained** (#89): bundles the container's `libstdc++.a` / `libgcc.a`, so user-built `x86_64-pc-windows-gnu` executables do not depend on MinGW runtime DLLs at link time.
+- **docs.rs build restored** (#107, #111): dropped the unsupported `x86_64-pc-windows-msvc` target and reordered `build.rs` so trait delegation generation runs before the DOCS_RS early-return.
+- New example `08_shell.rs` (hollow torus carved by halfspace-cut openings); old `08_bspline.rs` renumbered to `09_bspline.rs`. Top README image updated to the alphastell stellarator render (#125).
+
 ### 0.6.0
 
 - **`source-build` feature now gates `cmake`/`walkdir` as optional build-dependencies.** Default `cargo build` no longer compiles them, significantly reducing build time on prebuilt targets. Users on unsupported targets must enable `--features source-build` (behavior unchanged — previously these targets also failed, just with a download error instead of a clear message).

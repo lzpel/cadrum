@@ -368,20 +368,28 @@ fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option
 	Some(Method { cfg, signature, name, args, has_self, origin_trait })
 }
 
-/// Split arguments by ',' while respecting `<>` nesting.
+/// Split arguments by ',' while respecting `<>` and `()` nesting.
+/// `()` tracking is required for `impl Fn(A, B) -> C` style parameters.
 fn split_args(s: &str) -> Vec<&str> {
 	let mut result = Vec::new();
-	let mut depth = 0usize;
+	let mut angle = 0usize;
+	let mut paren = 0usize;
 	let mut start = 0;
 	for (i, b) in s.bytes().enumerate() {
 		match b {
-			b'<' => depth += 1,
+			b'<' => angle += 1,
 			b'>' => {
-				if depth > 0 {
-					depth -= 1;
+				if angle > 0 {
+					angle -= 1;
 				}
 			}
-			b',' if depth == 0 => {
+			b'(' => paren += 1,
+			b')' => {
+				if paren > 0 {
+					paren -= 1;
+				}
+			}
+			b',' if angle == 0 && paren == 0 => {
 				result.push(&s[start..i]);
 				start = i + 1;
 			}
