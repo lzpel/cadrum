@@ -104,3 +104,97 @@ fn test_bspline_01_two_period_torus_point_symmetry() {
 
 	write_outputs(&[plasma, Solid::bspline(grid, false).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
 }
+
+
+// ==================== (2) #120 reproducer: VMEC-like LCFS, U=0 seam dent ====================
+
+/// #120: `Solid::bspline(grid, periodic=true)` produces only C⁰-continuous
+/// surfaces at the U=0 seam when the input has non-trivial high-Fourier
+/// content. Visible as mm-scale dents in the tessellation.
+///
+/// Writes `out/test_bspline_02_seam_dent_120.stl` for visual inspection in
+/// MeshLab / Blender. No assertions — this is an investigation aid.
+#[test]
+fn test_bspline_02_seam_dent_120() {
+	const M: usize = 48;
+	const N: usize = 24;
+	const PHI_OFFSET: f64 = std::f64::consts::FRAC_PI_4;
+
+	// (m, n, amplitude) — VMEC LCFS top modes + amplified high-frequency
+	// content to make the seam dent visible.
+	const RMNC: &[(f64, f64, f64)] = &[
+		(0.0, 0.0, 11.06), (1.0, 0.0, 1.89), (0.0, 4.0, 1.53),
+		(1.0, -4.0, -1.39), (1.0, 4.0, 0.58), (2.0, -4.0, 0.26),
+		(3.0, -8.0, 0.12), (4.0, -8.0, 0.10), (4.0, -12.0, 0.08),
+		(5.0, -12.0, 0.07), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05),
+		(10.0, -32.0, 0.04), (3.0, 8.0, 0.08), (6.0, 16.0, 0.06),
+	];
+	const ZMNS: &[(f64, f64, f64)] = &[
+		(1.0, 0.0, 1.94), (0.0, 4.0, 1.24), (1.0, -4.0, 0.67),
+		(1.0, 4.0, 0.53), (2.0, -4.0, 0.04),
+		(3.0, -8.0, 0.10), (4.0, -8.0, 0.08), (4.0, -12.0, 0.07),
+		(5.0, -12.0, 0.06), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05),
+		(10.0, -32.0, 0.04), (3.0, 8.0, 0.07), (6.0, 16.0, 0.05),
+	];
+
+	let point = |i: usize, j: usize| -> DVec3 {
+		let phi = TAU * (i as f64) / (M as f64) + PHI_OFFSET;
+		let theta = TAU * (j as f64) / (N as f64);
+		let r: f64 = RMNC.iter().map(|&(m, n, a)| a * (m * theta - n * phi).cos()).sum();
+		let z: f64 = ZMNS.iter().map(|&(m, n, a)| a * (m * theta - n * phi).sin()).sum();
+		let (sp, cp) = phi.sin_cos();
+		DVec3::new(r * cp, r * sp, z)
+	};
+
+	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| point(i, j)));
+	let plasma = Solid::bspline(grid, true).expect("bspline should succeed");
+
+	write_outputs(&[plasma], "test_bspline_02_seam_dent_120");
+}
+
+
+// ==================== (3) #120 simple seam-dent reproducer ====================
+
+/// #120 simpler reproducer: R=12 大半径、cross-section が phi 方向に
+/// 「縦長 → 横長 → 縦長 → ...」を急激に繰り返す楕円。半長径 a, b が
+/// 0.6-1.2 で逆相に振動 (周波数 = M/2 = Nyquist 近傍)、隣接 segment
+/// 間で完全に向きが入れ替わる極端なパターン。
+///
+/// 高 Fourier モードを単独で持たせて seam dent を最大化する設計。
+/// assertion 無し、`out/` に STEP/STL/SVG を吐くだけ。
+#[test]
+fn test_bspline_03_seam_dent_alternating_ellipse() {
+	const M: usize = 48;
+	const N: usize = 24;
+	const R0: f64 = 6.0;
+	const N_OSC: f64 = 15.0;
+	const AMP: f64 = 0.16;  // 0.17 以上にすると boolean intersect が +X 側で退化する
+
+	let grid: [[DVec3; N]; M] = std::array::from_fn(|i| std::array::from_fn(|j| {
+		let phi = TAU * (i as f64) / (M as f64);
+		let theta = TAU * (j as f64) / (N as f64);
+		// 0.8–1.0 で逆相振動: i 偶数 → (a,b)=(1.0,0.8) 微妙に横長、奇数 → (0.8,1.0) 微妙に縦長
+		let osc = (N_OSC * phi).cos();
+		let a = 0.9 + AMP * osc;
+		let b = 0.9 - AMP * osc;
+		// 局所断面 (x: 大径方向, z: 上下) → トロイダル φ 回転
+		let local = DVec3::new(a * theta.cos() + R0, 0.0, b * theta.sin());
+		DQuat::from_axis_angle(DVec3::Z, phi) * local
+	}));
+
+	let periodic = Solid::bspline(grid, true).expect("periodic bspline should succeed");
+	let nonperiodic = Solid::bspline(grid, false).expect("non-periodic bspline should succeed");
+	// periodic を上 (Z=0)、non-periodic を下 (Z=-5) に並べて保存。
+	// 断面の z 範囲は ±1.2 なので 5 離せばクリアに分離する。
+	write_outputs(
+		&[periodic.clone(), nonperiodic.translate(DVec3::Z * -5.0)],
+		"test_bspline_03_seam_dent_alternating_ellipse",
+	);
+
+	// 保存後に periodic 側で 4 象限の体積を比較。
+	// 入力グリッドは φ → -φ 対称 (cos のみ + sin·θ で z はゼロクロス) なので
+	// 数学上は 180° 回転対称が成立するはずだが、seam dent が +X (φ=0) 周辺
+	// にのみ出るため s1 (+X+Y) ≠ s3 (-X-Y) が ~0.6% で検出される。
+	// 閾値 0.005 (0.5%) で seam dent を確実に拾う。
+	assert_quadrant_point_symmetry(&periodic, 0.005);
+}
