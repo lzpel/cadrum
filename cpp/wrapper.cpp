@@ -1623,54 +1623,108 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
         if (coords.size() != static_cast<size_t>(nu) * nv * 3) return nullptr;
         if (nu < 2 || nv < 3) return nullptr;
 
-        // Augment for periodicity: duplicate first row/col at the end so that
-        // the grid is geometrically closed in the periodic direction(s).
-        // V is ALWAYS periodic (closed cross-section); U only when u_periodic.
-        const uint32_t u_extra = u_periodic ? 1u : 0u;
-        const uint32_t v_extra = 1u;
-        const uint32_t total_u = nu + u_extra;
-        const uint32_t total_v = nv + v_extra;
+        // Tensor-product truly-periodic interpolation (#120).
+        //
+        // Naive approach (Interpolate over augmented grid → SetUPeriodic) only
+        // delivers C^0 at the seam: the non-periodic interpolator picks
+        // independent boundary derivatives at u_min vs u_max, and SetUPeriodic
+        // just relabels topology without fixing the derivative mismatch.
+        //
+        // Instead we apply GeomAPI_Interpolate (which honors a true periodic
+        // boundary by solving a circulant linear system) once per V column,
+        // then once per U row of the resulting intermediate poles. The final
+        // poles array feeds Geom_BSplineSurface(...) directly with the
+        // UPeriodic / VPeriodic flags, yielding C^(degree-1) continuity at
+        // both seams.
+        using HPntArray  = NCollection_HArray1<gp_Pnt>;
+        using HRealArray = NCollection_HArray1<double>;
+        const double tol = Precision::Confusion();
 
-        NCollection_Array2<gp_Pnt> pts(1, static_cast<int>(total_u), 1, static_cast<int>(total_v));
-        for (uint32_t i = 0; i < total_u; ++i) {
-            const uint32_t src_i = (i >= nu) ? 0u : i;
-            for (uint32_t j = 0; j < total_v; ++j) {
-                const uint32_t src_j = (j >= nv) ? 0u : j;
-                const size_t idx = (static_cast<size_t>(src_i) * nv + src_j) * 3;
-                pts.SetValue(
-                    static_cast<int>(i) + 1,
-                    static_cast<int>(j) + 1,
-                    gp_Pnt(coords[idx], coords[idx + 1], coords[idx + 2]));
+        // Build uniform parameter arrays so that every column / row uses the
+        // SAME parametrization. With chord-length (the Interpolate default),
+        // columns of different total length get different knot vectors and
+        // the resulting tensor surface has parameter mismatches at +X axis
+        // (visible as boolean-intersect degeneracies). Uniform params avoid
+        // this since the input grid samples φ / θ at constant fractional
+        // intervals along each direction.
+        const int u_param_count = static_cast<int>(u_periodic ? nu + 1 : nu);
+        Handle(HRealArray) u_params = new HRealArray(1, u_param_count);
+        for (int k = 0; k < u_param_count; ++k) {
+            u_params->SetValue(k + 1, static_cast<double>(k) / static_cast<double>(nu));
+        }
+        Handle(HRealArray) v_params = new HRealArray(1, static_cast<int>(nv + 1));
+        for (uint32_t k = 0; k <= nv; ++k) {
+            v_params->SetValue(static_cast<int>(k) + 1,
+                               static_cast<double>(k) / static_cast<double>(nv));
+        }
+
+        // Stage 1: per-V-column interpolation along U with uniform params.
+        std::vector<Handle(Geom_BSplineCurve)> u_curves;
+        u_curves.reserve(nv);
+        for (uint32_t j = 0; j < nv; ++j) {
+            Handle(HPntArray) col = new HPntArray(1, static_cast<int>(nu));
+            for (uint32_t i = 0; i < nu; ++i) {
+                const size_t idx = (static_cast<size_t>(i) * nv + j) * 3;
+                col->SetValue(static_cast<int>(i) + 1,
+                              gp_Pnt(coords[idx], coords[idx + 1], coords[idx + 2]));
+            }
+            GeomAPI_Interpolate interp(col, u_params, u_periodic, tol);
+            interp.Perform();
+            if (!interp.IsDone()) return nullptr;
+            u_curves.push_back(interp.Curve());
+        }
+
+        // Capture U knot vector / multiplicities / degree from any column;
+        // GeomAPI_Interpolate uses the same chord-length parametrization for
+        // all columns since the V coordinate is uniform per column.
+        const int u_degree = u_curves[0]->Degree();
+        const int u_npoles = u_curves[0]->NbPoles();
+        const NCollection_Array1<double>& u_knots = u_curves[0]->Knots();
+        const NCollection_Array1<int>&    u_mults = u_curves[0]->Multiplicities();
+
+        NCollection_Array2<gp_Pnt> intermediate(1, u_npoles, 1, static_cast<int>(nv));
+        for (uint32_t j = 0; j < nv; ++j) {
+            for (int i = 1; i <= u_npoles; ++i) {
+                intermediate.SetValue(i, static_cast<int>(j) + 1, u_curves[j]->Pole(i));
             }
         }
 
-        // Interpolate a B-spline surface through the augmented grid.
-        Handle(Geom_BSplineSurface) surface;
-        try {
-            GeomAPI_PointsToBSplineSurface fitter;
-            fitter.Interpolate(pts);
-            if (!fitter.IsDone()) return nullptr;
-            surface = fitter.Surface();
-        } catch (const Standard_Failure&) {
-            return nullptr;
+        // Stage 2: per-U-row interpolation along V (V is always periodic).
+        std::vector<Handle(Geom_BSplineCurve)> v_curves;
+        v_curves.reserve(u_npoles);
+        for (int i = 1; i <= u_npoles; ++i) {
+            Handle(HPntArray) row = new HPntArray(1, static_cast<int>(nv));
+            for (uint32_t j = 0; j < nv; ++j) {
+                row->SetValue(static_cast<int>(j) + 1, intermediate(i, static_cast<int>(j) + 1));
+            }
+            GeomAPI_Interpolate interp(row, v_params, /*periodic=*/true, tol);
+            interp.Perform();
+            if (!interp.IsDone()) return nullptr;
+            v_curves.push_back(interp.Curve());
         }
+
+        const int v_degree = v_curves[0]->Degree();
+        const int v_npoles = v_curves[0]->NbPoles();
+        const NCollection_Array1<double>& v_knots = v_curves[0]->Knots();
+        const NCollection_Array1<int>&    v_mults = v_curves[0]->Multiplicities();
+
+        // Stage 3: assemble final M_pole × N_pole pole grid and build the
+        // surface with explicit periodic flags.
+        NCollection_Array2<gp_Pnt> final_poles(1, u_npoles, 1, v_npoles);
+        for (int i = 1; i <= u_npoles; ++i) {
+            for (int j = 1; j <= v_npoles; ++j) {
+                final_poles.SetValue(i, j, v_curves[i - 1]->Pole(j));
+            }
+        }
+
+        Handle(Geom_BSplineSurface) surface = new Geom_BSplineSurface(
+            final_poles,
+            u_knots, v_knots,
+            u_mults, v_mults,
+            u_degree, v_degree,
+            /*UPeriodic=*/u_periodic,
+            /*VPeriodic=*/true);
         if (surface.IsNull()) return nullptr;
-
-        // Promote geometric closure to B-spline periodicity.
-        // SetVPeriodic/SetUPeriodic require pole rows/cols to match within
-        // tolerance — the augmentation above ensures that.
-        try {
-            surface->SetVPeriodic();
-        } catch (const Standard_Failure&) {
-            // Fall through: non-periodic V; sewing may still close it.
-        }
-        if (u_periodic) {
-            try {
-                surface->SetUPeriodic();
-            } catch (const Standard_Failure&) {
-                // Fall through.
-            }
-        }
 
         // Side face spans the full parametric domain.
         double u1, u2, v1, v2;
