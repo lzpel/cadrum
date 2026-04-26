@@ -400,6 +400,16 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 uint64_t face_tshape_id(const TopoDS_Face& face);
 uint64_t shape_tshape_id(const TopoDS_Shape& shape);
 
+// Project a 3D point onto `face`. Sister of `edge_project_point`.
+// Returns the closest point on the (trimmed) face surface and the outward
+// face normal there. `nx/ny/nz` is the zero vector when the projector
+// cannot define a normal at the closest hit (degenerate surface point).
+// Returns false on catastrophic OCCT failure.
+bool face_project_point(const TopoDS_Face& face,
+    double px, double py, double pz,
+    double& cpx, double& cpy, double& cpz,
+    double& nx, double& ny, double& nz);
+
 } // namespace cadrum
 
 #ifdef CADRUM_COLOR

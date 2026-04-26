@@ -105,21 +105,6 @@ impl Solid {
 		&self.inner
 	}
 
-	/// Return the underlying `TopoDS_TShape*` address as a `u64`.
-	pub fn tshape_id(&self) -> u64 {
-		ffi::shape_tshape_id(&self.inner)
-	}
-
-	/// Iterate over face-derivation pairs `[post_id, src_id]` from the most
-	/// recent boolean operation that produced this Solid (or its source
-	/// chain, while it stays through translate/rotate/color).
-	///
-	/// Empty after primitive/builder construction, I/O read, scale/mirror,
-	/// or Clone. See the `history` field doc on `Solid` for the full list.
-	pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
-		self.history.chunks_exact(2).map(|c| [c[0], c[1]])
-	}
-
 	// ==================== Color accessors ====================
 
 	/// Read-only access to the per-face colormap.
@@ -141,42 +126,17 @@ impl Solid {
 		ffi::shape_is_null(&self.inner)
 	}
 
-	// ==================== Topology iteration ====================
-
-	/// Iterate over this solid's edges as `&Edge`. Unique under TShape identity
-	/// (each OCCT edge appears once even when shared between faces). First call
-	/// populates the internal cache; later calls are free.
-	pub fn iter_edge(&self) -> std::slice::Iter<'_, Edge> {
-		self.edges
-			.get_or_init(|| {
-				ffi::shape_edges(&self.inner)
-					.iter()
-					.map(|e_ref| {
-						let owned = ffi::clone_edge_handle(e_ref);
-						Edge::try_from_ffi(owned, "shape_edges: null".into()).expect("shape_edges: unexpected null (this is a bug)")
-					})
-					.collect()
-			})
-			.iter()
-	}
-
-	/// Iterate over this solid's faces as `&Face`. First call populates the
-	/// internal cache; later calls are free.
-	pub fn iter_face(&self) -> std::slice::Iter<'_, Face> {
-		self.faces
-			.get_or_init(|| {
-				ffi::shape_faces(&self.inner)
-					.iter()
-					.map(|f_ref| Face::new(ffi::clone_face_handle(f_ref)))
-					.collect()
-			})
-			.iter()
-	}
 }
 
 impl SolidStruct for Solid {
 	type Edge = Edge;
 	type Face = Face;
+
+	// ==================== Identity ====================
+
+	fn id(&self) -> u64 {
+		ffi::shape_tshape_id(&self.inner)
+	}
 
 	// ==================== Constructors ====================
 
@@ -238,6 +198,43 @@ impl SolidStruct for Solid {
 			std::collections::HashMap::new(),
 			Default::default(),
 		)
+	}
+
+	// ==================== Topology iteration ====================
+	//
+	// `iter_edge` / `iter_face` lazily populate `OnceLock<Vec<T>>` caches on
+	// first call. Subsequent calls return the cached vector's slice iter.
+	// Topology-changing ops construct a fresh `Solid` via `Solid::new` so
+	// these caches are invalidated automatically (new instance → fresh
+	// `OnceLock::new()`). See `notes/20260420-OCCTトポロジ不変性と設計含意.md`.
+
+	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
+		self.edges
+			.get_or_init(|| {
+				ffi::shape_edges(&self.inner)
+					.iter()
+					.map(|e_ref| {
+						let owned = ffi::clone_edge_handle(e_ref);
+						Edge::try_from_ffi(owned, "shape_edges: null".into()).expect("shape_edges: unexpected null (this is a bug)")
+					})
+					.collect()
+			})
+			.iter()
+	}
+
+	fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
+		self.faces
+			.get_or_init(|| {
+				ffi::shape_faces(&self.inner)
+					.iter()
+					.map(|f_ref| Face::new(ffi::clone_face_handle(f_ref)))
+					.collect()
+			})
+			.iter()
+	}
+
+	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
+		self.history.chunks_exact(2).map(|c| [c[0], c[1]])
 	}
 
 	// ==================== Extrude ====================

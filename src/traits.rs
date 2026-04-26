@@ -7,9 +7,8 @@
 //!             └─  Wire    ──  EdgeStruct   (pub(crate))
 //! ```
 //!
-//! `Face` 型はトレイトを持たない opaque な query handle で、`tshape_id` のみ
-//! を inherent method として公開する。`SolidStruct::type Face` の bound にも
-//! 何も付かない。
+//! `Face` 型は `FaceStruct` トレイトに `id` / `project` を持つ。
+//! `SolidStruct::type Face: FaceStruct` で結合される。
 //!
 //! `Edge` / `Vec<Edge>` の対称関係は `Solid` / `Vec<Solid>` と同じ:
 //!   - 単一エッジ向け constructor は `EdgeStruct` (cube/sphere に対応)
@@ -416,6 +415,39 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 	fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<Self, Error>;
 }
 
+/// Backend-independent face trait (pub(crate) — not exposed to users).
+///
+/// `Face` is a query handle for surfaces in a solid. Used to read identity
+/// (for colormap / boolean history matching) and to project external 3D
+/// points onto the face for snap-to-surface workflows.
+///
+/// build_delegation.rs generates `impl Face { pub fn ... }` from this trait
+/// so callers reach the methods inherently as `face.id()` / `face.project(p)`.
+pub trait FaceStruct: Sized {
+	/// Stable, backend-defined identity for this face. Two `Face` values
+	/// returning the same `id()` refer to the same topology element. Used
+	/// to look up entries in `Solid::colormap` or to match faces against
+	/// boolean / clean operation history. The numeric value itself has no
+	/// meaning beyond equality / hash use.
+	fn id(&self) -> u64;
+
+	/// Project a 3D point onto this face. Returns `(closest_point,
+	/// outward_normal)`. Sister of `Wire::project` which returns `(closest,
+	/// tangent)` on a 1D curve.
+	///
+	/// The closest hit respects the face's trim — projection lands on the
+	/// actual face area, not its underlying infinite surface. To project
+	/// onto a full solid, iterate `Solid::iter_face()` and call `project`
+	/// on each face; the caller picks the smallest-distance face and keeps
+	/// the face object for follow-up queries (e.g. `face.id()` for
+	/// colormap lookup).
+	///
+	/// `outward_normal` is the zero vector when the surface evaluator
+	/// cannot define a normal at the closest hit (degenerate surface
+	/// point); callers can detect this case via `normal.length() == 0`.
+	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+}
+
 /// Backend-independent solid trait (pub(crate) — not exposed to users).
 ///
 /// `Solid`-specific operations only. The shared methods (transforms, queries,
@@ -430,7 +462,15 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 /// backend (occt / pure) binds them to its own concrete types in the impl.
 pub trait SolidStruct: Sized + Clone + Compound {
 	type Edge: EdgeStruct;
-	type Face;
+	type Face: FaceStruct;
+
+	// --- Identity ---
+	/// Stable, backend-defined identity for this solid. Two `Solid` values
+	/// returning the same `id()` refer to the same topology element.
+	/// translate / rotate / color preserve this id; scale / mirror / Clone
+	/// rebuild topology and produce a fresh id. Distinct from the ids of
+	/// the solid's contained faces / edges (each sub-shape has its own).
+	fn id(&self) -> u64;
 
 	// --- Constructors ---
 	fn cube(x: f64, y: f64, z: f64) -> Self;
@@ -441,13 +481,17 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Self;
 
 	// --- Topology iteration ---
-	//
-	// `iter_edge` / `iter_face` returning `std::slice::Iter<'_, T>` are exposed as
-	// inherent methods on each backend's `Solid` type (not on this trait) because
-	// `slice::Iter` is tied to a concrete `Vec<T>` cache (`OnceLock<Vec<Edge>>` /
-	// `OnceLock<Vec<Face>>` fields). Putting a backend-agnostic signature on the
-	// trait would require GATs or a custom iterator abstraction for marginal
-	// benefit — backends can each define their own iterator shape.
+	/// Iterate this solid's unique edges. Each OCCT edge appears once even
+	/// when shared between faces. Backends may cache the result internally;
+	/// re-calls are expected to be cheap.
+	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_;
+	/// Iterate this solid's faces. Backends may cache the result internally.
+	fn iter_face(&self) -> impl Iterator<Item = &Self::Face> + '_;
+	/// Iterate face-derivation pairs `[post_id, src_id]` from the most recent
+	/// boolean operation that produced this Solid (or its source chain, while
+	/// it stays through translate/rotate/color). Empty after primitive/builder
+	/// construction, I/O read, scale/mirror, or Clone.
+	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_;
 
 	/// Extrude a closed profile wire along a direction vector to form a solid.
 	///
