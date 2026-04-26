@@ -7,7 +7,7 @@
 //!             └─  Wire    ──  EdgeStruct   (pub(crate))
 //! ```
 //!
-//! `Face` 型は `FaceStruct` トレイトに `id` / `project` を持つ。
+//! `Face` 型は `FaceStruct` トレイトに `id` / `project` / `iter_edge` を持つ。
 //! `SolidStruct::type Face: FaceStruct` で結合される。
 //!
 //! `Edge` / `Vec<Edge>` の対称関係は `Solid` / `Vec<Solid>` と同じ:
@@ -44,7 +44,8 @@
 //!
 //! ```text
 //!   EdgeStruct       ← 単独。下位を一切知らない
-//!   SolidStruct      ← type Edge: EdgeStruct;  type Face;  (Face は bound 無し)
+//!   FaceStruct       ← type Edge: EdgeStruct;
+//!   SolidStruct      ← type Edge: EdgeStruct;  type Face: FaceStruct;
 //!   IoModule         ← type Solid: SolidStruct;
 //! ```
 //!
@@ -345,6 +346,12 @@ pub trait Wire: Transform {
 /// `Error::InvalidEdge(String)` with a message that identifies the failing
 /// constructor and the offending parameters.
 pub trait EdgeStruct: Sized + Clone + Wire {
+	/// Stable, backend-defined identity for this edge. Two `Edge` values
+	/// returning the same `id()` refer to the same topology element.
+	/// Use to compare edges across `Solid::iter_edge()` / `Face::iter_edge()`
+	/// (e.g. `face.iter_edge().any(|e| e.id() == edge.id())`).
+	fn id(&self) -> u64;
+
 	/// Construct a single helical edge on a cylindrical surface centered at
 	/// the world origin.
 	///
@@ -424,6 +431,8 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 /// build_delegation.rs generates `impl Face { pub fn ... }` from this trait
 /// so callers reach the methods inherently as `face.id()` / `face.project(p)`.
 pub trait FaceStruct: Sized {
+	type Edge: EdgeStruct;
+
 	/// Stable, backend-defined identity for this face. Two `Face` values
 	/// returning the same `id()` refer to the same topology element. Used
 	/// to look up entries in `Solid::colormap` or to match faces against
@@ -446,6 +455,14 @@ pub trait FaceStruct: Sized {
 	/// cannot define a normal at the closest hit (degenerate surface
 	/// point); callers can detect this case via `normal.length() == 0`.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+
+	/// Iterate this face's boundary edges (outer wire and any inner wires).
+	/// Each edge appears once even when shared between wires. Backends may
+	/// cache the result internally; re-calls are expected to be cheap.
+	///
+	/// Use with `Edge::id()` to test face/edge incidence:
+	/// `face.iter_edge().any(|e| e.id() == edge.id())`.
+	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_;
 }
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).

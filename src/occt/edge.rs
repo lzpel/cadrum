@@ -36,6 +36,10 @@ impl Clone for Edge {
 }
 
 impl EdgeStruct for Edge {
+	fn id(&self) -> u64 {
+		ffi::edge_tshape_id(&self.inner)
+	}
+
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_helix_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, radius, pitch, height);
 		Edge::try_from_ffi(inner, format!("helix: degenerate params (radius={radius}, pitch={pitch}, height={height}, axis={axis:?}, x_ref={x_ref:?})"))
