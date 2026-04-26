@@ -29,14 +29,14 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// their post_ids — these are the planar cut faces in the result that we
 	// want to use as shell openings.
 	let cutter_face_ids: std::collections::HashSet<u64> =
-		cutter.iter_face().map(|f| f.tshape_id()).collect();
+		cutter.iter_face().map(|f| f.id()).collect();
 	let halves = torus.intersect(&[cutter])?;
 	let half = halves.into_iter().next().ok_or(Error::BooleanOperationFailed)?;
 	let from_cutter: std::collections::HashSet<u64> = half
 		.iter_history()
 		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
 		.collect();
-	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.tshape_id())))
+	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.id())))
 }
 
 fn main() -> Result<(), Error> {
