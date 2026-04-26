@@ -110,9 +110,17 @@
 #include <cstdint>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #include <array>
 
 namespace cadrum {
+
+// Forward declaration: STEP read post-process (defined further below near
+// decompose_into_solids). Used by both read_step_stream (this section) and
+// read_step_color_stream (in the CADRUM_COLOR block).
+static TopoDS_Shape try_sew_orphan_faces(
+    const TopoDS_Shape& compound,
+    std::unordered_map<uint64_t, std::array<float, 3>>* colorMap);
 
 // OCCT defaults to a stdout printer that emits "Statistics on Transfer" banners on STEP read/write.
 // Clear all printers at load time per the documented recommendation.
@@ -206,8 +214,9 @@ std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader) {
     }
 
     step_reader->TransferRoots(Message_ProgressRange());
-    return std::make_unique<TopoDS_Shape>(step_reader->OneShape());
     // step_reader is intentionally leaked — see comment above.
+    return std::make_unique<TopoDS_Shape>(
+        try_sew_orphan_faces(step_reader->OneShape(), nullptr));
 }
 
 bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
@@ -388,6 +397,88 @@ std::unique_ptr<TopoDS_Shape> make_empty() {
 std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape) {
     BRepBuilderAPI_Copy copier(shape, true, false);
     return std::make_unique<TopoDS_Shape>(copier.Shape());
+}
+
+// ==================== STEP read post-processing ====================
+
+// Recover Solids from a STEP-read Compound that has disjoint shells / loose
+// faces (multi-color export from SolveSpace etc.). Returns the original
+// compound if no orphan faces are found (= valid STEP, zero overhead).
+//
+// If `colorMap` is non-null, remaps its keys for faces whose TShape* changed
+// during sewing (only applicable when called from the color path).
+//
+// See #129 for the reproducer and root-cause analysis.
+//
+// Design notes:
+//   - has_orphans を残す理由: SewedShape().IsNull() でも判定可能だが、
+//     (a) 空入力 Perform() を回避、(b) 「sewing 不要」と「sewing 失敗」を区別、
+//     の 2 点で明示フラグ優位。
+//   - Solid 配下の face を sewer に入れない理由: 既存 valid Solid の face は
+//     TShape* preserve したい (colormap キー保持 + 既存挙動互換)。
+//   - TopoDS_Iterator (immediate children) ではなく TopExp_Explorer (再帰) を
+//     使う理由: STEP のツリー構造で valid Solid が深い所に埋まり、その兄弟に
+//     orphan face がある混在ケース (例: Compound { sub { Solid + face×6 } })
+//     を救うため。
+//   - tolerance = Precision::Confusion(): 重複 EDGE_CURVE は座標完全一致なので
+//     最厳設定で十分。緩めると意図しない縫合リスクが増す。
+static TopoDS_Shape try_sew_orphan_faces(
+    const TopoDS_Shape& compound,
+    std::unordered_map<uint64_t, std::array<float, 3>>* colorMap)
+{
+    // 1. 既存 Solid と配下 face TShape* 集合を回収
+    std::unordered_set<const TopoDS_TShape*> in_solid;
+    std::vector<TopoDS_Shape> existing_solids;
+    for (TopExp_Explorer sx(compound, TopAbs_SOLID); sx.More(); sx.Next()) {
+        existing_solids.push_back(sx.Current());
+        for (TopExp_Explorer fx(sx.Current(), TopAbs_FACE); fx.More(); fx.Next()) {
+            in_solid.insert(fx.Current().TShape().get());
+        }
+    }
+
+    // 2. 孤立 face を Sewing に投入
+    BRepBuilderAPI_Sewing sewer(Precision::Confusion());
+    bool has_orphans = false;
+    std::vector<TopoDS_Shape> orphan_faces;  // color remap 用に保持
+    for (TopExp_Explorer fx(compound, TopAbs_FACE); fx.More(); fx.Next()) {
+        if (in_solid.count(fx.Current().TShape().get()) == 0) {
+            sewer.Add(fx.Current());
+            orphan_faces.push_back(fx.Current());
+            has_orphans = true;
+        }
+    }
+
+    // 3. 正常 STEP は素通し (= zero-overhead)
+    if (!has_orphans) return compound;
+
+    // 4. 縫合 → Shell ごとに MakeSolid → 新 compound 構築
+    sewer.Perform();
+    TopoDS_Shape sewn = sewer.SewedShape();
+
+    BRep_Builder bb;
+    TopoDS_Compound new_compound;
+    bb.MakeCompound(new_compound);
+    for (const auto& s : existing_solids) bb.Add(new_compound, s);
+    for (TopExp_Explorer sx(sewn, TopAbs_SHELL); sx.More(); sx.Next()) {
+        BRepBuilderAPI_MakeSolid mk(TopoDS::Shell(sx.Current()));
+        if (mk.IsDone()) bb.Add(new_compound, mk.Solid());
+    }
+
+    // 5. colormap キー remap (color path のみ)
+    if (colorMap) {
+        for (const auto& old_face : orphan_faces) {
+            uint64_t old_id = reinterpret_cast<uint64_t>(old_face.TShape().get());
+            auto it = colorMap->find(old_id);
+            if (it == colorMap->end()) continue;
+            if (sewer.IsModified(old_face)) {
+                uint64_t new_id = reinterpret_cast<uint64_t>(
+                    sewer.Modified(old_face).TShape().get());
+                (*colorMap)[new_id] = it->second;
+            }
+        }
+    }
+
+    return new_compound;
 }
 
 // ==================== Compound Decompose/Compose ====================
@@ -1736,8 +1827,12 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
         std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
         collect_face_colors(doc, colorTool, colorMap);
 
-        // Emit colors for each face that has a color entry.
-        for (TopExp_Explorer ex(compound, TopAbs_FACE); ex.More(); ex.Next()) {
+        // Recover Solids from disjoint shells / loose faces (#129); also
+        // remaps colorMap keys for faces whose TShape* changed during sewing.
+        TopoDS_Shape post = try_sew_orphan_faces(compound, &colorMap);
+
+        // Emit colors — walk POST-processed shape so new TShape* are picked up.
+        for (TopExp_Explorer ex(post, TopAbs_FACE); ex.More(); ex.Next()) {
             uint64_t id =
                 reinterpret_cast<uint64_t>(ex.Current().TShape().get());
             auto it = colorMap.find(id);
@@ -1748,7 +1843,7 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
             out_rgb.push_back(it->second[2]);
         }
 
-        return std::make_unique<TopoDS_Shape>(compound);
+        return std::make_unique<TopoDS_Shape>(post);
     } catch (const Standard_Failure&) {
         return nullptr;
     }
