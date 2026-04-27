@@ -27,7 +27,7 @@
 //!
 //! - `SolidStruct: Sized + Clone + Compound` (pub(crate)): backend implementation trait.
 //!   Adds Solid-only operations (constructors, topology accessors, boolean primitives).
-//!   build_delegation.rs parses this and generates pub inherent methods on Solid,
+//!   examples/codegen.rs parses this and generates pub inherent methods on Solid,
 //!   walking the supertrait chain so all `Compound` and `Transform` methods are also
 //!   exposed inherently. Trait name follows `<Type>Struct` convention (SolidStruct → Solid).
 //!
@@ -46,31 +46,31 @@
 //!   EdgeStruct       ← 単独。下位を一切知らない
 //!   FaceStruct       ← type Edge: EdgeStruct;
 //!   SolidStruct      ← type Edge: EdgeStruct;  type Face: FaceStruct;
-//!   IoModule         ← type Solid: SolidStruct;
+//!                       I/O メソッド (read_step / write_step / mesh など) も SolidStruct に同居
 //! ```
 //!
 //! 下位（Edge/Face）→ 上位（Solid）への参照は持たせない。例えば「Edge を sweep して
 //! Solid を作る」操作は `EdgeStruct::sweep` ではなく `SolidStruct::sweep(profile, spine)`
 //! として上位側に置き、ヒエラルキーを保つ。逆向き参照を導入する瞬間に associated type
-//! の循環や Backend バンドルトレイトが必要になり、build_delegation.rs のテキスト処理が
+//! の循環や Backend バンドルトレイトが必要になり、examples/codegen.rs のテキスト処理が
 //! 追従できなくなる。
 //!
-//! ### 命名と build_delegation の対応
+//! ### 命名と codegen の対応
 //!
-//! - `SolidStruct` の `type Edge` / `type Face`、`IoModule` の `type Solid` という名前は
-//!   build_delegation.rs の `TYPE_MAP` と一致させること。`Self::Edge` / `Self::Face` /
-//!   `Self::Solid` は生成時にバックエンドの具象型名（`Edge` / `Face` / `Solid`）へ
-//!   置換され、`lib.rs` の `pub use occt::{Solid, Edge, Face};` により実体に解決される。
-//! - 戻り型・引数型は `Vec<Self::Edge>`、`impl IntoIterator<Item = &'a Self::Solid>` の
-//!   ように常に関連型経由で書く。
+//! - `SolidStruct` の `type Edge` / `type Face` という名前は examples/codegen.rs の
+//!   `TYPE_MAP` と一致させること。`Self::Edge` / `Self::Face` は生成時に
+//!   バックエンドの具象型名（`Edge` / `Face`）へ置換され、`lib.rs` の
+//!   `pub use occt::{Solid, Edge, Face};` により実体に解決される。
+//! - 戻り型・引数型は `Vec<Self::Edge>`、`impl IntoIterator<Item = &'a Self>` の
+//!   ように常に関連型 / Self 経由で書く（具象型名を直接書かない）。
 //! - associated type 宣言（`type Foo: Bound;`）はパーサーが行頭でスキップするので、
 //!   メソッドと同じインデントで 1 行に収めること。
 //!
-//! パーサー挙動と制約（build_delegation.rs — 行ベースのテキスト処理）:
+//! パーサー挙動と制約（examples/codegen.rs — 行ベースのテキスト処理）:
 //!
 //! トレイトヘッダ:
 //! - `pub trait Foo: A + B + C {` から名前と supertrait リスト（`+` 区切り）を抽出する
-//! - `Foo` が `Struct`/`Module` サフィックスを持つトレイトの supertrait に出現した場合、
+//! - `Foo` が `Struct` サフィックスを持つトレイトの supertrait に出現した場合、
 //!   `Foo` のメソッドも親側の inherent impl に取り込まれる（再帰的に祖先まで辿る）
 //! - 解析対象トレイト一覧に存在しない名前（`Sized`, `Clone`, ライフタイム束縛 `'a` 等）は
 //!   黙って無視される
@@ -118,12 +118,12 @@ use glam::{DMat3, DQuat, DVec3};
 /// require an import).
 ///
 /// For `Solid` / `Edge` themselves the forwarders are unnecessary —
-/// `build_delegation.rs` walks the supertrait chain and emits inherent
+/// `examples/codegen.rs` walks the supertrait chain and emits inherent
 /// methods, so no trait import is needed on the single types.
 ///
 /// TODO(#90): the per-method forwarders in `Compound` / `Wire` are
 /// mechanical and could be generated. A future refactor could extend
-/// `build_delegation.rs` (or introduce a proc-macro) to auto-emit
+/// `examples/codegen.rs` (or introduce a proc-macro) to auto-emit
 /// `fn foo(self, ..) -> Self { <Self as Transform>::foo(self, ..) }` for
 /// every method of a referenced trait, so that Transform's surface is
 /// listed exactly once in this file. Not urgent — see the issue for
@@ -297,7 +297,7 @@ pub enum BSplineEnd {
 /// alone enables `vec_of_edges.translate(...)` etc.
 ///
 /// As with `Compound`, `EdgeStruct: Wire` so users of `Edge` get these
-/// methods inherently via `build_delegation.rs`; the `use` import is only
+/// methods inherently via `examples/codegen.rs`; the `use` import is only
 /// required when chaining on `Vec<Edge>` / `[Edge; N]`.
 pub trait Wire: Transform {
 	type Elem: EdgeStruct;
@@ -423,7 +423,7 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 /// (for colormap / boolean history matching) and to project external 3D
 /// points onto the face for snap-to-surface workflows.
 ///
-/// build_delegation.rs generates `impl Face { pub fn ... }` from this trait
+/// examples/codegen.rs generates `impl Face { pub fn ... }` from this trait
 /// so callers reach the methods inherently as `face.id()` / `face.project(p)`.
 pub trait FaceStruct: Sized {
 	type Edge: EdgeStruct;
@@ -467,7 +467,7 @@ pub trait FaceStruct: Sized {
 /// supertrait bound.
 ///
 
-/// build_delegation.rs generates `impl Solid { pub fn ... }` from this trait
+/// examples/codegen.rs generates `impl Solid { pub fn ... }` from this trait
 /// and walks the supertrait chain to expose `Compound` methods inherently as well.
 ///
 /// Associated types `Edge`/`Face` keep this trait backend-independent: each
@@ -605,6 +605,19 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
 	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
 	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
+
+	// --- I/O ---
+	// Co-located with constructors: STEP / BRep readers return `Vec<Self>` (a
+	// build path symmetrical with `Solid::cube` etc.), writers/`mesh` consume
+	// solids. Putting them on Solid concentrates the type's surface and keeps
+	// the crate root free of generic names like `mesh` / `write_step`.
+	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
+	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
+	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
+	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
+	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
+	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, tolerance: f64) -> Result<Mesh, Error> where Self: 'a;
 }
 
 // ==================== Compound ====================
@@ -874,20 +887,3 @@ fn project_over_edges<'a, T: 'a + EdgeStruct + Wire>(edges: impl IntoIterator<It
 		.unwrap_or((DVec3::ZERO, DVec3::ZERO))
 }
 
-// ==================== I/O ====================
-
-/// Backend-independent I/O trait.
-///
-/// `Solid` is an associated type so this trait does not depend on a concrete
-/// backend type. Each backend's `Io` impl binds `type Solid = ...;`.
-#[allow(non_camel_case_types)]
-pub trait IoModule {
-	type Solid: SolidStruct;
-	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self::Solid>, Error>;
-	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self::Solid>, Error>;
-	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self::Solid>, Error>;
-	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
-	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
-	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self::Solid>, writer: &mut W) -> Result<(), Error> where Self::Solid: 'a;
-	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self::Solid: 'a;
-}
