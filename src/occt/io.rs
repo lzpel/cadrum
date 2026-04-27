@@ -102,41 +102,20 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 	}
 }
 
-/// Read solids from a BRep binary stream.
-///
-/// With the `color` feature enabled, a color trailer (if present) at the end
-/// of the data is parsed to reconstruct the per-face colormap.
+/// Read solids from a BRep binary stream. Color trailer is parsed if present.
 pub(super) fn read_brep_binary<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-	#[cfg(feature = "color")]
-	{
-		let mut buf = Vec::new();
-		reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
-		let (index_colormap, brep_len) = strip_color_trailer(&buf);
-		let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
-		let mut rust_reader = RustReader::from_ref(&mut cursor);
-		let inner = ffi::read_brep_bin_stream(&mut rust_reader);
-		if inner.is_null() {
-			return Err(Error::BrepReadFailed);
-		}
-		let colormap = resolve_color_trailer(&inner, &index_colormap);
-		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
-	}
-	#[cfg(not(feature = "color"))]
-	{
-		let mut rust_reader = RustReader::from_ref(reader);
-		let inner = ffi::read_brep_bin_stream(&mut rust_reader);
-		if inner.is_null() {
-			return Err(Error::BrepReadFailed);
-		}
-		Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
-	}
+	read_brep_with(reader, ffi::read_brep_bin_stream)
 }
 
-/// Read solids from a BRep text stream.
-///
-/// With the `color` feature enabled, a color trailer (if present) at the end
-/// of the data is parsed to reconstruct the per-face colormap.
+/// Read solids from a BRep text stream. Color trailer is parsed if present.
 pub(super) fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
+	read_brep_with(reader, ffi::read_brep_text_stream)
+}
+
+/// Shared body for BRep binary/text reads. The two variants differ only in
+/// which FFI stream parser they call; everything else (color trailer handling,
+/// null check, decompose) is identical.
+fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> cxx::UniquePtr<ffi::TopoDS_Shape>) -> Result<Vec<Solid>, Error> {
 	#[cfg(feature = "color")]
 	{
 		let mut buf = Vec::new();
@@ -144,7 +123,7 @@ pub(super) fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Erro
 		let (index_colormap, brep_len) = strip_color_trailer(&buf);
 		let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
 		let mut rust_reader = RustReader::from_ref(&mut cursor);
-		let inner = ffi::read_brep_text_stream(&mut rust_reader);
+		let inner = ffi_read(&mut rust_reader);
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
@@ -154,7 +133,7 @@ pub(super) fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Erro
 	#[cfg(not(feature = "color"))]
 	{
 		let mut rust_reader = RustReader::from_ref(reader);
-		let inner = ffi::read_brep_text_stream(&mut rust_reader);
+		let inner = ffi_read(&mut rust_reader);
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
@@ -195,29 +174,23 @@ pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 	}
 }
 
-/// Write solids to a BRep binary stream.
-///
-/// With the `color` feature enabled, a color trailer is appended after the
-/// BRep data so that face colors survive the round-trip.
+/// Write solids to a BRep binary stream. Color trailer is appended if `color`
+/// feature is enabled.
 pub(super) fn write_brep_binary<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
-	let compound = CompoundShape::new(solids);
-	let mut rust_writer = RustWriter::from_ref(writer);
-	if !ffi::write_brep_bin_stream(compound.inner(), &mut rust_writer) {
-		return Err(Error::BrepWriteFailed);
-	}
-	#[cfg(feature = "color")]
-	write_color_trailer(&compound, writer)?;
-	Ok(())
+	write_brep_with(solids, writer, ffi::write_brep_bin_stream)
 }
 
-/// Write solids to a BRep text stream.
-///
-/// With the `color` feature enabled, a color trailer is appended after the
-/// BRep data so that face colors survive the round-trip.
+/// Write solids to a BRep text stream. Color trailer is appended if `color`
+/// feature is enabled.
 pub(super) fn write_brep_text<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
+	write_brep_with(solids, writer, ffi::write_brep_text_stream)
+}
+
+/// Shared body for BRep binary/text writes — see `read_brep_with` for context.
+fn write_brep_with<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W, ffi_write: fn(&ffi::TopoDS_Shape, &mut RustWriter) -> bool) -> Result<(), Error> {
 	let compound = CompoundShape::new(solids);
 	let mut rust_writer = RustWriter::from_ref(writer);
-	if !ffi::write_brep_text_stream(compound.inner(), &mut rust_writer) {
+	if !ffi_write(compound.inner(), &mut rust_writer) {
 		return Err(Error::BrepWriteFailed);
 	}
 	#[cfg(feature = "color")]
