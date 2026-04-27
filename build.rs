@@ -1,5 +1,3 @@
-mod build_delegation;
-
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -20,19 +18,12 @@ fn slug(version: &str) -> String {
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_URL");
-	println!("cargo:rerun-if-changed=src/traits.rs");
-	println!("cargo:rerun-if-changed=build_delegation.rs");
-
-	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-	// Read at runtime (not include_str!) so cargo:rerun-if-changed on
-	// src/traits.rs can re-trigger codegen without forcing a rebuild of
-	// the build-script binary itself.
-	let traits_src = std::fs::read_to_string("src/traits.rs").expect("read src/traits.rs");
-	build_delegation::build_delegation(&traits_src, &out_dir);
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
 	}
+
+	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
 	let target = env::var("TARGET").unwrap();
 

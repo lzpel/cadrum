@@ -13,6 +13,15 @@
     - 設計方針などを記録
 - examples/00_*.rs
     - このリポジトリのサンプルコードです。実行するとカレントディレクトリに00_*.svg/stepが生成されます。この命名規則に従う出力ファイルはbook.rsによりドキュメント内からリンクされます。
+- examples/codegen.rs
+    - 引数で渡された各 .rs ファイルを「trait 定義のソース」かつ「マーカ書き換え先」として扱い、`////////// codegen.rs` マーカ領域を in-place で再生成する
+    - 使い方: `cargo run --example codegen -- src/traits.rs src/lib.rs`
+    - 全入力ファイルからトレイト定義を pool して、その union で各ファイルのマーカを書き換える。trait 定義と consumer が別ファイルでも同一ファイルに merge されていても動く
+    - traits.rs の公開トレイト定義を変更したら走らせて差分をコミットする（examples/markdown.rs が README.md を改変するのと同じ運用）
+    - マーカ仕様:
+        - `////////// codegen.rs` (タグなし): 囲みが `impl X { ... }` なら `XStruct` チェーンの inherent methods、囲みが `pub trait X: Y, Z { ... }` なら親 trait Y, Z の forwarder default methods を生成
+        - `////////// codegen.rs <Tag>` (モジュールレベル): `<Tag>Module` の free fn を生成
+    - 領域はマーカ次行から「囲みブロックの閉じ `}`」または EOF まで。マーカ自身は保存される
 - examples/markdown.rs
     - 番号付きexample (NN_*.rs) を実行し、mdbook用markdownとREADMEのExamples節を生成する
     - 使い方: `cargo run --example markdown -- out/markdown/SUMMARY.md ./README.md`
@@ -21,7 +30,4 @@
 - src/traits.rs
     - traits.rsはバックエンド共通のトレイト定義（pub(crate)、ユーザーに非公開）
     - トレイト名は`<Type>Struct`の命名規則に従う（SolidStruct→Solid, FaceStruct→Face等）
-    - fnシグネチャは1行、#[cfg]は直前1行のみ認識、ライフタイム/where句は非対応
-- build_delegation.rs
-    - traits.rsをパースして$OUT_DIR/generated_delegation.rsを生成する
-    - 生成コードはlib.rs末尾でinclude!される
+    - fnシグネチャは1行、#[cfg]は直前1行のみ認識、ライフタイム/where句は1行に収めれば対応

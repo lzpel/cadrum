@@ -318,12 +318,7 @@ pub trait Wire: Transform {
 	/// indicates a bug, not a degenerate user input.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
-	// --- Transform forwarders ---
-	// Let `use cadrum::Wire;` alone pull the Transform surface into scope.
-	// TODO(#90): auto-generate these from `Transform` (extend
-	// build_delegation.rs or introduce a proc-macro) so the list doesn't have
-	// to be mirrored by hand. See the `Transform` doc comment for the design
-	// note. Not urgent.
+	////////// codegen.rs
 	fn translate(self, translation: DVec3) -> Self { <Self as Transform>::translate(self, translation) }
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self { <Self as Transform>::rotate(self, axis_origin, axis_direction, angle) }
 	fn rotate_x(self, angle: f64) -> Self { <Self as Transform>::rotate_x(self, angle) }
@@ -627,22 +622,6 @@ pub trait Compound: Transform {
 
 	fn clean(&self) -> Result<Self, Error>;
 
-	// --- Transform forwarders ---
-	// Let `use cadrum::Compound;` alone pull the Transform surface into scope.
-	// TODO(#90): auto-generate these from `Transform` (extend
-	// build_delegation.rs or introduce a proc-macro) so the list doesn't have
-	// to be mirrored by hand. See the `Transform` doc comment for the design
-	// note. Not urgent.
-	fn translate(self, translation: DVec3) -> Self { <Self as Transform>::translate(self, translation) }
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self { <Self as Transform>::rotate(self, axis_origin, axis_direction, angle) }
-	fn rotate_x(self, angle: f64) -> Self { <Self as Transform>::rotate_x(self, angle) }
-	fn rotate_y(self, angle: f64) -> Self { <Self as Transform>::rotate_y(self, angle) }
-	fn rotate_z(self, angle: f64) -> Self { <Self as Transform>::rotate_z(self, angle) }
-	fn scale(self, center: DVec3, factor: f64) -> Self { <Self as Transform>::scale(self, center, factor) }
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self { <Self as Transform>::mirror(self, plane_origin, plane_normal) }
-	fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Self { <Self as Transform>::align_x(self, new_x, y_hint) }
-	fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Self { <Self as Transform>::align_y(self, new_y, z_hint) }
-	fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Self { <Self as Transform>::align_z(self, new_z, x_hint) }
 
 	// --- Queries ---
 	fn volume(&self) -> f64;
@@ -671,6 +650,17 @@ pub trait Compound: Transform {
 	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
 	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
 	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
+	////////// codegen.rs
+	fn translate(self, translation: DVec3) -> Self { <Self as Transform>::translate(self, translation) }
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self { <Self as Transform>::rotate(self, axis_origin, axis_direction, angle) }
+	fn rotate_x(self, angle: f64) -> Self { <Self as Transform>::rotate_x(self, angle) }
+	fn rotate_y(self, angle: f64) -> Self { <Self as Transform>::rotate_y(self, angle) }
+	fn rotate_z(self, angle: f64) -> Self { <Self as Transform>::rotate_z(self, angle) }
+	fn scale(self, center: DVec3, factor: f64) -> Self { <Self as Transform>::scale(self, center, factor) }
+	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self { <Self as Transform>::mirror(self, plane_origin, plane_normal) }
+	fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Self { <Self as Transform>::align_x(self, new_x, y_hint) }
+	fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Self { <Self as Transform>::align_y(self, new_y, z_hint) }
+	fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Self { <Self as Transform>::align_z(self, new_z, x_hint) }
 }
 
 // `impl Compound for Solid` lives in the backend module (e.g. src/occt/solid.rs)
