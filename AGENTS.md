@@ -18,10 +18,8 @@
     - 使い方: `cargo run --example codegen -- src/traits.rs src/lib.rs`
     - 全入力ファイルからトレイト定義を pool して、その union で各ファイルのマーカを書き換える。trait 定義と consumer が別ファイルでも同一ファイルに merge されていても動く
     - traits.rs の公開トレイト定義を変更したら走らせて差分をコミットする（examples/markdown.rs が README.md を改変するのと同じ運用）
-    - マーカ仕様:
-        - `////////// codegen.rs` (タグなし): 囲みが `impl X { ... }` なら `XStruct` チェーンの inherent methods、囲みが `pub trait X: Y, Z { ... }` なら親 trait Y, Z の forwarder default methods を生成
-        - `////////// codegen.rs <Tag>` (モジュールレベル): `<Tag>Module` の free fn を生成
-    - 領域はマーカ次行から「囲みブロックの閉じ `}`」または EOF まで。マーカ自身は保存される
+    - マーカ仕様 (`////////// codegen.rs`): 囲みが `impl X { ... }` なら `XStruct` チェーンの inherent methods、囲みが `pub trait X: Y, Z { ... }` なら親 trait Y, Z の forwarder default methods を生成
+    - 領域はマーカ次行から「囲みブロックの閉じ `}`」まで。マーカ自身は保存される
 - examples/markdown.rs
     - 番号付きexample (NN_*.rs) を実行し、mdbook用markdownとREADMEのExamples節を生成する
     - 使い方: `cargo run --example markdown -- out/markdown/SUMMARY.md ./README.md`
