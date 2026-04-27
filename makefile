@@ -6,6 +6,7 @@ test: # test all
 	cargo test
 deploy: generate # generate out/markdown from examples, then build out/html
 	cargo install --root out mdbook --version 0.4.50
+	cargo run --example codegen -- src/traits.rs src/lib.rs
 	cargo run --example markdown -- $(PATH_DOCS)/SUMMARY.md ./README.md
 	./out/bin/mdbook build
 publish: deploy # publish to crates.io
