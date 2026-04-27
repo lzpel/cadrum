@@ -28,10 +28,10 @@ fn main() -> Result<(), cadrum::Error> {
     let shapes: Vec<Solid> = [union, subtract, intersect].concat();
 
     let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
-    cadrum::write_step(&shapes, &mut f).expect("failed to write STEP");
+    cadrum::Solid::write_step(&shapes, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    cadrum::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
+    cadrum::Solid::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
 
     Ok(())
 }

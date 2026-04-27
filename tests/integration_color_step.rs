@@ -14,7 +14,7 @@ const COLORED_BOX_STEP: &str = "steps/colored_box.step";
 /// Read `colored_box.step` and return the shape.  Panics if reading fails.
 fn read_colored_box() -> Vec<Solid> {
 	let data = fs::read(COLORED_BOX_STEP).expect("steps/colored_box.step should exist");
-	cadrum::read_step(&mut data.as_slice()).expect("read_step should succeed")
+	cadrum::Solid::read_step(&mut data.as_slice()).expect("read_step should succeed")
 }
 
 fn colormap_len(shape: &[Solid]) -> usize {
@@ -26,7 +26,7 @@ fn colormap_len(shape: &[Solid]) -> usize {
 fn write_colored(shape: &[Solid], path: &str) {
 	fs::create_dir_all("out").unwrap();
 	let mut buf = Vec::new();
-	cadrum::write_step(shape, &mut buf).expect("write_step should succeed");
+	cadrum::Solid::write_step(shape, &mut buf).expect("write_step should succeed");
 	fs::write(path, &buf).expect("should write output file");
 }
 
@@ -55,7 +55,7 @@ fn write_then_read_preserves_colors() {
 	write_colored(&original, path);
 
 	let data = fs::read(path).unwrap();
-	let reloaded = cadrum::read_step(&mut data.as_slice()).expect("re-read should succeed");
+	let reloaded = cadrum::Solid::read_step(&mut data.as_slice()).expect("re-read should succeed");
 
 	assert!(colormap_len(&reloaded) >= 6, "re-read shape should have at least 6 colored faces, got {}", colormap_len(&reloaded));
 }
@@ -113,7 +113,7 @@ fn clean_colored_step_preserves_colors() {
 #[test]
 fn multicolor_solvespace_step_recovers_solid_with_colors() {
 	let data = fs::read("steps/multicolor_solvespace.step").expect("fixture should exist");
-	let solids = cadrum::read_step(&mut data.as_slice()).expect("read_step should succeed");
+	let solids = cadrum::Solid::read_step(&mut data.as_slice()).expect("read_step should succeed");
 
 	assert_eq!(solids.len(), 1, "expected 1 recovered solid, got {}", solids.len());
 	assert!(solids[0].volume() > 0.0, "recovered solid should have non-zero volume");
@@ -122,10 +122,10 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 	write_colored(&solids, "out/multicolor_solvespace_recovered.step");
 
 	let mut stl = std::fs::File::create("out/multicolor_solvespace_recovered.stl").expect("stl file");
-	cadrum::mesh(&solids, 0.1).and_then(|m| m.write_stl(&mut stl)).expect("stl write should succeed");
+	cadrum::Solid::mesh(&solids, 0.1).and_then(|m| m.write_stl(&mut stl)).expect("stl write should succeed");
 
 	let mut svg = std::fs::File::create("out/multicolor_solvespace_recovered.svg").expect("svg file");
-	cadrum::mesh(&solids, 0.1)
+	cadrum::Solid::mesh(&solids, 0.1)
 		.and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, true, &mut svg))
 		.expect("svg write should succeed");
 }

@@ -66,10 +66,10 @@ fn main() -> Result<(), Error> {
 	let result = [box_solid, oblique, l_beam, heart];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::write_step(&result, &mut f).expect("failed to write STEP");
+	cadrum::Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
+	cadrum::Solid::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
