@@ -426,6 +426,36 @@ impl SolidStruct for Solid {
 	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
 		Self::boolean_intersect_impl(a, b)
 	}
+
+	// --- I/O (delegates to super::io helpers) ---
+
+	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
+		super::io::read_step(reader)
+	}
+
+	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
+		super::io::read_brep_binary(reader)
+	}
+
+	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
+		super::io::read_brep_text(reader)
+	}
+
+	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+		super::io::write_step(solids, writer)
+	}
+
+	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+		super::io::write_brep_binary(solids, writer)
+	}
+
+	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+		super::io::write_brep_text(solids, writer)
+	}
+
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, tolerance: f64) -> Result<crate::common::mesh::Mesh, Error> where Self: 'a {
+		super::io::mesh(solids, tolerance)
+	}
 }
 
 // ==================== impl Transform for Solid ====================
