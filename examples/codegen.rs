@@ -7,13 +7,12 @@
 //! union of files involved.
 //!
 //! Marker syntax (the marker line itself is preserved; everything from the
-//! line below the marker down to the closing `}` of the enclosing scope —
-//! or to EOF when at module level — is replaced):
+//! line below the marker down to the closing `}` of the enclosing scope is
+//! replaced):
 //!
-//!     ////////// codegen.rs           — context inferred from enclosing block:
-//!                                       inside `impl X { ... }`            → render `XStruct` chain inherent methods
-//!                                       inside `pub trait X: Y, Z { ... }` → render forwarder defaults from supertraits Y, Z
-//!     ////////// codegen.rs <Tag>     — module-level free fns delegating to `<Tag>Module`
+//!     ////////// codegen.rs    — context inferred from the enclosing block:
+//!                                inside `impl X { ... }`            → render `XStruct` chain inherent methods
+//!                                inside `pub trait X: Y, Z { ... }` → render forwarder defaults from supertraits Y, Z
 //!
 //! Run via:  `cargo run --example codegen -- src/traits.rs src/lib.rs`
 //!
@@ -212,14 +211,6 @@ fn resolve_types_for_impl(sig: &str, concrete: &str) -> String {
 	let mut s = sub_word(sig, r"\bSelf::Elem\b", concrete);
 	s = sub_word(&s, r"\bSelf::Edge\b", "Edge");
 	s = sub_word(&s, r"\bSelf::Face\b", "Face");
-	s = sub_word(&s, r"\bSelf::Solid\b", "Solid");
-	replace_self_bare(&s, concrete)
-}
-
-fn resolve_types_for_module(sig: &str, concrete: &str) -> String {
-	let mut s = sub_word(sig, r"\bSelf::Edge\b", "Edge");
-	s = sub_word(&s, r"\bSelf::Face\b", "Face");
-	s = sub_word(&s, r"\bSelf::Solid\b", "Solid");
 	replace_self_bare(&s, concrete)
 }
 
@@ -275,21 +266,20 @@ fn walk_supers<'a>(supers: &[String], all: &'a [TraitDef], seen: &mut HashSet<St
 fn regenerate(src: &str, traits: &[TraitDef]) -> String {
 	let lines: Vec<&str> = src.split('\n').collect();
 	let depths = compute_depths(&lines);
-	let marker_re = Regex::new(r"^\s*//////////\s+codegen\.rs(?:\s+(\w+))?\s*$").unwrap();
+	let marker_re = Regex::new(r"^\s*//////////\s+codegen\.rs\s*$").unwrap();
 
 	let mut out: Vec<String> = Vec::with_capacity(lines.len());
 	let mut cursor = 0usize;
 	let mut i = 0usize;
 	while i < lines.len() {
-		if let Some(caps) = marker_re.captures(lines[i]) {
-			let tag = caps.get(1).map(|m| m.as_str().to_string());
+		if marker_re.is_match(lines[i]) {
 			for j in cursor..=i {
 				out.push(lines[j].to_string());
 			}
 			let indent: String = lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
 			let depth = depths[i];
 			let region_end = compute_region_end(&depths, i, depth);
-			let context = determine_context(&lines, i, &depths, depth, tag);
+			let context = determine_context(&lines, i, &depths, depth);
 			out.extend(render(&context, &indent, traits));
 			cursor = region_end;
 			i = region_end;
@@ -321,9 +311,6 @@ fn strip_line_comment(line: &str) -> String {
 
 fn compute_region_end(depths: &[i32], marker_idx: usize, marker_depth: i32) -> usize {
 	let lines_len = depths.len() - 1;
-	if marker_depth == 0 {
-		return lines_len;
-	}
 	for j in (marker_idx + 1)..lines_len {
 		if depths[j + 1] < marker_depth {
 			return j;
@@ -335,15 +322,14 @@ fn compute_region_end(depths: &[i32], marker_idx: usize, marker_depth: i32) -> u
 enum Context {
 	Impl { ty: String },
 	TraitBody { name: String },
-	Module { tag: String },
 }
 
-fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32, tag: Option<String>) -> Context {
+fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32) -> Context {
 	if marker_depth == 0 {
-		let tag = tag.unwrap_or_else(|| {
-			panic!("module-level marker at line {} requires a tag like `////////// codegen.rs Io`", marker_idx + 1)
-		});
-		return Context::Module { tag };
+		panic!(
+			"marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`",
+			marker_idx + 1
+		);
 	}
 	let target = marker_depth - 1;
 	let mut j = marker_idx;
@@ -374,7 +360,6 @@ fn render(context: &Context, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 	match context {
 		Context::Impl { ty } => render_impl(ty, indent, traits),
 		Context::TraitBody { name } => render_trait_body(name, indent, traits),
-		Context::Module { tag } => render_module(tag, traits),
 	}
 }
 
@@ -394,8 +379,7 @@ fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 		}
 		let sig = resolve_types_for_impl(&m.signature, &concrete);
 		let trait_path = format!("crate::traits::{}", m.origin_trait);
-		let body_args = format_call_args(m, true);
-		out.push(format!("{}pub {} {{<Self as {}>::{}({})}}", indent, sig, trait_path, m.name, body_args));
+		out.push(format!("{}pub {} {{<Self as {}>::{}({})}}", indent, sig, trait_path, m.name, format_call_args(m)));
 	}
 	out
 }
@@ -409,37 +393,15 @@ fn render_trait_body(name: &str, indent: &str, traits: &[TraitDef]) -> Vec<Strin
 			if let Some(cfg) = &m.cfg {
 				out.push(format!("{}{}", indent, cfg));
 			}
-			let body_args = format_call_args(m, true);
-			out.push(format!("{}{} {{ <Self as {}>::{}({}) }}", indent, m.signature, super_name, m.name, body_args));
+			out.push(format!("{}{} {{ <Self as {}>::{}({}) }}", indent, m.signature, super_name, m.name, format_call_args(m)));
 		}
 	}
 	out
 }
 
-fn render_module(tag: &str, traits: &[TraitDef]) -> Vec<String> {
-	let trait_name = format!("{}Module", tag);
-	let td = traits
-		.iter()
-		.find(|t| t.name == trait_name)
-		.unwrap_or_else(|| panic!("no trait `{}` for tag `{}`", trait_name, tag));
-	let concrete = format!("crate::{}", tag);
-	let trait_path = format!("crate::traits::{}", trait_name);
-
-	let mut out = Vec::new();
-	for m in &td.methods {
-		if let Some(cfg) = &m.cfg {
-			out.push(cfg.clone());
-		}
-		let sig = resolve_types_for_module(&m.signature, &concrete);
-		let body_args = format_call_args(m, false);
-		out.push(format!("pub {} {{<{} as {}>::{}({})}}", sig, concrete, trait_path, m.name, body_args));
-	}
-	out
-}
-
-fn format_call_args(m: &Method, include_self: bool) -> String {
+fn format_call_args(m: &Method) -> String {
 	let mut parts: Vec<String> = Vec::new();
-	if include_self && m.has_self {
+	if m.has_self {
 		parts.push("self".to_string());
 	}
 	parts.extend(m.args.iter().cloned());
