@@ -1,34 +1,41 @@
 //! Regenerate `////////// codegen.rs` marker regions in the given .rs files.
 //!
-//! Each input file is BOTH a trait-definition source AND a target for marker
-//! rewriting — trait defs are pooled across all inputs, then every input file
-//! is rewritten in place. This means it doesn't matter whether traits live in
-//! their own file or are merged with the consumer; just point codegen at the
-//! union of files involved.
+//! Usage: `cargo run --example codegen -- src/traits.rs src/lib.rs`
 //!
-//! Marker syntax (the marker line itself is preserved; everything from the
-//! line below the marker down to the closing `}` of the enclosing scope —
-//! or to EOF when at module level — is replaced):
+//! Each input file is both a trait-definition source AND a rewrite target;
+//! trait defs are pooled across all inputs, then every file is rewritten in
+//! place. Splitting traits / consumers across files (or merging them) doesn't
+//! affect the result — just point codegen at the union of files involved.
 //!
-//!     ////////// codegen.rs           — context inferred from enclosing block:
-//!                                       inside `impl X { ... }`            → render `XStruct` chain inherent methods
-//!                                       inside `pub trait X: Y, Z { ... }` → render forwarder defaults from supertraits Y, Z
-//!     ////////// codegen.rs <Tag>     — module-level free fns delegating to `<Tag>Module`
+//! ## Marker
 //!
-//! Run via:  `cargo run --example codegen -- src/traits.rs src/lib.rs`
+//! `////////// codegen.rs` — preserved verbatim. The lines from the next line
+//! down to the closing `}` of the enclosing scope are replaced based on the
+//! enclosing block:
 //!
-//! Replaces the previous `build.rs` → `OUT_DIR/generated_delegation.rs` →
-//! `include!` flow with in-place rewrite so the result is checked into `src/`
-//! and visible in PR diffs (mirroring how `examples/markdown.rs` updates
-//! README.md).
+//!   - inside `impl X { ... }`            → render `XStruct` chain inherent methods (supertrait walk + dedup)
+//!   - inside `pub trait X: Y, Z { ... }` → render forwarder default methods for parent traits Y, Z
 //!
-//! Parser constraints (carried over from the prior build_delegation.rs):
+//! ## Parser constraints
+//!
 //!   - fn signatures must fit on one line (where/lifetime/generics included)
-//!   - #[cfg(...)] attaches to the next fn only (single-line attribute)
+//!   - `#[cfg(...)]` attaches to the next fn only (single-line attribute)
 //!   - default impl bodies may span multiple lines (skipped via brace counting)
 
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::LazyLock;
+
+// All regexes compiled once. The codegen run is small enough that the savings
+// are negligible — the goal is putting the patterns in one visible block.
+static TRAIT_HEADER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)\s*(?::\s*([^{]+?))?\s*\{").unwrap());
+static MARKER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*//////////\s+codegen\.rs\s*$").unwrap());
+static TRAIT_OPENER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)").unwrap());
+static IMPL_OPENER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*impl(?:\s*<[^>]*>)?\s+(\w+)").unwrap());
+static SELF_BARE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf\b").unwrap());
+static SELF_ELEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Elem\b").unwrap());
+static SELF_EDGE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Edge\b").unwrap());
+static SELF_FACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Face\b").unwrap());
 
 fn main() {
 	let paths: Vec<String> = std::env::args().skip(1).collect();
@@ -81,7 +88,6 @@ struct TraitDef {
 // ============================ parser ============================
 
 fn parse_traits(src: &str) -> Vec<TraitDef> {
-	let header_re = Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)\s*(?::\s*([^{]+?))?\s*\{").unwrap();
 	let mut traits = Vec::new();
 	let lines: Vec<&str> = src.lines().collect();
 	let mut i = 0;
@@ -92,7 +98,7 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 			i += 1;
 			continue;
 		}
-		if let Some(caps) = header_re.captures(line) {
+		if let Some(caps) = TRAIT_HEADER_RE.captures(line) {
 			let name = caps.get(1).unwrap().as_str().to_string();
 			let supertraits: Vec<String> = caps.get(2).map_or_else(Vec::new, |s| {
 				s.as_str()
@@ -203,45 +209,32 @@ fn split_args(s: &str) -> Vec<&str> {
 
 // ============================ type substitution ============================
 //
-// In `impl X` rendering, associated types (`Self::Edge`/`Self::Face`/`Self::Solid`/
-// `Self::Elem`) and bare `Self` get rewritten to concrete names. This mirrors
-// the prior build_delegation.rs::resolve_types but uses regex word boundaries
-// instead of hand-rolled identifier-char checks.
+// In `impl X` rendering, associated types (`Self::Edge` / `Self::Face` /
+// `Self::Elem`) and bare `Self` are rewritten to concrete names. Only used
+// for impl-block emission — trait-body forwarders preserve `Self` verbatim.
 
 fn resolve_types_for_impl(sig: &str, concrete: &str) -> String {
-	let mut s = sub_word(sig, r"\bSelf::Elem\b", concrete);
-	s = sub_word(&s, r"\bSelf::Edge\b", "Edge");
-	s = sub_word(&s, r"\bSelf::Face\b", "Face");
-	s = sub_word(&s, r"\bSelf::Solid\b", "Solid");
+	let s = SELF_ELEM_RE.replace_all(sig, concrete);
+	let s = SELF_EDGE_RE.replace_all(&s, "Edge");
+	let s = SELF_FACE_RE.replace_all(&s, "Face");
 	replace_self_bare(&s, concrete)
-}
-
-fn resolve_types_for_module(sig: &str, concrete: &str) -> String {
-	let mut s = sub_word(sig, r"\bSelf::Edge\b", "Edge");
-	s = sub_word(&s, r"\bSelf::Face\b", "Face");
-	s = sub_word(&s, r"\bSelf::Solid\b", "Solid");
-	replace_self_bare(&s, concrete)
-}
-
-fn sub_word(text: &str, pattern: &str, to: &str) -> String {
-	Regex::new(pattern).unwrap().replace_all(text, to).into_owned()
 }
 
 /// Replace bare `Self` with `concrete`, but leave `Self:` (where-clause /
 /// path-prefix usage like `Self::Output` from std traits) alone. The associated
-/// types we DO know about are rewritten by earlier `sub_word` calls; this
+/// types we DO know about are rewritten by earlier `replace_all` calls; this
 /// guard catches the rest.
 fn replace_self_bare(text: &str, concrete: &str) -> String {
-	let re = Regex::new(r"\bSelf\b").unwrap();
-	re.replace_all(text, |caps: &regex::Captures| {
-		let end = caps.get(0).unwrap().end();
-		if text[end..].starts_with(':') {
-			"Self".to_string()
-		} else {
-			concrete.to_string()
-		}
-	})
-	.into_owned()
+	SELF_BARE_RE
+		.replace_all(text, |caps: &regex::Captures| {
+			let end = caps.get(0).unwrap().end();
+			if text[end..].starts_with(':') {
+				"Self".to_string()
+			} else {
+				concrete.to_string()
+			}
+		})
+		.into_owned()
 }
 
 // ============================ method aggregation ============================
@@ -275,21 +268,19 @@ fn walk_supers<'a>(supers: &[String], all: &'a [TraitDef], seen: &mut HashSet<St
 fn regenerate(src: &str, traits: &[TraitDef]) -> String {
 	let lines: Vec<&str> = src.split('\n').collect();
 	let depths = compute_depths(&lines);
-	let marker_re = Regex::new(r"^\s*//////////\s+codegen\.rs(?:\s+(\w+))?\s*$").unwrap();
 
 	let mut out: Vec<String> = Vec::with_capacity(lines.len());
 	let mut cursor = 0usize;
 	let mut i = 0usize;
 	while i < lines.len() {
-		if let Some(caps) = marker_re.captures(lines[i]) {
-			let tag = caps.get(1).map(|m| m.as_str().to_string());
+		if MARKER_RE.is_match(lines[i]) {
 			for j in cursor..=i {
 				out.push(lines[j].to_string());
 			}
 			let indent: String = lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
 			let depth = depths[i];
 			let region_end = compute_region_end(&depths, i, depth);
-			let context = determine_context(&lines, i, &depths, depth, tag);
+			let context = determine_context(&lines, i, &depths, depth);
 			out.extend(render(&context, &indent, traits));
 			cursor = region_end;
 			i = region_end;
@@ -321,9 +312,6 @@ fn strip_line_comment(line: &str) -> String {
 
 fn compute_region_end(depths: &[i32], marker_idx: usize, marker_depth: i32) -> usize {
 	let lines_len = depths.len() - 1;
-	if marker_depth == 0 {
-		return lines_len;
-	}
 	for j in (marker_idx + 1)..lines_len {
 		if depths[j + 1] < marker_depth {
 			return j;
@@ -335,15 +323,14 @@ fn compute_region_end(depths: &[i32], marker_idx: usize, marker_depth: i32) -> u
 enum Context {
 	Impl { ty: String },
 	TraitBody { name: String },
-	Module { tag: String },
 }
 
-fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32, tag: Option<String>) -> Context {
+fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32) -> Context {
 	if marker_depth == 0 {
-		let tag = tag.unwrap_or_else(|| {
-			panic!("module-level marker at line {} requires a tag like `////////// codegen.rs Io`", marker_idx + 1)
-		});
-		return Context::Module { tag };
+		panic!(
+			"marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`",
+			marker_idx + 1
+		);
 	}
 	let target = marker_depth - 1;
 	let mut j = marker_idx;
@@ -357,12 +344,10 @@ fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_d
 }
 
 fn classify_opener(line: &str) -> Context {
-	let trait_re = Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)").unwrap();
-	if let Some(caps) = trait_re.captures(line) {
+	if let Some(caps) = TRAIT_OPENER_RE.captures(line) {
 		return Context::TraitBody { name: caps.get(1).unwrap().as_str().to_string() };
 	}
-	let impl_re = Regex::new(r"^\s*impl(?:\s*<[^>]*>)?\s+(\w+)").unwrap();
-	if let Some(caps) = impl_re.captures(line) {
+	if let Some(caps) = IMPL_OPENER_RE.captures(line) {
 		return Context::Impl { ty: caps.get(1).unwrap().as_str().to_string() };
 	}
 	panic!("unrecognized enclosing opener: {}", line);
@@ -374,7 +359,6 @@ fn render(context: &Context, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 	match context {
 		Context::Impl { ty } => render_impl(ty, indent, traits),
 		Context::TraitBody { name } => render_trait_body(name, indent, traits),
-		Context::Module { tag } => render_module(tag, traits),
 	}
 }
 
@@ -394,8 +378,7 @@ fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 		}
 		let sig = resolve_types_for_impl(&m.signature, &concrete);
 		let trait_path = format!("crate::traits::{}", m.origin_trait);
-		let body_args = format_call_args(m, true);
-		out.push(format!("{}pub {} {{<Self as {}>::{}({})}}", indent, sig, trait_path, m.name, body_args));
+		out.push(format!("{}pub {} {{<Self as {}>::{}({})}}", indent, sig, trait_path, m.name, format_call_args(m)));
 	}
 	out
 }
@@ -409,37 +392,15 @@ fn render_trait_body(name: &str, indent: &str, traits: &[TraitDef]) -> Vec<Strin
 			if let Some(cfg) = &m.cfg {
 				out.push(format!("{}{}", indent, cfg));
 			}
-			let body_args = format_call_args(m, true);
-			out.push(format!("{}{} {{ <Self as {}>::{}({}) }}", indent, m.signature, super_name, m.name, body_args));
+			out.push(format!("{}{} {{ <Self as {}>::{}({}) }}", indent, m.signature, super_name, m.name, format_call_args(m)));
 		}
 	}
 	out
 }
 
-fn render_module(tag: &str, traits: &[TraitDef]) -> Vec<String> {
-	let trait_name = format!("{}Module", tag);
-	let td = traits
-		.iter()
-		.find(|t| t.name == trait_name)
-		.unwrap_or_else(|| panic!("no trait `{}` for tag `{}`", trait_name, tag));
-	let concrete = format!("crate::{}", tag);
-	let trait_path = format!("crate::traits::{}", trait_name);
-
-	let mut out = Vec::new();
-	for m in &td.methods {
-		if let Some(cfg) = &m.cfg {
-			out.push(cfg.clone());
-		}
-		let sig = resolve_types_for_module(&m.signature, &concrete);
-		let body_args = format_call_args(m, false);
-		out.push(format!("pub {} {{<{} as {}>::{}({})}}", sig, concrete, trait_path, m.name, body_args));
-	}
-	out
-}
-
-fn format_call_args(m: &Method, include_self: bool) -> String {
+fn format_call_args(m: &Method) -> String {
 	let mut parts: Vec<String> = Vec::new();
-	if include_self && m.has_self {
+	if m.has_self {
 		parts.push("self".to_string());
 	}
 	parts.extend(m.args.iter().cloned());

@@ -10,7 +10,7 @@ fn svg_string(shape: &[Solid], direction: DVec3, tol: f64) -> String {
 	// Pick a sensible up for each view: Z-up for oblique/side views,
 	// Y-up when looking straight down Z (view_dir ‖ Z would make Z-up degenerate).
 	let up = if direction.normalize().dot(DVec3::Z).abs() > 0.999 { DVec3::Y } else { DVec3::Z };
-	cadrum::mesh(shape, tol).and_then(|m| m.write_svg(direction, up, true, false, &mut buf)).unwrap();
+	cadrum::Solid::mesh(shape, tol).and_then(|m| m.write_svg(direction, up, true, false, &mut buf)).unwrap();
 	String::from_utf8(buf).unwrap()
 }
 
