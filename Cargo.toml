@@ -36,6 +36,10 @@ walkdir = "2"
 # source-build only: build OCCT from upstream sources
 cmake = { version = "0.1", optional = true }
 
+[dev-dependencies]
+# Used by examples/codegen.rs to parse traits.rs and rewrite marker regions.
+regex = "1"
+
 # Examples that depend on the `color` feature. Cargo will skip building these
 # under `--no-default-features`. Examples without a `[[example]]` entry
 # (02_write_read, markdown) build under all feature configurations.
