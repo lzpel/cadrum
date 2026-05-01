@@ -1,40 +1,39 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-/// OCCT release used by cadrum. Update this tag when bumping OCCT versions;
-/// `slug()` derives the lowercase/underscore-stripped form used in filenames.
-const OCCT_VERSION: &str = "V8_0_0_rc5";
+/// OCCT release used by cadrum. Update this tag when bumping OCCT versions.
+/// `cadrum_occt_name()` derives both the GitHub Release tag (no target) and
+/// the prebuilt tarball / cache directory name (with target) from this.
+const OCCT_VERSION: &str = "V8_0_0_beta1";
 
-/// GitHub Release tag under `lzpel/cadrum` that hosts the prebuilt tarballs.
-/// Bump this when rebuilding prebuilts for the same OCCT version.
-#[cfg(not(feature = "source-build"))]
-const OCCT_PREBUILT_TAG: &str = "occt-v800rc5";
-
-/// `V8_0_0_rc5` → `v800rc5`. Shared rule: lowercase and drop underscores.
-fn slug(version: &str) -> String {
-	version.to_ascii_lowercase().replace('_', "")
+/// `target` 指定あり: `cadrum-occt-v800beta1-x86_64-pc-windows-gnu` (tarball / cache dir 名)
+/// `target` 指定なし: `cadrum-occt-v800beta1` (`lzpel/cadrum` の GitHub Release タグ)
+fn cadrum_occt_name(target: Option<&str>) -> String {
+	let slug = OCCT_VERSION.to_ascii_lowercase().replace('_', "");
+	match target {
+		Some(t) => format!("cadrum-occt-{}-{}", slug, t),
+		None => format!("cadrum-occt-{}", slug),
+	}
 }
 
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_URL");
+	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_GCC_RUNTIME");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
 	}
 
-	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-
 	let target = env::var("TARGET").unwrap();
 
-	let target_dir = target_dir_from_out_dir(&out_dir, &target);
-	let default_root = target_dir.join(format!("cadrum-occt-{}-{}", slug(OCCT_VERSION), &target));
+	// Get occt_root directory whether the binary exist or not. If not, download or compile it.
 	let effective_root = env::var("OCCT_ROOT")
 		.map(|r| {
 			let p = PathBuf::from(r);
 			if p.is_relative() { env::current_dir().unwrap().join(p) } else { p }
 		})
-		.unwrap_or(default_root);
+		.unwrap_or(cargo_target_dir(&target).join(cadrum_occt_name(Some(&target))));
 
 	let [occt_include, occt_lib_dir] = resolve_occt(&effective_root, &target);
 
@@ -46,7 +45,8 @@ fn main() {
 /// `OUT_DIR` layout:
 ///   `<target_dir>/<profile>/build/<pkg>-<hash>/out`            (no `--target`)
 ///   `<target_dir>/<triple>/<profile>/build/<pkg>-<hash>/out`   (with `--target`)
-fn target_dir_from_out_dir(out_dir: &Path, target: &str) -> PathBuf {
+fn cargo_target_dir(target: &str) -> PathBuf {
+	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 	let above_profile = out_dir.ancestors().nth(4).expect("unexpected OUT_DIR layout");
 	if above_profile.file_name().map_or(false, |n| n == target) {
 		above_profile.parent().unwrap().to_path_buf()
@@ -61,7 +61,6 @@ fn target_dir_from_out_dir(out_dir: &Path, target: &str) -> PathBuf {
 ///   2. Cache miss + `source-build` → build from upstream sources
 ///   3. Cache miss otherwise → download prebuilt tarball
 fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
-	let _ = target; // used only in #[cfg(not(feature = "source-build"))]
 	println!("cargo:rerun-if-changed={}", effective_root.display());
 
 	match find_occt_dirs(effective_root) {
@@ -70,8 +69,17 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 			#[cfg(feature = "source-build")]
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
-				return source::build_from_source(effective_root)
+				let dirs = source::build_from_source(effective_root)
 					.expect("Failed to build OCCT from source");
+				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
+				// gate を切らないと source-build user 全員のホスト libstdc++ が静的取り込みされてしまう。
+				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
+				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok()
+					&& (target.ends_with("windows-gnu") || target.contains("linux-gnu"))
+				{
+					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+				}
+				return dirs;
 			}
 			#[cfg(not(feature = "source-build"))]
 			{
@@ -139,7 +147,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	let mut build = cxx_build::bridge("src/occt/ffi.rs");
 	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
-	if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+	if target_env == "msvc" {
 		build.flag("/utf-8");
 	}
 
@@ -156,10 +164,9 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 /// Download a prebuilt OCCT tarball for `target` into `dest`.
 #[cfg(not(feature = "source-build"))]
 fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
-	let slug_ver = slug(OCCT_VERSION);
-	let top_name = format!("cadrum-occt-{}-{}", slug_ver, target);
+	let top_name = cadrum_occt_name(Some(target));
 	let tarball_name = format!("{}.tar.gz", top_name);
-	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", OCCT_PREBUILT_TAG, tarball_name));
+	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", cadrum_occt_name(None), tarball_name));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
 
@@ -206,6 +213,29 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	} else {
 		let resp = minreq::get(url).send().map_err(|e| e.to_string())?;
 		Ok(resp.into_bytes())
+	}
+}
+
+/// Bundle GCC runtime archives (libstdc++.a / libgcc.a / libgcc_eh.a) into
+/// the OCCT lib dir as `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_GCC_RUNTIME`
+/// only — used by the prebuilt-tarball makefile recipe so end users running
+/// source-build don't get their host libstdc++ silently bundled.
+#[cfg(feature = "source-build")]
+fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
+	let compiler = cc::Build::new().get_compiler();
+	for &lib in libs {
+		let out = std::process::Command::new(compiler.path())
+			.arg(format!("-print-file-name={}", lib))
+			.output()
+			.expect("compiler probe failed");
+		let src = PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim());
+		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
+		if src.is_absolute() && src.exists() {
+			let dst_name = lib.replace("lib", "libcadrum_");
+			std::fs::copy(&src, occt_lib_dir.join(&dst_name)).unwrap();
+		} else {
+			eprintln!("cargo:warning=runtime lib not found: {}", lib);
+		}
 	}
 }
 
