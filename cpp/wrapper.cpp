@@ -561,7 +561,7 @@ static void emit_from_pairs(
     TopExp::MapShapes(pre_shape, TopAbs_FACE, pre_map);
     TopExp::MapShapes(post_shape, TopAbs_FACE, post_map);
     // pre_map and post_map have the same size because the copy preserves topology.
-    for (int i = 1; i <= pre_map.Size(); ++i) {
+    for (int i = 1; i <= pre_map.Extent(); ++i) {
         uint64_t pre_id = reinterpret_cast<uint64_t>(pre_map(i).TShape().get());
         auto it = relay.find(pre_id);
         if (it == relay.end()) continue;

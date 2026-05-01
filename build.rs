@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 /// OCCT release used by cadrum. Update this tag when bumping OCCT versions.
 /// `cadrum_occt_name()` derives both the GitHub Release tag (no target) and
 /// the prebuilt tarball / cache directory name (with target) from this.
-const OCCT_VERSION: &str = "V8_0_0_rc5";
+const OCCT_VERSION: &str = "V8_0_0_beta1";
 
-/// `target` 指定あり: `cadrum-occt-v800rc5-x86_64-pc-windows-gnu` (tarball / cache dir 名)
-/// `target` 指定なし: `cadrum-occt-v800rc5` (`lzpel/cadrum` の GitHub Release タグ)
+/// `target` 指定あり: `cadrum-occt-v800beta1-x86_64-pc-windows-gnu` (tarball / cache dir 名)
+/// `target` 指定なし: `cadrum-occt-v800beta1` (`lzpel/cadrum` の GitHub Release タグ)
 fn cadrum_occt_name(target: Option<&str>) -> String {
 	let slug = OCCT_VERSION.to_ascii_lowercase().replace('_', "");
 	match target {
