@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/cadrum.svg?logo=rust)](https://crates.io/crates/cadrum)
 [![Docs](https://img.shields.io/badge/docs-lzpel.github.io%2Fcadrum-blue)](https://lzpel.github.io/cadrum)
 
-Rust CAD library powered by statically linked, headless [OpenCASCADE](https://dev.opencascade.org/) (OCCT 8.0.0-rc5).
+Rust CAD library powered by statically linked, headless [OpenCASCADE](https://dev.opencascade.org/) (OCCT 8.0.0-beta1).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/lzpel/alphastell/main/figure/image.png" alt="cadrum"/>
@@ -901,6 +901,19 @@ fn main() -> Result<(), Error> {
 A browser-based configurator that lets you tweak dimensions of a STEP model and get an instant 3D preview and quote. cadrum powers the parametric reshaping and meshing on the backend.
 
 ## Release Notes
+
+### 0.7.5
+
+Aggregated changes since 0.7.2 (no separate entries were written for 0.7.3 / 0.7.4).
+
+- **OCCT bumped to 8.0.0-beta1** ahead of the May 7 final release. Inherits upstream perf gains (STEP read up to ~75% faster vs 7.7) and the Shape-Healing / `BRepFill_PipeShell` crash fixes.
+- **Linux prebuilts are now self-contained** (#147): `libstdc++.a` / `libgcc.a` / `libgcc_eh.a` are bundled into the tarball, so binaries linked against the prebuilt no longer depend on the host distro's libstdc++ runtime — fixes link-time `__cxa_call_terminate` undefined errors on Amazon Linux 2023 and other distros with older default GCC. Same self-contained guarantee that mingw already had since 0.7.2 (#89).
+- **`x86_64-pc-windows-gnullvm` prebuilt dropped.** The prior "support" was a relabeled `windows-gnu` artifact, not a real llvm-mingw build. Use `--features source-build` or switch to the `windows-gnu` toolchain.
+- **I/O methods relocated to `Solid` impl** (#145): `Solid::write_step / write_brep_binary / write_brep_text / read_step / read_brep`. The free-standing `cadrum::write_*` re-exports are gone. **Breaking vs 0.7.4**: `cadrum::write_step(...)` → `Solid::write_step(...)`, etc.
+- **`Edge::id()` / `Face::id()` / `Solid::id()`** (#142, #143): TShape-pointer-based identity exposed as a stable `u64` for cross-shape correspondence (e.g. before/after boolean ops). Replaces the underscored `tshape_id`. **Breaking** for callers that named the old method.
+- **`Face::iter_edge() -> impl Iterator<Item = &Edge>`** (#143): face-edge incidence query without going through the Solid boundary explorer.
+- **`Face::project(point)`** (#142): closest-point + normal query on a face via `BRepExtrema_DistShapeShape`. Sibling to the existing `Edge::project` / `Wire::project`.
+- **C¹-periodic B-spline seam fix** (#120): `Solid::bspline(_, periodic=true)` no longer emits a discontinuous U=0 seam — surfaces that previously showed dents at the seam now interpolate smoothly. Regression test in `tests/bspline.rs`.
 
 ### 0.7.2
 
