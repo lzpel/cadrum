@@ -20,5 +20,6 @@ cadrum-occt-%: # build occt from source in cross ( = native build in container )
 	docker build -f docker/Dockerfile_$(*) -t cadrum-occt-$(*) .
 	docker run --rm -v $(PWD)/out/$(*):/src/out cadrum-occt-$(*) make cadrum-occt
 check-cadrum-occt-%: cadrum-occt-% # varidate builded occt to run binary which is linked with host's code and container's static occt libraries
+	mkdir -p target
 	find out -maxdepth 2 -type f -name '*.tar.gz' | xargs -IX tar -xzf X -C target
 	timeout 300 cargo run --example 01_primitives
