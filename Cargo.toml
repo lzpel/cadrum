@@ -73,5 +73,8 @@ name = "08_shell"
 required-features = ["color"]
 
 [[example]]
-name = "chijin"
+name = "100_chijin"
 required-features = ["color"]
+
+[[example]]
+name = "101_joint"
