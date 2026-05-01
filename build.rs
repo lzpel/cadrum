@@ -19,6 +19,7 @@ fn cadrum_occt_name(target: Option<&str>) -> String {
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_URL");
+	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_GCC_RUNTIME");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
@@ -60,7 +61,6 @@ fn cargo_target_dir(target: &str) -> PathBuf {
 ///   2. Cache miss + `source-build` → build from upstream sources
 ///   3. Cache miss otherwise → download prebuilt tarball
 fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
-	let _ = target; // used only in #[cfg(not(feature = "source-build"))]
 	println!("cargo:rerun-if-changed={}", effective_root.display());
 
 	match find_occt_dirs(effective_root) {
@@ -69,8 +69,17 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 			#[cfg(feature = "source-build")]
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
-				return source::build_from_source(effective_root)
+				let dirs = source::build_from_source(effective_root)
 					.expect("Failed to build OCCT from source");
+				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
+				// gate を切らないと source-build user 全員のホスト libstdc++ が静的取り込みされてしまう。
+				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
+				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok()
+					&& (target.ends_with("windows-gnu") || target.contains("linux-gnu"))
+				{
+					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+				}
+				return dirs;
 			}
 			#[cfg(not(feature = "source-build"))]
 			{
@@ -204,6 +213,29 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	} else {
 		let resp = minreq::get(url).send().map_err(|e| e.to_string())?;
 		Ok(resp.into_bytes())
+	}
+}
+
+/// Bundle GCC runtime archives (libstdc++.a / libgcc.a / libgcc_eh.a) into
+/// the OCCT lib dir as `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_GCC_RUNTIME`
+/// only — used by the prebuilt-tarball makefile recipe so end users running
+/// source-build don't get their host libstdc++ silently bundled.
+#[cfg(feature = "source-build")]
+fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
+	let compiler = cc::Build::new().get_compiler();
+	for &lib in libs {
+		let out = std::process::Command::new(compiler.path())
+			.arg(format!("-print-file-name={}", lib))
+			.output()
+			.expect("compiler probe failed");
+		let src = PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim());
+		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
+		if src.is_absolute() && src.exists() {
+			let dst_name = lib.replace("lib", "libcadrum_");
+			std::fs::copy(&src, occt_lib_dir.join(&dst_name)).unwrap();
+		} else {
+			eprintln!("cargo:warning=runtime lib not found: {}", lib);
+		}
 	}
 }
 
