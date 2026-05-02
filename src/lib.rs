@@ -45,19 +45,21 @@ pub use glam;
 impl Edge{
     ////////// codegen.rs
     pub fn id(&self) -> u64 {<Self as crate::traits::EdgeStruct>::id(self)}
+    pub fn start_point(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::start_point(self)}
+    pub fn end_point(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::end_point(self)}
+    pub fn start_tangent(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::start_tangent(self)}
+    pub fn end_tangent(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::end_tangent(self)}
+    pub fn is_closed(&self) -> bool {<Self as crate::traits::EdgeStruct>::is_closed(self)}
+    pub fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {<Self as crate::traits::EdgeStruct>::approximation_segments(self, tolerance)}
+    pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {<Self as crate::traits::EdgeStruct>::project(self, p)}
     pub fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::helix(radius, pitch, height, axis, x_ref)}
     pub fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<crate::Edge>, Error> {<Self as crate::traits::EdgeStruct>::polygon(points)}
     pub fn circle(radius: f64, axis: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::circle(radius, axis)}
     pub fn line(a: DVec3, b: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::line(a, b)}
     pub fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::arc_3pts(start, mid, end)}
     pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::bspline(points, end)}
-    pub fn start_point(&self) -> DVec3 {<Self as crate::traits::Wire>::start_point(self)}
-    pub fn end_point(&self) -> DVec3 {<Self as crate::traits::Wire>::end_point(self)}
-    pub fn start_tangent(&self) -> DVec3 {<Self as crate::traits::Wire>::start_tangent(self)}
-    pub fn end_tangent(&self) -> DVec3 {<Self as crate::traits::Wire>::end_tangent(self)}
-    pub fn is_closed(&self) -> bool {<Self as crate::traits::Wire>::is_closed(self)}
-    pub fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {<Self as crate::traits::Wire>::approximation_segments(self, tolerance)}
-    pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {<Self as crate::traits::Wire>::project(self, p)}
+    pub fn iter_elem(&self) -> impl Iterator<Item = &crate::Edge> + '_ {<Self as crate::traits::Wire>::iter_elem(self)}
+    pub fn map_elem(self, f: impl FnMut(crate::Edge) -> crate::Edge) -> crate::Edge {<Self as crate::traits::Wire>::map_elem(self, f)}
     pub fn translate(self, translation: DVec3) -> crate::Edge {<Self as crate::traits::Wire>::translate(self, translation)}
     pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Edge {<Self as crate::traits::Wire>::rotate(self, axis_origin, axis_direction, angle)}
     pub fn rotate_x(self, angle: f64) -> crate::Edge {<Self as crate::traits::Wire>::rotate_x(self, angle)}
