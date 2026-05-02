@@ -270,25 +270,25 @@ pub enum BSplineEnd {
 
 // ==================== Wire / EdgeStruct ====================
 
-/// Public trait: edge/wire-level operations on `Edge`, `Vec<Edge>` and `[Edge; N]`.
+/// Public trait: container abstraction over `Edge`, `Vec<Edge>` and `[Edge; N]`.
 ///
-/// `Vec<Edge>` plays the role of a wire in this library — there is no
-/// dedicated `Wire` type, mirroring how `Compound` is just `Vec<Solid>`.
-/// Methods on `Wire` therefore have meaningful semantics for both a single
-/// edge and an ordered edge list:
+/// **コレクション最小契約**: 実装者は要素列挙 (`iter_elem`) と要素全置換 (`map_elem`)
+/// の 2 つだけを提供する (`Compound` と同形)。start_point / end_point / start_tangent /
+/// end_tangent / is_closed / approximation_segments / project は default で提供され、
+/// 内部で `<Self::Elem as EdgeStruct>::xxx(s)` を `iter_elem` 結果から取り出して合成する。
 ///
-/// - `start_point` / `end_point` / `start_tangent` / `end_tangent` — the
-///   wire's endpoint positions and tangent directions.
-///   For a single edge, the edge's first/last point and tangent.
-///   For a `Vec<Edge>`, the first edge's start and the last edge's end.
-/// - `is_closed` — does the geometry form a closed loop?
-///   For a single edge, whether start == end (e.g. a circle).
-///   For a `Vec<Edge>`, whether the first edge's start equals the last edge's end.
-/// - `approximation_segments` — polyline approximation. For a wire, all
-///   sub-edges' segments are concatenated in order.
-/// - `project` — closest point on the wire to a given world point, with the
-///   unit tangent at that point. For a `Vec<Edge>`, projects onto every
-///   sub-edge and returns the result with the smallest distance to `p`.
+/// `Vec<Edge>` plays the role of a wire in this library — there is no dedicated
+/// `Wire` type, mirroring how `Compound` is just `Vec<Solid>`. Methods on `Wire`
+/// therefore have meaningful semantics for both a single edge and an ordered edge list:
+///
+/// - `start_point` / `end_tangent` / etc. — for a single `Edge` this is the
+///   edge's own endpoint/tangent (via `EdgeStruct`); for a `Vec<Edge>` this is
+///   the first edge's start / last edge's end aggregated by the default impl.
+/// - `is_closed` — for a single `Edge` defers to the edge's geometry (e.g. a
+///   circle is closed); for a `Vec<Edge>` checks `first.start ≈ last.end`.
+/// - `approximation_segments` — concatenates sub-edge polylines, dropping
+///   duplicate seam points.
+/// - `project` — finds the smallest-distance projection across all elements.
 ///
 /// Spatial transforms live on the (crate-private) supertrait `Transform`.
 /// Since `Transform` is not re-exported from the crate root, users cannot
@@ -302,12 +302,54 @@ pub enum BSplineEnd {
 pub trait Wire: Transform {
 	type Elem: EdgeStruct;
 
-	fn start_point(&self) -> DVec3;
-	fn end_point(&self) -> DVec3;
-	fn start_tangent(&self) -> DVec3;
-	fn end_tangent(&self) -> DVec3;
-	fn is_closed(&self) -> bool;
-	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
+	/// Borrow each element. For `Edge` itself this yields `std::iter::once(self)`;
+	/// for `Vec<T>` / `[T; N]` it yields `self.iter()`.
+	fn iter_elem(&self) -> impl Iterator<Item = &Self::Elem> + '_;
+	/// Replace every element by mapping through `f`. Length is preserved.
+	/// For `Edge` this is `f(self)`; for collections it consumes self and
+	/// rebuilds in the same shape.
+	fn map_elem(self, f: impl FnMut(Self::Elem) -> Self::Elem) -> Self;
+
+	// --- Endpoints / tangents (default — first / last element) ---
+	fn start_point(&self) -> DVec3 {
+		self.iter_elem().next().map(|e| <Self::Elem as EdgeStruct>::start_point(e)).unwrap_or(DVec3::ZERO)
+	}
+	fn end_point(&self) -> DVec3 {
+		self.iter_elem().last().map(|e| <Self::Elem as EdgeStruct>::end_point(e)).unwrap_or(DVec3::ZERO)
+	}
+	fn start_tangent(&self) -> DVec3 {
+		self.iter_elem().next().map(|e| <Self::Elem as EdgeStruct>::start_tangent(e)).unwrap_or(DVec3::ZERO)
+	}
+	fn end_tangent(&self) -> DVec3 {
+		self.iter_elem().last().map(|e| <Self::Elem as EdgeStruct>::end_tangent(e)).unwrap_or(DVec3::ZERO)
+	}
+	/// Empty wire: false. Single-edge wire: defer to that edge's geometry
+	/// (a circle is closed). Multi-edge wire: first edge's start ≈ last edge's
+	/// end. 1e-6 はモデル単位 (mm) を想定したハードコード — 引数化は API が
+	/// 増えるため後回し。極小/極大スケールのモデルで誤判定したら直す。
+	fn is_closed(&self) -> bool {
+		let mut iter = self.iter_elem();
+		let Some(first) = iter.next() else { return false; };
+		match iter.last() {
+			None => <Self::Elem as EdgeStruct>::is_closed(first),
+			Some(last) => (<Self::Elem as EdgeStruct>::start_point(first) - <Self::Elem as EdgeStruct>::end_point(last)).length() < 1e-6,
+		}
+	}
+	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
+		let mut out: Vec<DVec3> = Vec::new();
+		for e in self.iter_elem() {
+			let pts = <Self::Elem as EdgeStruct>::approximation_segments(e, tolerance);
+			if let Some((first, rest)) = pts.split_first() {
+				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
+					out.extend_from_slice(rest);
+				} else {
+					out.push(*first);
+					out.extend_from_slice(rest);
+				}
+			}
+		}
+		out
+	}
 	/// Project `p` onto the wire and return `(closest_point, unit_tangent)`.
 	/// The tangent follows the curve's native parameter direction.
 	///
@@ -316,7 +358,12 @@ pub trait Wire: Transform {
 	/// `Edge` that lacks a 3D geometric curve (i.e. FFI-level failure,
 	/// which cadrum-built edges never produce) panics — that case
 	/// indicates a bug, not a degenerate user input.
-	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		self.iter_elem()
+			.map(|e| <Self::Elem as EdgeStruct>::project(e, p))
+			.min_by(|(a, _), (b, _)| (a - p).length_squared().partial_cmp(&(b - p).length_squared()).unwrap_or(std::cmp::Ordering::Equal))
+			.unwrap_or((DVec3::ZERO, DVec3::ZERO))
+	}
 
 	////////// codegen.rs
 	fn translate(self, translation: DVec3) -> Self { <Self as Transform>::translate(self, translation) }
@@ -346,6 +393,26 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 	/// Use to compare edges across `Solid::iter_edge()` / `Face::iter_edge()`
 	/// (e.g. `face.iter_edge().any(|e| e.id() == edge.id())`).
 	fn id(&self) -> u64;
+
+	// --- Per-element atomic ops ---
+	// `Wire` の default メソッド (start_point / is_closed / project / ...) は
+	// `<Self::Elem as EdgeStruct>::xxx(s)` 形式の UFCS でこれらを呼ぶ。Edge 単体は
+	// ここで FFI を直接叩き、Vec<T> / [T; N] は Wire default 経由で集約される。
+
+	/// 3D position of this edge's start vertex.
+	fn start_point(&self) -> DVec3;
+	/// 3D position of this edge's end vertex.
+	fn end_point(&self) -> DVec3;
+	/// Unit tangent at this edge's start, in the curve's parameter direction.
+	fn start_tangent(&self) -> DVec3;
+	/// Unit tangent at this edge's end, in the curve's parameter direction.
+	fn end_tangent(&self) -> DVec3;
+	/// `true` iff start and end coincide (e.g. a full circle).
+	fn is_closed(&self) -> bool;
+	/// Polyline approximation of this edge with deflection ≤ `tolerance`.
+	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
+	/// Project `p` onto this edge and return `(closest_point, unit_tangent)`.
+	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
 	/// Construct a single helical edge on a cylindrical surface centered at
 	/// the world origin.
@@ -788,109 +855,13 @@ impl<T: SolidStruct, const N: usize> Compound for [T; N] {
 
 impl<T: EdgeStruct> Wire for Vec<T> {
 	type Elem = T;
-
-	fn start_point(&self) -> DVec3 {
-		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn end_point(&self) -> DVec3 {
-		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn start_tangent(&self) -> DVec3 {
-		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn end_tangent(&self) -> DVec3 {
-		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn is_closed(&self) -> bool {
-		// Empty wire: not closed. Single-edge wire: defer to that edge.
-		// Multi-edge wire: the first edge's start equals the last edge's end.
-		// 1e-6 はモデル単位 (mm) を想定したハードコード — 引数化は API が
-		// 増えるため後回し。極小/極大スケールのモデルで誤判定したら直す。
-		match self.len() {
-			0 => false,
-			1 => self[0].is_closed(),
-			_ => (self[0].start_point() - self[self.len() - 1].end_point()).length() < 1e-6,
-		}
-	}
-
-	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
-		let mut out: Vec<DVec3> = Vec::new();
-		for e in self {
-			let pts = e.approximation_segments(tolerance);
-			if let Some((first, rest)) = pts.split_first() {
-				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
-					out.extend_from_slice(rest);
-				} else {
-					out.push(*first);
-					out.extend_from_slice(rest);
-				}
-			}
-		}
-		out
-	}
-
-	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
-		project_over_edges(self.iter(), p)
-	}
+	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
+	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.into_iter().map(f).collect() }
 }
 
 impl<T: EdgeStruct, const N: usize> Wire for [T; N] {
 	type Elem = T;
-
-	fn start_point(&self) -> DVec3 {
-		self.first().map(|e| e.start_point()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn end_point(&self) -> DVec3 {
-		self.last().map(|e| e.end_point()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn start_tangent(&self) -> DVec3 {
-		self.first().map(|e| e.start_tangent()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn end_tangent(&self) -> DVec3 {
-		self.last().map(|e| e.end_tangent()).unwrap_or(DVec3::ZERO)
-	}
-
-	fn is_closed(&self) -> bool {
-		match N {
-			0 => false,
-			1 => self[0].is_closed(),
-			_ => (self[0].start_point() - self[N - 1].end_point()).length() < 1e-6,
-		}
-	}
-
-	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
-		let mut out: Vec<DVec3> = Vec::new();
-		for e in self {
-			let pts = e.approximation_segments(tolerance);
-			if let Some((first, rest)) = pts.split_first() {
-				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
-					out.extend_from_slice(rest);
-				} else {
-					out.push(*first);
-					out.extend_from_slice(rest);
-				}
-			}
-		}
-		out
-	}
-
-	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
-		project_over_edges(self.iter(), p)
-	}
-}
-
-fn project_over_edges<'a, T: 'a + EdgeStruct + Wire>(edges: impl IntoIterator<Item = &'a T>, p: DVec3) -> (DVec3, DVec3) {
-	edges
-		.into_iter()
-		.map(|e| e.project(p))
-		.min_by(|(a, _), (b, _)| (a - p).length_squared().partial_cmp(&(b - p).length_squared()).unwrap_or(std::cmp::Ordering::Equal))
-		.unwrap_or((DVec3::ZERO, DVec3::ZERO))
+	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
+	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.map(f) }
 }
 
