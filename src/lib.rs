@@ -87,6 +87,17 @@ impl Solid{
     pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {<Self as crate::traits::SolidStruct>::iter_edge(self)}
     pub fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {<Self as crate::traits::SolidStruct>::iter_face(self)}
     pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {<Self as crate::traits::SolidStruct>::iter_history(self)}
+    pub fn clean(&self) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::clean(self)}
+    pub fn volume(&self) -> f64 {<Self as crate::traits::SolidStruct>::volume(self)}
+    pub fn area(&self) -> f64 {<Self as crate::traits::SolidStruct>::area(self)}
+    pub fn center(&self) -> DVec3 {<Self as crate::traits::SolidStruct>::center(self)}
+    pub fn inertia(&self) -> DMat3 {<Self as crate::traits::SolidStruct>::inertia(self)}
+    pub fn contains(&self, point: DVec3) -> bool {<Self as crate::traits::SolidStruct>::contains(self, point)}
+    pub fn bounding_box(&self) -> [DVec3; 2] {<Self as crate::traits::SolidStruct>::bounding_box(self)}
+    #[cfg(feature = "color")]
+    pub fn color(self, color: impl Into<Color>) -> crate::Solid {<Self as crate::traits::SolidStruct>::color(self, color)}
+    #[cfg(feature = "color")]
+    pub fn color_clear(self) -> crate::Solid {<Self as crate::traits::SolidStruct>::color_clear(self)}
     pub fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::extrude(profile, dir)}
     pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> where Face: 'a {<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)}
     pub fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::fillet_edges(self, radius, edges)}
@@ -104,17 +115,8 @@ impl Solid{
     pub fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_binary(solids, writer)}
     pub fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_text(solids, writer)}
     pub fn mesh<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self: 'a {<Self as crate::traits::SolidStruct>::mesh(solids, tolerance)}
-    pub fn clean(&self) -> Result<crate::Solid, Error> {<Self as crate::traits::Compound>::clean(self)}
-    pub fn volume(&self) -> f64 {<Self as crate::traits::Compound>::volume(self)}
-    pub fn bounding_box(&self) -> [DVec3; 2] {<Self as crate::traits::Compound>::bounding_box(self)}
-    pub fn contains(&self, point: DVec3) -> bool {<Self as crate::traits::Compound>::contains(self, point)}
-    pub fn area(&self) -> f64 {<Self as crate::traits::Compound>::area(self)}
-    pub fn center(&self) -> DVec3 {<Self as crate::traits::Compound>::center(self)}
-    pub fn inertia(&self) -> DMat3 {<Self as crate::traits::Compound>::inertia(self)}
-    #[cfg(feature = "color")]
-    pub fn color(self, color: impl Into<Color>) -> crate::Solid {<Self as crate::traits::Compound>::color(self, color)}
-    #[cfg(feature = "color")]
-    pub fn color_clear(self) -> crate::Solid {<Self as crate::traits::Compound>::color_clear(self)}
+    pub fn iter_elem(&self) -> impl Iterator<Item = &crate::Solid> + '_ {<Self as crate::traits::Compound>::iter_elem(self)}
+    pub fn map_elem(self, f: impl FnMut(crate::Solid) -> crate::Solid) -> crate::Solid {<Self as crate::traits::Compound>::map_elem(self, f)}
     pub fn union<'a>(&self, tool: impl IntoIterator<Item = &'a crate::Solid>) -> Result<Vec<crate::Solid>, Error> where crate::Solid: 'a {<Self as crate::traits::Compound>::union(self, tool)}
     pub fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a crate::Solid>) -> Result<Vec<crate::Solid>, Error> where crate::Solid: 'a {<Self as crate::traits::Compound>::subtract(self, tool)}
     pub fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a crate::Solid>) -> Result<Vec<crate::Solid>, Error> where crate::Solid: 'a {<Self as crate::traits::Compound>::intersect(self, tool)}

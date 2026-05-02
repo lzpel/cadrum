@@ -237,6 +237,82 @@ impl SolidStruct for Solid {
 		self.history.chunks_exact(2).map(|c| [c[0], c[1]])
 	}
 
+	// ==================== Per-element atomic ops ====================
+	// Compound default が `<Solid as SolidStruct>::xxx(s)` 形式で呼ぶ。
+
+	fn clean(&self) -> Result<Self, Error> {
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::builder_clean(&self.inner, &mut history);
+		if inner.is_null() {
+			return Err(Error::CleanFailed);
+		}
+		#[cfg(feature = "color")]
+		let colormap = {
+			let mut m = std::collections::HashMap::new();
+			for pair in history.chunks_exact(2) {
+				if let Some(&color) = self.colormap.get(&pair[1]) {
+					m.entry(pair[0]).or_insert(color);
+				}
+			}
+			m
+		};
+		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
+	}
+
+	fn volume(&self) -> f64 {
+		ffi::shape_volume(&self.inner)
+	}
+
+	fn area(&self) -> f64 {
+		ffi::shape_surface_area(&self.inner)
+	}
+
+	fn center(&self) -> DVec3 {
+		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
+		DVec3::new(x, y, z)
+	}
+
+	fn inertia(&self) -> glam::DMat3 {
+		let (mut m00, mut m01, mut m02) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut m10, mut m11, mut m12) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut m20, mut m21, mut m22) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::shape_inertia_tensor(&self.inner,
+			&mut m00, &mut m01, &mut m02,
+			&mut m10, &mut m11, &mut m12,
+			&mut m20, &mut m21, &mut m22);
+		// OCCT fills row-major; DMat3::from_cols_array is column-major so
+		// transpose when handing the components over.
+		glam::DMat3::from_cols_array(&[
+			m00, m10, m20,
+			m01, m11, m21,
+			m02, m12, m22,
+		])
+	}
+
+	fn contains(&self, point: DVec3) -> bool {
+		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
+	}
+
+	fn bounding_box(&self) -> [DVec3; 2] {
+		let (mut xmin, mut ymin, mut zmin) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut xmax, mut ymax, mut zmax) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::shape_bounding_box(&self.inner, &mut xmin, &mut ymin, &mut zmin, &mut xmax, &mut ymax, &mut zmax);
+		[DVec3::new(xmin, ymin, zmin), DVec3::new(xmax, ymax, zmax)]
+	}
+
+	#[cfg(feature = "color")]
+	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
+		let c = color.into();
+		let colormap = ffi::shape_faces(&self.inner).iter().map(|f| (ffi::face_tshape_id(f), c)).collect();
+		Self::new(self.inner, colormap, self.history)
+	}
+
+	#[cfg(feature = "color")]
+	fn color_clear(self) -> Self {
+		Self::new(self.inner, std::collections::HashMap::new(), self.history)
+	}
+
 	// ==================== Extrude ====================
 
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
@@ -525,101 +601,13 @@ impl Transform for Solid {
 
 // ==================== impl Compound for Solid ====================
 //
-// Solid-specific per-element ops (queries / color / boolean wrappers / clean).
-// `Vec<Solid>` and `[Solid; N]` impls live in src/traits.rs and delegate to this one.
+// Solid を「単一要素のコレクション」として扱う trivial impl。queries / color /
+// clean 等の atomic ops は SolidStruct 側 (上の impl SolidStruct for Solid 内) に
+// 住み、Compound default は `<Solid as SolidStruct>::xxx(s)` 経由で集約する。
 impl Compound for Solid {
 	type Elem = Solid;
-
-	fn clean(&self) -> Result<Self, Error> {
-		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::builder_clean(&self.inner, &mut history);
-		if inner.is_null() {
-			return Err(Error::CleanFailed);
-		}
-		#[cfg(feature = "color")]
-		let colormap = {
-			let mut m = std::collections::HashMap::new();
-			for pair in history.chunks_exact(2) {
-				if let Some(&color) = self.colormap.get(&pair[1]) {
-					m.entry(pair[0]).or_insert(color);
-				}
-			}
-			m
-		};
-		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
-	}
-
-	// ==================== Queries ====================
-
-	fn volume(&self) -> f64 {
-		ffi::shape_volume(&self.inner)
-	}
-
-	fn area(&self) -> f64 {
-		ffi::shape_surface_area(&self.inner)
-	}
-
-	fn center(&self) -> DVec3 {
-		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
-		DVec3::new(x, y, z)
-	}
-
-	fn inertia(&self) -> glam::DMat3 {
-		let (mut m00, mut m01, mut m02) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut m10, mut m11, mut m12) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut m20, mut m21, mut m22) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_inertia_tensor(&self.inner,
-			&mut m00, &mut m01, &mut m02,
-			&mut m10, &mut m11, &mut m12,
-			&mut m20, &mut m21, &mut m22);
-		// OCCT fills row-major; DMat3::from_cols_array is column-major so
-		// transpose when handing the components over.
-		glam::DMat3::from_cols_array(&[
-			m00, m10, m20,
-			m01, m11, m21,
-			m02, m12, m22,
-		])
-	}
-
-	fn contains(&self, point: DVec3) -> bool {
-		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
-	}
-
-	fn bounding_box(&self) -> [DVec3; 2] {
-		let (mut xmin, mut ymin, mut zmin) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut xmax, mut ymax, mut zmax) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_bounding_box(&self.inner, &mut xmin, &mut ymin, &mut zmin, &mut xmax, &mut ymax, &mut zmax);
-		[DVec3::new(xmin, ymin, zmin), DVec3::new(xmax, ymax, zmax)]
-	}
-
-	// ==================== Color ====================
-
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
-		let c = color.into();
-		let colormap = ffi::shape_faces(&self.inner).iter().map(|f| (ffi::face_tshape_id(f), c)).collect();
-		Self::new(self.inner, colormap, self.history)
-	}
-
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self {
-		Self::new(self.inner, std::collections::HashMap::new(), self.history)
-	}
-
-	// ==================== Boolean ====================
-
-	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
-		<Solid as SolidStruct>::boolean_union([self], tool)
-	}
-
-	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
-		<Solid as SolidStruct>::boolean_subtract([self], tool)
-	}
-
-	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
-		<Solid as SolidStruct>::boolean_intersect([self], tool)
-	}
+	fn iter_elem(&self) -> impl Iterator<Item = &Solid> + '_ { std::iter::once(self) }
+	fn map_elem(self, mut f: impl FnMut(Solid) -> Solid) -> Self { f(self) }
 }
 
 impl Clone for Solid {

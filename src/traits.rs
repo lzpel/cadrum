@@ -505,6 +505,35 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// construction, I/O read, scale/mirror, or Clone.
 	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_;
 
+	// --- Per-element atomic ops ---
+	// `Compound` の default メソッド (volume / area / ... / color) はこれらを
+	// `<Self::Elem as SolidStruct>::volume(s)` 形式の UFCS で呼ぶ。Solid 単体は
+	// ここで FFI を直接叩き、Vec<T> / [T; N] は Compound default 経由で集約される。
+
+	/// Heal/regularize this solid (fuse coplanar faces, drop micro-edges,
+	/// repair small inconsistencies). Wraps `ShapeUpgrade_UnifySameDomain`
+	/// + cleanup. Failure is reported as `Error::CleanFailed`.
+	fn clean(&self) -> Result<Self, Error>;
+	/// Volume of this solid (signed by orientation; OCCT returns absolute value).
+	fn volume(&self) -> f64;
+	/// Total surface area of this solid.
+	fn area(&self) -> f64;
+	/// Center of mass (uniform density) in world coordinates.
+	fn center(&self) -> DVec3;
+	/// Inertia tensor about the **world origin** (uniform density). Translate
+	/// to the center-of-mass frame manually if needed.
+	fn inertia(&self) -> DMat3;
+	/// `true` iff `point` is strictly inside or on the boundary of this solid.
+	fn contains(&self, point: DVec3) -> bool;
+	/// Axis-aligned bounding box `[min, max]` in world coordinates.
+	fn bounding_box(&self) -> [DVec3; 2];
+	/// Paint every face of this solid with `color`.
+	#[cfg(feature = "color")]
+	fn color(self, color: impl Into<Color>) -> Self;
+	/// Drop all per-face color assignments from this solid.
+	#[cfg(feature = "color")]
+	fn color_clear(self) -> Self;
+
 	/// Extrude a closed profile wire along a direction vector to form a solid.
 	///
 	/// Internally builds a face from the wire and uses `BRepPrimAPI_MakePrism`.
@@ -622,47 +651,90 @@ pub trait SolidStruct: Sized + Clone + Compound {
 
 // ==================== Compound ====================
 
-/// Public trait: solid-specific operations on Solid, Vec<Solid>, and [Solid; N].
+/// Public trait: container abstraction over `Solid`, `Vec<Solid>`, and `[Solid; N]`.
+///
+/// **コレクション最小契約**: 実装者は要素列挙 (`iter_elem`) と要素全置換 (`map_elem`)
+/// の 2 つだけを提供する。volume / area / bounding_box / center / inertia / contains /
+/// color / color_clear / union / subtract / intersect は default で提供され、
+/// 内部で `<Self::Elem as SolidStruct>::xxx(s)` を `iter_elem` 結果に対して集約する。
+///
+/// **fallible op の意図的な不在**: `clean` は `SolidStruct` のみに置き、`Compound` には
+/// 載せない。fallible メソッドを default 化すると `try_map_elem` 相当の追加要求が必要
+/// になり container 契約が肥大化するため。コレクションに対して clean したい場合は
+/// `vec.into_iter().map(|s| s.clean()).collect::<Result<Vec<_>, _>>()?` と書く。
 ///
 /// Spatial transforms (translate/rotate/scale/mirror) live on the crate-private
-/// supertrait `Transform`. `Compound` re-exposes them through 1-line
-/// forwarders as default methods, so `use cadrum::Compound;` alone is enough
-/// to call `vec.translate(...)` / `[a,b].rotate_z(...)` on collections — no
-/// separate `Transform` import is needed (and none is possible from outside
-/// the crate).
+/// supertrait `Transform`. `Compound` re-exposes them through 1-line forwarders
+/// as default methods, so `use cadrum::Compound;` alone is enough to call
+/// `vec.translate(...)` / `[a,b].rotate_z(...)` on collections — no separate
+/// `Transform` import is needed (and none is possible from outside the crate).
 pub trait Compound: Transform {
 	type Elem: SolidStruct;
 
-	fn clean(&self) -> Result<Self, Error>;
+	/// Borrow each element. For `Solid` itself this yields `std::iter::once(self)`;
+	/// for `Vec<T>` / `[T; N]` it yields `self.iter()`.
+	fn iter_elem(&self) -> impl Iterator<Item = &Self::Elem> + '_;
+	/// Replace every element by mapping through `f`. Length is preserved.
+	/// For `Solid` this is `f(self)`; for collections it consumes self and
+	/// rebuilds in the same shape.
+	fn map_elem(self, f: impl FnMut(Self::Elem) -> Self::Elem) -> Self;
 
+	// --- Queries (default — aggregate over iter_elem) ---
+	fn volume(&self) -> f64 {
+		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::volume(s)).sum()
+	}
+	fn area(&self) -> f64 {
+		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::area(s)).sum()
+	}
+	fn contains(&self, point: DVec3) -> bool {
+		self.iter_elem().any(|s| <Self::Elem as SolidStruct>::contains(s, point))
+	}
+	fn bounding_box(&self) -> [DVec3; 2] {
+		self.iter_elem()
+			.map(|s| <Self::Elem as SolidStruct>::bounding_box(s))
+			.reduce(|[amin, amax], [bmin, bmax]| [amin.min(bmin), amax.max(bmax)])
+			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
+	}
+	/// Center of mass (uniform density). Volume-weighted average of per-element
+	/// centers: `Σ(vol_i · center_i) / Σ vol_i`. volume=0 ガードは Vec/[T;N]
+	/// 空集合と Solid 単要素 (degenerate) の両方を `DVec3::ZERO` で救済する。
+	fn center(&self) -> DVec3 {
+		let total: f64 = self.iter_elem().map(|s| <Self::Elem as SolidStruct>::volume(s)).sum();
+		if total == 0.0 { return DVec3::ZERO; }
+		self.iter_elem()
+			.map(|s| <Self::Elem as SolidStruct>::center(s) * <Self::Elem as SolidStruct>::volume(s))
+			.sum::<DVec3>() / total
+	}
+	/// Inertia tensor about the **world origin** (uniform density). Aggregates
+	/// as a straight matrix sum across elements (parallel-axis theorem is
+	/// already folded in by world-origin referencing).
+	fn inertia(&self) -> DMat3 {
+		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::inertia(s)).fold(DMat3::ZERO, |a, b| a + b)
+	}
 
-	// --- Queries ---
-	fn volume(&self) -> f64;
-	fn bounding_box(&self) -> [DVec3; 2];
-	fn contains(&self, point: DVec3) -> bool;
-	/// Total surface area. Aggregates as a simple sum across elements.
-	fn area(&self) -> f64;
-	/// Center of mass (uniform density). Aggregates as a volume-weighted
-	/// average of per-element centers: `Σ(vol_i · center_i) / Σ vol_i`.
-	fn center(&self) -> DVec3;
-	/// Inertia tensor about the **world origin** (uniform density).
-	/// World-origin referencing makes aggregation a straight matrix sum
-	/// (parallel-axis theorem is already folded in). Translate to the
-	/// center-of-mass frame manually if needed.
-	fn inertia(&self) -> DMat3;
-
-	// --- Color ---
+	// --- Color (default — map over elements) ---
 	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self;
+	fn color(self, color: impl Into<Color>) -> Self {
+		let c: Color = color.into();
+		self.map_elem(|s| <Self::Elem as SolidStruct>::color(s, c))
+	}
 	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self;
+	fn color_clear(self) -> Self {
+		self.map_elem(|s| <Self::Elem as SolidStruct>::color_clear(s))
+	}
 
-	// --- Boolean (-> Vec<Self::Elem>) ---
+	// --- Boolean (default — feed iter_elem to SolidStruct::boolean_*) ---
 	// Each result Solid carries its face-derivation history; access via
 	// `Solid::iter_history()`.
-	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
-	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
-	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a;
+	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a {
+		Self::Elem::boolean_union(self.iter_elem(), tool)
+	}
+	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a {
+		Self::Elem::boolean_subtract(self.iter_elem(), tool)
+	}
+	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Self::Elem>) -> Result<Vec<Self::Elem>, Error> where Self::Elem: 'a {
+		Self::Elem::boolean_intersect(self.iter_elem(), tool)
+	}
 	////////// codegen.rs
 	fn translate(self, translation: DVec3) -> Self { <Self as Transform>::translate(self, translation) }
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self { <Self as Transform>::rotate(self, axis_origin, axis_direction, angle) }
@@ -690,39 +762,8 @@ impl<T: Transform> Transform for Vec<T> {
 
 impl<T: SolidStruct> Compound for Vec<T> {
 	type Elem = T;
-	fn clean(&self) -> Result<Self, Error> { self.iter().map(|s| s.clean()).collect() }
-	fn volume(&self) -> f64 { self.iter().map(|s| s.volume()).sum() }
-	fn bounding_box(&self) -> [DVec3; 2] {
-		self.iter().map(|s| s.bounding_box())
-			.reduce(|[amin, amax], [bmin, bmax]| [amin.min(bmin), amax.max(bmax)])
-			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
-	}
-	fn contains(&self, p: DVec3) -> bool { self.iter().any(|s| s.contains(p)) }
-	fn area(&self) -> f64 { self.iter().map(|s| s.area()).sum() }
-	fn center(&self) -> DVec3 {
-		let total_vol: f64 = self.iter().map(|s| s.volume()).sum();
-		if total_vol == 0.0 { return DVec3::ZERO; }
-		self.iter().map(|s| s.center() * s.volume()).sum::<DVec3>() / total_vol
-	}
-	fn inertia(&self) -> DMat3 { self.iter().map(|s| s.inertia()).fold(DMat3::ZERO, |a, b| a + b) }
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self {
-		let c: Color = color.into();
-		self.into_iter().map(|s| s.color(c)).collect()
-	}
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self {
-		self.into_iter().map(|s| s.color_clear()).collect()
-	}
-	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_union(self.iter(), tool)
-	}
-	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_subtract(self.iter(), tool)
-	}
-	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_intersect(self.iter(), tool)
-	}
+	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
+	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.into_iter().map(f).collect() }
 }
 
 // ==================== impl Transform / Compound for [T; N] ====================
@@ -736,42 +777,8 @@ impl<T: Transform, const N: usize> Transform for [T; N] {
 
 impl<T: SolidStruct, const N: usize> Compound for [T; N] {
 	type Elem = T;
-	fn clean(&self) -> Result<Self, Error> {
-		let v: Result<Vec<T>, Error> = self.iter().map(|s| s.clean()).collect();
-		v?.try_into().map_err(|_| unreachable!())
-	}
-	fn volume(&self) -> f64 { self.iter().map(|s| s.volume()).sum() }
-	fn bounding_box(&self) -> [DVec3; 2] {
-		self.iter().map(|s| s.bounding_box())
-			.reduce(|[amin, amax], [bmin, bmax]| [amin.min(bmin), amax.max(bmax)])
-			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
-	}
-	fn contains(&self, p: DVec3) -> bool { self.iter().any(|s| s.contains(p)) }
-	fn area(&self) -> f64 { self.iter().map(|s| s.area()).sum() }
-	fn center(&self) -> DVec3 {
-		let total_vol: f64 = self.iter().map(|s| s.volume()).sum();
-		if total_vol == 0.0 { return DVec3::ZERO; }
-		self.iter().map(|s| s.center() * s.volume()).sum::<DVec3>() / total_vol
-	}
-	fn inertia(&self) -> DMat3 { self.iter().map(|s| s.inertia()).fold(DMat3::ZERO, |a, b| a + b) }
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self {
-		let c: Color = color.into();
-		self.map(|s| s.color(c))
-	}
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self {
-		self.map(|s| s.color_clear())
-	}
-	fn union<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_union(self.iter(), tool)
-	}
-	fn subtract<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_subtract(self.iter(), tool)
-	}
-	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a T>) -> Result<Vec<T>, Error> where T: 'a {
-		T::boolean_intersect(self.iter(), tool)
-	}
+	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
+	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.map(f) }
 }
 
 // ==================== impl Wire for Vec<T> / [T; N] ====================
