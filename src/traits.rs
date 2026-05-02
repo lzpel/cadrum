@@ -300,7 +300,7 @@ pub enum BSplineEnd {
 /// methods inherently via `examples/codegen.rs`; the `use` import is only
 /// required when chaining on `Vec<Edge>` / `[Edge; N]`.
 pub trait Wire: Transform {
-	type Elem: EdgeStruct;
+	type Elem: Wire;
 
 	/// Borrow each element. For `Edge` itself this yields `std::iter::once(self)`;
 	/// for `Vec<T>` / `[T; N]` it yields `self.iter()`.
@@ -312,16 +312,16 @@ pub trait Wire: Transform {
 
 	// --- Endpoints / tangents (default — first / last element) ---
 	fn start_point(&self) -> DVec3 {
-		self.iter_elem().next().map(|e| <Self::Elem as EdgeStruct>::start_point(e)).unwrap_or(DVec3::ZERO)
+		self.iter_elem().next().map(|e| <Self::Elem as Wire>::start_point(e)).unwrap_or(DVec3::ZERO)
 	}
 	fn end_point(&self) -> DVec3 {
-		self.iter_elem().last().map(|e| <Self::Elem as EdgeStruct>::end_point(e)).unwrap_or(DVec3::ZERO)
+		self.iter_elem().last().map(|e| <Self::Elem as Wire>::end_point(e)).unwrap_or(DVec3::ZERO)
 	}
 	fn start_tangent(&self) -> DVec3 {
-		self.iter_elem().next().map(|e| <Self::Elem as EdgeStruct>::start_tangent(e)).unwrap_or(DVec3::ZERO)
+		self.iter_elem().next().map(|e| <Self::Elem as Wire>::start_tangent(e)).unwrap_or(DVec3::ZERO)
 	}
 	fn end_tangent(&self) -> DVec3 {
-		self.iter_elem().last().map(|e| <Self::Elem as EdgeStruct>::end_tangent(e)).unwrap_or(DVec3::ZERO)
+		self.iter_elem().last().map(|e| <Self::Elem as Wire>::end_tangent(e)).unwrap_or(DVec3::ZERO)
 	}
 	/// Empty wire: false. Single-edge wire: defer to that edge's geometry
 	/// (a circle is closed). Multi-edge wire: first edge's start ≈ last edge's
@@ -331,14 +331,14 @@ pub trait Wire: Transform {
 		let mut iter = self.iter_elem();
 		let Some(first) = iter.next() else { return false; };
 		match iter.last() {
-			None => <Self::Elem as EdgeStruct>::is_closed(first),
-			Some(last) => (<Self::Elem as EdgeStruct>::start_point(first) - <Self::Elem as EdgeStruct>::end_point(last)).length() < 1e-6,
+			None => <Self::Elem as Wire>::is_closed(first),
+			Some(last) => (<Self::Elem as Wire>::start_point(first) - <Self::Elem as Wire>::end_point(last)).length() < 1e-6,
 		}
 	}
 	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
 		let mut out: Vec<DVec3> = Vec::new();
 		for e in self.iter_elem() {
-			let pts = <Self::Elem as EdgeStruct>::approximation_segments(e, tolerance);
+			let pts = <Self::Elem as Wire>::approximation_segments(e, tolerance);
 			if let Some((first, rest)) = pts.split_first() {
 				if out.last().map(|p| (*p - *first).length() < 1e-9).unwrap_or(false) {
 					out.extend_from_slice(rest);
@@ -360,7 +360,7 @@ pub trait Wire: Transform {
 	/// indicates a bug, not a degenerate user input.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		self.iter_elem()
-			.map(|e| <Self::Elem as EdgeStruct>::project(e, p))
+			.map(|e| <Self::Elem as Wire>::project(e, p))
 			.min_by(|(a, _), (b, _)| (a - p).length_squared().partial_cmp(&(b - p).length_squared()).unwrap_or(std::cmp::Ordering::Equal))
 			.unwrap_or((DVec3::ZERO, DVec3::ZERO))
 	}
@@ -393,26 +393,6 @@ pub trait EdgeStruct: Sized + Clone + Wire {
 	/// Use to compare edges across `Solid::iter_edge()` / `Face::iter_edge()`
 	/// (e.g. `face.iter_edge().any(|e| e.id() == edge.id())`).
 	fn id(&self) -> u64;
-
-	// --- Per-element atomic ops ---
-	// `Wire` の default メソッド (start_point / is_closed / project / ...) は
-	// `<Self::Elem as EdgeStruct>::xxx(s)` 形式の UFCS でこれらを呼ぶ。Edge 単体は
-	// ここで FFI を直接叩き、Vec<T> / [T; N] は Wire default 経由で集約される。
-
-	/// 3D position of this edge's start vertex.
-	fn start_point(&self) -> DVec3;
-	/// 3D position of this edge's end vertex.
-	fn end_point(&self) -> DVec3;
-	/// Unit tangent at this edge's start, in the curve's parameter direction.
-	fn start_tangent(&self) -> DVec3;
-	/// Unit tangent at this edge's end, in the curve's parameter direction.
-	fn end_tangent(&self) -> DVec3;
-	/// `true` iff start and end coincide (e.g. a full circle).
-	fn is_closed(&self) -> bool;
-	/// Polyline approximation of this edge with deflection ≤ `tolerance`.
-	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3>;
-	/// Project `p` onto this edge and return `(closest_point, unit_tangent)`.
-	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
 	/// Construct a single helical edge on a cylindrical surface centered at
 	/// the world origin.
@@ -581,26 +561,6 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	/// repair small inconsistencies). Wraps `ShapeUpgrade_UnifySameDomain`
 	/// + cleanup. Failure is reported as `Error::CleanFailed`.
 	fn clean(&self) -> Result<Self, Error>;
-	/// Volume of this solid (signed by orientation; OCCT returns absolute value).
-	fn volume(&self) -> f64;
-	/// Total surface area of this solid.
-	fn area(&self) -> f64;
-	/// Center of mass (uniform density) in world coordinates.
-	fn center(&self) -> DVec3;
-	/// Inertia tensor about the **world origin** (uniform density). Translate
-	/// to the center-of-mass frame manually if needed.
-	fn inertia(&self) -> DMat3;
-	/// `true` iff `point` is strictly inside or on the boundary of this solid.
-	fn contains(&self, point: DVec3) -> bool;
-	/// Axis-aligned bounding box `[min, max]` in world coordinates.
-	fn bounding_box(&self) -> [DVec3; 2];
-	/// Paint every face of this solid with `color`.
-	#[cfg(feature = "color")]
-	fn color(self, color: impl Into<Color>) -> Self;
-	/// Drop all per-face color assignments from this solid.
-	#[cfg(feature = "color")]
-	fn color_clear(self) -> Self;
-
 	/// Extrude a closed profile wire along a direction vector to form a solid.
 	///
 	/// Internally builds a face from the wire and uses `BRepPrimAPI_MakePrism`.
@@ -736,7 +696,7 @@ pub trait SolidStruct: Sized + Clone + Compound {
 /// `vec.translate(...)` / `[a,b].rotate_z(...)` on collections — no separate
 /// `Transform` import is needed (and none is possible from outside the crate).
 pub trait Compound: Transform {
-	type Elem: SolidStruct;
+	type Elem: Compound+SolidStruct;
 
 	/// Borrow each element. For `Solid` itself this yields `std::iter::once(self)`;
 	/// for `Vec<T>` / `[T; N]` it yields `self.iter()`.
@@ -748,17 +708,17 @@ pub trait Compound: Transform {
 
 	// --- Queries (default — aggregate over iter_elem) ---
 	fn volume(&self) -> f64 {
-		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::volume(s)).sum()
+		self.iter_elem().map(|s| <Self::Elem as Compound>::volume(s)).sum()
 	}
 	fn area(&self) -> f64 {
-		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::area(s)).sum()
+		self.iter_elem().map(|s| <Self::Elem as Compound>::area(s)).sum()
 	}
 	fn contains(&self, point: DVec3) -> bool {
-		self.iter_elem().any(|s| <Self::Elem as SolidStruct>::contains(s, point))
+		self.iter_elem().any(|s| <Self::Elem as Compound>::contains(s, point))
 	}
 	fn bounding_box(&self) -> [DVec3; 2] {
 		self.iter_elem()
-			.map(|s| <Self::Elem as SolidStruct>::bounding_box(s))
+			.map(|s| <Self::Elem as Compound>::bounding_box(s))
 			.reduce(|[amin, amax], [bmin, bmax]| [amin.min(bmin), amax.max(bmax)])
 			.unwrap_or([DVec3::ZERO, DVec3::ZERO])
 	}
@@ -766,28 +726,28 @@ pub trait Compound: Transform {
 	/// centers: `Σ(vol_i · center_i) / Σ vol_i`. volume=0 ガードは Vec/[T;N]
 	/// 空集合と Solid 単要素 (degenerate) の両方を `DVec3::ZERO` で救済する。
 	fn center(&self) -> DVec3 {
-		let total: f64 = self.iter_elem().map(|s| <Self::Elem as SolidStruct>::volume(s)).sum();
+		let total: f64 = self.iter_elem().map(|s| <Self::Elem as Compound>::volume(s)).sum();
 		if total == 0.0 { return DVec3::ZERO; }
 		self.iter_elem()
-			.map(|s| <Self::Elem as SolidStruct>::center(s) * <Self::Elem as SolidStruct>::volume(s))
+			.map(|s| <Self::Elem as Compound>::center(s) * <Self::Elem as Compound>::volume(s))
 			.sum::<DVec3>() / total
 	}
 	/// Inertia tensor about the **world origin** (uniform density). Aggregates
 	/// as a straight matrix sum across elements (parallel-axis theorem is
 	/// already folded in by world-origin referencing).
 	fn inertia(&self) -> DMat3 {
-		self.iter_elem().map(|s| <Self::Elem as SolidStruct>::inertia(s)).fold(DMat3::ZERO, |a, b| a + b)
+		self.iter_elem().map(|s| <Self::Elem as Compound>::inertia(s)).fold(DMat3::ZERO, |a, b| a + b)
 	}
 
 	// --- Color (default — map over elements) ---
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self {
 		let c: Color = color.into();
-		self.map_elem(|s| <Self::Elem as SolidStruct>::color(s, c))
+		self.map_elem(|s| <Self::Elem as Compound>::color(s, c))
 	}
 	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self {
-		self.map_elem(|s| <Self::Elem as SolidStruct>::color_clear(s))
+		self.map_elem(|s| <Self::Elem as Compound>::color_clear(s))
 	}
 
 	// --- Boolean (default — feed iter_elem to SolidStruct::boolean_*) ---

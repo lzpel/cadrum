@@ -43,59 +43,6 @@ impl EdgeStruct for Edge {
 	// ==================== Per-element atomic ops ====================
 	// Wire default が `<Edge as EdgeStruct>::xxx(s)` 形式で呼ぶ。
 
-	fn start_point(&self) -> DVec3 {
-		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
-		DVec3::new(sx, sy, sz)
-	}
-
-	fn end_point(&self) -> DVec3 {
-		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
-		DVec3::new(ex, ey, ez)
-	}
-
-	fn start_tangent(&self) -> DVec3 {
-		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
-		DVec3::new(sx, sy, sz)
-	}
-
-	fn end_tangent(&self) -> DVec3 {
-		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
-		DVec3::new(ex, ey, ez)
-	}
-
-	fn is_closed(&self) -> bool {
-		ffi::edge_is_closed(&self.inner)
-	}
-
-	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
-		ffi::edge_approximation_segments(&self.inner, tolerance, tolerance)
-			.chunks_exact(3)
-			.map(|c| DVec3::new(c[0], c[1], c[2]))
-			.collect()
-	}
-
-	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
-		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut tx, mut ty, mut tz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		// FFI returns false only on truly degenerate edges (no 3D Geom_Curve,
-		// or OCCT internal exception). All cadrum-constructed edges carry a
-		// Geom_Curve, so this is effectively unreachable — treat as a bug and
-		// fail fast rather than returning silent zero.
-		assert!(
-			ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz),
-			"Edge::project: edge has no 3D curve or OCCT projector threw (this is a bug)"
-		);
-		(DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz))
-	}
-
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_helix_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, radius, pitch, height);
 		Edge::try_from_ffi(inner, format!("helix: degenerate params (radius={radius}, pitch={pitch}, height={height}, axis={axis:?}, x_ref={x_ref:?})"))
@@ -197,8 +144,65 @@ impl EdgeStruct for Edge {
 // Wire default は `<Edge as EdgeStruct>::xxx(s)` 経由で集約する。
 impl Wire for Edge {
 	type Elem = Edge;
-	fn iter_elem(&self) -> impl Iterator<Item = &Edge> + '_ { std::iter::once(self) }
-	fn map_elem(self, mut f: impl FnMut(Edge) -> Edge) -> Self { f(self) }
+	fn iter_elem(&self) -> impl Iterator<Item = &Edge> + '_ {
+		panic!("Cannot iter_elem on Edge, because Edge is not Wire");
+		#[allow(unreachable_code)] std::iter::empty()
+	}
+	fn map_elem(self, _: impl FnMut(Edge) -> Edge) -> Self {
+		panic!("Cannot map_elem on Edge, because Edge is not Wire");
+	}
+	fn start_point(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(sx, sy, sz)
+	}
+
+	fn end_point(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_endpoints(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(ex, ey, ez)
+	}
+
+	fn start_tangent(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(sx, sy, sz)
+	}
+
+	fn end_tangent(&self) -> DVec3 {
+		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::edge_tangents(&self.inner, &mut sx, &mut sy, &mut sz, &mut ex, &mut ey, &mut ez);
+		DVec3::new(ex, ey, ez)
+	}
+
+	fn is_closed(&self) -> bool {
+		ffi::edge_is_closed(&self.inner)
+	}
+
+	fn approximation_segments(&self, tolerance: f64) -> Vec<DVec3> {
+		ffi::edge_approximation_segments(&self.inner, tolerance, tolerance)
+			.chunks_exact(3)
+			.map(|c| DVec3::new(c[0], c[1], c[2]))
+			.collect()
+	}
+
+	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut tx, mut ty, mut tz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		// FFI returns false only on truly degenerate edges (no 3D Geom_Curve,
+		// or OCCT internal exception). All cadrum-constructed edges carry a
+		// Geom_Curve, so this is effectively unreachable — treat as a bug and
+		// fail fast rather than returning silent zero.
+		assert!(
+			ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz),
+			"Edge::project: edge has no 3D curve or OCCT projector threw (this is a bug)"
+		);
+		(DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz))
+	}
 }
 
 // Transform は trait 要件で `-> Self` を返すため Result にできない。
