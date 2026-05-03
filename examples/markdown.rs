@@ -182,7 +182,7 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 /// Render the `## Usage` section: thumbnail table + install instructions.
 fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	const COLS: usize = 4;
-	let mut s = String::from("## Usage\n\n");
+	let mut s = String::from("<!--GALLERY-->\n\n");
 
 	if !entries.is_empty() {
 		let rows = entries.len().div_ceil(COLS);
@@ -217,17 +217,6 @@ fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 		}
 		s.push('\n');
 	}
-
-	s.push_str("More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).\n\n");
-	s.push_str("Add this to your `Cargo.toml`:\n\n");
-
-	// Extract major.minor from CARGO_PKG_VERSION / バージョンから major.minor を抽出
-	let version = env!("CARGO_PKG_VERSION");
-	let mut parts = version.split('.');
-	let major = parts.next().unwrap();
-	let minor = parts.next().unwrap();
-	s.push_str(&format!("```toml\n[dependencies]\ncadrum = \"^{}.{}\"\n```\n", major, minor));
-
 	s
 }
 
@@ -252,7 +241,7 @@ fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &[(PathBuf, Vec<
 
 	for (i, line) in readme.lines().enumerate() {
 		let content = match line.trim() {
-			"## Usage" => render_usage(entries, outputs),
+			"<!--GALLERY-->" => render_usage(entries, outputs),
 			"## Examples" => render_example_section(entries, outputs),
 			_ => continue,
 		};

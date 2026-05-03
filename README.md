@@ -7,11 +7,21 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCC
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
-[![Docs][book_img]][book_link]
 
 <img src="https://raw.githubusercontent.com/lzpel/alphastell/main/figure/image.png" alt="cadrum"/>
 
 </div>
+
+<!--GALLERY-->
+
+| [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
+|:---:|:---:|:---:|:---:|
+| [<img src="https://lzpel.github.io/cadrum/01_primitives.svg" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.svg" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.svg" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.svg" width="180" alt="boolean"/>](#boolean) |
+| [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
+| [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
+| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
+| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
+
 
 ## Summary
 
@@ -68,17 +78,7 @@ exposes through `Solid::mesh` when an STL export or SVG render is required.
 | **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_svg` |
 | **Color** *(feature `color`)* | per-face color preserved across STEP / BRep / STL / SVG round-trips |
 
-## Usage
-
-| [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
-|:---:|:---:|:---:|:---:|
-| [<img src="https://lzpel.github.io/cadrum/01_primitives.svg" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.svg" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.svg" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.svg" width="180" alt="boolean"/>](#boolean) |
-| [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
-| [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
-| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
-| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
-
-More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
+## Build
 
 Add this to your `Cargo.toml`:
 
@@ -86,8 +86,6 @@ Add this to your `Cargo.toml`:
 [dependencies]
 cadrum = "^0.7"
 ```
-
-## Build
 
 `cargo build` automatically downloads a prebuilt OCCT 8.0.0-rc5 binary for the targets below.
 
@@ -499,10 +497,10 @@ fn main() -> Result<(), Error> {
 	let result = [frustum, morph, tilted];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::Solid::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -646,10 +644,10 @@ fn main() -> Result<(), Error> {
 	let all: Vec<Solid> = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?].concat();
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::Solid::write_step(&all, &mut f)?;
+	Solid::write_step(&all, &mut f)?;
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
-	cadrum::Solid::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false, &mut f_svg)?;
+	Solid::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false, &mut f_svg)?;
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
 	Ok(())
 }
@@ -722,12 +720,12 @@ fn main() -> Result<(), Error> {
 	];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	// Isometric view from (1, 1, 2) with shading so the cavity depth reads
 	// naturally.
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -788,9 +786,9 @@ fn main() {
 	let plasma = Solid::bspline(M, N, true, point).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
-	cadrum::Solid::write_step(&objects, &mut f).unwrap();
+	Solid::write_step(&objects, &mut f).unwrap();
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	cadrum::Solid::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true, &mut f_svg)).unwrap();
+	Solid::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true, &mut f_svg)).unwrap();
 	println!("wrote {example_name}.step / {example_name}.svg");
 }
 
@@ -853,10 +851,10 @@ fn main() -> Result<(), Error> {
 	];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -921,10 +919,10 @@ fn main() -> Result<(), Error> {
 	];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	cadrum::Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	cadrum::Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -1151,8 +1149,6 @@ Since cadrum builds OCCT from source, end users can rebuild and relink OCCT to s
 [crate_link]: https://crates.io/crates/cadrum
 [docsrs_img]: https://img.shields.io/docsrs/cadrum?logo=docsdotrs&label=docs.rs
 [docsrs_link]: https://docs.rs/cadrum
-[book_img]: https://img.shields.io/badge/docs-lzpel.github.io%2Fcadrum-blue
-[book_link]: https://lzpel.github.io/cadrum
 
 <!-- External References -->
 [occt]: https://dev.opencascade.org/
