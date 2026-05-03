@@ -4,6 +4,8 @@ generate: # prepare for deploy
 	find . -maxdepth 1 -name .gitignore | xargs -IX sed '/^#\s*EOF_DOCKERIGNORE.*/q' X > .dockerignore
 test: # test all
 	cargo test
+big: # list top 20 largest blobs in git history (bytes, path) — includes deleted files; use to find repo-bloating commits
+	git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '/^blob/ {size=$$3; $$1=$$2=$$3=""; sub(/^ +/, ""); printf "%12d  %s\n", size, $$0}' | sort -n | tail -20
 deploy: generate # generate out/markdown from examples, then build out/html
 	cargo install --root out mdbook --version 0.4.50
 	cargo run --example codegen -- src/traits.rs src/lib.rs

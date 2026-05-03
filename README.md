@@ -9,12 +9,6 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE](https://de
 <p align="center">
   <img src="https://raw.githubusercontent.com/lzpel/alphastell/main/figure/image.png" alt="cadrum"/>
 </p>
-<!--
-<p align="center">
-  <img src="figure/chijin.svg" alt="chijin — a drum of Amami Oshima" width="360"/>
-</p>
--->
-
 ## Usage
 
 | [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
@@ -893,10 +887,6 @@ fn main() -> Result<(), Error> {
 ## Showcase
 
 [Try it now →](https://katachiform.com/out/21)
-
-<p align="center">
-  <a href="https://katachiform.com/out/21"><img src="figure/katachiform.png" alt="cadrum showcase" width="360"/></a>
-</p>
 
 A browser-based configurator that lets you tweak dimensions of a STEP model and get an instant 3D preview and quote. cadrum powers the parametric reshaping and meshing on the backend.
 

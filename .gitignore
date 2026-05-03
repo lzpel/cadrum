@@ -4,6 +4,7 @@ logs/
 linkedin.md
 .venv/
 *.brep
+*.log
 *.step
 *.stl
 *.svg
