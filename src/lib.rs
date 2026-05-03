@@ -51,6 +51,8 @@ impl Edge{
     pub fn line(a: DVec3, b: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::line(a, b)}
     pub fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::arc_3pts(start, mid, end)}
     pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::bspline(points, end)}
+    pub fn iter_elem(&self) -> impl Iterator<Item = &crate::Edge> + '_ {<Self as crate::traits::Wire>::iter_elem(self)}
+    pub fn map_elem(self, f: impl FnMut(crate::Edge) -> crate::Edge) -> crate::Edge {<Self as crate::traits::Wire>::map_elem(self, f)}
     pub fn start_point(&self) -> DVec3 {<Self as crate::traits::Wire>::start_point(self)}
     pub fn end_point(&self) -> DVec3 {<Self as crate::traits::Wire>::end_point(self)}
     pub fn start_tangent(&self) -> DVec3 {<Self as crate::traits::Wire>::start_tangent(self)}
@@ -87,6 +89,7 @@ impl Solid{
     pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {<Self as crate::traits::SolidStruct>::iter_edge(self)}
     pub fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {<Self as crate::traits::SolidStruct>::iter_face(self)}
     pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {<Self as crate::traits::SolidStruct>::iter_history(self)}
+    pub fn clean(&self) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::clean(self)}
     pub fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::extrude(profile, dir)}
     pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> where Face: 'a {<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)}
     pub fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::fillet_edges(self, radius, edges)}
@@ -104,11 +107,12 @@ impl Solid{
     pub fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_binary(solids, writer)}
     pub fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_text(solids, writer)}
     pub fn mesh<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self: 'a {<Self as crate::traits::SolidStruct>::mesh(solids, tolerance)}
-    pub fn clean(&self) -> Result<crate::Solid, Error> {<Self as crate::traits::Compound>::clean(self)}
+    pub fn iter_elem(&self) -> impl Iterator<Item = &crate::Solid> + '_ {<Self as crate::traits::Compound>::iter_elem(self)}
+    pub fn map_elem(self, f: impl FnMut(crate::Solid) -> crate::Solid) -> crate::Solid {<Self as crate::traits::Compound>::map_elem(self, f)}
     pub fn volume(&self) -> f64 {<Self as crate::traits::Compound>::volume(self)}
-    pub fn bounding_box(&self) -> [DVec3; 2] {<Self as crate::traits::Compound>::bounding_box(self)}
-    pub fn contains(&self, point: DVec3) -> bool {<Self as crate::traits::Compound>::contains(self, point)}
     pub fn area(&self) -> f64 {<Self as crate::traits::Compound>::area(self)}
+    pub fn contains(&self, point: DVec3) -> bool {<Self as crate::traits::Compound>::contains(self, point)}
+    pub fn bounding_box(&self) -> [DVec3; 2] {<Self as crate::traits::Compound>::bounding_box(self)}
     pub fn center(&self) -> DVec3 {<Self as crate::traits::Compound>::center(self)}
     pub fn inertia(&self) -> DMat3 {<Self as crate::traits::Compound>::inertia(self)}
     #[cfg(feature = "color")]

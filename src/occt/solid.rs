@@ -413,6 +413,27 @@ impl SolidStruct for Solid {
 		))
 	}
 
+	// ==================== Clean ====================
+
+	fn clean(&self) -> Result<Self, Error> {
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::builder_clean(&self.inner, &mut history);
+		if inner.is_null() {
+			return Err(Error::CleanFailed);
+		}
+		#[cfg(feature = "color")]
+		let colormap = {
+			let mut m = std::collections::HashMap::new();
+			for pair in history.chunks_exact(2) {
+				if let Some(&color) = self.colormap.get(&pair[1]) {
+					m.entry(pair[0]).or_insert(color);
+				}
+			}
+			m
+		};
+		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
+	}
+
 	// ==================== Boolean primitives ====================
 
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
@@ -530,25 +551,6 @@ impl Transform for Solid {
 impl Compound for Solid {
 	type Elem = Solid;
 
-	fn clean(&self) -> Result<Self, Error> {
-		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::builder_clean(&self.inner, &mut history);
-		if inner.is_null() {
-			return Err(Error::CleanFailed);
-		}
-		#[cfg(feature = "color")]
-		let colormap = {
-			let mut m = std::collections::HashMap::new();
-			for pair in history.chunks_exact(2) {
-				if let Some(&color) = self.colormap.get(&pair[1]) {
-					m.entry(pair[0]).or_insert(color);
-				}
-			}
-			m
-		};
-		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
-	}
-
 	// ==================== Queries ====================
 
 	fn volume(&self) -> f64 {
@@ -619,6 +621,15 @@ impl Compound for Solid {
 
 	fn intersect<'a>(&self, tool: impl IntoIterator<Item = &'a Solid>) -> Result<Vec<Solid>, Error> {
 		<Solid as SolidStruct>::boolean_intersect([self], tool)
+	}
+	
+	fn iter_elem(&self) -> impl Iterator<Item = &Self::Elem> + '_ {
+		panic!("Cannot iter_elem on Solid, because Solid is not Compound");
+		#[allow(unreachable_code)] std::iter::empty()
+	}
+
+	fn map_elem(self, _f: impl FnMut(Self::Elem) -> Self::Elem) -> Self {
+		panic!("Cannot map_elem on Solid, because Solid is not Compound")
 	}
 }
 

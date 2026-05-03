@@ -40,6 +40,9 @@ impl EdgeStruct for Edge {
 		ffi::edge_tshape_id(&self.inner)
 	}
 
+	// ==================== Per-element atomic ops ====================
+	// Wire default が `<Edge as EdgeStruct>::xxx(s)` 形式で呼ぶ。
+
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_helix_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, radius, pitch, height);
 		Edge::try_from_ffi(inner, format!("helix: degenerate params (radius={radius}, pitch={pitch}, height={height}, axis={axis:?}, x_ref={x_ref:?})"))
@@ -136,9 +139,18 @@ impl EdgeStruct for Edge {
 	}
 }
 
+// Edge を「単一要素のワイヤ」として扱う trivial impl。endpoint / tangent / project
+// 等の atomic ops は EdgeStruct 側 (上の impl EdgeStruct for Edge 内) に住み、
+// Wire default は `<Edge as EdgeStruct>::xxx(s)` 経由で集約する。
 impl Wire for Edge {
 	type Elem = Edge;
-
+	fn iter_elem(&self) -> impl Iterator<Item = &Edge> + '_ {
+		panic!("Cannot iter_elem on Edge, because Edge is not Wire");
+		#[allow(unreachable_code)] std::iter::empty()
+	}
+	fn map_elem(self, _: impl FnMut(Edge) -> Edge) -> Self {
+		panic!("Cannot map_elem on Edge, because Edge is not Wire");
+	}
 	fn start_point(&self) -> DVec3 {
 		let (mut sx, mut sy, mut sz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut ex, mut ey, mut ez) = (0.0_f64, 0.0_f64, 0.0_f64);
