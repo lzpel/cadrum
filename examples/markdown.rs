@@ -152,7 +152,10 @@ fn render_example(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 		s.push_str(&format!("\n{}\n", desc));
 	}
 	s.push_str(&format!("\n```sh\ncargo run --example {}\n```\n", stem));
-	s.push_str(&format!("\n```rust\n{}\n```\n", entry.content));
+	// `rust,no_run`: the README is `include_str!`'d into `src/lib.rs`, so each
+	// example program would otherwise become a doctest that `cargo test` tries
+	// to compile and run (slow + writes files). `no_run` keeps the type check.
+	s.push_str(&format!("\n```rust,no_run\n{}\n```\n", entry.content));
 	s.push_str(&render_assets(entry, outputs));
 	s.push('\n');
 	s

@@ -277,8 +277,8 @@ fn regenerate(src: &str, traits: &[TraitDef]) -> String {
 			for j in cursor..=i {
 				out.push(lines[j].to_string());
 			}
-			let indent: String = lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
 			let depth = depths[i];
+			let indent: String = "\t".repeat(depth as usize);
 			let region_end = compute_region_end(&depths, i, depth);
 			let context = determine_context(&lines, i, &depths, depth);
 			out.extend(render(&context, &indent, traits));
