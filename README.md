@@ -37,6 +37,25 @@ geometry actually appears.
   `Compound` trait; the wire / edge-list pair has the parallel `Wire`
   trait.
 
+## Usage
+
+| [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
+|:---:|:---:|:---:|:---:|
+| [<img src="https://lzpel.github.io/cadrum/01_primitives.svg" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.svg" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.svg" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.svg" width="180" alt="boolean"/>](#boolean) |
+| [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
+| [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
+| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
+| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
+
+More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+cadrum = "^0.7"
+```
+
 ## Introduction
 
 OpenCASCADE represents shapes as a *boundary representation* (BRep): a solid
@@ -67,25 +86,6 @@ exposes through `Solid::mesh` when an STL export or SVG render is required.
 | **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep_binary` / `Solid::write_brep_binary`, `Solid::read_brep_text` / `Solid::write_brep_text` |
 | **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_svg` |
 | **Color** *(feature `color`)* | per-face color preserved across STEP / BRep / STL / SVG round-trips |
-
-## Usage
-
-| [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
-|:---:|:---:|:---:|:---:|
-| [<img src="https://lzpel.github.io/cadrum/01_primitives.svg" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.svg" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.svg" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.svg" width="180" alt="boolean"/>](#boolean) |
-| [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
-| [<img src="https://lzpel.github.io/cadrum/05_extrude.svg" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.svg" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.svg" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.svg" width="180" alt="shell"/>](#shell) |
-| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
-| [<img src="https://lzpel.github.io/cadrum/09_bspline.svg" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.svg" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.svg" width="180" alt="chamfer"/>](#chamfer) |  |
-
-More examples with source code are available at [lzpel.github.io/cadrum](https://lzpel.github.io/cadrum).
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-cadrum = "^0.7"
-```
 
 ## Build
 
