@@ -71,6 +71,7 @@ fn main() {
 // ============================ data types ============================
 
 struct Method {
+	docs: Vec<String>,
 	cfg: Option<String>,
 	signature: String,
 	name: String,
@@ -110,11 +111,17 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 
 			let mut methods = Vec::new();
 			i += 1;
+			let mut pending_docs: Vec<String> = Vec::new();
 			let mut pending_cfg: Option<String> = None;
 			while i < lines.len() {
 				let l = lines[i].trim();
 				if l == "}" {
 					break;
+				}
+				if l.starts_with("///") {
+					pending_docs.push(l.to_string());
+					i += 1;
+					continue;
 				}
 				if l.starts_with("#[cfg(") {
 					pending_cfg = Some(l.to_string());
@@ -122,13 +129,16 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 					continue;
 				}
 				if l.starts_with("type ") || l.starts_with("//") || l.is_empty() {
+					// Non-doc comment, type alias, or blank line — clear accumulated docs
+					pending_docs.clear();
 					i += 1;
 					continue;
 				}
 				if l.starts_with("fn ") {
-					if let Some(m) = parse_method(l, pending_cfg.take(), name.clone()) {
+					if let Some(m) = parse_method(l, pending_cfg.take(), pending_docs.drain(..).collect(), name.clone()) {
 						methods.push(m);
 					}
+					pending_docs.clear();
 					// Skip multi-line default impl body via brace counting.
 					if l.ends_with('{') {
 						let mut depth = 1usize;
@@ -141,6 +151,7 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 					}
 				} else {
 					pending_cfg = None;
+					pending_docs.clear();
 				}
 				i += 1;
 			}
@@ -151,7 +162,7 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 	traits
 }
 
-fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option<Method> {
+fn parse_method(line: &str, cfg: Option<String>, docs: Vec<String>, origin_trait: String) -> Option<Method> {
 	let line = line.trim_end_matches(';');
 	let line = if let Some(brace) = line.find('{') { line[..brace].trim_end() } else { line };
 	let fn_idx = line.find("fn ")?;
@@ -180,7 +191,7 @@ fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option
 		}
 	}
 	let signature = line[fn_idx..].trim().to_string();
-	Some(Method { cfg, signature, name, args, has_self, origin_trait })
+	Some(Method { docs, cfg, signature, name, args, has_self, origin_trait })
 }
 
 /// Split an argument list by `,` while respecting `<>` and `()` nesting.
@@ -373,6 +384,9 @@ fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 
 	let mut out = Vec::new();
 	for m in methods {
+		for doc in &m.docs {
+			out.push(format!("{}{}", indent, doc));
+		}
 		if let Some(cfg) = &m.cfg {
 			out.push(format!("{}{}", indent, cfg));
 		}
@@ -389,6 +403,9 @@ fn render_trait_body(name: &str, indent: &str, traits: &[TraitDef]) -> Vec<Strin
 	for super_name in &td.supertraits {
 		let Some(parent) = traits.iter().find(|t| &t.name == super_name) else { continue };
 		for m in &parent.methods {
+			for doc in &m.docs {
+				out.push(format!("{}{}", indent, doc));
+			}
 			if let Some(cfg) = &m.cfg {
 				out.push(format!("{}{}", indent, cfg));
 			}
