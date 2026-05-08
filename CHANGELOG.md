@@ -16,6 +16,17 @@ This document is written according to the [Keep a Changelog][kac] style.
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
 
+### Unreleased
+
+#### Changes
+
+- **OCCT bumped to 8.0.0** (final release; was 8.0.0-beta1). No source
+  changes required — APIs deprecated/removed in V8_0_0 (`Standard_Mutex`,
+  OCCT math wrappers like `::Sin` / `::Cos`, `NCollection_BasePointerVector`,
+  `TColGeom`, `PLib_Base`, `BRepMesh_PluginMacro`) are unused by cadrum's
+  `cpp/wrapper.cpp`. The toolkit list (`TKernel`, `TKMath`, ..., `TKDESTEP`)
+  is unchanged.
+
 ### 0.7.6
 
 #### Notes

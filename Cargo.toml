@@ -2,7 +2,7 @@
 name = "cadrum"
 version = "0.7.6"
 edition = "2021"
-description = "Rust CAD library powered by statically linked, headless OpenCASCADE (OCCT 8.0.0-beta1)"
+description = "Rust CAD library powered by statically linked, headless OpenCASCADE (OCCT 8.0.0)"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lzpel/cadrum"

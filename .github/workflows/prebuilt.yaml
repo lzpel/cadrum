@@ -80,6 +80,6 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: cadrum-occt-v800beta1
-          name: OCCT prebuilt v8.0.0-beta1
+          tag_name: cadrum-occt-v800
+          name: OCCT prebuilt v8.0.0
           files: dist/*.tar.gz
