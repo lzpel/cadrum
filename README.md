@@ -2,7 +2,7 @@
 
 # cadrum
 
-Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0-beta1).
+Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0).
 
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]
@@ -87,7 +87,7 @@ Add this to your `Cargo.toml`:
 cadrum = "^0.7"
 ```
 
-`cargo build` automatically downloads a prebuilt OCCT 8.0.0-rc5 binary for the targets below.
+`cargo build` automatically downloads a prebuilt OCCT 8.0.0 binary for the targets below.
 
 | | Target | Prebuilt |
 |--|--------|----------|
