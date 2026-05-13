@@ -2,11 +2,14 @@
 
 Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0).
 
+<div align="center">
+
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
 
-<img src="https://lzpel.github.io/cadrum/00_chijin.svg" alt="cadrum"/>
+<img src="https://lzpel.github.io/cadrum/00_chijin.svg" alt="cadrum" height="300" width="auto"/>
+</div>
 
 <!--GALLERY-->
 
