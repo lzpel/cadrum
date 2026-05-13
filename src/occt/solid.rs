@@ -695,3 +695,65 @@ impl Solid {
 		Self::boolean_op_impl(a, b, BOOLEAN_OP_COMMON)
 	}
 }
+
+// ==================== `+` / `-` / `*` for &Solid ====================
+//
+// 単体×単体 boolean のシンタックスシュガー。戻り値は Vec ではなく単一 Solid:
+// 結果が 1 個でなければ `Error::OneFailed(n)` を返す。複数ピースになりうる
+// 演算では本演算子は使わず `Solid::boolean_*` を直接使うこと。
+//
+// `&Solid` に impl する理由: `Solid` 自身を consume すると clone コストが嵩む。
+// `&a + &b` で書ける。
+
+fn exactly_one(mut v: Vec<Solid>) -> Result<Solid, Error> {
+	match v.len() {
+		1 => Ok(v.pop().unwrap()),
+		n => Err(Error::OneFailed(n)),
+	}
+}
+
+impl std::ops::Add for &Solid {
+	type Output = Result<Solid, Error>;
+	fn add(self, rhs: &Solid) -> Self::Output {
+		exactly_one(Solid::boolean_union([self], [rhs])?)
+	}
+}
+
+impl std::ops::Sub for &Solid {
+	type Output = Result<Solid, Error>;
+	fn sub(self, rhs: &Solid) -> Self::Output {
+		exactly_one(Solid::boolean_subtract([self], [rhs])?)
+	}
+}
+
+impl std::ops::Mul for &Solid {
+	type Output = Result<Solid, Error>;
+	fn mul(self, rhs: &Solid) -> Self::Output {
+		exactly_one(Solid::boolean_intersect([self], [rhs])?)
+	}
+}
+
+// `iter.sum::<Result<Solid, Error>>()` / `iter.product::<Result<Solid, Error>>()` で
+// `&Solid` イテレータを `+` / `*` で畳む。空イテレータは `Err(OneFailed(0))`。
+// 途中の演算失敗 (boolean_op が None / 結果が単一 Solid でない) もそのまま伝播する。
+//
+// 戻り型を `Solid` ではなく `Result<Solid, Error>` にしているのは、`Sum::sum` が
+// `-> Self` で panic か Result しか選択肢がなく、CAD 文脈で panic は避けたいため。
+//
+// `Sum<&'a Solid> for &'a Solid` (= ユーザー初稿) は戻り型 `&Solid` が新規所有値の
+// 借用となり成立しない。`Sum<&'a Solid> for Result<Solid, Error>` で
+// 「`&Solid` を畳んで Owned な Solid を Result でくるんで返す」と素直に書ける。
+
+impl<'a> std::iter::Sum<&'a Solid> for Result<Solid, Error> {
+	fn sum<I: Iterator<Item = &'a Solid>>(mut iter: I) -> Self {
+		let first = iter.next().ok_or(Error::OneFailed(0))?;
+		iter.try_fold(first.clone(), |acc, s| &acc + s)
+	}
+}
+
+impl<'a> std::iter::Product<&'a Solid> for Result<Solid, Error> {
+	fn product<I: Iterator<Item = &'a Solid>>(mut iter: I) -> Self {
+		let first = iter.next().ok_or(Error::OneFailed(0))?;
+		iter.try_fold(first.clone(), |acc, s| &acc * s)
+	}
+}

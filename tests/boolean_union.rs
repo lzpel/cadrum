@@ -142,6 +142,48 @@ fn test_intersect_sphere_with_multiple_cylinders() {
 	// → 単一 tool での sphere.intersect(&cyl) を逐次 fold するのが正しい。
 }
 
+#[test]
+fn test_operator_overloads() {
+	// `+` / `-` / `*` for &Solid → Result<Solid, Error>
+	// 結果が単一 Solid のケース、Error::OneFailed のケースを両方検証する。
+	let a = Solid::cube(10.0, 10.0, 10.0);
+	let b = Solid::cube(10.0, 10.0, 10.0).translate(DVec3::new(5.0, 5.0, 5.0));
+
+	let u = (&a + &b).expect("a + b should yield exactly one solid");
+	println!("a + b (union):     volume = {:.4}", u.volume());
+
+	let s = (&a - &b).expect("a - b should yield exactly one solid");
+	println!("a - b (subtract):  volume = {:.4}", s.volume());
+
+	let i = (&a * &b).expect("a * b should yield exactly one solid");
+	println!("a * b (intersect): volume = {:.4}", i.volume());
+
+	// 非交差での intersect → Ok(Vec::new()) → Err(OneFailed(0))
+	let far = Solid::cube(1.0, 1.0, 1.0).translate(DVec3::new(100.0, 0.0, 0.0));
+	match &a * &far {
+		Err(e @ cadrum::Error::OneFailed(0)) => println!("a * far (disjoint) -> {:?}", e),
+		Err(e) => panic!("expected OneFailed(0), got {:?}", e),
+		Ok(_) => panic!("expected OneFailed(0), got Ok"),
+	}
+
+	// iter.sum() / iter.product() で union / intersect を畳む
+	let c = Solid::cube(10.0, 10.0, 10.0).translate(DVec3::new(2.0, 2.0, 2.0));
+	let solids = vec![a.clone(), b.clone(), c.clone()];
+
+	let unioned: Solid = solids.iter().sum::<Result<Solid, _>>().expect("sum union should succeed");
+	println!("sum (union of 3):       volume = {:.4}", unioned.volume());
+
+	let intersected: Solid = solids.iter().product::<Result<Solid, _>>().expect("product intersect should succeed");
+	println!("product (intersect 3):  volume = {:.4}", intersected.volume());
+
+	// 空イテレータ → Err(OneFailed(0))
+	let empty: Vec<Solid> = Vec::new();
+	match empty.iter().sum::<Result<Solid, _>>() {
+		Err(cadrum::Error::OneFailed(0)) => println!("sum of empty -> OneFailed(0) ✓"),
+		other => panic!("expected OneFailed(0), got {:?}", other.is_ok()),
+	}
+}
+
 /// solid を out/ 以下に SVG, STL, STEP で書き出す。
 fn write_outputs(solids: &[Solid], name: &str) {
 	std::fs::create_dir_all("out").unwrap();

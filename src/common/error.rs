@@ -19,6 +19,12 @@ pub enum Error {
 	/// Boolean operation (fuse/cut/common) failed.
 	BooleanOperationFailed,
 
+	/// 単一 Solid を期待する演算 (`+`/`-`/`*` 演算子) で結果の Solid 数が 1 でなかった。
+	/// `usize` は実際の結果 Solid 数 (0 = 非交差/全削除、2+ = 結果が複数ピースに分割)。
+	/// 戻り値が複数ピースになりうる場合は `Solid::boolean_union/subtract/intersect` を
+	/// 直接使い `Vec<Solid>` を受け取ること。
+	OneFailed(usize),
+
 	/// Shape cleaning (UnifySameDomain) failed.
 	CleanFailed,
 
@@ -85,6 +91,7 @@ impl std::fmt::Display for Error {
 			Error::BrepWriteFailed => write!(f, "BRep write failed"),
 			Error::TriangulationFailed => write!(f, "Triangulation failed"),
 			Error::BooleanOperationFailed => write!(f, "Boolean operation failed"),
+			Error::OneFailed(n) => write!(f, "Expected exactly one resulting Solid, got {}", n),
 			Error::CleanFailed => write!(f, "Shape clean failed"),
 			Error::HelixFailed => write!(f, "Helix failed"),
 			Error::ExtrudeFailed => write!(f, "Extrude failed"),

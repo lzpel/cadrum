@@ -92,6 +92,8 @@
 //! - `#[cfg(...)]` は直前1行のみ認識し、続く fn に付与される
 //! - `type Foo;` などの associated type 宣言は無視される（メソッド生成対象外）
 
+use std::{iter::{Product, Sum}, ops::{Add, Mul, Sub}};
+
 #[cfg(feature = "color")]
 use crate::common::color::Color;
 use crate::common::error::Error;
@@ -519,7 +521,7 @@ pub trait FaceStruct: Sized {
 ///
 /// Associated types `Edge`/`Face` keep this trait backend-independent: each
 /// backend (occt / pure) binds them to its own concrete types in the impl.
-pub trait SolidStruct: Sized + Clone + Compound {
+pub trait SolidStruct: Sized + Clone + Compound where for<'a> &'a Self: Add<Output = Result<Self, Error>> + Sub<Output = Result<Self, Error>> + Mul<Output = Result<Self, Error>>, for<'a> Result<Self, Error>: Sum<&'a Self> + Product<&'a Self> {
 	type Edge: EdgeStruct;
 	type Face: FaceStruct;
 
@@ -785,7 +787,7 @@ impl<T: Transform> Transform for Vec<T> {
 	fn mirror(self, o: DVec3, n: DVec3) -> Self { self.into_iter().map(|s| s.mirror(o, n)).collect() }
 }
 
-impl<T: SolidStruct> Compound for Vec<T> {
+impl<T: SolidStruct> Compound for Vec<T> where for<'a> &'a T: Add<Output = Result<T, Error>> + Sub<Output = Result<T, Error>> + Mul<Output = Result<T, Error>>, for<'a> Result<T, Error>: Sum<&'a T> + Product<&'a T> {
 	type Elem = T;
 	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
 	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.into_iter().map(f).collect() }
@@ -800,7 +802,7 @@ impl<T: Transform, const N: usize> Transform for [T; N] {
 	fn mirror(self, o: DVec3, n: DVec3) -> Self { self.map(|s| s.mirror(o, n)) }
 }
 
-impl<T: SolidStruct, const N: usize> Compound for [T; N] {
+impl<T: SolidStruct, const N: usize> Compound for [T; N] where for<'a> &'a T: Add<Output = Result<T, Error>> + Sub<Output = Result<T, Error>> + Mul<Output = Result<T, Error>>, for<'a> Result<T, Error>: Sum<&'a T> + Product<&'a T> {
 	type Elem = T;
 	fn iter_elem(&self) -> impl Iterator<Item = &T> + '_ { self.iter() }
 	fn map_elem(self, f: impl FnMut(T) -> T) -> Self { self.map(f) }
