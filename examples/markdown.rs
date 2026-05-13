@@ -284,7 +284,7 @@ fn main() {
 		if name.starts_with("SUMMARY") {
 			write_summary(&path, &entries, &outputs);
 		} else if name.starts_with("README") {
-			write_readme(&path, &entries, &outputs);
+			write_readme(&path, &entries[1..], &outputs);
 		} else {
 			eprintln!("unknown target: {arg} (expected SUMMARY.md or README.md)");
 		}

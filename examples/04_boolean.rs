@@ -22,13 +22,13 @@ fn main() -> Result<(), cadrum::Error> {
     let intersect = (&make_box * &make_cyl)?;
 
     let cylinder = Solid::cylinder(8.0, DVec3::Z, 30.0)
-        .translate(DVec3::X*4.)
+        .translate(DVec3::X*4.);
     let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
 
-    // 3円（円柱）ベン図のsum
+    // sum = union of all cylinders
     let sum = [&cylinder0, &cylinder1, &cylinder2].into_iter().sum::<Result<Solid, _>>()?.color("#d875ff");
     
-    // 3円（円柱）ベン図のproduct
+    // product = intersection of all cylinders
     let product = [&cylinder0, &cylinder1, &cylinder2].into_iter().product::<Result<Solid, _>>()?.color("#00ff22");
 
     let shapes = [

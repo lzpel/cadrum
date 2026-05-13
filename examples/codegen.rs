@@ -101,8 +101,13 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 		if let Some(caps) = TRAIT_HEADER_RE.captures(line) {
 			let name = caps.get(1).unwrap().as_str().to_string();
 			let supertraits: Vec<String> = caps.get(2).map_or_else(Vec::new, |s| {
-				s.as_str()
-					.split('+')
+				// `where` 節は supertrait リストから除外。 `where` 節自身が `+` を
+				// 含む trait bound (例 `for<'a> &'a Self: Add + Sub`) を持つため、
+				// split('+') の前に切り落とさないと `"Compound where for<'a> &'a Self: Add"`
+				// のような誤った supertrait 名が混入する。
+				let s = s.as_str();
+				let s = s.split(" where ").next().unwrap_or(s);
+				s.split('+')
 					.map(|p| p.trim().to_string())
 					.filter(|p| !p.is_empty() && !p.starts_with('\''))
 					.collect()

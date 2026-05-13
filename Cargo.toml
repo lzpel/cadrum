@@ -45,6 +45,11 @@ regex = "1"
 # Examples that depend on the `color` feature. Cargo will skip building these
 # under `--no-default-features`. Examples without a `[[example]]` entry
 # (02_write_read, markdown) build under all feature configurations.
+
+[[example]]
+name = "00_chijin"
+required-features = ["color"]
+
 [[example]]
 name = "01_primitives"
 required-features = ["color"]
@@ -70,10 +75,6 @@ required-features = ["color"]
 
 [[example]]
 name = "08_shell"
-required-features = ["color"]
-
-[[example]]
-name = "100_chijin"
 required-features = ["color"]
 
 [[example]]

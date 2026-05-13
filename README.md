@@ -302,29 +302,44 @@ cargo run --example 04_boolean
 ```rust,no_run
 //! Boolean operations: union, subtract, and intersect between a box and a cylinder.
 
-use cadrum::{Compound, DVec3, Solid};
+use cadrum::{DVec3, Solid};
 
 fn main() -> Result<(), cadrum::Error> {
     let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
     let make_box = Solid::cube(20.0, 20.0, 20.0)
+        .translate(DVec3::X * -10.+ DVec3:: Y*-10.)
         .color("#4a90d9");
     let make_cyl = Solid::cylinder(8.0, DVec3::Z, 30.0)
-        .translate(DVec3::new(10.0, 10.0, -5.0))
+        .translate(DVec3::Z*-5.)
         .color("#e67e22");
 
     // union: merge both shapes into one — offset X=0
-    let union = Solid::boolean_union([&make_box], [&make_cyl])?;
+    let union = (&make_box + &make_cyl)?;
 
     // subtract: box minus cylinder — offset X=40
-    let subtract = Solid::boolean_subtract([&make_box], [&make_cyl])?
-        .translate(DVec3::X * 40.0);
+    let subtract = (&make_box - &make_cyl)?;
 
     // intersect: only the overlapping volume — offset X=80
-    let intersect = Solid::boolean_intersect([&make_box], [&make_cyl])?
-        .translate(DVec3::X * 80.0);
+    let intersect = (&make_box * &make_cyl)?;
 
-    let shapes: Vec<Solid> = [union, subtract, intersect].concat();
+    let cylinder = Solid::cylinder(8.0, DVec3::Z, 30.0)
+        .translate(DVec3::X*4.);
+    let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
+
+    // sum = union of all cylinders
+    let sum = [&cylinder0, &cylinder1, &cylinder2].into_iter().sum::<Result<Solid, _>>()?.color("#d875ff");
+    
+    // product = intersection of all cylinders
+    let product = [&cylinder0, &cylinder1, &cylinder2].into_iter().product::<Result<Solid, _>>()?.color("#00ff22");
+
+    let shapes = [
+        union.translate(DVec3::X * 0.0), 
+        subtract.translate(DVec3::X * 40.0), 
+        intersect.translate(DVec3::X * 80.0), 
+        sum.translate(DVec3::X * 20.0 + DVec3::Y * 40.0), 
+        product.translate(DVec3::X * 60.0 + DVec3::Y * 40.0)
+    ];
 
     let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
     Solid::write_step(&shapes, &mut f).expect("failed to write STEP");
@@ -540,11 +555,11 @@ cargo run --example 07_sweep
 //!   toward a parallel auxiliary spine. Arbitrary twist control — e.g. a
 //!   helical `aux_spine` on a straight `spine` produces a twisted ribbon.
 
-use cadrum::{Compound, DVec3, Edge, Error, ProfileOrient, Solid, Wire};
+use cadrum::{DVec3, Edge, Error, ProfileOrient, Solid, Wire};
 
 // ==================== Component 1: M2 ISO screw ====================
 
-fn build_m2_screw() -> Result<Vec<Solid>, Error> {
+fn build_m2_screw() -> Result<Solid, Error> {
 	let r = 1.0;
 	let h_pitch = 0.4;
 	let h_thread = 6.0;
@@ -570,17 +585,16 @@ fn build_m2_screw() -> Result<Vec<Solid>, Error> {
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
 	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z, h_thread);
 	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z, h_thread);
-	let thread_shaft = Solid::boolean_union([&thread], [&shaft])?;
-	let thread_shaft = Solid::boolean_intersect(&thread_shaft, [&crest])?;
+	let thread_shaft = (&(&thread + &shaft)? * &crest)?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
 	let head = Solid::cylinder(r_head, DVec3::Z, h_head).translate(DVec3::Z * h_thread);
-	Ok(Solid::boolean_union(&thread_shaft, [&head])?.color("red"))
+	Ok((&thread_shaft + &head)?.color("red"))
 }
 
 // ==================== Component 2: U-shaped pipe ====================
 
-fn build_u_pipe() -> Result<Vec<Solid>, Error> {
+fn build_u_pipe() -> Result<Solid, Error> {
 	let pipe_radius = 0.4;
 	let leg_length = 6.0;
 	let gap = 3.0;
@@ -606,7 +620,7 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 	// Up(+Y) fixes the binormal to the path-plane normal, avoiding Frenet
 	// degeneracy on the straight segments.
 	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Up(DVec3::Y))?;
-	Ok(vec![pipe].translate(DVec3::X * 6.0).color("blue"))
+	Ok(pipe.translate(DVec3::X * 6.0).color("blue"))
 }
 
 // ==================== Component 3: Auxiliary-spine twisted ribbon ====================
@@ -617,7 +631,7 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 // rectangular profile becomes a ribbon twisted once. With `Fixed` or
 // `Torsion` the profile wouldn't rotate along a straight spine — visible
 // twist is therefore proof that Auxiliary is in effect.
-fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
+fn build_twisted_ribbon() -> Result<Solid, Error> {
 	let h = 8.0;
 	let aux_r = 3.0;
 
@@ -628,7 +642,7 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
 
 	let ribbon = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(vec![ribbon].translate(DVec3::X * 12.0).color("green"))
+	Ok(ribbon.translate(DVec3::X * 12.0).color("green"))
 }
 
 // ==================== main: side-by-side layout ====================
@@ -639,7 +653,7 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let all: Vec<Solid> = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?].concat();
+	let all = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	Solid::write_step(&all, &mut f)?;
@@ -698,8 +712,7 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// want to use as shell openings.
 	let cutter_face_ids: std::collections::HashSet<u64> =
 		cutter.iter_face().map(|f| f.id()).collect();
-	let halves = Solid::boolean_intersect([&torus], [&cutter])?;
-	let half = halves.into_iter().next().ok_or(Error::BooleanOperationFailed)?;
+	let half = (&torus * &cutter)?;
 	let from_cutter: std::collections::HashSet<u64> = half
 		.iter_history()
 		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
