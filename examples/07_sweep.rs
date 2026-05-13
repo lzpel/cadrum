@@ -23,7 +23,7 @@ use cadrum::{Compound, DVec3, Edge, Error, ProfileOrient, Solid, Wire};
 
 // ==================== Component 1: M2 ISO screw ====================
 
-fn build_m2_screw() -> Result<Vec<Solid>, Error> {
+fn build_m2_screw() -> Result<Solid, Error> {
 	let r = 1.0;
 	let h_pitch = 0.4;
 	let h_thread = 6.0;
@@ -49,17 +49,16 @@ fn build_m2_screw() -> Result<Vec<Solid>, Error> {
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
 	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z, h_thread);
 	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z, h_thread);
-	let thread_shaft = Solid::boolean_union([&thread], [&shaft])?;
-	let thread_shaft = Solid::boolean_intersect(&thread_shaft, [&crest])?;
+	let thread_shaft = (&(&thread + &shaft)? * &crest)?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
 	let head = Solid::cylinder(r_head, DVec3::Z, h_head).translate(DVec3::Z * h_thread);
-	Ok(Solid::boolean_union(&thread_shaft, [&head])?.color("red"))
+	Ok((&thread_shaft + &head)?.color("red"))
 }
 
 // ==================== Component 2: U-shaped pipe ====================
 
-fn build_u_pipe() -> Result<Vec<Solid>, Error> {
+fn build_u_pipe() -> Result<Solid, Error> {
 	let pipe_radius = 0.4;
 	let leg_length = 6.0;
 	let gap = 3.0;
@@ -85,7 +84,7 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 	// Up(+Y) fixes the binormal to the path-plane normal, avoiding Frenet
 	// degeneracy on the straight segments.
 	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Up(DVec3::Y))?;
-	Ok(vec![pipe].translate(DVec3::X * 6.0).color("blue"))
+	Ok(pipe.translate(DVec3::X * 6.0).color("blue"))
 }
 
 // ==================== Component 3: Auxiliary-spine twisted ribbon ====================
@@ -96,7 +95,7 @@ fn build_u_pipe() -> Result<Vec<Solid>, Error> {
 // rectangular profile becomes a ribbon twisted once. With `Fixed` or
 // `Torsion` the profile wouldn't rotate along a straight spine — visible
 // twist is therefore proof that Auxiliary is in effect.
-fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
+fn build_twisted_ribbon() -> Result<Solid, Error> {
 	let h = 8.0;
 	let aux_r = 3.0;
 
@@ -107,7 +106,7 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
 
 	let ribbon = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(vec![ribbon].translate(DVec3::X * 12.0).color("green"))
+	Ok(ribbon.translate(DVec3::X * 12.0).color("green"))
 }
 
 // ==================== main: side-by-side layout ====================
@@ -118,7 +117,7 @@ fn build_twisted_ribbon() -> Result<Vec<Solid>, Error> {
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let all: Vec<Solid> = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?].concat();
+	let all = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?];
 
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	Solid::write_step(&all, &mut f)?;

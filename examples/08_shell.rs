@@ -30,8 +30,7 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// want to use as shell openings.
 	let cutter_face_ids: std::collections::HashSet<u64> =
 		cutter.iter_face().map(|f| f.id()).collect();
-	let halves = Solid::boolean_intersect([&torus], [&cutter])?;
-	let half = halves.into_iter().next().ok_or(Error::BooleanOperationFailed)?;
+	let half = (&torus * &cutter)?;
 	let from_cutter: std::collections::HashSet<u64> = half
 		.iter_history()
 		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))

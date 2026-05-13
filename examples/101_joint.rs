@@ -11,13 +11,15 @@ fn main() -> Result<(), Error> {
 	let (inner, outer, height) = (8.1, 20., 60.0);
 	let base = part(inner, outer, height)?;
 	let parts = [base.clone(), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU / 3.0), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU * 2.0 / 3.0)];
-	let positive = parts.iter().map(|p| Ok::<_, Error>(vec![p[0].clone(), p[1].clone()])).reduce(|a, b| Solid::boolean_union(&a?, &b?)).unwrap()?;
-	let negative = parts.iter().map(|p| Ok::<_, Error>(vec![p[2].clone()])).reduce(|a, b| Solid::boolean_union(&a?, &b?)).unwrap()?;
-	let result = Solid::boolean_subtract(&positive, &negative)?;
+	// positive = 各 part の [outer, between] (= p[0], p[1]) を全部 union
+	let positive: Solid = parts.iter().flat_map(|p| [&p[0], &p[1]]).sum::<Result<Solid, _>>()?;
+	// negative = 各 part の inner cylinder (= p[2]) を全部 union
+	let negative: Solid = parts.iter().map(|p| &p[2]).sum::<Result<Solid, _>>()?;
+	let result = (&positive - &negative)?;
 	let mut w = std::fs::File::create("joints.step").unwrap();
-	Solid::write_step(&result, &mut w).unwrap();
+	Solid::write_step([&result], &mut w).unwrap();
 	let mut w = std::fs::File::create("joints.stl").unwrap();
-	Solid::mesh(&result, 0.1).unwrap().write_stl(&mut w).unwrap();
+	Solid::mesh([&result], 0.1).unwrap().write_stl(&mut w).unwrap();
 	Ok(())
 }
 

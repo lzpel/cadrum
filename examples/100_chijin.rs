@@ -45,11 +45,11 @@ pub fn chijin() -> Result<Solid, cadrum::Error> {
 	let blocks: [Solid; N] = std::array::from_fn(|i| block_proto.clone().rotate_z(angle(i)).color(color(i)));
 	let holes: [Solid; N] = std::array::from_fn(|i| hole_proto.clone().rotate_z(angle(i)));
 	// ── Assemble with boolean operations: union, subtract, union ─────────
-	let result = Solid::boolean_union([&cylinder], &sheets)?;
-	let result = Solid::boolean_subtract(&result, &holes)?;
-	let result = Solid::boolean_union(&result, &blocks)?;
-	assert!(result.len() == 1);
-	Ok(result.into_iter().next().unwrap())
+	let mut result = (&(&cylinder + &sheets[0])? + &sheets[1])?;
+	for i in 0..N{
+		result=(&(&result - &holes[i])? + &blocks[i])?
+	}
+	Ok(result)
 }
 
 fn main() -> Result<(), cadrum::Error> {
