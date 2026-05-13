@@ -5,6 +5,7 @@ All notable changes to `cadrum` will be documented in this file.
 This document is written according to the [Keep a Changelog][kac] style.
 
 1. [Version 0](#version-0)
+	1. [0.8.0](#080)
 	1. [0.7.6](#076)
 	1. [0.7.5](#075)
 	1. [0.7.2](#072)
@@ -16,7 +17,42 @@ This document is written according to the [Keep a Changelog][kac] style.
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
 
-### Unreleased
+### 0.8.0
+
+#### Breaking
+
+- **Boolean API を単体×単体 + FFI 直通に限定。** OCCT の General BOP
+  (multi-args × multi-tools) は集合論的な `op(∪args, ∪tools)` を実装して
+  おらず、グループ内自己交差は未定義/破綻する (tools 自己交差で体積が
+  物理的に意味を失い、multi-tools intersect は連結結果でなく per-pair
+  piece を返す)。詳細は `notes/20260514-boolean演算は単体x単体のみ公開する方針.md`。
+  - **削除**: `Solid::union/subtract/intersect`、`Vec<Solid>::union/...`、
+    `Compound::union/subtract/intersect`。
+  - **追加**: `Solid::boolean_union/boolean_subtract/boolean_intersect`
+    (multi-args × multi-tools 通る唯一のパス、FFI 直通)。
+  - **追加**: `&Solid: Add/Sub/Mul` 演算子 (戻り値 `Result<Solid, Error>`)。
+    結果 Solid 数が 1 でないとき `Error::OneFailed(n)` を返す。
+  - **追加**: `Result<Solid, Error>: Sum<&Solid> + Product<&Solid>`。
+    `iter.sum::<Result<Solid, _>>()` で union 畳み込み、`product` で
+    intersect 畳み込み。中間は `Vec<Solid>` を保持し、終端でだけ
+    `exactly_one` 判定するため、途中で多ピースになるが最終的に 1 個に
+    連結するケース (オリンピックの輪を out-of-order で fold する等) も
+    正常に成功する。
+  - **追加**: `Error::OneFailed(usize)`。
+  - `SolidStruct` の HRTB で `for<'a> &'a Self: Add + Sub + Mul` と
+    `for<'a> Result<Self, Error>: Sum<&'a Self> + Product<&'a Self>` を
+    強制 → backend が boolean を実装する契約に演算子が含まれる。
+
+  **Migration**:
+
+  ```rust
+  // 旧 API → 新 API
+  a.union(&b)            → Solid::boolean_union([&a], [&b])      // または (&a + &b)?
+  a.subtract(&[hole])    → Solid::boolean_subtract([&a], [&hole]) // または (&a - &hole)?
+  vec.union(&tools)      → Solid::boolean_union(&vec, &tools)
+  // 複数を 1 個に畳む
+  vec.iter().sum::<Result<Solid, _>>()?
+  ```
 
 #### Changes
 
@@ -26,6 +62,18 @@ changes until `1.0`.
   `TColGeom`, `PLib_Base`, `BRepMesh_PluginMacro`) are unused by cadrum's
   `cpp/wrapper.cpp`. The toolkit list (`TKernel`, `TKMath`, ..., `TKDESTEP`)
   is unchanged.
+- `tests/subtract.rs` → `tests/boolean_subtract.rs`、`tests/union.rs` →
+  `tests/boolean_union.rs` にリネーム (boolean 系の検証テストを命名で
+  集約)。
+
+#### Fixes
+
+- `examples/codegen.rs`: trait header の supertrait 抽出が `where` 句を
+  含めて誤読していた問題を修正。HRTB を含む where 句 (`+` を含む
+  trait bound) があると、`Compound` 等の supertrait が `"Compound where
+  for<'a> ..."` という文字列にぶら下がって認識されず、`impl Solid` への
+  forwarder 生成が大量に欠落していた。` where ` 以降を切り落とすように
+  修正。
 
 ### 0.7.6
 

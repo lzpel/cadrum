@@ -1,5 +1,3 @@
-<div align="center">
-
 # cadrum
 
 Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0).
@@ -8,9 +6,7 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCC
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
 
-<img src="https://raw.githubusercontent.com/lzpel/alphastell/main/figure/image.png" alt="cadrum"/>
-
-</div>
+<img src="https://lzpel.github.io/cadrum/00_chijin.svg" alt="cadrum"/>
 
 <!--GALLERY-->
 
