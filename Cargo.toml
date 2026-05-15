@@ -11,17 +11,17 @@ categories = ["graphics", "science"]
 exclude = ["/figure", "/notes", "/steps", "/sandbox*", "/.github"]
 
 [features]
-default = ["color"]
+default = ["color", "png"]
 # Enable TShapeId, Rgb, and colormap on Shape for face-level color tracking
 color = []
-# Pure Rust CAD backend (no OCCT dependency)
-pure = []
 # Build OCCT from upstream sources when the cache is empty, instead of
 # downloading a prebuilt tarball. Off by default — most users will use the
 # prebuilt binary path.
 source-build = ["dep:cmake"]
 # PNG raster output for Scene2D via tiny-skia.
 png = ["dep:tiny-skia"]
+# Pure Rust CAD backend (no OCCT dependency)
+pure = []
 
 [dependencies]
 cxx = "1"

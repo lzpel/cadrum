@@ -27,12 +27,10 @@ fn test_png_box_isometric() {
 	let scene = mesh.scene(dvec3(1.0, 1.0, 1.0).normalize(), DVec3::Z, true, false);
 
 	let mut buf = Vec::new();
-	scene.write_png(400, &mut buf).unwrap();
+	scene.write_png([400, 400], &mut buf).unwrap();
 
 	assert_eq!(&buf[0..8], PNG_MAGIC, "PNG signature missing");
-	let (w, h) = png_dimensions(&buf);
-	assert_eq!(w, 400);
-	assert!(h > 0 && h <= 800, "height unexpected: {h}");
+	assert_eq!(png_dimensions(&buf), (400, 400));
 
 	std::fs::create_dir_all("out").unwrap();
 	std::fs::write("out/box_isometric.png", &buf).unwrap();
@@ -45,28 +43,26 @@ fn test_png_cylinder_shaded() {
 	let scene = mesh.scene(dvec3(1.0, 0.5, 0.3).normalize(), DVec3::Z, true, true);
 
 	let mut buf = Vec::new();
-	scene.write_png(400, &mut buf).unwrap();
+	scene.write_png([400, 600], &mut buf).unwrap();
 
 	assert_eq!(&buf[0..8], PNG_MAGIC);
+	assert_eq!(png_dimensions(&buf), (400, 600));
 
 	std::fs::create_dir_all("out").unwrap();
 	std::fs::write("out/cylinder.png", &buf).unwrap();
 }
 
 #[test]
-fn test_png_aspect_ratio_matches_viewbox() {
-	// Wide box: aspect ratio ~5:1
+fn test_png_dimensions_are_exact() {
+	// User-specified [width, height] must appear verbatim in the IHDR,
+	// regardless of viewbox aspect (letterboxed when aspects differ).
 	let shape = [Solid::cube(50.0, 10.0, 10.0)];
 	let mesh = Solid::mesh(&shape, 0.5).unwrap();
-	// Top-down view: viewbox should be ~50x10 (+ margin) so height ≈ width/5
 	let scene = mesh.scene(DVec3::Z, DVec3::Y, false, false);
 
-	let mut buf = Vec::new();
-	scene.write_png(500, &mut buf).unwrap();
-	let (w, h) = png_dimensions(&buf);
-	assert_eq!(w, 500);
-	// Box is 50x10 in xy, but the viewport adds 5% margin on the longer axis.
-	// Expected height ratio ≈ 10/50 = 0.2 of the width. Allow ±20% slack.
-	let ratio = h as f64 / w as f64;
-	assert!((0.16..=0.32).contains(&ratio), "unexpected aspect ratio: {ratio}");
+	for dims in [[500, 500], [800, 200], [200, 800]] {
+		let mut buf = Vec::new();
+		scene.write_png(dims, &mut buf).unwrap();
+		assert_eq!(png_dimensions(&buf), (dims[0] as u32, dims[1] as u32));
+	}
 }

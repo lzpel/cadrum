@@ -535,28 +535,34 @@ fn emit_polyline(svg: &mut String, line: &[DVec2], stroke: &str, dash: &str, wid
 
 // ==================== Scene2D → PNG backend ====================
 
-#[cfg(feature = "png")]
 impl Scene2D {
 	/// Rasterize this scene as a PNG and write to a writer.
 	///
-	/// `width` is the output width in pixels; the height is derived from the
-	/// scene aspect ratio. Anti-aliased via `tiny-skia`. Background is white
+	/// `dimensions` is `[width, height]` in pixels. The scene aspect ratio
+	/// (from `viewbox`) is preserved by scaling to fit and centering — when
+	/// the requested aspect doesn't match the scene's, white letterbox bars
+	/// fill the remainder. Anti-aliased via `tiny-skia`. Background is white
 	/// (CAD documentation convention; transparent backgrounds are not
-	/// supported here — fill the pixmap externally if you need one).
-	pub fn write_png<W: std::io::Write>(&self, width: u32, writer: &mut W) -> Result<(), super::error::Error> {
+	/// supported here).
+	#[cfg(feature = "png")]
+	pub fn write_png<W: std::io::Write>(&self, dimensions: [usize; 2], writer: &mut W) -> Result<(), super::error::Error> {
 		use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
 
+		let [width, height] = dimensions;
 		let layout = self.layout();
-		let pps = (width as f64) / layout.vw; // pixels per scene unit
-		let height = (layout.vh * pps).ceil().max(1.0) as u32;
+
+		// Preserve aspect: pick the smaller per-axis scale so the whole
+		// viewbox fits, then center the content within the pixmap.
+		let pps = ((width as f64) / layout.vw).min((height as f64) / layout.vh);
+		let off_x = (width as f64 - layout.vw * pps) / 2.0;
+		let off_y = (height as f64 - layout.vh * pps) / 2.0;
 
 		// Scene→pixel transform. SVG y was already flipped in `layout.vy`,
-		// so the same `(vx, vy)` origin maps to pixel (0, 0) once we scale
-		// scene-y by `-pps` (the rest of the pipeline keeps scene-space
-		// coordinates with y-up).
+		// so the same `(vx, vy)` origin maps to pixel `(off_x, off_y)` once
+		// we scale scene-y by `-pps`.
 		let s = pps as f32;
-		let tx = -(layout.vx as f32) * s;
-		let ty = (-(layout.vy) as f32) * s;
+		let tx = -(layout.vx as f32) * s + off_x as f32;
+		let ty = -(layout.vy as f32) * s + off_y as f32;
 		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
 
 		// `tiny-skia` applies stroke width in path coordinate space (= scene
@@ -568,7 +574,7 @@ impl Scene2D {
 		let dash_len = layout.dash_len as f32;
 		let dash_gap = layout.dash_gap as f32;
 
-		let mut pixmap = Pixmap::new(width, height).ok_or(super::error::Error::PngExportFailed)?;
+		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
 		pixmap.fill(tiny_skia::Color::WHITE);
 
 		// Triangles (back-to-front, already sorted by Scene2D construction).
@@ -591,7 +597,7 @@ impl Scene2D {
 		visible_paint.set_color_rgba8(0, 0, 0, 255);
 		visible_paint.anti_alias = true;
 		let visible_stroke = Stroke { width: sw, ..Stroke::default() };
-		stroke_polylines(&mut pixmap, &self.edges_visible, &visible_paint, &visible_stroke, transform);
+		Self::stroke_polylines(&mut pixmap, &self.edges_visible, &visible_paint, &visible_stroke, transform);
 
 		// Hidden edges — gray dashed.
 		let mut hidden_paint = Paint::default();
@@ -602,37 +608,38 @@ impl Scene2D {
 			dash: StrokeDash::new(vec![dash_len, dash_gap], 0.0),
 			..Stroke::default()
 		};
-		stroke_polylines(&mut pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
+		Self::stroke_polylines(&mut pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
 
 		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
 		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
 	}
-}
 
-#[cfg(feature = "png")]
-fn stroke_polylines(
-	pixmap: &mut tiny_skia::Pixmap,
-	polylines: &[DVec2],
-	paint: &tiny_skia::Paint,
-	stroke: &tiny_skia::Stroke,
-	transform: tiny_skia::Transform,
-) {
-	let mut start = 0;
-	for i in 0..=polylines.len() {
-		let is_sep = i == polylines.len() || polylines[i].is_nan();
-		if is_sep {
-			let line = &polylines[start..i];
-			if line.len() >= 2 {
-				let mut pb = tiny_skia::PathBuilder::new();
-				pb.move_to(line[0].x as f32, line[0].y as f32);
-				for p in &line[1..] {
-					pb.line_to(p.x as f32, p.y as f32);
+	#[cfg(feature = "png")]
+	fn stroke_polylines(
+		pixmap: &mut tiny_skia::Pixmap,
+		polylines: &[DVec2],
+		paint: &tiny_skia::Paint,
+		stroke: &tiny_skia::Stroke,
+		transform: tiny_skia::Transform,
+	) {
+		let mut start = 0;
+		for i in 0..=polylines.len() {
+			let is_sep = i == polylines.len() || polylines[i].is_nan();
+			if is_sep {
+				let line = &polylines[start..i];
+				if line.len() >= 2 {
+					let mut pb = tiny_skia::PathBuilder::new();
+					pb.move_to(line[0].x as f32, line[0].y as f32);
+					for p in &line[1..] {
+						pb.line_to(p.x as f32, p.y as f32);
+					}
+					if let Some(path) = pb.finish() {
+						pixmap.stroke_path(&path, paint, stroke, transform, None);
+					}
 				}
-				if let Some(path) = pb.finish() {
-					pixmap.stroke_path(&path, paint, stroke, transform, None);
-				}
+				start = i + 1;
 			}
-			start = i + 1;
 		}
 	}
+
 }

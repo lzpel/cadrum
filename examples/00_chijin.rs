@@ -59,9 +59,9 @@ fn main() -> Result<(), cadrum::Error> {
 	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
 	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
-	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Y, true, false).write_svg(&mut f)).expect("failed to write SVG");
+	let mut f = std::fs::File::create(format!("{example_name}.png")).expect("failed to create PNG file");
+	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Y, true, false).write_png([1024, 1024], &mut f)).expect("failed to write PNG");
 
-	println!("wrote {example_name}.step / {example_name}.svg");
+	println!("wrote {example_name}.step / {example_name}.png");
 	Ok(())
 }
