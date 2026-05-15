@@ -85,25 +85,17 @@ impl Mesh {
 		Ok(())
 	}
 
-	/// Render this mesh as an SVG.
+	/// Build a 2D scene from this mesh for the given camera.
 	///
 	/// - `view`: camera direction (higher `dot(view)` = closer).
 	/// - `up`: world-space up axis on the output. Gram-Schmidt-orthogonalized
 	///   against `view`. Panics if zero or parallel to `view`.
-	/// - `hidden_lines`: render occluded edges as dashed lines. Off for dense
-	///   models where they dominate.
+	/// - `hidden_lines`: classify occluded edges into `Scene2D::edges_hidden`.
+	///   When `false`, hidden edges are dropped entirely.
 	/// - `shading`: Lambertian shading with light == `view`. On for curved
 	///   shapes, off for flat CAD-style output.
-	pub fn write_svg<W: std::io::Write>(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool, writer: &mut W) -> Result<(), super::error::Error> {
-		writer.write_all(self.to_svg(view, up, hidden_lines, shading).as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
-	}
-
-	pub fn to_svg(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool) -> String {
-		self.scene(view, up, hidden_lines, shading).to_svg()
-	}
-
-	/// Build a 2D scene from this mesh for the given camera.
-	/// Parameter semantics match `write_svg`.
+	///
+	/// Render via `Scene2D::to_svg` / `Scene2D::write_svg`.
 	pub fn scene(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool) -> Scene2D {
 		let (u, v, dir) = projection_basis(view, up);
 
@@ -431,6 +423,11 @@ fn compute_viewbox(triangles: &[[DVec2; 3]], visible: &[DVec2], hidden: &[DVec2]
 // ==================== Scene2D → SVG backend ====================
 
 impl Scene2D {
+	/// Write this scene as an SVG to a writer.
+	pub fn write_svg<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
+		writer.write_all(self.to_svg().as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
+	}
+
 	/// Render this scene as an SVG string.
 	pub fn to_svg(&self) -> String {
 		let [min, max] = self.viewbox;
