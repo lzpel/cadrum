@@ -3,17 +3,6 @@ use super::color::Color;
 use glam::{DVec2, DVec3};
 use std::collections::HashMap;
 
-/// 3D edge polylines for SVG rendering.
-///
-/// Stores topological edges as 3D polylines. Visibility classification
-/// (visible vs hidden) is computed by [`Mesh::to_svg`] when hidden line
-/// rendering is enabled.
-#[derive(Debug, Clone, Default)]
-pub struct EdgeData {
-	/// 3D polylines representing topological edges.
-	pub polylines: Vec<Vec<DVec3>>,
-}
-
 /// A triangle mesh produced by meshing a solid shape.
 ///
 /// All vectors have the same length: one entry per vertex.
@@ -24,8 +13,6 @@ pub struct Mesh {
 	pub vertices: Vec<DVec3>,
 	/// UV coordinates, normalized to [0, 1] per face.
 	pub uvs: Vec<DVec2>,
-	/// Vertex normals.
-	pub normals: Vec<DVec3>,
 	/// Triangle indices (groups of 3, referencing into `vertices`).
 	pub indices: Vec<usize>,
 	/// Per-triangle face ID. Length equals `indices.len() / 3`.
@@ -34,7 +21,7 @@ pub struct Mesh {
 	#[cfg(feature = "color")]
 	pub colormap: HashMap<u64, Color>,
 	/// Topological edge polylines for SVG rendering.
-	pub edges: EdgeData,
+	pub edges: Vec<Vec<DVec3>>,
 }
 
 // ==================== STL ====================
@@ -131,7 +118,7 @@ impl Mesh {
 		let silhouette_edges = detect_silhouette_edges(self, dir);
 
 		// 3. Combine topological edges + silhouette edges
-		let all_edges: Vec<&Vec<DVec3>> = self.edges.polylines.iter().chain(silhouette_edges.iter()).collect();
+		let all_edges: Vec<&Vec<DVec3>> = self.edges.iter().chain(silhouette_edges.iter()).collect();
 
 		// 4. Classify edges. When hidden lines are disabled we still need to
 		//    drop occluded segments from the visible set, so build occlusion
@@ -147,6 +134,18 @@ impl Mesh {
 }
 
 // ==================== SVG internals ====================
+
+/// Per-triangle face normal from the cross product of its two edges.
+/// Not normalized — callers that need a unit vector should normalize.
+/// Sign convention matches the STL writer at `Mesh::write_stl`: outward-
+/// pointing for face-orientation-consistent winding (which OCCT meshing
+/// produces).
+fn tri_normal(mesh: &Mesh, ti: usize) -> DVec3 {
+	let i0 = mesh.indices[ti * 3];
+	let i1 = mesh.indices[ti * 3 + 1];
+	let i2 = mesh.indices[ti * 3 + 2];
+	(mesh.vertices[i1] - mesh.vertices[i0]).cross(mesh.vertices[i2] - mesh.vertices[i0])
+}
 
 struct SvgTriangle {
 	pts: [(f64, f64); 3],
@@ -195,8 +194,8 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 		let v1 = mesh.vertices[i1];
 		let v2 = mesh.vertices[i2];
 
-		let avg_normal = (mesh.normals[i0] + mesh.normals[i1] + mesh.normals[i2]) / 3.0;
-		if avg_normal.dot(dir) < 0.0 {
+		let face_normal = tri_normal(mesh, ti);
+		if face_normal.dot(dir) < 0.0 {
 			continue;
 		}
 
@@ -208,13 +207,13 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 
 		// Lambertian shading with head-on light (light direction == view direction).
 		// Front-facing triangles get `normal · dir ∈ (0, 1]`; normalize to handle
-		// the averaged normal's non-unit length. Shade maps [0, 1] → [0.5, 1.0]
+		// the face normal's non-unit length. Shade maps [0, 1] → [0.5, 1.0]
 		// so glancing faces darken to half-intensity (not black) — enough to
 		// read the 3D shape without swallowing the silhouette into the stroke.
 		// When `shading` is false, every triangle gets shade=1.0 → flat fill,
 		// matching the pre-shading output (`#ddd` for no-color path).
 		let shade = if shading {
-			let dot = avg_normal.normalize_or_zero().dot(dir).clamp(0.0, 1.0);
+			let dot = face_normal.normalize_or_zero().dot(dir).clamp(0.0, 1.0);
 			0.5 + 0.5 * dot
 		} else {
 			1.0
@@ -265,8 +264,7 @@ fn build_occlusion_data(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<Occl
 		let v1 = mesh.vertices[i1];
 		let v2 = mesh.vertices[i2];
 
-		let avg_normal = (mesh.normals[i0] + mesh.normals[i1] + mesh.normals[i2]) / 3.0;
-		if avg_normal.dot(dir) <= 0.0 {
+		if tri_normal(mesh, ti).dot(dir) <= 0.0 {
 			continue;
 		}
 
@@ -315,11 +313,7 @@ fn detect_silhouette_edges(mesh: &Mesh, dir: DVec3) -> Vec<Vec<DVec3>> {
 
 /// Returns true if triangle `ti` is front-facing relative to `dir`.
 fn tri_facing(mesh: &Mesh, ti: usize, dir: DVec3) -> bool {
-	let i0 = mesh.indices[ti * 3];
-	let i1 = mesh.indices[ti * 3 + 1];
-	let i2 = mesh.indices[ti * 3 + 2];
-	let avg_normal = (mesh.normals[i0] + mesh.normals[i1] + mesh.normals[i2]) / 3.0;
-	avg_normal.dot(dir) > 0.0
+	tri_normal(mesh, ti).dot(dir) > 0.0
 }
 
 /// Classify edge segments as visible or hidden based on triangle occlusion.

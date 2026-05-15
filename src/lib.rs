@@ -24,7 +24,7 @@ pub use occt::solid::Solid;
 #[cfg(feature = "color")]
 pub use common::color::Color;
 pub use common::error::Error;
-pub use common::mesh::{EdgeData, Mesh};
+pub use common::mesh::Mesh;
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
 // adding a direct `glam` dependency — otherwise a mismatched glam minor

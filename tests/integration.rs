@@ -6,7 +6,7 @@
 //! 各テスト名の `t0N` は合格基準番号に対応:
 //!   T-01: Bug 1 — ブール演算結果の drop 順序で STATUS_HEAP_CORRUPTION が起きない
 //!   T-02: Bug 2 — read_step 複数回呼び出し後にプロセスが正常終了する
-//!   T-03: Bug 3 — mesh.normals.len() == mesh.vertices.len()（法線 off-by-one）
+//!   T-03: 廃止（Mesh::normals フィールド削除に伴い検証対象が消滅）
 //!   T-04: Bug 4 — approximation_segments の tolerance が反映される（ハードコード脱却）
 //!   T-05: Bug 5 — union 後コンパウンドへの平行移動が全頂点に正確に反映される
 //!   T-06: I/O  — BRep バイナリの write→read ラウンドトリップ
@@ -111,17 +111,6 @@ fn test_t02_multiple_reads_no_crash() {
 	for _ in 0..5 {
 		let _shape = cadrum::Solid::read_brep_binary(&mut brep_data.as_slice()).unwrap();
 	}
-}
-
-// ==================== T-03: Mesh normals count ====================
-// Bug 3: 法線ループで normal_array.Length()（キャパシティ=頂点数+1）を上限に
-// 使っていたため normals が vertices より1つ少なかった。
-
-#[test]
-fn test_t03_mesh_normals_count() {
-	let shape = test_box();
-	let mesh = cadrum::Solid::mesh(&[shape], 0.1).unwrap();
-	assert_eq!(mesh.normals.len(), mesh.vertices.len());
 }
 
 // ==================== T-04: Approximation tolerance ====================

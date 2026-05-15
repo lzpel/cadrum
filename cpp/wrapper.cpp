@@ -804,9 +804,6 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double tolerance) {
         int nb_nodes = triangulation->NbNodes();
         int nb_triangles = triangulation->NbTriangles();
 
-        // Compute normals for this face
-        // Bug 3 fix: Use Poly_Triangulation::ComputeNormals + correct loop bounds
-
         // Vertices
         for (int i = 1; i <= nb_nodes; i++) {
             gp_Pnt p = triangulation->Node(i);
@@ -840,24 +837,6 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double tolerance) {
             for (int i = 1; i <= nb_nodes; i++) {
                 result.uvs.push_back(0.0);
                 result.uvs.push_back(0.0);
-            }
-        }
-
-        // Normals - Bug 3 fix: iterate exactly nb_nodes times (1..=nb_nodes)
-        // Previous code used normal_array.Length() which was off-by-one.
-        if (!triangulation->HasNormals()) {
-            triangulation->ComputeNormals();
-        }
-        for (int i = 1; i <= nb_nodes; i++) {
-            gp_Dir normal = triangulation->Normal(i);
-            if (face.Orientation() == TopAbs_REVERSED) {
-                result.normals.push_back(-normal.X());
-                result.normals.push_back(-normal.Y());
-                result.normals.push_back(-normal.Z());
-            } else {
-                result.normals.push_back(normal.X());
-                result.normals.push_back(normal.Y());
-                result.normals.push_back(normal.Z());
             }
         }
 

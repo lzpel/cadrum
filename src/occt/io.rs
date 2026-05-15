@@ -199,7 +199,7 @@ fn write_brep_with<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, wr
 }
 
 pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f64) -> Result<crate::common::mesh::Mesh, Error> {
-	use crate::common::mesh::{EdgeData, Mesh};
+	use crate::common::mesh::Mesh;
 	use glam::{DVec2, DVec3};
 
 	let compound = CompoundShape::new(solids);
@@ -210,7 +210,6 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f
 	let vertex_count = data.vertices.len() / 3;
 	let vertices: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2])).collect();
 	let uvs: Vec<DVec2> = (0..vertex_count).map(|i| DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1])).collect();
-	let normals: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.normals[i * 3], data.normals[i * 3 + 1], data.normals[i * 3 + 2])).collect();
 	let indices: Vec<usize> = data.indices.iter().map(|&i| i as usize).collect();
 	let face_ids = data.face_tshape_ids;
 
@@ -228,11 +227,10 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, tolerance: f
 	Ok(Mesh {
 		vertices,
 		uvs,
-		normals,
 		indices,
 		face_ids,
 		#[cfg(feature = "color")]
 		colormap,
-		edges: EdgeData::default(),
+		edges: Vec::new(),
 	})
 }
