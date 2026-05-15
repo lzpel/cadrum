@@ -26,7 +26,7 @@ fn main() -> Result<(), cadrum::Error> {
 
     let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())

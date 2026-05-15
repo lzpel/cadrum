@@ -8,7 +8,7 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCC
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
 
-<img src="https://lzpel.github.io/cadrum/00_chijin.svg" alt="cadrum" height="300" width="auto"/>
+<img src="https://lzpel.github.io/cadrum/00_chijin.png" alt="cadrum" height="300" width="auto"/>
 </div>
 
 <!--GALLERY-->
@@ -147,7 +147,7 @@ fn main() -> Result<(), cadrum::Error> {
 
     let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
@@ -215,7 +215,7 @@ fn main() -> Result<(), cadrum::Error> {
 
     let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
     Solid::mesh(&all, 0.1)?.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 
@@ -291,7 +291,7 @@ fn main() -> Result<(), cadrum::Error> {
 
     let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
@@ -362,7 +362,7 @@ fn main() -> Result<(), cadrum::Error> {
 
     let scene = Solid::mesh(&shapes, 0.5)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
@@ -459,7 +459,7 @@ fn main() -> Result<(), Error> {
 
 	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
@@ -538,7 +538,7 @@ fn main() -> Result<(), Error> {
 
 	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
@@ -690,7 +690,7 @@ fn main() -> Result<(), Error> {
 	// Helical threads have dense hidden lines that clutter the output; disable them.
 	let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png ({} solids)", all.len());
 	Ok(())
@@ -772,7 +772,7 @@ fn main() -> Result<(), Error> {
 	// naturally.
 	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
@@ -839,9 +839,9 @@ fn main() -> Result<(), cadrum::Error> {
 
 	Solid::write_step(&objects, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&objects, 0.1)?.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true);
+	let scene = Solid::mesh(&objects, 0.05)?.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
@@ -913,7 +913,7 @@ fn main() -> Result<(), Error> {
 
 	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
@@ -985,7 +985,7 @@ fn main() -> Result<(), Error> {
 
 	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())

@@ -22,7 +22,7 @@ fn main() -> Result<(), Error> {
 
 	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	Solid::mesh(&result, 0.1)?.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 
