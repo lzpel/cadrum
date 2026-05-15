@@ -33,14 +33,18 @@ fn point(i: usize, j: usize) -> DVec3 {
 	DQuat::from_axis_angle(DVec3::Z, phi) * translated
 }
 
-fn main() {
+fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
 	let plasma = Solid::bspline(M, N, true, point).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
-	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
-	Solid::write_step(&objects, &mut f).unwrap();
-	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	Solid::mesh(&objects, 0.1).and_then(|m| m.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true).write_svg(&mut f_svg)).unwrap();
-	println!("wrote {example_name}.step / {example_name}.svg");
+
+	Solid::write_step(&objects, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+
+	let scene = Solid::mesh(&objects, 0.05)?.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true);
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
 }

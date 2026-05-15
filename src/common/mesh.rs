@@ -420,33 +420,56 @@ fn compute_viewbox(triangles: &[[DVec2; 3]], visible: &[DVec2], hidden: &[DVec2]
 	[min, max]
 }
 
-// ==================== Scene2D → SVG backend ====================
+// ==================== Scene2D layout (shared by backends) ====================
+
+/// Viewport + stroke parameters derived from `Scene2D::viewbox`. Shared by
+/// SVG and PNG backends so both honor the same margin / stroke / dash ratios.
+/// All units are scene units; per-backend code converts to its target space
+/// (SVG keeps scene units; PNG multiplies by pixels-per-scene-unit).
+struct Layout {
+	/// Output rect in scene-style coordinates with Y already flipped (origin
+	/// at top-left, matching SVG `viewBox` and pixel image conventions).
+	vx: f64,
+	vy: f64,
+	vw: f64,
+	vh: f64,
+	stroke_width: f64,
+	hidden_stroke_width: f64,
+	dash_len: f64,
+	dash_gap: f64,
+}
 
 impl Scene2D {
-	/// Write this scene as an SVG to a writer.
-	pub fn write_svg<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
-		writer.write_all(self.to_svg().as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
-	}
-
-	/// Render this scene as an SVG string.
-	pub fn to_svg(&self) -> String {
+	fn layout(&self) -> Layout {
 		let [min, max] = self.viewbox;
 		let margin_frac = 0.05;
 		let w = max.x - min.x;
 		let h = max.y - min.y;
 		let span = w.max(h);
 		let margin = span * margin_frac;
-		let vx = min.x - margin;
-		// SVG Y axis points down, so flip Y for output.
-		let vy = -(max.y + margin);
-		let vw = w + margin * 2.0;
-		let vh = h + margin * 2.0;
-		let sw = span * 0.003;
-		// Hidden lines: thinner stroke and longer dashes to reduce visual clutter
-		// on dense models (e.g. helical sweeps).
-		let hidden_sw = sw * 0.6;
-		let dash_len = sw * 5.0;
-		let dash_gap = sw * 4.0;
+		let stroke_width = span * 0.003;
+		Layout {
+			vx: min.x - margin,
+			// SVG / image Y axis points down, so flip Y for the output rect.
+			vy: -(max.y + margin),
+			vw: w + margin * 2.0,
+			vh: h + margin * 2.0,
+			stroke_width,
+			// Hidden lines: thinner stroke and longer dashes to reduce
+			// visual clutter on dense models (e.g. helical sweeps).
+			hidden_stroke_width: stroke_width * 0.6,
+			dash_len: stroke_width * 5.0,
+			dash_gap: stroke_width * 4.0,
+		}
+	}
+}
+
+// ==================== Scene2D → SVG backend ====================
+
+impl Scene2D {
+	/// Write this scene as an SVG to a writer.
+	pub fn write_svg<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
+		let Layout { vx, vy, vw, vh, stroke_width: sw, hidden_stroke_width: hidden_sw, dash_len, dash_gap } = self.layout();
 
 		let mut svg = String::with_capacity(4096 + self.triangles.len() * 120);
 		svg.push_str(&format!(
@@ -468,7 +491,7 @@ impl Scene2D {
 		polylines_to_svg(&mut svg, &self.edges_hidden, "#bbb", &format!("{dash_len:.4},{dash_gap:.4}"), Some(hidden_sw));
 
 		svg.push_str("</svg>\n");
-		svg
+		writer.write_all(svg.as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
 	}
 }
 
@@ -508,4 +531,115 @@ fn emit_polyline(svg: &mut String, line: &[DVec2], stroke: &str, dash: &str, wid
 		svg.push('"');
 	}
 	svg.push_str("/>\n");
+}
+
+// ==================== Scene2D → PNG backend ====================
+
+impl Scene2D {
+	/// Rasterize this scene as a PNG and write to a writer.
+	///
+	/// `dimensions` is `[width, height]` in pixels. The scene aspect ratio
+	/// (from `viewbox`) is preserved by scaling to fit and centering — when
+	/// the requested aspect doesn't match the scene's, white letterbox bars
+	/// fill the remainder. Anti-aliased via `tiny-skia`. Background is white
+	/// (CAD documentation convention; transparent backgrounds are not
+	/// supported here).
+	#[cfg(feature = "png")]
+	pub fn write_png<W: std::io::Write>(&self, dimensions: [usize; 2], writer: &mut W) -> Result<(), super::error::Error> {
+		use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
+
+		let [width, height] = dimensions;
+		let layout = self.layout();
+
+		// Preserve aspect: pick the smaller per-axis scale so the whole
+		// viewbox fits, then center the content within the pixmap.
+		let pps = ((width as f64) / layout.vw).min((height as f64) / layout.vh);
+		let off_x = (width as f64 - layout.vw * pps) / 2.0;
+		let off_y = (height as f64 - layout.vh * pps) / 2.0;
+
+		// Scene→pixel transform. SVG y was already flipped in `layout.vy`,
+		// so the same `(vx, vy)` origin maps to pixel `(off_x, off_y)` once
+		// we scale scene-y by `-pps`.
+		let s = pps as f32;
+		let tx = -(layout.vx as f32) * s + off_x as f32;
+		let ty = -(layout.vy as f32) * s + off_y as f32;
+		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
+
+		// `tiny-skia` applies stroke width in path coordinate space (= scene
+		// units here), THEN the transform scales the resulting stroke outline
+		// to pixels. So pass the layout values in scene units directly; the
+		// transform turns them into the desired `sw * pps` pixel widths.
+		let sw = layout.stroke_width as f32;
+		let hidden_sw = layout.hidden_stroke_width as f32;
+		let dash_len = layout.dash_len as f32;
+		let dash_gap = layout.dash_gap as f32;
+
+		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
+		pixmap.fill(tiny_skia::Color::WHITE);
+
+		// Triangles (back-to-front, already sorted by Scene2D construction).
+		for (tri, color) in self.triangles.iter().zip(self.color.iter()) {
+			let mut pb = PathBuilder::new();
+			pb.move_to(tri[0].x as f32, tri[0].y as f32);
+			pb.line_to(tri[1].x as f32, tri[1].y as f32);
+			pb.line_to(tri[2].x as f32, tri[2].y as f32);
+			pb.close();
+			if let Some(path) = pb.finish() {
+				let mut paint = Paint::default();
+				paint.set_color_rgba8(color[0], color[1], color[2], 255);
+				paint.anti_alias = true;
+				pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
+			}
+		}
+
+		// Visible edges — solid black.
+		let mut visible_paint = Paint::default();
+		visible_paint.set_color_rgba8(0, 0, 0, 255);
+		visible_paint.anti_alias = true;
+		let visible_stroke = Stroke { width: sw, ..Stroke::default() };
+		Self::stroke_polylines(&mut pixmap, &self.edges_visible, &visible_paint, &visible_stroke, transform);
+
+		// Hidden edges — gray dashed.
+		let mut hidden_paint = Paint::default();
+		hidden_paint.set_color_rgba8(0xbb, 0xbb, 0xbb, 255);
+		hidden_paint.anti_alias = true;
+		let hidden_stroke = Stroke {
+			width: hidden_sw,
+			dash: StrokeDash::new(vec![dash_len, dash_gap], 0.0),
+			..Stroke::default()
+		};
+		Self::stroke_polylines(&mut pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
+
+		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
+		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+	}
+
+	#[cfg(feature = "png")]
+	fn stroke_polylines(
+		pixmap: &mut tiny_skia::Pixmap,
+		polylines: &[DVec2],
+		paint: &tiny_skia::Paint,
+		stroke: &tiny_skia::Stroke,
+		transform: tiny_skia::Transform,
+	) {
+		let mut start = 0;
+		for i in 0..=polylines.len() {
+			let is_sep = i == polylines.len() || polylines[i].is_nan();
+			if is_sep {
+				let line = &polylines[start..i];
+				if line.len() >= 2 {
+					let mut pb = tiny_skia::PathBuilder::new();
+					pb.move_to(line[0].x as f32, line[0].y as f32);
+					for p in &line[1..] {
+						pb.line_to(p.x as f32, p.y as f32);
+					}
+					if let Some(path) = pb.finish() {
+						pixmap.stroke_path(&path, paint, stroke, transform, None);
+					}
+				}
+				start = i + 1;
+			}
+		}
+	}
+
 }

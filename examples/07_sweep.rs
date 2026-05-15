@@ -119,11 +119,13 @@ fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let all = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?];
 
-	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	Solid::write_step(&all, &mut f)?;
-	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	// Helical threads have dense hidden lines that clutter the SVG; disable them.
-	Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false).write_svg(&mut f_svg)?;
-	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
+	Solid::write_step(&all, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+
+	// Helical threads have dense hidden lines that clutter the output; disable them.
+	let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false);
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png ({} solids)", all.len());
 	Ok(())
 }
