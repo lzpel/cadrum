@@ -65,12 +65,12 @@ fn main() -> Result<(), Error> {
 
 	let result = [box_solid, oblique, l_beam, heart];
 
-	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut f)).expect("failed to write SVG");
+	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
-	println!("wrote {example_name}.step / {example_name}.svg");
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }

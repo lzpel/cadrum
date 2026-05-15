@@ -3,7 +3,7 @@
 use cadrum::{Color, DVec3, Edge, ProfileOrient, Solid};
 use std::f64::consts::PI;
 
-pub fn chijin() -> Result<Solid, cadrum::Error> {
+fn chijin() -> Result<Solid, cadrum::Error> {
 	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
 	let cylinder = Solid::cylinder(15.0, DVec3::Z, 8.0)
 		.translate(DVec3::Z * -4.0)
@@ -56,12 +56,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let result = [chijin()?];
 
-	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
-	Solid::write_step(&result, &mut f).expect("failed to write STEP");
+	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let mut f = std::fs::File::create(format!("{example_name}.png")).expect("failed to create PNG file");
-	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Y, true, false).write_png([1024, 1024], &mut f)).expect("failed to write PNG");
+	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Y, true, false);
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([1024, 1024], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
-	println!("wrote {example_name}.step / {example_name}.png");
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
