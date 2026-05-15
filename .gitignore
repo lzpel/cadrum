@@ -8,7 +8,6 @@ linkedin.md
 *.step
 *.stl
 *.svg
-*.png
 *.tar.gz
 uv.lock
 *.dockerignore

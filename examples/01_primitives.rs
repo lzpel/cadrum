@@ -2,7 +2,7 @@
 
 use cadrum::{DVec3, Solid};
 
-fn main() -> Result<(), cadrum::Error> {
+fn main() {
     let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
     let solids = [
@@ -22,12 +22,9 @@ fn main() -> Result<(), cadrum::Error> {
             .color("#9b59b6"),
     ];
 
-    Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+    let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create file");
+    Solid::write_step(&solids, &mut f).expect("failed to write STEP");
 
-    let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-
-    println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
-    Ok(())
+    let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
+    Solid::mesh(&solids, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut svg)).expect("failed to write SVG");
 }

@@ -38,11 +38,11 @@ fn main() -> Result<(), cadrum::Error> {
         .flat_map(|(i, solids)| solids.translate(DVec3::X * spacing * i as f64))
         .collect();
 
-    let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("create file");
+    Solid::mesh(&all, 0.5).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false).write_svg(&mut svg))?;
 
-    Solid::mesh(&all, 0.1)?.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    let mut stl = std::fs::File::create(format!("{example_name}.stl")).expect("create file");
+    Solid::mesh(&all, 0.1).and_then(|m| m.write_stl(&mut stl))?;
 
     // 5. Print summary
     let stl_path = format!("{example_name}.stl");

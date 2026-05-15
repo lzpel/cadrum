@@ -72,9 +72,6 @@ pub enum Error {
 	/// SVG export (HLR projection) failed.
 	SvgExportFailed,
 
-	/// PNG export failed (rasterizer / encoder / writer).
-	PngExportFailed,
-
 	/// STL write failed.
 	StlWriteFailed,
 
@@ -106,7 +103,6 @@ impl std::fmt::Display for Error {
 			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
 			Error::SvgExportFailed => write!(f, "SVG export failed"),
-			Error::PngExportFailed => write!(f, "PNG export failed"),
 			Error::StlWriteFailed => write!(f, "STL write failed"),
 			Error::InvalidColor(s) => write!(f, "Invalid color: \"{}\"", s),
 			Error::Unknown(msg) => write!(f, "Unknown error: {}", msg),

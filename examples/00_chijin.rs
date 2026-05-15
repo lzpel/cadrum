@@ -3,7 +3,7 @@
 use cadrum::{Color, DVec3, Edge, ProfileOrient, Solid};
 use std::f64::consts::PI;
 
-fn chijin() -> Result<Solid, cadrum::Error> {
+pub fn chijin() -> Result<Solid, cadrum::Error> {
 	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
 	let cylinder = Solid::cylinder(15.0, DVec3::Z, 8.0)
 		.translate(DVec3::Z * -4.0)
@@ -56,14 +56,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let result = [chijin()?];
 
-	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+	let mut f = std::fs::File::create(format!("{example_name}.step")).expect("failed to create STEP file");
+	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
-	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Y, true, false);
-	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([1280 , 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-	// This size 1280 x 640 is special because 00_chijin.png is used for github repository social media preview image.
-	// > we recommend a size of at least 640 by 320 pixels (1280 by 640 pixels for best display).　See https://docs.github.com/ja/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview
+	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
+	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Y, true, false).write_svg(&mut f)).expect("failed to write SVG");
 
-	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }
