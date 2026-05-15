@@ -126,6 +126,6 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 
 	let mut svg = std::fs::File::create("out/multicolor_solvespace_recovered.svg").expect("svg file");
 	cadrum::Solid::mesh(&solids, 0.1)
-		.and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, true, &mut svg))
+		.and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, true).write_svg(&mut svg))
 		.expect("svg write should succeed");
 }

@@ -41,6 +41,6 @@ fn main() {
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
 	Solid::write_step(&objects, &mut f).unwrap();
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	Solid::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true, &mut f_svg)).unwrap();
+	Solid::mesh(&objects, 0.1).and_then(|m| m.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true).write_svg(&mut f_svg)).unwrap();
 	println!("wrote {example_name}.step / {example_name}.svg");
 }

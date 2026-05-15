@@ -37,5 +37,5 @@ fn main() {
     Solid::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    Solid::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
+    Solid::mesh(&solids, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut svg)).expect("failed to write SVG");
 }

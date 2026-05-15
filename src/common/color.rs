@@ -90,6 +90,15 @@ impl Color {
 		Ok(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0 })
 	}
 
+	/// Encode this color as a 16-bit RGB555 value with the high bit set
+	/// (SolidView/MeshLab convention for the STL "attribute byte count" slot).
+	pub fn as_u16(&self) -> u16 {
+		let r = (self.r * 31.0) as u16;
+		let g = (self.g * 31.0) as u16;
+		let b = (self.b * 31.0) as u16;
+		0x8000 | r | (g << 5) | (b << 10)
+	}
+
 	/// Create an `Color` from HSV values (all in `0.0..=1.0`).
 	pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
 		let h6 = h * 6.0;

@@ -147,7 +147,7 @@ fn main() {
     Solid::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    Solid::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
+    Solid::mesh(&solids, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut svg)).expect("failed to write SVG");
 }
 
 ```
@@ -207,7 +207,7 @@ fn main() -> Result<(), cadrum::Error> {
         .collect();
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("create file");
-    Solid::mesh(&all, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg))?;
+    Solid::mesh(&all, 0.5).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false).write_svg(&mut svg))?;
 
     let mut stl = std::fs::File::create(format!("{example_name}.stl")).expect("create file");
     Solid::mesh(&all, 0.1).and_then(|m| m.write_stl(&mut stl))?;
@@ -280,7 +280,7 @@ fn main() {
     Solid::write_step(&solids, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    Solid::mesh(&solids, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
+    Solid::mesh(&solids, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut svg)).expect("failed to write SVG");
 }
 
 ```
@@ -344,7 +344,7 @@ fn main() -> Result<(), cadrum::Error> {
     Solid::write_step(&shapes, &mut f).expect("failed to write STEP");
 
     let mut svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-    Solid::mesh(&shapes, 0.5).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false, &mut svg)).expect("failed to write SVG");
+    Solid::mesh(&shapes, 0.5).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false).write_svg(&mut svg)).expect("failed to write SVG");
 
     Ok(())
 }
@@ -436,7 +436,7 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -511,7 +511,7 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.5).and_then(|m| m.write_svg(DVec3::ONE, DVec3::Z, true, false, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.5).and_then(|m| m.scene(DVec3::ONE, DVec3::Z, true, false).write_svg(&mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -658,7 +658,7 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&all, &mut f)?;
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
 	// Helical threads have dense hidden lines that clutter the SVG; disable them.
-	Solid::mesh(&all, 0.5)?.write_svg(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false, &mut f_svg)?;
+	Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false).write_svg(&mut f_svg)?;
 	println!("wrote {example_name}.step / {example_name}.svg ({} solids)", all.len());
 	Ok(())
 }
@@ -735,7 +735,7 @@ fn main() -> Result<(), Error> {
 	// Isometric view from (1, 1, 2) with shading so the cavity depth reads
 	// naturally.
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true).write_svg(&mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -798,7 +798,7 @@ fn main() {
 	let mut f = std::fs::File::create(format!("{example_name}.step")).unwrap();
 	Solid::write_step(&objects, &mut f).unwrap();
 	let mut f_svg = std::fs::File::create(format!("{example_name}.svg")).unwrap();
-	Solid::mesh(&objects, 0.1).and_then(|m| m.write_svg(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true, &mut f_svg)).unwrap();
+	Solid::mesh(&objects, 0.1).and_then(|m| m.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true).write_svg(&mut f_svg)).unwrap();
 	println!("wrote {example_name}.step / {example_name}.svg");
 }
 
@@ -864,7 +864,7 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true).write_svg(&mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -932,7 +932,7 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&result, &mut f).expect("failed to write STEP");
 
 	let mut f = std::fs::File::create(format!("{example_name}.svg")).expect("failed to create SVG file");
-	Solid::mesh(&result, 0.2).and_then(|m| m.write_svg(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true, &mut f)).expect("failed to write SVG");
+	Solid::mesh(&result, 0.2).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true).write_svg(&mut f)).expect("failed to write SVG");
 
 	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
@@ -1097,8 +1097,9 @@ See `examples/08_shell.rs` for a worked end-to-end use of this mechanism
 
 `Solid::mesh` flattens any number of solids into a single triangle `Mesh`
 using OCCT's BRep mesher (`BRepMesh_IncrementalMesh`). From a `Mesh`,
-`Mesh::write_stl` emits a standard binary STL and `Mesh::write_svg`
-renders a hidden-line-removed 2D projection — handy for documentation and
+`Mesh::write_stl` emits a binary STL; `Mesh::scene` builds a backend-
+agnostic `Scene2D` (projection + shading + silhouette + occlusion) which
+each 2D backend (currently SVG) consumes — handy for documentation and
 quick visual diffs:
 
 ```rust,no_run
@@ -1108,13 +1109,12 @@ let parts = [Solid::cube(10.0, 20.0, 30.0)];
 let mesh  = Solid::mesh(&parts, 0.5)?;
 
 mesh.write_stl(&mut std::fs::File::create("out.stl").unwrap())?;
-mesh.write_svg(
+mesh.scene(
     DVec3::ONE,   // view direction
     DVec3::Z,     // up direction
-    true,         // include hidden lines (dashed)
+    true,         // classify hidden lines
     false,        // Lambertian shading off
-    &mut std::fs::File::create("out.svg").unwrap(),
-)?;
+).write_svg(&mut std::fs::File::create("out.svg").unwrap())?;
 # Ok::<(), cadrum::Error>(())
 ```
 
