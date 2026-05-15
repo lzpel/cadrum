@@ -18,8 +18,8 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCC
 | [<img src="https://lzpel.github.io/cadrum/01_primitives.png" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.png" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.png" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.png" width="180" alt="boolean"/>](#boolean) |
 | [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
 | [<img src="https://lzpel.github.io/cadrum/05_extrude.png" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.png" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.png" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.png" width="180" alt="shell"/>](#shell) |
-| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) |  |
-| [<img src="https://lzpel.github.io/cadrum/09_bspline.png" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.png" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.png" width="180" alt="chamfer"/>](#chamfer) |  |
+| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) | [multiview](#multiview) |
+| [<img src="https://lzpel.github.io/cadrum/09_bspline.png" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.png" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.png" width="180" alt="chamfer"/>](#chamfer) | [<img src="https://lzpel.github.io/cadrum/12_multiview.png" width="180" alt="multiview"/>](#multiview) |
 
 
 ## Summary
@@ -1000,6 +1000,50 @@ fn main() -> Result<(), Error> {
 
 <p align="center">
   <img src="https://lzpel.github.io/cadrum/11_chamfer.svg" alt="11_chamfer" width="360"/>
+</p>
+
+#### Multiview
+
+Fixed 4-view multiview PNG for LLM-driven design loops.
+
+```sh
+cargo run --example 12_multiview
+```
+
+```rust,no_run
+//! Fixed 4-view multiview PNG for LLM-driven design loops.
+//!
+//! A single call to `Solid::write_multiview_png` produces a 1024×1024 PNG that lays out
+//! 4 views — ISO plus the axis cyclic order (+X / +Y / +Z) — at the same scale. With no
+//! parameters to tune, Solid maps 1:1 to an image, which suits state-snapshot rendering
+//! for LLMs and automated design loops.
+
+use cadrum::{DVec3, Solid};
+
+fn main() -> Result<(), cadrum::Error> {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+
+	let block = Solid::cube(40.0, 30.0, 20.0)
+		.translate(-DVec3::new(20.0, 15.0, 10.0));
+	let hole = Solid::cylinder(5.0, DVec3::Z, 30.0)
+		.translate(-DVec3::Z * 15.0);
+	// Axis-orientation check: carve only the +X+Y+Z corner with a sphere.
+	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.
+	let corner_cut = Solid::sphere(10.0)
+		.translate(DVec3::new(20.0, 15.0, 10.0));
+	let part = (&block - &hole)?;
+	let part = (&part - &corner_cut)?;
+
+	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+
+	println!("wrote {example_name}.png");
+	Ok(())
+}
+
+```
+
+<p align="center">
+  <img src="https://lzpel.github.io/cadrum/12_multiview.png" alt="12_multiview" width="360"/>
 </p>
 
 
