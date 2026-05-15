@@ -20,10 +20,16 @@ pure = []
 # downloading a prebuilt tarball. Off by default — most users will use the
 # prebuilt binary path.
 source-build = ["dep:cmake"]
+# PNG raster output for Scene2D via tiny-skia.
+png = ["dep:tiny-skia"]
 
 [dependencies]
 cxx = "1"
 glam = { version = ">=0.29", features = ["std"] }
+# Pure-Rust 2D rasterizer used by Scene2D::write_png. Pulled in only with
+# the `png` feature; tiny-skia bundles its own PNG encoder so no separate
+# `png` crate dep is needed.
+tiny-skia = { version = "0.11", optional = true }
 
 
 [build-dependencies]
