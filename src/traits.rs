@@ -682,6 +682,24 @@ pub trait SolidStruct: Sized + Clone + Compound where for<'a> &'a Self: Add<Outp
 	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
 	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
 	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, tolerance: f64) -> Result<Mesh, Error> where Self: 'a;
+
+	/// Write a fixed 4-view multiview PNG (1024×1024) of this solid to `writer`.
+	///
+	/// 引数なしの「LLM 用固定プロトコル」: ISO + 軸 cyclic 順 (+X / +Y / +Z) の 4 視点を
+	/// 同一スケールで並べ、各パネルに world-axis gnomon、中央境界線上に単位なし
+	/// scale bar を 2 本埋め込む。視点・解像度・shading/hidden line 設定はすべて内部で
+	/// 固定。tolerance は `bbox.diag * 0.001` を内部算出。寸法線が要らない設計確認に向く。
+	///
+	/// 微調整したい場合は `Solid::mesh(&[self], tol)?.scene(view, up, ...).write_png(...)`
+	/// を直接呼ぶこと。この関数はあえて拡張点を持たない。
+	#[cfg(feature = "png")]
+	fn write_multiview_png<W: std::io::Write>(&self, writer: &mut W) -> Result<(), Error> {
+		let bbox = <Self as Compound>::bounding_box(self);
+		let diag = (bbox[1] - bbox[0]).length();
+		let tol = if diag > 0.0 { diag * 0.001 } else { 0.001 };
+		let mesh = Self::mesh(std::iter::once(self), tol)?;
+		mesh.write_multiview_png(writer)
+	}
 }
 
 // ==================== Compound ====================

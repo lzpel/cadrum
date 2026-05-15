@@ -101,6 +101,8 @@ impl Solid{
 	pub fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_binary(solids, writer)}
 	pub fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_text(solids, writer)}
 	pub fn mesh<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, tolerance: f64) -> Result<Mesh, Error> where Self: 'a {<Self as crate::traits::SolidStruct>::mesh(solids, tolerance)}
+	#[cfg(feature = "png")]
+	pub fn write_multiview_png<W: std::io::Write>(&self, writer: &mut W) -> Result<(), Error> {<Self as crate::traits::SolidStruct>::write_multiview_png(self, writer)}
 	pub fn iter_elem(&self) -> impl Iterator<Item = &crate::Solid> + '_ {<Self as crate::traits::Compound>::iter_elem(self)}
 	pub fn map_elem(self, f: impl FnMut(crate::Solid) -> crate::Solid) -> crate::Solid {<Self as crate::traits::Compound>::map_elem(self, f)}
 	pub fn volume(&self) -> f64 {<Self as crate::traits::Compound>::volume(self)}

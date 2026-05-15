@@ -47,8 +47,6 @@ pub struct Scene2D {
 	/// Occluded edge polylines, NaN-separated. Empty when hidden lines were
 	/// disabled at scene construction.
 	pub edges_hidden: Vec<DVec2>,
-	/// Bounding box `[min, max]` covering triangles and edges.
-	pub viewbox: [DVec2; 2],
 }
 
 impl Mesh {
@@ -111,9 +109,7 @@ impl Mesh {
 		let (edges_visible, hidden) = classify_edges(&all_edges, &occlusion_tris, dir, u, v);
 		let edges_hidden = if hidden_lines { hidden } else { Vec::new() };
 
-		let viewbox = compute_viewbox(&triangles, &edges_visible, &edges_hidden);
-
-		Scene2D { triangles, color, edges_visible, edges_hidden, viewbox }
+		Scene2D { triangles, color, edges_visible, edges_hidden }
 	}
 }
 
@@ -394,32 +390,6 @@ fn barycentric_2d(p: DVec2, t: [DVec2; 3]) -> Option<(f64, f64, f64)> {
 	}
 }
 
-/// Bounding box of all triangle vertices and edge points (skipping NaN
-/// separators). Falls back to `[0,1]×[0,1]` when the scene is empty.
-fn compute_viewbox(triangles: &[[DVec2; 3]], visible: &[DVec2], hidden: &[DVec2]) -> [DVec2; 2] {
-	let mut min = DVec2::new(f64::INFINITY, f64::INFINITY);
-	let mut max = DVec2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
-
-	for tri in triangles {
-		for p in tri {
-			min = min.min(*p);
-			max = max.max(*p);
-		}
-	}
-	for p in visible.iter().chain(hidden.iter()) {
-		if p.is_nan() {
-			continue;
-		}
-		min = min.min(*p);
-		max = max.max(*p);
-	}
-
-	if min.x > max.x {
-		return [DVec2::ZERO, DVec2::ONE];
-	}
-	[min, max]
-}
-
 // ==================== Scene2D layout (shared by backends) ====================
 
 /// Viewport + stroke parameters derived from `Scene2D::viewbox`. Shared by
@@ -440,8 +410,19 @@ struct Layout {
 }
 
 impl Scene2D {
+	/// Bounding box `[min, max]` of all projected triangle vertices.
+	/// Falls back to `[0,1]×[0,1]` when the scene is empty. Edges always
+	/// lie on the projected surface (= union of front-facing triangles),
+	/// so they don't extend the bbox and are not scanned here.
+	pub fn viewbox(&self) -> [DVec2; 2] {
+		let init = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
+		let (min, max) = self.triangles.iter().flatten().copied()
+			.fold(init, |(mn, mx), p| (mn.min(p), mx.max(p)));
+		if min.x > max.x { [DVec2::ZERO, DVec2::ONE] } else { [min, max] }
+	}
+
 	fn layout(&self) -> Layout {
-		let [min, max] = self.viewbox;
+		let [min, max] = self.viewbox();
 		let margin_frac = 0.05;
 		let w = max.x - min.x;
 		let h = max.y - min.y;
@@ -539,14 +520,13 @@ impl Scene2D {
 	/// Rasterize this scene as a PNG and write to a writer.
 	///
 	/// `dimensions` is `[width, height]` in pixels. The scene aspect ratio
-	/// (from `viewbox`) is preserved by scaling to fit and centering — when
-	/// the requested aspect doesn't match the scene's, white letterbox bars
-	/// fill the remainder. Anti-aliased via `tiny-skia`. Background is white
-	/// (CAD documentation convention; transparent backgrounds are not
-	/// supported here).
+	/// (from `viewbox`) is preserved by scaling to fit and centering — the
+	/// remainder (when the requested aspect doesn't match the scene's) is
+	/// transparent. Anti-aliased via `tiny-skia`. Background is transparent;
+	/// composite over your desired color downstream if needed.
 	#[cfg(feature = "png")]
 	pub fn write_png<W: std::io::Write>(&self, dimensions: [usize; 2], writer: &mut W) -> Result<(), super::error::Error> {
-		use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
+		use tiny_skia::{Pixmap, Transform};
 
 		let [width, height] = dimensions;
 		let layout = self.layout();
@@ -565,17 +545,35 @@ impl Scene2D {
 		let ty = -(layout.vy as f32) * s + off_y as f32;
 		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
 
-		// `tiny-skia` applies stroke width in path coordinate space (= scene
-		// units here), THEN the transform scales the resulting stroke outline
-		// to pixels. So pass the layout values in scene units directly; the
-		// transform turns them into the desired `sw * pps` pixel widths.
-		let sw = layout.stroke_width as f32;
-		let hidden_sw = layout.hidden_stroke_width as f32;
-		let dash_len = layout.dash_len as f32;
-		let dash_gap = layout.dash_gap as f32;
-
 		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
-		pixmap.fill(tiny_skia::Color::WHITE);
+		self.render_to_pixmap(
+			&mut pixmap,
+			transform,
+			layout.stroke_width as f32,
+			layout.hidden_stroke_width as f32,
+			layout.dash_len as f32,
+			layout.dash_gap as f32,
+		);
+
+		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
+		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+	}
+
+	/// Render this scene's triangles + edges into an existing pixmap with the
+	/// given transform and stroke widths (in scene units — tiny-skia scales
+	/// them to pixels via the transform). Used by both `write_png` and
+	/// `Mesh::write_multiview_png` (which composites 4 of these into a grid).
+	#[cfg(feature = "png")]
+	pub(crate) fn render_to_pixmap(
+		&self,
+		pixmap: &mut tiny_skia::Pixmap,
+		transform: tiny_skia::Transform,
+		stroke_width: f32,
+		hidden_stroke_width: f32,
+		dash_len: f32,
+		dash_gap: f32,
+	) {
+		use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, StrokeDash};
 
 		// Triangles (back-to-front, already sorted by Scene2D construction).
 		for (tri, color) in self.triangles.iter().zip(self.color.iter()) {
@@ -596,22 +594,19 @@ impl Scene2D {
 		let mut visible_paint = Paint::default();
 		visible_paint.set_color_rgba8(0, 0, 0, 255);
 		visible_paint.anti_alias = true;
-		let visible_stroke = Stroke { width: sw, ..Stroke::default() };
-		Self::stroke_polylines(&mut pixmap, &self.edges_visible, &visible_paint, &visible_stroke, transform);
+		let visible_stroke = Stroke { width: stroke_width, ..Stroke::default() };
+		Self::stroke_polylines(pixmap, &self.edges_visible, &visible_paint, &visible_stroke, transform);
 
 		// Hidden edges — gray dashed.
 		let mut hidden_paint = Paint::default();
 		hidden_paint.set_color_rgba8(0xbb, 0xbb, 0xbb, 255);
 		hidden_paint.anti_alias = true;
 		let hidden_stroke = Stroke {
-			width: hidden_sw,
+			width: hidden_stroke_width,
 			dash: StrokeDash::new(vec![dash_len, dash_gap], 0.0),
 			..Stroke::default()
 		};
-		Self::stroke_polylines(&mut pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
-
-		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
-		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+		Self::stroke_polylines(pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
 	}
 
 	#[cfg(feature = "png")]
@@ -642,4 +637,271 @@ impl Scene2D {
 		}
 	}
 
+}
+
+// ==================== Mesh::write_multiview_png — fixed 4-view PNG ====================
+//
+// LLM 視覚フィードバック向けの「固定プロトコル」プレビュー。引数を取らず、Solid 1
+// つを 4 視点 (ISO/TOP/FRONT/RIGHT) で 1024×1024 PNG にレンダリングする。すべての
+// 視点は **同一スケール** で描かれ、viewbox は世界原点中心の `[-h, h]²` で固定
+// (h は世界 AABB 角点を全 4 視点で投影した最大絶対座標)。原点との相対位置と相対
+// スケールが画像から読み取れる。下部に単位なしの scale bar、各パネルに gnomon。
+
+impl Mesh {
+	/// Write a fixed-format 4-view preview PNG (1024×1024) to `writer`.
+	///
+	/// レイアウトは固定:
+	/// - 2×2 グリッド: 左上 ISO, 右上 TOP, 左下 FRONT, 右下 RIGHT (Z-up を仮定)
+	/// - 全ビュー共通スケール (原点中心 `[-h, h]²`)
+	/// - 各パネルに world axis gnomon (右下)
+	/// - 画像下部に単位なし scale bar ({1,2,5}×10^n の round value)
+	///
+	/// 引数チューニングが必要な用途では `Mesh::scene → Scene2D::write_png` を使う。
+	/// この関数は LLM への現状確認画像生成という単一目的のための「固定プロトコル」。
+	#[cfg(feature = "png")]
+	pub fn write_multiview_png<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
+		use tiny_skia::{Pixmap, Transform};
+
+		const IMG_SIZE: u32 = 1024;
+		const H_SCALE: f64 = 1.05;
+		const GNOMON_SIZE: f32 = 48.0;
+		const GNOMON_INSET: f32 = 24.0;
+		const TICK_SIZE: f32 = 12.0;
+		const LABEL_SIZE: f32 = 16.0;
+
+		// 4 view configs (Z-up convention): (view_dir, up).
+		// `view` points FROM scene TOWARD camera per Mesh::scene's convention.
+		//
+		// パネル配置 (row-major: TL, TR, BL, BR) と視点ベクトルの対応:
+		//
+		//   ┌──────────┬──────────┐
+		//   │ TL (1,1,1│ TR (0,0,1│
+		//   │  = ISO ) │  = +Z 視点)│
+		//   ├──────────┼──────────┤
+		//   │ BL (1,0,0│ BR (0,1,0│
+		//   │  = +X 視点)│  = +Y 視点)│
+		//   └──────────┴──────────┘
+		//
+		// **反時計回りの読み順** (TL → BL → BR → TR) で視点が
+		// `(1,1,1) → (1,0,0) → (0,1,0) → (0,0,1)` の cyclic 順になる:
+		// ISO の後は X→Y→Z の世界軸を順に正面から見ることに対応し、
+		// 工学規格 (第一/第三角法) ではなく **座標軸の cyclic 順** という
+		// より基本的な不変量に揃えた配置。視点識別は gnomon で行うので
+		// テキストラベルは持たない。
+		//
+		// **up の選択**: 各 ortho 視点の +X+Y+Z コーナーがグリッド中央 (ISO 側)
+		// を向くよう up を選ぶ。BL/BR は up=+Z で自然に成立、TR (+Z 視点) のみ
+		// up=-Y にして画面上 +Y を下向きにする必要がある。これにより 4 パネルの
+		// part 配置がグリッド中央を中心とした鏡像構造になる。
+		let views: [(DVec3, DVec3); 4] = [
+			(DVec3::new(1.0, 1.0, 1.0), DVec3::Z),  // TL: ISO
+			(DVec3::Z, -DVec3::Y),                   // TR: +Z 視点 (up=-Y で内向き)
+			(DVec3::X, DVec3::Z),                    // BL: +X 視点
+			(DVec3::Y, DVec3::Z),                    // BR: +Y 視点
+		];
+
+		let bases: [(DVec3, DVec3, DVec3); 4] = std::array::from_fn(|i| projection_basis(views[i].0, views[i].1));
+
+		// 4 視点の Scene2D を先に構築し、各々の `viewbox()` (= 実際に描画される
+		// 前面三角形頂点の bbox) の絶対値最大から共通 h を導く。
+		// 含意: 各パネルは原点中心の `[-h, h]²` を表示し、コンテンツは全パネルで必ず収まる。
+		// 世界 AABB 角投影より tight (球面など曲面で part が panel いっぱいに描かれる)。
+		let scenes: [Scene2D; 4] = std::array::from_fn(|i| self.scene(views[i].0, views[i].1, true, false));
+		let h = scenes.iter()
+			.map(|v| v.viewbox())
+			.flat_map(|[a,b]| [a.x,a.y,b.x,b.y])
+			.map(|x|x.abs()*H_SCALE)
+			.reduce(f64::max)
+			.unwrap_or(1.0);
+
+		// 各パネルは正方形 512×512、4 パネル交点はちょうど画像中心 (512, 512)。
+		// padding なし: part は panel 端まで使い切る。scale bar は y=512 の水平
+		// パネル境界線に 2 つ埋め込む (フッター帯を持たない)。
+		let panel_w = (IMG_SIZE as f32) / 2.0;
+		let panel_h = (IMG_SIZE as f32) / 2.0;
+		let pps = (panel_w.min(panel_h) as f64) / (2.0 * h);
+
+		// 背景は透過。下流で任意色に composite できる。
+		let mut pixmap = Pixmap::new(IMG_SIZE, IMG_SIZE).ok_or(super::error::Error::PngExportFailed)?;
+
+		// Per-panel stroke widths in scene units (tiny-skia transform scales them to px).
+		let stroke_px = 1.5_f32;
+		let scene_stroke = stroke_px / (pps as f32);
+		let scene_hidden_stroke = scene_stroke * 0.6;
+		let scene_dash_len = scene_stroke * 4.0;
+		let scene_dash_gap = scene_stroke * 3.0;
+
+		for (i, scene) in scenes.iter().enumerate() {
+			let (col, row) = (i % 2, i / 2);
+			let px0 = (col as f32) * panel_w;
+			let py0 = (row as f32) * panel_h;
+			let cx = px0 + panel_w / 2.0;
+			let cy = py0 + panel_h / 2.0;
+
+			// Scene→pixel transform: scene-y up → pixel-y down via the `-s` row.
+			let s = pps as f32;
+			let transform = Transform::from_row(s, 0.0, 0.0, -s, cx, cy);
+
+			scene.render_to_pixmap(&mut pixmap, transform, scene_stroke, scene_hidden_stroke, scene_dash_len, scene_dash_gap);
+
+			// Gnomon (bottom-right corner of panel) — also serves as view identifier.
+			let (u_basis, v_basis, _) = bases[i];
+			let g_origin = (px0 + panel_w - GNOMON_SIZE - GNOMON_INSET, py0 + panel_h - GNOMON_SIZE - GNOMON_INSET);
+			draw_gnomon(&mut pixmap, g_origin, GNOMON_SIZE, LABEL_SIZE, u_basis, v_basis);
+		}
+
+		// 4 パネルを区切る十字線 (light gray)。中央の縦横 2 本だけ、外周は画像端と一致するので描かない。
+		preview_path(&mut pixmap, [
+			[0.0, panel_h, IMG_SIZE as f32, panel_h],
+			[panel_w, 0.0, panel_w, IMG_SIZE as f32],
+		], 0xcccccc, 1.0);
+
+		// Scale bars embedded on the y=panel_h horizontal panel boundary.
+		// 左半分にメインスケール、右半分にサブスケールを配置。大小 2 つの reference を
+		// 与えることで LLM が任意長さを推定しやすくなる。
+		//
+		// 係数の理屈: bar_px = step × pps、pps = usable / (2h) なので step = 2h で
+		// bar_px = usable (= padding 込みの最大幅)。よって 1.6h で ~80% 幅のメイン bar、
+		// その半分 0.8h でサブ bar (nice_step は round-down なので bar は target 以下)。
+		let step1 = nice_step(h * 1.6);
+		let step2 = nice_step(h * 0.7);
+		let boundary_y = panel_h;  // = 512
+		for (step, center_x) in [(step1, panel_w / 2.0), (step2, panel_w * 1.5)] {
+			let bar_px = (step * pps) as f32;
+			let x0 = center_x - bar_px / 2.0;
+			let x1 = center_x + bar_px / 2.0;
+			// scale bar: 横棒 + 両端 tick の 3 セグメント
+			preview_path(&mut pixmap, [
+				[x0, boundary_y, x1, boundary_y],
+				[x0, boundary_y - TICK_SIZE / 2.0, x0, boundary_y + TICK_SIZE / 2.0],
+				[x1, boundary_y - TICK_SIZE / 2.0, x1, boundary_y + TICK_SIZE / 2.0],
+			], 0x1f3a8a, 2.0);
+			let label = format!("{}", step);
+			let glyph_w = LABEL_SIZE * 0.6;
+			let text_w = (label.chars().count() as f32) * glyph_w * 1.2 - glyph_w * 0.2;
+			draw_text(&mut pixmap, &label, center_x - text_w / 2.0, boundary_y - LABEL_SIZE - 4.0, LABEL_SIZE, 0x1f3a8a);
+		}
+
+		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
+		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+	}
+}
+
+// ==================== Preview helpers (scale / overlay drawing) ====================
+
+/// Glyph/label size in pixels. Shared between scale-bar labels and gnomon axis labels.
+
+/// Largest `{1, 2, 5} × 10^n` value ≤ `target` (round-down). Used for scale-bar
+/// length so the bar is guaranteed not to exceed the requested target size.
+fn nice_step(target: f64) -> f64 {
+	if !target.is_finite() || target <= 0.0 {
+		return 1.0;
+	}
+	let exp = target.log10().floor() as i32;
+	let pow = 10f64.powi(exp);
+	let m = target / pow;
+	let nice = if m < 2.0 { 1.0 } else if m < 5.0 { 2.0 } else { 5.0 };
+	nice * pow
+}
+
+// ---- Glyph paths (single polyline per glyph, in unit square; y=0 bottom, y=1 top) ----
+//
+// 各文字は **1 本のポリライン** で表現。出現しうる文字だけ収録。フォント crate を引かず
+// PathBuilder の move_to/line_to だけで描く。
+//
+// - scale bar: `nice_step` が `{1,2,5} × 10^n` のみ返すため、format 結果に出る数字は `0, 1, 2, 5` と小数点 `.` の 5 種類。
+// - gnomon: 世界軸ラベル `X, Y, Z` の 3 種類。
+//
+// 'X' と 'Y' は内部分岐があり厳密な Eulerian 一筆書きではないが、ポリライン上で中央
+// を 2 度通る (重ね描き) ことで単一列に詰めている — AA 描画では重ね描きと 1 度描きが
+// 視覚的に同一なので問題ない。'1' は base を持たず stem + flag のみで認識可能とした。
+fn glyph_polyline(c: char) -> &'static [[f32; 2]] {
+	match c {
+		'0' => &[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],[0.0,0.0]],
+		'1' => &[[0.2,0.8],[0.5,1.0],[0.5,0.0]],
+		'2' => &[[0.0,1.0],[1.0,1.0],[1.0,0.5],[0.0,0.5],[0.0,0.0],[1.0,0.0]],
+		'5' => &[[1.0,1.0],[0.0,1.0],[0.0,0.5],[1.0,0.5],[1.0,0.0],[0.0,0.0]],
+		'.' => &[[0.4,0.0],[0.6,0.0],[0.6,0.15],[0.4,0.15],[0.4,0.0]],
+		'X' => &[[0.0,0.0],[1.0,1.0],[0.5,0.5],[0.0,1.0],[1.0,0.0]],
+		'Y' => &[[0.0,1.0],[0.5,0.5],[0.5,0.0],[0.5,0.5],[1.0,1.0]],
+		'Z' => &[[0.0,1.0],[1.0,1.0],[0.0,0.0],[1.0,0.0]],
+		_ => &[],
+	}
+}
+
+/// Stroke a list of line segments as a single anti-aliased path.
+/// Preview UI 用の唯一の描画プリミティブ — gnomon / 十字線 / scale bar / glyph 文字
+/// すべてこの 1 関数を経由する。`color` は `0xRRGGBB` (full alpha)。
+#[cfg(feature = "png")]
+fn preview_path(pixmap: &mut tiny_skia::Pixmap, segments: impl IntoIterator<Item = [f32; 4]>, color: u32, stroke_width: f32) {
+	use tiny_skia::{Paint, PathBuilder, Stroke, Transform};
+	let mut pb = PathBuilder::new();
+	for [x0, y0, x1, y1] in segments {
+		pb.move_to(x0, y0);
+		pb.line_to(x1, y1);
+	}
+	let Some(path) = pb.finish() else { return };
+	let mut paint = Paint::default();
+	paint.set_color_rgba8(((color >> 16) & 0xff) as u8, ((color >> 8) & 0xff) as u8, (color & 0xff) as u8, 255);
+	paint.anti_alias = true;
+	let stroke = Stroke { width: stroke_width, ..Stroke::default() };
+	pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+/// Draw `text` with top-left at `(x, y)` in pixel space. Glyph y is flipped
+/// internally so y=1 in unit-space maps to the top of the line and y=0 to the
+/// bottom (pixel-y points down).
+#[cfg(feature = "png")]
+fn draw_text(pixmap: &mut tiny_skia::Pixmap, text: &str, x: f32, y: f32, size: f32, color: u32) {
+	let glyph_w = size * 0.6;
+	let advance = glyph_w * 1.2;
+	let mut segments: Vec<[f32; 4]> = Vec::new();
+	let mut cursor = x;
+	for ch in text.chars() {
+		for w in glyph_polyline(ch).windows(2) {
+			segments.push([
+				cursor + w[0][0] * glyph_w, y + (1.0 - w[0][1]) * size,
+				cursor + w[1][0] * glyph_w, y + (1.0 - w[1][1]) * size,
+			]);
+		}
+		cursor += advance;
+	}
+	preview_path(pixmap, segments, color, (size * 0.1).max(1.0));
+}
+
+/// Draw a 3-axis gnomon at `origin` (pixel coords, top-left of gnomon bounding
+/// box). Each axis projects to 2D via `u`/`v` and is drawn as a short arrow
+/// labeled X/Y/Z. Axes with near-zero projected length are skipped (they're
+/// pointing into/out of the screen).
+#[cfg(feature = "png")]
+fn draw_gnomon(pixmap: &mut tiny_skia::Pixmap, origin: (f32, f32), size: f32, text_size: f32, u: DVec3, v: DVec3) {
+	let cx = origin.0 + size / 2.0;
+	let cy = origin.1 + size / 2.0;
+	let axes: [(DVec3, &str, u32); 3] = [
+		(DVec3::X, "X", 0xc0392b),
+		(DVec3::Y, "Y", 0x27ae60),
+		(DVec3::Z, "Z", 0x2980b9),
+	];
+	for (axis, label, color) in axes {
+		let p = DVec2::new(axis.dot(u), axis.dot(v));
+		let len = p.length();
+		if len < 0.15 {
+			// 軸が画面に対しほぼ垂直 → 点になるだけなので描画スキップ
+			continue;
+		}
+		let ex = cx + (p.x as f32) * (size / 2.0);
+		// pixel-y is down, scene-y is up → flip
+		let ey = cy - (p.y as f32) * (size / 2.0);
+		preview_path(pixmap, [[cx, cy, ex, ey]], color, 1.5);
+
+		// Label past the arrow tip in the same direction.
+		// label_off >= text_size/2 (= glyph 半高) でないと vertical な軸でラベルが線に被る。
+		// text_size と同値にして 6 px 程度のクリアランスを確保する。
+		let label_off = text_size;
+		let dir_x = (ex - cx) / (len.max(1e-9) as f32 * (size / 2.0));
+		let dir_y = (ey - cy) / (len.max(1e-9) as f32 * (size / 2.0));
+		let lx = ex + dir_x * label_off - text_size * 0.3;
+		let ly = ey + dir_y * label_off - text_size * 0.5;
+		draw_text(pixmap, label, lx, ly, text_size, color);
+	}
 }
