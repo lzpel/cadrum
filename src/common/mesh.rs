@@ -24,7 +24,32 @@ pub struct Mesh {
 	pub edges: Vec<Vec<DVec3>>,
 }
 
-// ==================== STL ====================
+/// 2D rendering scene derived from a `Mesh` viewed from a given camera.
+///
+/// Backend-agnostic intermediate: the projection / shading / silhouette /
+/// occlusion pipeline produces this, and SVG / PNG / other backends consume it.
+///
+/// Invariants:
+/// - `triangles.len() == color.len()`
+/// - `triangles` is pre-sorted back-to-front (painter's algorithm)
+/// - In `edges_visible` / `edges_hidden`, polylines are concatenated with a
+///   single `DVec2::NAN` between them. `[p0, p1, p2, NaN, p3, p4]` means the
+///   two polylines `p0-p1-p2` and `p3-p4`. No trailing NaN; leading/consecutive
+///   NaNs are treated as empty polylines and ignored.
+#[derive(Debug, Clone)]
+pub struct Scene2D {
+	/// Projected triangles (back-to-front draw order).
+	pub triangles: Vec<[DVec2; 3]>,
+	/// Per-triangle RGB byte color with shading already baked in.
+	pub color: Vec<[u8; 3]>,
+	/// Visible edge polylines, NaN-separated.
+	pub edges_visible: Vec<DVec2>,
+	/// Occluded edge polylines, NaN-separated. Empty when hidden lines were
+	/// disabled at scene construction.
+	pub edges_hidden: Vec<DVec2>,
+	/// Bounding box `[min, max]` covering triangles and edges.
+	pub viewbox: [DVec2; 2],
+}
 
 impl Mesh {
 	/// Write this mesh as binary STL to a writer.
@@ -52,88 +77,55 @@ impl Mesh {
 			}
 			// Attribute byte count — RGB555 color (SolidView/MeshLab convention)
 			#[cfg(feature = "color")]
-			let attr = {
-				let face_id = self.face_ids[ti];
-				if let Some(c) = self.colormap.get(&face_id) {
-					let r = (c.r * 31.0) as u16;
-					let g = (c.g * 31.0) as u16;
-					let b = (c.b * 31.0) as u16;
-					0x8000 | r | (g << 5) | (b << 10)
-				} else {
-					0u16
-				}
-			};
+			let attr = self.colormap.get(&self.face_ids[ti]).map_or(0, Color::as_u16);
 			#[cfg(not(feature = "color"))]
 			let attr = 0u16;
 			writer.write_all(&attr.to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
 		}
 		Ok(())
 	}
-}
 
-// ==================== SVG ====================
-
-impl Mesh {
-	/// Render this mesh as an SVG string.
+	/// Render this mesh as an SVG.
 	///
-	/// `view` is the viewing direction (the direction the camera looks from;
-	/// points with higher `dot(view)` are closer to the camera).
-	///
-	/// `up` controls which world-space direction points up on the output
-	/// SVG. It is Gram-Schmidt-orthogonalized against `view`, so it need
-	/// not be exactly perpendicular — only non-zero and non-parallel to
-	/// `view`. Engineering convention (Z-up, e.g. VMEC / parastell / most
-	/// CAD tools) maps directly: pass `DVec3::Z`. Panics if `view` is zero,
-	/// `up` is zero, or `up` is parallel to `view` — all of which are
-	/// programmer errors, treated like the degenerate-input panics in
-	/// `Transform::align_x`.
-	///
-	/// `hidden_lines` controls whether occluded edges are rendered as faint dashed
-	/// lines. Set to `false` for cleaner output on dense models (e.g. helical
-	/// sweeps) where hidden lines dominate the image.
-	///
-	/// `shading` enables Lambertian shading with head-on light
-	/// (light direction == `view`). Front-facing triangles get
-	/// `shade = 0.5 + 0.5 * (normal · view)`, so glancing faces darken to
-	/// half intensity. Turn this on for curved/organic shapes where flat
-	/// fill makes the 3D form hard to read; leave it off for clean flat
-	/// rendering matching earlier cadrum output.
-	///
-	/// The method:
-	/// 1. Projects triangles onto the plane perpendicular to `view`
-	/// 2. Detects silhouette edges from mesh adjacency
-	/// 3. Classifies edges as visible or hidden (only when `hidden_lines`)
-	/// 4. Renders colored triangles, visible edges (black), and optionally hidden edges
+	/// - `view`: camera direction (higher `dot(view)` = closer).
+	/// - `up`: world-space up axis on the output. Gram-Schmidt-orthogonalized
+	///   against `view`. Panics if zero or parallel to `view`.
+	/// - `hidden_lines`: render occluded edges as dashed lines. Off for dense
+	///   models where they dominate.
+	/// - `shading`: Lambertian shading with light == `view`. On for curved
+	///   shapes, off for flat CAD-style output.
 	pub fn write_svg<W: std::io::Write>(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool, writer: &mut W) -> Result<(), super::error::Error> {
 		writer.write_all(self.to_svg(view, up, hidden_lines, shading).as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
 	}
 
 	pub fn to_svg(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool) -> String {
+		self.scene(view, up, hidden_lines, shading).to_svg()
+	}
+
+	/// Build a 2D scene from this mesh for the given camera.
+	/// Parameter semantics match `write_svg`.
+	pub fn scene(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool) -> Scene2D {
 		let (u, v, dir) = projection_basis(view, up);
 
-		// 1. Project and sort triangles for rendering
-		let face_triangles = project_and_sort_triangles(self, dir, u, v, shading);
+		let (triangles, color) = project_and_sort_triangles(self, dir, u, v, shading);
 
-		// 2. Detect silhouette edges from mesh adjacency
 		let silhouette_edges = detect_silhouette_edges(self, dir);
-
-		// 3. Combine topological edges + silhouette edges
 		let all_edges: Vec<&Vec<DVec3>> = self.edges.iter().chain(silhouette_edges.iter()).collect();
 
-		// 4. Classify edges. When hidden lines are disabled we still need to
-		//    drop occluded segments from the visible set, so build occlusion
-		//    data and reuse the same classifier — only the hidden output is
-		//    discarded.
+		// Even when hidden lines are not rendered, we still need to drop
+		// occluded segments from the visible set — so always classify, then
+		// throw away the hidden output when disabled.
 		let occlusion_tris = build_occlusion_data(self, dir, u, v);
-		let (visible, hidden) = classify_edges(&all_edges, &occlusion_tris, dir, u, v);
-		let hidden = if hidden_lines { hidden } else { Vec::new() };
+		let (edges_visible, hidden) = classify_edges(&all_edges, &occlusion_tris, dir, u, v);
+		let edges_hidden = if hidden_lines { hidden } else { Vec::new() };
 
-		// 5. Build SVG
-		build_svg(&face_triangles, &visible, &hidden)
+		let viewbox = compute_viewbox(&triangles, &edges_visible, &edges_hidden);
+
+		Scene2D { triangles, color, edges_visible, edges_hidden, viewbox }
 	}
 }
 
-// ==================== SVG internals ====================
+// ==================== Scene pipeline internals ====================
 
 /// Per-triangle face normal from the cross product of its two edges.
 /// Not normalized — callers that need a unit vector should normalize.
@@ -147,15 +139,9 @@ fn tri_normal(mesh: &Mesh, ti: usize) -> DVec3 {
 	(mesh.vertices[i1] - mesh.vertices[i0]).cross(mesh.vertices[i2] - mesh.vertices[i0])
 }
 
-struct SvgTriangle {
-	pts: [(f64, f64); 3],
-	depth: f64,
-	fill: String,
-}
-
 /// Projected front-facing triangle for occlusion testing.
 struct OcclusionTri {
-	pts: [(f64, f64); 3],
+	pts: [DVec2; 3],
 	depths: [f64; 3],
 }
 
@@ -181,9 +167,12 @@ fn projection_basis(view: DVec3, up: DVec3) -> (DVec3, DVec3, DVec3) {
 	(u, v, dir)
 }
 
-fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shading: bool) -> Vec<SvgTriangle> {
+/// Project all front-facing triangles to 2D, compute per-triangle shaded
+/// color, and return both vectors sorted back-to-front by centroid depth.
+fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shading: bool) -> (Vec<[DVec2; 3]>, Vec<[u8; 3]>) {
 	let tri_count = mesh.indices.len() / 3;
-	let mut triangles = Vec::with_capacity(tri_count);
+	// Build with depth so we can sort, then strip it.
+	let mut buf: Vec<([DVec2; 3], [u8; 3], f64)> = Vec::with_capacity(tri_count);
 
 	for ti in 0..tri_count {
 		let i0 = mesh.indices[ti * 3];
@@ -199,9 +188,9 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 			continue;
 		}
 
-		let p0 = (v0.dot(u), v0.dot(v));
-		let p1 = (v1.dot(u), v1.dot(v));
-		let p2 = (v2.dot(u), v2.dot(v));
+		let p0 = DVec2::new(v0.dot(u), v0.dot(v));
+		let p1 = DVec2::new(v1.dot(u), v1.dot(v));
+		let p2 = DVec2::new(v2.dot(u), v2.dot(v));
 
 		let depth = (v0.dot(dir) + v1.dot(dir) + v2.dot(dir)) / 3.0;
 
@@ -210,8 +199,7 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 		// the face normal's non-unit length. Shade maps [0, 1] → [0.5, 1.0]
 		// so glancing faces darken to half-intensity (not black) — enough to
 		// read the 3D shape without swallowing the silhouette into the stroke.
-		// When `shading` is false, every triangle gets shade=1.0 → flat fill,
-		// matching the pre-shading output (`#ddd` for no-color path).
+		// When `shading` is false, every triangle gets shade=1.0 → flat fill.
 		let shade = if shading {
 			let dot = face_normal.normalize_or_zero().dot(dir).clamp(0.0, 1.0);
 			0.5 + 0.5 * dot
@@ -232,22 +220,24 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 		#[cfg(not(feature = "color"))]
 		let (base_r, base_g, base_b) = (gray, gray, gray);
 
-		// Emit fill as `#rrggbb` hex (7 chars) — shorter than `rgb(R,G,B)`.
-		// When `shading` is off, `shade == 1.0` so the formula collapses to
-		// the base color (every front-facing triangle shares the same fill
-		// and the SVG stays compact).
-		let fill = format!(
-			"#{:02x}{:02x}{:02x}",
+		let color = [
 			(base_r * shade * 255.0) as u8,
 			(base_g * shade * 255.0) as u8,
 			(base_b * shade * 255.0) as u8,
-		);
+		];
 
-		triangles.push(SvgTriangle { pts: [p0, p1, p2], depth, fill });
+		buf.push(([p0, p1, p2], color, depth));
 	}
 
-	triangles.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap_or(std::cmp::Ordering::Equal));
-	triangles
+	buf.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
+	let mut triangles = Vec::with_capacity(buf.len());
+	let mut colors = Vec::with_capacity(buf.len());
+	for (pts, color, _) in buf {
+		triangles.push(pts);
+		colors.push(color);
+	}
+	(triangles, colors)
 }
 
 /// Build projected front-facing triangles for occlusion testing.
@@ -268,7 +258,10 @@ fn build_occlusion_data(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<Occl
 			continue;
 		}
 
-		tris.push(OcclusionTri { pts: [(v0.dot(u), v0.dot(v)), (v1.dot(u), v1.dot(v)), (v2.dot(u), v2.dot(v))], depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)] });
+		tris.push(OcclusionTri {
+			pts: [DVec2::new(v0.dot(u), v0.dot(v)), DVec2::new(v1.dot(u), v1.dot(v)), DVec2::new(v2.dot(u), v2.dot(v))],
+			depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)],
+		});
 	}
 	tris
 }
@@ -281,7 +274,6 @@ fn build_occlusion_data(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<Occl
 fn detect_silhouette_edges(mesh: &Mesh, dir: DVec3) -> Vec<Vec<DVec3>> {
 	let tri_count = mesh.indices.len() / 3;
 
-	// Build edge → triangle adjacency map
 	let mut edge_tris: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 	for ti in 0..tri_count {
 		let i0 = mesh.indices[ti * 3];
@@ -296,10 +288,8 @@ fn detect_silhouette_edges(mesh: &Mesh, dir: DVec3) -> Vec<Vec<DVec3>> {
 	let mut silhouettes = Vec::new();
 	for (&(a, b), tris) in &edge_tris {
 		let is_silhouette = if tris.len() == 1 {
-			// Boundary edge: silhouette if the single adjacent face is front-facing
 			tri_facing(mesh, tris[0], dir)
 		} else if tris.len() == 2 {
-			// Contour edge: one front-facing, one back-facing
 			tri_facing(mesh, tris[0], dir) != tri_facing(mesh, tris[1], dir)
 		} else {
 			false
@@ -311,58 +301,45 @@ fn detect_silhouette_edges(mesh: &Mesh, dir: DVec3) -> Vec<Vec<DVec3>> {
 	silhouettes
 }
 
-/// Returns true if triangle `ti` is front-facing relative to `dir`.
 fn tri_facing(mesh: &Mesh, ti: usize, dir: DVec3) -> bool {
 	tri_normal(mesh, ti).dot(dir) > 0.0
 }
 
-/// Classify edge segments as visible or hidden based on triangle occlusion.
-///
-/// Returns (visible_polylines, hidden_polylines) as 2D projected coordinates.
-fn classify_edges(edges: &[&Vec<DVec3>], occlusion_tris: &[OcclusionTri], dir: DVec3, u: DVec3, v: DVec3) -> (Vec<Vec<(f64, f64)>>, Vec<Vec<(f64, f64)>>) {
-	let mut visible_polylines = Vec::new();
-	let mut hidden_polylines = Vec::new();
+/// Classify edge segments as visible or hidden by occlusion against the
+/// front-facing triangle set. Output: NaN-separated 2D polyline lists for
+/// each class.
+fn classify_edges(edges: &[&Vec<DVec3>], occlusion_tris: &[OcclusionTri], dir: DVec3, u: DVec3, v: DVec3) -> (Vec<DVec2>, Vec<DVec2>) {
+	let mut visible: Vec<DVec2> = Vec::new();
+	let mut hidden: Vec<DVec2> = Vec::new();
 
 	for edge in edges {
 		if edge.len() < 2 {
 			continue;
 		}
 
-		let mut vis_line: Vec<(f64, f64)> = Vec::new();
-		let mut hid_line: Vec<(f64, f64)> = Vec::new();
+		let mut vis_line: Vec<DVec2> = Vec::new();
+		let mut hid_line: Vec<DVec2> = Vec::new();
 
 		for window in edge.windows(2) {
 			let a3d = window[0];
 			let b3d = window[1];
 			let mid = (a3d + b3d) * 0.5;
-			let mid_2d = (mid.dot(u), mid.dot(v));
+			let mid_2d = DVec2::new(mid.dot(u), mid.dot(v));
 			let mid_depth = mid.dot(dir);
 
-			let a_2d = (a3d.dot(u), a3d.dot(v));
-			let b_2d = (b3d.dot(u), b3d.dot(v));
+			let a_2d = DVec2::new(a3d.dot(u), a3d.dot(v));
+			let b_2d = DVec2::new(b3d.dot(u), b3d.dot(v));
 
-			let hidden = is_point_occluded(mid_2d, mid_depth, occlusion_tris);
+			let is_hidden = is_point_occluded(mid_2d, mid_depth, occlusion_tris);
 
-			if hidden {
-				// Flush visible line if any
-				if vis_line.len() >= 2 {
-					visible_polylines.push(std::mem::take(&mut vis_line));
-				} else {
-					vis_line.clear();
-				}
-				// Extend or start hidden line
+			if is_hidden {
+				flush_polyline(&mut visible, &mut vis_line);
 				if hid_line.is_empty() {
 					hid_line.push(a_2d);
 				}
 				hid_line.push(b_2d);
 			} else {
-				// Flush hidden line if any
-				if hid_line.len() >= 2 {
-					hidden_polylines.push(std::mem::take(&mut hid_line));
-				} else {
-					hid_line.clear();
-				}
-				// Extend or start visible line
+				flush_polyline(&mut hidden, &mut hid_line);
 				if vis_line.is_empty() {
 					vis_line.push(a_2d);
 				}
@@ -370,28 +347,36 @@ fn classify_edges(edges: &[&Vec<DVec3>], occlusion_tris: &[OcclusionTri], dir: D
 			}
 		}
 
-		if vis_line.len() >= 2 {
-			visible_polylines.push(vis_line);
-		}
-		if hid_line.len() >= 2 {
-			hidden_polylines.push(hid_line);
-		}
+		flush_polyline(&mut visible, &mut vis_line);
+		flush_polyline(&mut hidden, &mut hid_line);
 	}
 
-	(visible_polylines, hidden_polylines)
+	(visible, hidden)
 }
 
-/// Check if a 2D point at a given depth is occluded by any front-facing triangle.
-fn is_point_occluded(point_2d: (f64, f64), point_depth: f64, tris: &[OcclusionTri]) -> bool {
+/// Append a polyline (≥2 points) to a NaN-separated output buffer, then
+/// clear the staging buffer. No-op if the polyline is shorter than 2 points.
+fn flush_polyline(out: &mut Vec<DVec2>, staging: &mut Vec<DVec2>) {
+	if staging.len() < 2 {
+		staging.clear();
+		return;
+	}
+	if !out.is_empty() {
+		out.push(DVec2::NAN);
+	}
+	out.append(staging);
+}
+
+fn is_point_occluded(p: DVec2, point_depth: f64, tris: &[OcclusionTri]) -> bool {
 	// Tolerance for self-occlusion: edge lies on the surface, so its depth
 	// is approximately equal to the adjacent face's depth.
 	let eps = 1e-4;
 
 	for tri in tris {
-		if let Some((w0, w1, w2)) = barycentric_2d(point_2d, tri.pts) {
+		if let Some((w0, w1, w2)) = barycentric_2d(p, tri.pts) {
 			let tri_depth = w0 * tri.depths[0] + w1 * tri.depths[1] + w2 * tri.depths[2];
 			if tri_depth > point_depth + eps {
-				return true; // triangle is closer to camera than the edge
+				return true;
 			}
 		}
 	}
@@ -399,23 +384,17 @@ fn is_point_occluded(point_2d: (f64, f64), point_depth: f64, tris: &[OcclusionTr
 }
 
 /// Compute barycentric coordinates of point `p` in triangle `t` (2D).
-/// Returns Some((w0, w1, w2)) if the point is inside the triangle.
-fn barycentric_2d(p: (f64, f64), t: [(f64, f64); 3]) -> Option<(f64, f64, f64)> {
-	let (px, py) = p;
-	let (x0, y0) = t[0];
-	let (x1, y1) = t[1];
-	let (x2, y2) = t[2];
-
-	let denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+/// Returns `Some((w0, w1, w2))` if the point is inside the triangle.
+fn barycentric_2d(p: DVec2, t: [DVec2; 3]) -> Option<(f64, f64, f64)> {
+	let denom = (t[1].y - t[2].y) * (t[0].x - t[2].x) + (t[2].x - t[1].x) * (t[0].y - t[2].y);
 	if denom.abs() < 1e-12 {
-		return None; // degenerate triangle
+		return None;
 	}
 
-	let w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom;
-	let w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom;
+	let w0 = ((t[1].y - t[2].y) * (p.x - t[2].x) + (t[2].x - t[1].x) * (p.y - t[2].y)) / denom;
+	let w1 = ((t[2].y - t[0].y) * (p.x - t[2].x) + (t[0].x - t[2].x) * (p.y - t[2].y)) / denom;
 	let w2 = 1.0 - w0 - w1;
 
-	// Small negative tolerance for edges
 	if w0 >= -1e-8 && w1 >= -1e-8 && w2 >= -1e-8 {
 		Some((w0, w1, w2))
 	} else {
@@ -423,120 +402,113 @@ fn barycentric_2d(p: (f64, f64), t: [(f64, f64); 3]) -> Option<(f64, f64, f64)> 
 	}
 }
 
-// ==================== SVG generation ====================
+/// Bounding box of all triangle vertices and edge points (skipping NaN
+/// separators). Falls back to `[0,1]×[0,1]` when the scene is empty.
+fn compute_viewbox(triangles: &[[DVec2; 3]], visible: &[DVec2], hidden: &[DVec2]) -> [DVec2; 2] {
+	let mut min = DVec2::new(f64::INFINITY, f64::INFINITY);
+	let mut max = DVec2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
 
-fn polylines_to_svg(svg: &mut String, polylines: &[Vec<(f64, f64)>], stroke: &str, dash: &str, width: Option<f64>) {
-	for line in polylines {
-		svg.push_str("<polyline points=\"");
-		for (i, &(x, y)) in line.iter().enumerate() {
-			let y = -y;
-			if i > 0 {
-				svg.push(' ');
-			}
-			svg.push_str(&format!("{x:.4},{y:.4}"));
+	for tri in triangles {
+		for p in tri {
+			min = min.min(*p);
+			max = max.max(*p);
 		}
-		svg.push_str("\" fill=\"none\" stroke=\"");
-		svg.push_str(stroke);
-		svg.push('"');
-		if let Some(w) = width {
-			svg.push_str(&format!(" stroke-width=\"{w:.4}\""));
+	}
+	for p in visible.iter().chain(hidden.iter()) {
+		if p.is_nan() {
+			continue;
 		}
-		if !dash.is_empty() {
-			svg.push_str(" stroke-dasharray=\"");
-			svg.push_str(dash);
-			svg.push('"');
+		min = min.min(*p);
+		max = max.max(*p);
+	}
+
+	if min.x > max.x {
+		return [DVec2::ZERO, DVec2::ONE];
+	}
+	[min, max]
+}
+
+// ==================== Scene2D → SVG backend ====================
+
+impl Scene2D {
+	/// Render this scene as an SVG string.
+	pub fn to_svg(&self) -> String {
+		let [min, max] = self.viewbox;
+		let margin_frac = 0.05;
+		let w = max.x - min.x;
+		let h = max.y - min.y;
+		let span = w.max(h);
+		let margin = span * margin_frac;
+		let vx = min.x - margin;
+		// SVG Y axis points down, so flip Y for output.
+		let vy = -(max.y + margin);
+		let vw = w + margin * 2.0;
+		let vh = h + margin * 2.0;
+		let sw = span * 0.003;
+		// Hidden lines: thinner stroke and longer dashes to reduce visual clutter
+		// on dense models (e.g. helical sweeps).
+		let hidden_sw = sw * 0.6;
+		let dash_len = sw * 5.0;
+		let dash_gap = sw * 4.0;
+
+		let mut svg = String::with_capacity(4096 + self.triangles.len() * 120);
+		svg.push_str(&format!(
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{vx:.4} {vy:.4} {vw:.4} {vh:.4}\" \
+			 stroke-width=\"{sw:.4}\">\n"
+		));
+
+		for (tri, color) in self.triangles.iter().zip(self.color.iter()) {
+			let [p0, p1, p2] = *tri;
+			let [r, g, b] = *color;
+			svg.push_str(&format!(
+				"<polygon points=\"{:.4},{:.4} {:.4},{:.4} {:.4},{:.4}\" \
+				 fill=\"#{r:02x}{g:02x}{b:02x}\" stroke=\"none\"/>\n",
+				p0.x, -p0.y, p1.x, -p1.y, p2.x, -p2.y,
+			));
 		}
-		svg.push_str("/>\n");
+
+		polylines_to_svg(&mut svg, &self.edges_visible, "black", "", None);
+		polylines_to_svg(&mut svg, &self.edges_hidden, "#bbb", &format!("{dash_len:.4},{dash_gap:.4}"), Some(hidden_sw));
+
+		svg.push_str("</svg>\n");
+		svg
 	}
 }
 
-fn build_svg(triangles: &[SvgTriangle], visible_lines: &[Vec<(f64, f64)>], hidden_lines: &[Vec<(f64, f64)>]) -> String {
-	// Compute bounding box from triangles and edges
-	let mut min_x = f64::INFINITY;
-	let mut min_y = f64::INFINITY;
-	let mut max_x = f64::NEG_INFINITY;
-	let mut max_y = f64::NEG_INFINITY;
-
-	for tri in triangles {
-		for &(x, y) in &tri.pts {
-			if x < min_x {
-				min_x = x;
+/// Walk a NaN-separated polyline buffer and emit one `<polyline>` per
+/// segment of consecutive non-NaN points.
+fn polylines_to_svg(svg: &mut String, polylines: &[DVec2], stroke: &str, dash: &str, width: Option<f64>) {
+	let mut start = 0;
+	for i in 0..=polylines.len() {
+		let is_sep = i == polylines.len() || polylines[i].is_nan();
+		if is_sep {
+			let line = &polylines[start..i];
+			if line.len() >= 2 {
+				emit_polyline(svg, line, stroke, dash, width);
 			}
-			if x > max_x {
-				max_x = x;
-			}
-			if y < min_y {
-				min_y = y;
-			}
-			if y > max_y {
-				max_y = y;
-			}
+			start = i + 1;
 		}
 	}
+}
 
-	for lines in [visible_lines, hidden_lines] {
-		for line in lines {
-			for &(x, y) in line {
-				if x < min_x {
-					min_x = x;
-				}
-				if x > max_x {
-					max_x = x;
-				}
-				if y < min_y {
-					min_y = y;
-				}
-				if y > max_y {
-					max_y = y;
-				}
-			}
+fn emit_polyline(svg: &mut String, line: &[DVec2], stroke: &str, dash: &str, width: Option<f64>) {
+	svg.push_str("<polyline points=\"");
+	for (i, p) in line.iter().enumerate() {
+		if i > 0 {
+			svg.push(' ');
 		}
+		svg.push_str(&format!("{:.4},{:.4}", p.x, -p.y));
 	}
-
-	// Handle empty case
-	if min_x > max_x {
-		min_x = 0.0;
-		max_x = 1.0;
-		min_y = 0.0;
-		max_y = 1.0;
+	svg.push_str("\" fill=\"none\" stroke=\"");
+	svg.push_str(stroke);
+	svg.push('"');
+	if let Some(w) = width {
+		svg.push_str(&format!(" stroke-width=\"{w:.4}\""));
 	}
-
-	let margin_frac = 0.05;
-	let w = max_x - min_x;
-	let h = max_y - min_y;
-	let margin = if w > h { w } else { h } * margin_frac;
-	let vx = min_x - margin;
-	let vy = -(max_y + margin);
-	let vw = w + margin * 2.0;
-	let vh = h + margin * 2.0;
-	let sw = (if w > h { w } else { h }) * 0.003;
-	// Hidden lines: thinner stroke and longer dashes to reduce visual clutter
-	// on dense models (e.g. helical sweeps).
-	let hidden_sw = sw * 0.6;
-	let dash_len = sw * 5.0;
-	let dash_gap = sw * 4.0;
-
-	let mut svg = String::with_capacity(4096 + triangles.len() * 120);
-	svg.push_str(&format!(
-		"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{vx:.4} {vy:.4} {vw:.4} {vh:.4}\" \
-		 stroke-width=\"{sw:.4}\">\n"
-	));
-
-	for tri in triangles {
-		let [(x0, y0), (x1, y1), (x2, y2)] = tri.pts;
-		let y0 = -y0;
-		let y1 = -y1;
-		let y2 = -y2;
-		svg.push_str(&format!(
-			"<polygon points=\"{x0:.4},{y0:.4} {x1:.4},{y1:.4} {x2:.4},{y2:.4}\" \
-			 fill=\"{}\" stroke=\"none\"/>\n",
-			tri.fill
-		));
+	if !dash.is_empty() {
+		svg.push_str(" stroke-dasharray=\"");
+		svg.push_str(dash);
+		svg.push('"');
 	}
-
-	polylines_to_svg(&mut svg, visible_lines, "black", "", None);
-	polylines_to_svg(&mut svg, hidden_lines, "#bbb", &format!("{dash_len:.4},{dash_gap:.4}"), Some(hidden_sw));
-
-	svg.push_str("</svg>\n");
-	svg
+	svg.push_str("/>\n");
 }
