@@ -1,10 +1,12 @@
 #![doc = include_str!("../README.md")]
 
 pub mod common;
-#[cfg(not(feature = "pure"))]
-pub mod occt;
 #[cfg(feature = "pure")]
 pub mod pure;
+#[cfg(not(feature = "pure"))]
+pub mod occt;
+#[cfg(not(feature = "pure"))]
+pub use occt::{edge::Edge, face::Face, solid::Solid};
 pub(crate) mod traits;
 // `Transform` is intentionally NOT re-exported. It remains reachable only as
 // `crate::traits::Transform` for internal use; external callers reach the same
@@ -12,19 +14,10 @@ pub(crate) mod traits;
 // from the `Transform` trait surface by `examples/codegen.rs`).
 pub use traits::{BSplineEnd, Compound, ProfileOrient, Wire};
 
-// Re-export backend types at crate root
-#[cfg(not(feature = "pure"))]
-pub use occt::edge::Edge;
-#[cfg(not(feature = "pure"))]
-pub use occt::face::Face;
-#[cfg(not(feature = "pure"))]
-pub use occt::solid::Solid;
-
 // Re-export common types
 #[cfg(feature = "color")]
 pub use common::color::Color;
-pub use common::error::Error;
-pub use common::mesh::{Mesh, Scene2D};
+pub use common::{error::Error, mesh::{Mesh, Scene2D}};
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
 // adding a direct `glam` dependency — otherwise a mismatched glam minor

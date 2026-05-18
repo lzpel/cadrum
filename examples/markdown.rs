@@ -182,41 +182,37 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 /// Render the `## Usage` section: thumbnail table + install instructions.
 fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	const COLS: usize = 4;
-	let mut s = String::from("<!--GALLERY-->\n\n");
+	let mut s = String::from("<table>\n");
 
 	if !entries.is_empty() {
+		s.push_str(&format!("<colgroup>{}</colgroup>\n", "<col width='25%'/>".repeat(COLS)));
 		let rows = entries.len().div_ceil(COLS);
 		for row in 0..rows {
-			// Title row / タイトル行
-			let mut title_cells = Vec::with_capacity(COLS);
-			let mut image_cells = Vec::with_capacity(COLS);
-			for col in 0..COLS {
-				let idx = row * COLS + col;
-				if let Some(entry) = entries.get(idx) {
-					let (title, anchor) = (entry.plain_title(), entry.slug());
-					title_cells.push(format!("[{}](#{})", title, anchor));
-					let img_cell = outputs.iter()
-						.filter_map(|(p, _)| p.to_str())
-						.find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))
-						.map(|img| format!(
-							"[<img src=\"https://lzpel.github.io/cadrum/{}\" width=\"180\" alt=\"{}\"/>](#{})",
-							img, title, anchor
-						))
-						.unwrap_or_default();
-					image_cells.push(img_cell);
-				} else {
-					title_cells.push(String::new());
-					image_cells.push(String::new());
-				}
-			}
-			s.push_str(&format!("| {} |\n", title_cells.join(" | ")));
-			if row == 0 {
-				s.push_str("|:---:|:---:|:---:|:---:|\n");
-			}
-			s.push_str(&format!("| {} |\n", image_cells.join(" | ")));
+			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS).map(|col| {
+				let entry = entries.get(row * COLS + col)?;
+				let img = outputs.iter()
+					.filter_map(|(p, _)| p.to_str())
+					.find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))?;
+				Some((entry, img))
+			}).collect();
+			s.push_str(&format!("<tr>{}</tr>\n",
+				cells.iter().map(|cell| match cell {
+					Some((e, _)) => format!("<th><a href='#{anchor}'>{title}</a></th>",
+						anchor = e.slug(), title = e.plain_title()),
+					None => "<th></th>".to_string(),
+				}).collect::<String>()
+			));
+			s.push_str(&format!("<tr>{}</tr>\n",
+				cells.iter().map(|cell| match cell {
+					Some((e, img)) => format!(
+						"<td><a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a></td>",
+						anchor = e.slug(), title = e.plain_title()),
+					None => "<td></td>".to_string(),
+				}).collect::<String>()
+			));
 		}
-		s.push('\n');
 	}
+	s.push_str("</table>\n");
 	s
 }
 

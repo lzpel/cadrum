@@ -2,25 +2,22 @@
 
 Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0).
 
-<div align="center">
-
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
 
-<img src="https://lzpel.github.io/cadrum/00_chijin.png" alt="cadrum" height="300" width="auto"/>
-</div>
+<div align="center"><img src="https://lzpel.github.io/cadrum/00_chijin.png" alt="cadrum" height="300" width="auto"/></div>
 
-<!--GALLERY-->
+<table>
+<colgroup><col width='25%'/><col width='25%'/><col width='25%'/><col width='25%'/></colgroup>
+<tr><th><a href='#primitives'>primitives</a></th><th><a href='#write-read'>write read</a></th><th><a href='#transform'>transform</a></th><th><a href='#boolean'>boolean</a></th></tr>
+<tr><td><a href='#primitives'><img src='https://lzpel.github.io/cadrum/01_primitives.png' width='100%' height='auto' alt='primitives'/></a></td><td><a href='#write-read'><img src='https://lzpel.github.io/cadrum/02_write_read.png' width='100%' height='auto' alt='write read'/></a></td><td><a href='#transform'><img src='https://lzpel.github.io/cadrum/03_transform.png' width='100%' height='auto' alt='transform'/></a></td><td><a href='#boolean'><img src='https://lzpel.github.io/cadrum/04_boolean.png' width='100%' height='auto' alt='boolean'/></a></td></tr>
+<tr><th><a href='#extrude'>extrude</a></th><th><a href='#loft'>loft</a></th><th><a href='#sweep'>sweep</a></th><th><a href='#shell'>shell</a></th></tr>
+<tr><td><a href='#extrude'><img src='https://lzpel.github.io/cadrum/05_extrude.png' width='100%' height='auto' alt='extrude'/></a></td><td><a href='#loft'><img src='https://lzpel.github.io/cadrum/06_loft.png' width='100%' height='auto' alt='loft'/></a></td><td><a href='#sweep'><img src='https://lzpel.github.io/cadrum/07_sweep.png' width='100%' height='auto' alt='sweep'/></a></td><td><a href='#shell'><img src='https://lzpel.github.io/cadrum/08_shell.png' width='100%' height='auto' alt='shell'/></a></td></tr>
+<tr><th><a href='#bspline'>bspline</a></th><th><a href='#fillet'>fillet</a></th><th><a href='#chamfer'>chamfer</a></th><th><a href='#multiview'>multiview</a></th></tr>
+<tr><td><a href='#bspline'><img src='https://lzpel.github.io/cadrum/09_bspline.png' width='100%' height='auto' alt='bspline'/></a></td><td><a href='#fillet'><img src='https://lzpel.github.io/cadrum/10_fillet.png' width='100%' height='auto' alt='fillet'/></a></td><td><a href='#chamfer'><img src='https://lzpel.github.io/cadrum/11_chamfer.png' width='100%' height='auto' alt='chamfer'/></a></td><td><a href='#multiview'><img src='https://lzpel.github.io/cadrum/12_multiview.png' width='100%' height='auto' alt='multiview'/></a></td></tr>
 
-| [primitives](#primitives) | [write read](#write-read) | [transform](#transform) | [boolean](#boolean) |
-|:---:|:---:|:---:|:---:|
-| [<img src="https://lzpel.github.io/cadrum/01_primitives.png" width="180" alt="primitives"/>](#primitives) | [<img src="https://lzpel.github.io/cadrum/02_write_read.png" width="180" alt="write read"/>](#write-read) | [<img src="https://lzpel.github.io/cadrum/03_transform.png" width="180" alt="transform"/>](#transform) | [<img src="https://lzpel.github.io/cadrum/04_boolean.png" width="180" alt="boolean"/>](#boolean) |
-| [extrude](#extrude) | [loft](#loft) | [sweep](#sweep) | [shell](#shell) |
-| [<img src="https://lzpel.github.io/cadrum/05_extrude.png" width="180" alt="extrude"/>](#extrude) | [<img src="https://lzpel.github.io/cadrum/06_loft.png" width="180" alt="loft"/>](#loft) | [<img src="https://lzpel.github.io/cadrum/07_sweep.png" width="180" alt="sweep"/>](#sweep) | [<img src="https://lzpel.github.io/cadrum/08_shell.png" width="180" alt="shell"/>](#shell) |
-| [bspline](#bspline) | [fillet](#fillet) | [chamfer](#chamfer) | [multiview](#multiview) |
-| [<img src="https://lzpel.github.io/cadrum/09_bspline.png" width="180" alt="bspline"/>](#bspline) | [<img src="https://lzpel.github.io/cadrum/10_fillet.png" width="180" alt="fillet"/>](#fillet) | [<img src="https://lzpel.github.io/cadrum/11_chamfer.png" width="180" alt="chamfer"/>](#chamfer) | [<img src="https://lzpel.github.io/cadrum/12_multiview.png" width="180" alt="multiview"/>](#multiview) |
-
+</table>
 
 ## Summary
 
