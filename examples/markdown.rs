@@ -170,8 +170,8 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 			let name = p.to_str()?;
 			if !name.starts_with(stem) { return None; }
 			match p.extension().and_then(|e| e.to_str()) {
-				Some("svg" | "png") => Some(format!("\n<p align=\"center\">\n  <img src=\"https://lzpel.github.io/cadrum/{name}\" alt=\"{stem}\" width=\"360\"/>\n</p>")),
-				Some("step" | "brep" | "stl") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
+				Some("svg") => Some(format!("\n<p align=\"center\">\n  <img src=\"https://lzpel.github.io/cadrum/{name}\" alt=\"{stem}\" width=\"360\"/>\n</p>")),
+				Some("step" | "brep" | "stl" | "png") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
 				_ => None,
 			}
 		})
@@ -185,7 +185,6 @@ fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	let mut s = String::from("<table>\n");
 
 	if !entries.is_empty() {
-		s.push_str(&format!("<colgroup>{}</colgroup>\n", "<col width='25%'/>".repeat(COLS)));
 		let rows = entries.len().div_ceil(COLS);
 		for row in 0..rows {
 			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS).map(|col| {
@@ -196,18 +195,15 @@ fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 				Some((entry, img))
 			}).collect();
 			s.push_str(&format!("<tr>{}</tr>\n",
-				cells.iter().map(|cell| match cell {
-					Some((e, _)) => format!("<th><a href='#{anchor}'>{title}</a></th>",
-						anchor = e.slug(), title = e.plain_title()),
-					None => "<th></th>".to_string(),
+				cells.iter().map(|cell| {
+					let v=cell.map(|(e,_)| format!("<a href='#{anchor}'>{title}</a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+					format!("<th width='25%'>{}</th>", v)
 				}).collect::<String>()
 			));
 			s.push_str(&format!("<tr>{}</tr>\n",
-				cells.iter().map(|cell| match cell {
-					Some((e, img)) => format!(
-						"<td><a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a></td>",
-						anchor = e.slug(), title = e.plain_title()),
-					None => "<td></td>".to_string(),
+				cells.iter().map(|cell| {
+					let v=cell.map(|(e, img)| format!("<a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+					format!("<td width='25%'>{}</td>", v)
 				}).collect::<String>()
 			));
 		}

@@ -151,10 +151,7 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/01_primitives.png" alt="01_primitives" width="360"/>
-</p>
+- [01_primitives.png](https://lzpel.github.io/cadrum/01_primitives.png)
 - [01_primitives.step](https://lzpel.github.io/cadrum/01_primitives.step)
 
 <p align="center">
@@ -228,10 +225,7 @@ fn main() -> Result<(), cadrum::Error> {
 
 ```
 - [02_write_read.brep](https://lzpel.github.io/cadrum/02_write_read.brep)
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/02_write_read.png" alt="02_write_read" width="360"/>
-</p>
+- [02_write_read.png](https://lzpel.github.io/cadrum/02_write_read.png)
 - [02_write_read.step](https://lzpel.github.io/cadrum/02_write_read.step)
 - [02_write_read.stl](https://lzpel.github.io/cadrum/02_write_read.stl)
 
@@ -295,10 +289,7 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/03_transform.png" alt="03_transform" width="360"/>
-</p>
+- [03_transform.png](https://lzpel.github.io/cadrum/03_transform.png)
 - [03_transform.step](https://lzpel.github.io/cadrum/03_transform.step)
 
 <p align="center">
@@ -366,10 +357,7 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/04_boolean.png" alt="04_boolean" width="360"/>
-</p>
+- [04_boolean.png](https://lzpel.github.io/cadrum/04_boolean.png)
 - [04_boolean.step](https://lzpel.github.io/cadrum/04_boolean.step)
 
 <p align="center">
@@ -463,10 +451,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/05_extrude.png" alt="05_extrude" width="360"/>
-</p>
+- [05_extrude.png](https://lzpel.github.io/cadrum/05_extrude.png)
 - [05_extrude.step](https://lzpel.github.io/cadrum/05_extrude.step)
 
 <p align="center">
@@ -542,10 +527,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/06_loft.png" alt="06_loft" width="360"/>
-</p>
+- [06_loft.png](https://lzpel.github.io/cadrum/06_loft.png)
 - [06_loft.step](https://lzpel.github.io/cadrum/06_loft.step)
 
 <p align="center">
@@ -694,10 +676,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/07_sweep.png" alt="07_sweep" width="360"/>
-</p>
+- [07_sweep.png](https://lzpel.github.io/cadrum/07_sweep.png)
 - [07_sweep.step](https://lzpel.github.io/cadrum/07_sweep.step)
 
 <p align="center">
@@ -776,10 +755,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/08_shell.png" alt="08_shell" width="360"/>
-</p>
+- [08_shell.png](https://lzpel.github.io/cadrum/08_shell.png)
 - [08_shell.step](https://lzpel.github.io/cadrum/08_shell.step)
 
 <p align="center">
@@ -845,10 +821,7 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/09_bspline.png" alt="09_bspline" width="360"/>
-</p>
+- [09_bspline.png](https://lzpel.github.io/cadrum/09_bspline.png)
 - [09_bspline.step](https://lzpel.github.io/cadrum/09_bspline.step)
 
 <p align="center">
@@ -917,10 +890,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/10_fillet.png" alt="10_fillet" width="360"/>
-</p>
+- [10_fillet.png](https://lzpel.github.io/cadrum/10_fillet.png)
 - [10_fillet.step](https://lzpel.github.io/cadrum/10_fillet.step)
 
 <p align="center">
@@ -989,10 +959,7 @@ fn main() -> Result<(), Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/11_chamfer.png" alt="11_chamfer" width="360"/>
-</p>
+- [11_chamfer.png](https://lzpel.github.io/cadrum/11_chamfer.png)
 - [11_chamfer.step](https://lzpel.github.io/cadrum/11_chamfer.step)
 
 <p align="center">
@@ -1038,10 +1005,7 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-
-<p align="center">
-  <img src="https://lzpel.github.io/cadrum/12_multiview.png" alt="12_multiview" width="360"/>
-</p>
+- [12_multiview.png](https://lzpel.github.io/cadrum/12_multiview.png)
 
 
 ## The Type Map
