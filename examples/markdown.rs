@@ -170,8 +170,8 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 			let name = p.to_str()?;
 			if !name.starts_with(stem) { return None; }
 			match p.extension().and_then(|e| e.to_str()) {
-				Some("svg" | "png") => Some(format!("\n<p align=\"center\">\n  <img src=\"https://lzpel.github.io/cadrum/{name}\" alt=\"{stem}\" width=\"360\"/>\n</p>")),
-				Some("step" | "brep" | "stl") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
+				Some("svg") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})\n\n<div align=center><img src='https://lzpel.github.io/cadrum/{name}' alt='{stem}' width='360'/></div>\n")),
+				Some("step" | "brep" | "stl" | "png") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
 				_ => None,
 			}
 		})
@@ -182,41 +182,32 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 /// Render the `## Usage` section: thumbnail table + install instructions.
 fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	const COLS: usize = 4;
-	let mut s = String::from("<!--GALLERY-->\n\n");
-
+	let mut s = String::from("<!--GALLERY-->\n\n<table>\n");
 	if !entries.is_empty() {
 		let rows = entries.len().div_ceil(COLS);
 		for row in 0..rows {
-			// Title row / タイトル行
-			let mut title_cells = Vec::with_capacity(COLS);
-			let mut image_cells = Vec::with_capacity(COLS);
-			for col in 0..COLS {
-				let idx = row * COLS + col;
-				if let Some(entry) = entries.get(idx) {
-					let (title, anchor) = (entry.plain_title(), entry.slug());
-					title_cells.push(format!("[{}](#{})", title, anchor));
-					let img_cell = outputs.iter()
-						.filter_map(|(p, _)| p.to_str())
-						.find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))
-						.map(|img| format!(
-							"[<img src=\"https://lzpel.github.io/cadrum/{}\" width=\"180\" alt=\"{}\"/>](#{})",
-							img, title, anchor
-						))
-						.unwrap_or_default();
-					image_cells.push(img_cell);
-				} else {
-					title_cells.push(String::new());
-					image_cells.push(String::new());
-				}
-			}
-			s.push_str(&format!("| {} |\n", title_cells.join(" | ")));
-			if row == 0 {
-				s.push_str("|:---:|:---:|:---:|:---:|\n");
-			}
-			s.push_str(&format!("| {} |\n", image_cells.join(" | ")));
+			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS).map(|col| {
+				let entry = entries.get(row * COLS + col)?;
+				let img = outputs.iter()
+					.filter_map(|(p, _)| p.to_str())
+					.find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))?;
+				Some((entry, img))
+			}).collect();
+			s.push_str(&format!("<tr>{}</tr>\n",
+				cells.iter().map(|cell| {
+					let v=cell.map(|(e,_)| format!("<a href='#{anchor}'>{title}</a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+					format!("<th width='25%'>{}</th>", v)
+				}).collect::<String>()
+			));
+			s.push_str(&format!("<tr>{}</tr>\n",
+				cells.iter().map(|cell| {
+					let v=cell.map(|(e, img)| format!("<a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+					format!("<td width='25%'>{}</td>", v)
+				}).collect::<String>()
+			));
 		}
-		s.push('\n');
 	}
+	s.push_str("</table>\n");
 	s
 }
 
