@@ -182,8 +182,7 @@ fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 /// Render the `## Usage` section: thumbnail table + install instructions.
 fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	const COLS: usize = 4;
-	let mut s = String::from("<table>\n");
-
+	let mut s = String::from("<!--GALLERY-->\n\n<table>\n");
 	if !entries.is_empty() {
 		let rows = entries.len().div_ceil(COLS);
 		for row in 0..rows {
