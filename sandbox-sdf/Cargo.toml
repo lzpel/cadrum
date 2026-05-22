@@ -1,0 +1,8 @@
+[package]
+name = "sandbox-sdf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glam = "0.29"
+tiny-skia = "0.11"
