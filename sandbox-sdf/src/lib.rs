@@ -1,7 +1,6 @@
 //! SDF（符号付き距離関数）のサンドボックス。
-//! 基本形状の SDF と、形状の解析（バウンディングボックス）を提供する。
+//! 基本形状の SDF と、形状を囲む円の推定を提供する。
 
-pub mod boolean;
 pub mod preview;
 
 use glam::Vec2;
@@ -10,13 +9,6 @@ use glam::Vec2;
 /// 円の内側で負、円周上で0、外側で正を返す。
 pub fn sdf_circle(p: Vec2) -> f32 {
 	p.length() - 1.0
-}
-
-/// SDF を origin だけ平行移動し scale 倍に拡縮する。
-/// 評価点を局所座標へ変換して sdf を呼び、距離を scale 倍して戻すことで
-/// 戻り値が正しい符号付き距離（距離の単位）であり続ける。
-pub fn sdf_translate(p: Vec2, origin: Vec2, scale: f32, sdf: impl Fn(Vec2) -> f32) -> f32 {
-	sdf((p - origin) / scale) * scale
 }
 
 /// 任意の多角形（凸でなくてもよい）の符号付き距離関数。
@@ -43,41 +35,84 @@ pub fn sdf_polygon(p: Vec2, vertex: impl IntoIterator<Item = Vec2>) -> f32 {
 	s * d.sqrt()
 }
 
-/// 点 p における SDF の勾配 ∇sdf を返す。各点で「距離が最も増える方向」を指す。
-/// 解析微分の代わりに微小量 EPS の中心差分で近似する。
-/// 真の SDF であれば ∇sdf の長さはほぼ1（向きだけ欲しければ呼び出し側で normalize する）。
-pub fn nabla(p: Vec2, sdf: impl Fn(Vec2) -> f32) -> Vec2 {
-	const EPS: f32 = 1e-3;
-	let dx = sdf(p + Vec2::new(EPS, 0.0)) - sdf(p - Vec2::new(EPS, 0.0));
-	let dy = sdf(p + Vec2::new(0.0, EPS)) - sdf(p - Vec2::new(0.0, EPS));
-	Vec2::new(dx, dy) / (2.0 * EPS)
+/// SDF を origin だけ平行移動し scale 倍に拡縮する。
+/// 評価点を局所座標へ変換して sdf を呼び、距離を scale 倍して戻すことで
+/// 戻り値が正しい符号付き距離（距離の単位）であり続ける。
+pub fn sdf_translate(p: Vec2, origin: Vec2, scale: f32, sdf: impl Fn(Vec2) -> f32) -> f32 {
+	sdf((p - origin) / scale) * scale
 }
 
-/// 方向 dir に最も張り出す境界点（support point）をニュートン法で求める。
-/// dir 方向のはるか遠方から出発し、各反復で点を sdf=0 の面へ寄せていく。
+/// SDF が表す形状を囲む円を (中心, 半径) で返す（preview の表示範囲決定用）。
 ///
-/// 1反復は `p -= sdf(p) * n`（n は ∇sdf の単位ベクトル）。これは点 p を通り
-/// n 方向に伸びる直線上で方程式 sdf=0 を解くニュートン法そのもの。真の SDF なら
-/// 遠方の ∇sdf は形状の最寄り点（= その向きの極値点）を正確に指すため、ごく
-/// 数反復で support point に収束する（無限遠だと sdf も ∇sdf も発散するので、
-/// 実際には形状サイズより十分大きい有限の FAR から出発する）。
-fn support(p: Vec2, sdf: &impl Fn(Vec2) -> f32) -> Vec2 {
-	let mut p = p;
-	for _ in 0..64 {
-		let n = nabla(p, sdf).normalize_or_zero();
-		p -= sdf(p) * n;
+/// 巨大な円から出発し、円周 N 点で sdf を測りながら反復で形状へ貼りつける:
+///  - 中心: 形状から最も遠い点（クリアランス最大）の逆向きへ寄せる → 形状側へ移動
+///  - 半径: 形状に最も近い点（クリアランス最小）の分だけ縮める → 形状に接したら止まる
+///
+/// 縮小量に「最遠点」のクリアランスを使うと内接円へ収束して形状がはみ出るため、
+/// 円が外接し続ける（= circle_outside）よう「最近点」のクリアランスで縮める。
+/// rate=0.2 で少しずつ更新し、最近点が十分0に近づいたら収束とみなす。
+pub fn circle_outside(sdf: impl Fn(Vec2) -> f32) -> (Vec2, f32) {
+	const RATE: f32 = 0.2;
+	const N: usize = 8;
+	let mut c = Vec2::ZERO;
+	let mut r = 1e9_f32; // 形状より十分大きい初期半径（f32::MAX だと多角形 sdf 内の二乗が発散する）
+	for _ in 0..1000 {
+		// 円周 N 点で sdf を評価する
+		let probe: Vec<(Vec2, f32)> = (0..N)
+			.map(|i| {
+				let a = std::f32::consts::TAU * i as f32 / N as f32;
+				let p = c + r * Vec2::new(a.cos(), a.sin());
+				(p, sdf(p))
+			})
+			.collect();
+		let cmp = |a: &&(Vec2, f32), b: &&(Vec2, f32)| a.1.total_cmp(&b.1);
+		let &(far, far_d) = probe.iter().max_by(cmp).unwrap(); // 最遠点（クリアランス最大）
+		let near_d = probe.iter().min_by(cmp).unwrap().1; // 最近点のクリアランス
+		// 最遠点から離れる向きへ中心を寄せ、最近点の分だけ半径を縮める
+		c += (c - far).normalize_or_zero() * far_d * RATE;
+		r -= near_d * RATE;
+		if near_d * RATE < r * 1e-4 { break; } // 形状に十分貼りついたら収束
 	}
-	p
+	(c, r)
 }
 
-/// 任意の SDF が表す形状の軸並行バウンディングボックスを [min, max] で返す。
-/// グリッド走査ではなく、+x / +y / -x / -y の4方向それぞれで support point を
-/// ニュートン法で求め、その x / y 成分から最小・最大を組み立てる。
-pub fn bounding(sdf: impl Fn(Vec2) -> f32) -> [Vec2; 2] {
-	const FAR: f32 = 1e3; // 形状サイズより十分遠い出発点
-	let x_max = support(Vec2::X * FAR, &sdf).x;
-	let y_max = support(Vec2::Y * FAR, &sdf).y;
-	let x_min = support(-Vec2::X * FAR, &sdf).x;
-	let y_min = support(-Vec2::Y * FAR, &sdf).y;
-	[Vec2::new(x_min, y_min), Vec2::new(x_max, y_max)]
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn sdf_circle() {
+		assert_eq!(super::sdf_circle(Vec2::X), 0.0); // 境界上
+		assert_eq!(super::sdf_circle(Vec2::ZERO), -1.0); // 中心 = -半径
+		assert_eq!(super::sdf_circle(Vec2::new(2.0, 0.0)), 1.0); // 外側
+	}
+
+	#[test]
+	fn sdf_translate() {
+		// origin=(1,0) に平行移動: (2,0) が境界上
+		let d = super::sdf_translate(Vec2::new(2.0, 0.0), Vec2::X, 1.0, super::sdf_circle);
+		assert_eq!(d, 0.0);
+		// scale=2: 半径2の円になる。(2,0) が境界上
+		let d = super::sdf_translate(Vec2::new(2.0, 0.0), Vec2::ZERO, 2.0, super::sdf_circle);
+		assert_eq!(d, 0.0);
+	}
+
+	#[test]
+	fn sdf_polygon() {
+		let square = [
+			Vec2::new(1.0, 1.0), Vec2::new(-1.0, 1.0),
+			Vec2::new(-1.0, -1.0), Vec2::new(1.0, -1.0),
+		];
+		assert_eq!(super::sdf_polygon(Vec2::ZERO, square), -1.0); // 中心: 辺まで距離1
+		assert_eq!(super::sdf_polygon(Vec2::new(1.0, 0.0), square), 0.0); // 辺上
+		assert_eq!(super::sdf_polygon(Vec2::new(2.0, 0.0), square), 1.0); // 外側
+	}
+
+	#[test]
+	fn circle_outside() {
+		// 半径1の円: 囲む円は中心≈原点・半径≈1 に収束する
+		let (c, r) = super::circle_outside(super::sdf_circle);
+		assert!(c.length() < 0.1, "center={c}");
+		assert!((r - 1.0).abs() < 0.1, "radius={r}");
+	}
 }

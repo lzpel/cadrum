@@ -1,6 +1,6 @@
 //! SDF の距離マップを PNG に書き出すプレビュー。
 
-use crate::bounding;
+use crate::circle_outside;
 use glam::{Vec2, Vec3};
 use std::path::Path;
 use tiny_skia::{Pixmap, PremultipliedColorU8};
@@ -13,9 +13,8 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 
 /// SDF をピクセルごとに評価して距離マップを PNG 出力する。
 ///
-/// 表示範囲は `bounding(sdf)` から決める。形状を中央に置き、長辺が画像の
-/// FILL（70%）を占めるよう等方スケールする。短辺はアスペクト比一定なので
-/// 自動的に FILL 以下に収まる。
+/// 表示範囲は `circle_outside(sdf)` が返す囲み円から決める。円の中心を画像
+/// 中央に置き、直径が画像の FILL（70%）を占めるよう等方スケールする。
 ///
 /// 内側を青系・外側をオレンジ系で塗り、距離の等高線を縞、ゼロ等位線を白で描く。
 pub fn preview(sdf: impl Fn(Vec2) -> f32, png: &Path) {
@@ -23,9 +22,8 @@ pub fn preview(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 	const FILL: f32 = 0.7; // 形状の長辺が画像に占める割合
 
 	// 形状の中心と長辺から、ピクセル⇔ワールドの等方スケールを決める
-	let [min, max] = bounding(&sdf);
-	let center = (min + max) * 0.5;
-	let long = (max - min).max_element().max(f32::EPSILON);
+	let (center, radius) = circle_outside(&sdf);
+	let long = (2.0 * radius).max(f32::EPSILON);
 	let world_per_px = long / (SIZE as f32 * FILL);
 
 	let mut pixmap = Pixmap::new(SIZE, SIZE).unwrap();
