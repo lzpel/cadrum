@@ -1,5 +1,9 @@
 use glam::Vec2;
-use sandbox_sdf::{preview::preview, sdf_circle, sdf_polygon};
+use sandbox_sdf::{
+	issue::sdf_issue,
+	preview::{preview, preview_regions},
+	sdf_circle, sdf_polygon,
+};
 use std::path::Path;
 
 fn main() {
@@ -31,5 +35,13 @@ fn main() {
 	let right = |p: Vec2| sdf_circle(p - Vec2::new(0.5, 0.0));
 	let png = Path::new("union.png");
 	preview(|p| left(p).min(right(p)), png);
+	println!("wrote {}", png.display());
+
+	let png = Path::new("issue.png");
+	preview(sdf_issue, png);
+	println!("wrote {}", png.display());
+
+	let png = Path::new("issue_regions.png");
+	preview_regions(sdf_issue, png);
 	println!("wrote {}", png.display());
 }

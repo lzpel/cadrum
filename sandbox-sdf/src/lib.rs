@@ -1,7 +1,9 @@
 //! SDF（符号付き距離関数）のサンドボックス。
-//! 基本形状の SDF と、形状を囲む円の推定を提供する。
+//! 基本形状の SDF と、形状を囲む円・バウンディングボックスの推定を提供する。
 
+pub mod issue;
 pub mod preview;
+pub mod region;
 
 use glam::Vec2;
 
@@ -42,6 +44,14 @@ pub fn sdf_translate(p: Vec2, origin: Vec2, scale: f32, sdf: impl Fn(Vec2) -> f3
 	sdf((p - origin) / scale) * scale
 }
 
+/// 2頂点 a, b を対角とする軸並行矩形の符号付き距離関数。
+/// a と b の順序・大小は問わない。内側で負、外側で正。
+pub fn sdf_rect(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+	let half = (b - a).abs() * 0.5;
+	let d = (p - (a + b) * 0.5).abs() - half;
+	d.max(Vec2::ZERO).length() + d.max_element().min(0.0)
+}
+
 /// SDF が表す形状を囲む円を (中心, 半径) で返す（preview の表示範囲決定用）。
 ///
 /// 巨大な円から出発し、円周 N 点で sdf を測りながら反復で形状へ貼りつける:
@@ -74,6 +84,40 @@ pub fn circle_outside(sdf: impl Fn(Vec2) -> f32) -> (Vec2, f32) {
 		if near_d * RATE < r * 1e-4 { break; } // 形状に十分貼りついたら収束
 	}
 	(c, r)
+}
+
+/// 点 p における SDF の勾配 ∇sdf を中心差分で近似する。
+/// 真の SDF なら長さはほぼ1で、向きは「最寄り境界から離れる向き」を指す。
+fn nabla(p: Vec2, sdf: impl Fn(Vec2) -> f32) -> Vec2 {
+	const EPS: f32 = 1e-3;
+	let dx = sdf(p + Vec2::new(EPS, 0.0)) - sdf(p - Vec2::new(EPS, 0.0));
+	let dy = sdf(p + Vec2::new(0.0, EPS)) - sdf(p - Vec2::new(0.0, EPS));
+	Vec2::new(dx, dy) / (2.0 * EPS)
+}
+
+/// SDF が表す形状の軸並行バウンディングボックスを [min, max] で返す。
+///
+/// circle_outside の囲み円を 1.5 倍に膨らませた円周上に N 点を取り、各点を
+/// ニュートン射影 `p -= sdf(p)·n̂`（n̂ は ∇sdf の単位ベクトル）で境界 sdf=0 へ
+/// 落とす。射影先は最寄りの境界点なので、凸頂点・凹みのノッチ・複数の連結成分が
+/// すべて拾われる。集めた境界点の成分ごとの min/max が bbox になる。
+/// 4方向の support 探索と違い、凹形状でも extremum を取りこぼさない。
+pub fn bounding(sdf: impl Fn(Vec2) -> f32) -> [Vec2; 2] {
+	const N: usize = 256;
+	let (center, radius) = circle_outside(&sdf);
+	let radius = radius * 1.5; // 全サンプル点を形状の外側に置くための余裕
+	let mut min = Vec2::splat(f32::INFINITY);
+	let mut max = Vec2::splat(f32::NEG_INFINITY);
+	for i in 0..N {
+		let a = std::f32::consts::TAU * i as f32 / N as f32;
+		let mut p = center + radius * Vec2::new(a.cos(), a.sin());
+		for _ in 0..32 {
+			p -= sdf(p) * nabla(p, &sdf).normalize_or_zero();
+		}
+		min = min.min(p);
+		max = max.max(p);
+	}
+	[min, max]
 }
 
 #[cfg(test)]
@@ -109,10 +153,45 @@ mod tests {
 	}
 
 	#[test]
+	fn sdf_rect() {
+		let a = Vec2::new(-1.0, -1.0);
+		let b = Vec2::new(1.0, 1.0);
+		assert_eq!(super::sdf_rect(Vec2::ZERO, a, b), -1.0); // 中心: 辺まで距離1
+		assert_eq!(super::sdf_rect(Vec2::new(1.0, 0.0), a, b), 0.0); // 辺上
+		assert_eq!(super::sdf_rect(Vec2::new(2.0, 0.0), a, b), 1.0); // 外側（辺から）
+		assert!((super::sdf_rect(Vec2::new(2.0, 2.0), a, b) - 2.0_f32.sqrt()).abs() < 1e-5); // 外側（角から）
+		// a, b の順序を逆にしても同じ結果
+		assert_eq!(super::sdf_rect(Vec2::ZERO, b, a), -1.0);
+	}
+
+	#[test]
 	fn circle_outside() {
 		// 半径1の円: 囲む円は中心≈原点・半径≈1 に収束する
 		let (c, r) = super::circle_outside(super::sdf_circle);
 		assert!(c.length() < 0.1, "center={c}");
 		assert!((r - 1.0).abs() < 0.1, "radius={r}");
+	}
+
+	#[test]
+	fn bounding() {
+		// 半径1の円: bbox は [-1,-1] → [1,1]
+		let [min, max] = super::bounding(super::sdf_circle);
+		assert!((min - Vec2::splat(-1.0)).length() < 1e-2, "min={min}");
+		assert!((max - Vec2::splat(1.0)).length() < 1e-2, "max={max}");
+
+		// 5角星: 外半径1・内半径0.4。凹形状でも全頂点が境界射影で拾われる
+		let star: [Vec2; 10] = std::array::from_fn(|i| {
+			let r = if i % 2 == 0 { 1.0_f32 } else { 0.4 };
+			let a = std::f32::consts::TAU * i as f32 / 10.0;
+			Vec2::new(a.sin(), a.cos()) * r
+		});
+		let [gt_min, gt_max] = star
+			.into_iter()
+			.map(|p| [p, p])
+			.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])])
+			.unwrap();
+		let [min, max] = super::bounding(|p| super::sdf_polygon(p, star.iter().copied()));
+		assert!((min - gt_min).length() < 1e-2, "min={min} gt_min={gt_min}");
+		assert!((max - gt_max).length() < 1e-2, "max={max} gt_max={gt_max}");
 	}
 }
