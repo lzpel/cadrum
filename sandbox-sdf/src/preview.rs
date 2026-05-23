@@ -56,8 +56,8 @@ pub fn preview(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 	pixmap.save_png(png).unwrap();
 }
 
-/// SDF 背景の上に、連結成分ごとの輪郭線と代表点を重ねて PNG 出力する。
-pub fn preview_regions(sdf: impl Fn(Vec2) -> f32, png: &std::path::Path) {
+/// SDF 背景の上に連結成分ごとの直線・円弧セグメントを重ねて PNG 出力する。
+pub fn preview_regions_segment(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 	const SIZE: u32 = 512;
 	const FILL: f32 = 0.7;
 
@@ -66,7 +66,7 @@ pub fn preview_regions(sdf: impl Fn(Vec2) -> f32, png: &std::path::Path) {
 	let long = (max_bb - min_bb).max_element().max(f32::EPSILON);
 	let world_per_px = long / (SIZE as f32 * FILL);
 
-	// SDF 背景（preview と同じ配色）
+	// SDF 背景
 	let mut pixmap = Pixmap::new(SIZE, SIZE).unwrap();
 	{
 		let pixels = pixmap.pixels_mut();
@@ -104,9 +104,8 @@ pub fn preview_regions(sdf: impl Fn(Vec2) -> f32, png: &std::path::Path) {
 		)
 	};
 
-	// 連結成分を取得
-	let (grid_bbox, map) = crate::region::inner_map(&sdf);
-	let region_list = crate::region::regions(grid_bbox, &map);
+	let raw = crate::region::regions_raw(&sdf);
+	let segs = crate::region::regions_segment(&raw);
 
 	const PALETTE: &[(u8, u8, u8)] = &[
 		(255, 255, 255),
@@ -118,35 +117,46 @@ pub fn preview_regions(sdf: impl Fn(Vec2) -> f32, png: &std::path::Path) {
 		(200, 255, 50),
 	];
 
-	for (i, &(rep, _)) in region_list.iter().enumerate() {
+	for (i, comp_segs) in segs.iter().enumerate() {
 		let (r, g, b) = PALETTE[i % PALETTE.len()];
+		let mut paint = Paint::default();
+		paint.set_color_rgba8(r, g, b, 220);
+		paint.anti_alias = true;
+		let stroke = Stroke { width: 1.5, ..Default::default() };
 
-		// 輪郭ポリライン
-		let pts = crate::region::contour(rep, &sdf, 100);
-		if pts.len() >= 2 {
-			let mut pb = PathBuilder::new();
-			let (px0, py0) = w2p(pts[0]);
-			pb.move_to(px0, py0);
-			for &wp in &pts[1..] {
-				let (px, py) = w2p(wp);
-				pb.line_to(px, py);
+		for seg in comp_segs {
+			use crate::region::Segment;
+			match seg {
+				Segment::Line { point, direction } => {
+					let (px, py) = w2p(*point);
+					let dpx = direction.normalize_or_zero();
+					// 方向をピクセルスケールに変換して画像幅 1.5倍に延長
+					let dpx_px = Vec2::new(dpx.x, dpx.y) / long * SIZE as f32;
+					let dpx_unit = dpx_px.normalize_or_zero();
+					let t = SIZE as f32 * 1.5;
+					let mut pb = PathBuilder::new();
+					pb.move_to(px - dpx_unit.x * t, py - dpx_unit.y * t);
+					pb.line_to(px + dpx_unit.x * t, py + dpx_unit.y * t);
+					if let Some(path) = pb.finish() {
+						pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+					}
+				}
+				Segment::Circle { center: c, radius } => {
+					let (cx, cy) = w2p(*c);
+					let r_px = radius / long * SIZE as f32;
+					if let Some(rect) =
+						Rect::from_xywh(cx - r_px, cy - r_px, r_px * 2.0, r_px * 2.0)
+					{
+						let mut pb = PathBuilder::new();
+						pb.push_oval(rect);
+						if let Some(path) = pb.finish() {
+							pixmap.stroke_path(
+								&path, &paint, &stroke, Transform::identity(), None,
+							);
+						}
+					}
+				}
 			}
-			pb.close();
-			if let Some(path) = pb.finish() {
-				let mut paint = Paint::default();
-				paint.set_color_rgba8(r, g, b, 220);
-				paint.anti_alias = true;
-				let stroke = Stroke { width: 1.5, ..Default::default() };
-				pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-			}
-		}
-
-		// 代表点（6×6 矩形）
-		let (px, py) = w2p(rep);
-		if let Some(rect) = Rect::from_xywh(px - 3.0, py - 3.0, 6.0, 6.0) {
-			let mut paint = Paint::default();
-			paint.set_color_rgba8(r, g, b, 255);
-			pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 		}
 	}
 

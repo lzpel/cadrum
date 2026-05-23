@@ -86,13 +86,18 @@ pub fn circle_outside(sdf: impl Fn(Vec2) -> f32) -> (Vec2, f32) {
 	(c, r)
 }
 
-/// 点 p における SDF の勾配 ∇sdf を中心差分で近似する。
-/// 真の SDF なら長さはほぼ1で、向きは「最寄り境界から離れる向き」を指す。
-fn nabla(p: Vec2, sdf: impl Fn(Vec2) -> f32) -> Vec2 {
+/// 点 p における SDF の値・勾配・ラプラシアンを5点差分で同時に返す。
+/// 戻り値: `(d, ∇d, ∇²d)` — (距離, 勾配, ラプラシアン)
+pub fn distance_nabla_laplacian(p: Vec2, sdf: impl Fn(Vec2) -> f32) -> (f32, Vec2, f32) {
 	const EPS: f32 = 1e-3;
-	let dx = sdf(p + Vec2::new(EPS, 0.0)) - sdf(p - Vec2::new(EPS, 0.0));
-	let dy = sdf(p + Vec2::new(0.0, EPS)) - sdf(p - Vec2::new(0.0, EPS));
-	Vec2::new(dx, dy) / (2.0 * EPS)
+	let c  = sdf(p);
+	let px = sdf(p + Vec2::X * EPS);
+	let mx = sdf(p - Vec2::X * EPS);
+	let py = sdf(p + Vec2::Y * EPS);
+	let my = sdf(p - Vec2::Y * EPS);
+	let nabla = Vec2::new(px - mx, py - my) / (2.0 * EPS);
+	let lap   = (px + mx + py + my - 4.0 * c) / (EPS * EPS);
+	(c, nabla, lap)
 }
 
 /// SDF が表す形状の軸並行バウンディングボックスを [min, max] で返す。
@@ -112,7 +117,8 @@ pub fn bounding(sdf: impl Fn(Vec2) -> f32) -> [Vec2; 2] {
 		let a = std::f32::consts::TAU * i as f32 / N as f32;
 		let mut p = center + radius * Vec2::new(a.cos(), a.sin());
 		for _ in 0..32 {
-			p -= sdf(p) * nabla(p, &sdf).normalize_or_zero();
+			let (d, n, _) = distance_nabla_laplacian(p, &sdf);
+			p -= d * n.normalize_or_zero();
 		}
 		min = min.min(p);
 		max = max.max(p);
@@ -170,6 +176,24 @@ mod tests {
 		let (c, r) = super::circle_outside(super::sdf_circle);
 		assert!(c.length() < 0.1, "center={c}");
 		assert!((r - 1.0).abs() < 0.1, "radius={r}");
+	}
+
+	#[test]
+	fn distance_nabla_laplacian() {
+		// (1.1,0): sdf_circle=0.1、∇d=(1,0)、∇²d=1/r≈0.909
+		// d=0.1 >> EPS=1e-3 なので f32 精度で十分安定
+		let (d, n, l) =
+			super::distance_nabla_laplacian(Vec2::new(1.1, 0.0), super::sdf_circle);
+		assert!((d - 0.1).abs() < 1e-3, "d={d}");
+		assert!((n - Vec2::X).length() < 1e-2, "n={n}");
+		assert!((l - 1.0 / 1.1).abs() < 0.05, "lap={l}");
+		// 辺中央 (1,0): sdf_rect=0、∇²d≈0（直線）
+		let a = Vec2::new(-1.0, -1.0);
+		let b = Vec2::new(1.0, 1.0);
+		let (_, _, l2) = super::distance_nabla_laplacian(Vec2::new(1.0, 0.0), |p| {
+			super::sdf_rect(p, a, b)
+		});
+		assert!(l2.abs() < 0.5, "rect edge lap={l2}");
 	}
 
 	#[test]

@@ -48,3 +48,36 @@ distance!=1/kの点を含んでいるならそれは円弧だ
 
 その情報を足し合わせれば閉領域を逆算できるのでは？
 
+## plan
+
+conterをregionsは削除 inner_mapは残存
+
+pub fn regions_raw(sdf)->Vec<Vec<(p, nabla, laplacian)>>>を作る
+
+xxxxxxx
+xxooxxx
+xxoooxx
+xxxxxxx
+
+が台形のinnermapを表しているとして
+
+xDE12xx
+xCoo34x
+xBooo5x
+xA9876x
+
+regions_raw(sdf)は
+[[(Vec2,Vec2,float);15];1]が返ってくる、穴があるなら2個目以降に穴が入る
+
+enum Segment{
+	Line(point:Vec2,direction:Vec2)
+	Circle(center:Vec2,radius: float)
+}
+
+pub fn regions_segment(regions)->Vec<Vec<Segment>>
+
+はp, nabla, laplacianの配列を読み取って連続する直線　連続する曲線（円弧）を閾値で判定し集約し　Segmentで返す
+
+preview_regionsは削除
+
+preview_regions_segmentはregions_segmentの結果を描画する、まだ直線は線分でなくていいし円は円弧でなくていい

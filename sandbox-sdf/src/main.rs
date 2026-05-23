@@ -1,7 +1,7 @@
 use glam::Vec2;
 use sandbox_sdf::{
 	issue::sdf_issue,
-	preview::{preview, preview_regions},
+	preview::{preview, preview_regions_segment},
 	sdf_circle, sdf_polygon,
 };
 use std::path::Path;
@@ -42,6 +42,6 @@ fn main() {
 	println!("wrote {}", png.display());
 
 	let png = Path::new("issue_regions.png");
-	preview_regions(sdf_issue, png);
+	preview_regions_segment(sdf_issue, png);
 	println!("wrote {}", png.display());
 }
