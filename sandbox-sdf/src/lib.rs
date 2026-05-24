@@ -5,7 +5,7 @@ pub mod issue;
 pub mod point_loop;
 pub mod preview;
 pub mod primitive;
-pub mod region;
+pub mod edge_loop;
 
 pub use primitive::*;
 

@@ -1,17 +1,17 @@
 //! SDF の距離マップとセグメント輪郭を PNG に書き出すプレビュー。
 
-use crate::{bounding, region::regions, Edge};
+use crate::{bounding, edge_loop::edge_loop, Edge};
 use glam::{DVec2, Vec3};
 use std::path::Path;
-use tiny_skia::{Paint, PathBuilder, Pixmap, PremultipliedColorU8, Stroke, Transform};
+use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Stroke, Transform};
 
-/// SDF をピクセル評価して距離マップを描き、その上に `regions(sdf)` で抽出した
-/// Line / Circle セグメント列を連結成分ごとに色分けして重ねた PNG を出力する。
+/// SDF をピクセル評価して距離マップを描き、その上に `edge_loop(sdf)` で抽出した
+/// Line / Circle Edge 列を連結成分ごとに色分けして重ねた PNG を出力する。
 ///
 /// 表示範囲は `bounding(sdf)` の bbox 中央を画像中央に置き、長辺が画像の
 /// FILL（70%）を占めるよう等方スケールで決める。
-/// 内側を cyan、外側を yellow とし、距離の等高線を周期的な明暗で、ゼロ等位線を
-/// マゼンタで強調する。
+/// 内側を cyan、外側を yellow とし、距離の等高線を周期的な明暗で表示する。
+/// EdgeLoop のセグメントは太い線、各 Edge の `a` `b` 端点には目立つドットを置く。
 pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 	const SIZE: u32 = 512;
 	const FILL: f64 = 0.7;
@@ -71,12 +71,28 @@ pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 		(200, 255, 50),
 	];
 
-	for (i, comp_segs) in regions(&sdf).iter().enumerate() {
+	// 端点ドット (a / b) を打つヘルパ: 4px 半径の塗りつぶし円。
+	const DOT_PX: f32 = 4.0;
+	let dot = |pixmap: &mut Pixmap, paint: &Paint, p: DVec2| {
+		let (px, py) = w2p(p);
+		if let Some(rect) = Rect::from_xywh(px - DOT_PX, py - DOT_PX, DOT_PX * 2.0, DOT_PX * 2.0) {
+			let mut pb = PathBuilder::new();
+			pb.push_oval(rect);
+			if let Some(path) = pb.finish() {
+				pixmap.fill_path(&path, paint, FillRule::Winding, Transform::identity(), None);
+			}
+		}
+	};
+
+	for (i, comp_segs) in edge_loop(&sdf).iter().enumerate() {
 		let (r, g, b) = PALETTE[i % PALETTE.len()];
-		let mut paint = Paint::default();
-		paint.set_color_rgba8(r, g, b, 220);
-		paint.anti_alias = true;
-		let stroke = Stroke { width: 1.5, ..Default::default() };
+		let mut line_paint = Paint::default();
+		line_paint.set_color_rgba8(r, g, b, 220);
+		line_paint.anti_alias = true;
+		let mut dot_paint = Paint::default();
+		dot_paint.set_color_rgba8(r, g, b, 255);
+		dot_paint.anti_alias = true;
+		let stroke = Stroke { width: 3.0, ..Default::default() };
 
 		for seg in comp_segs {
 			let mut pb = PathBuilder::new();
@@ -124,8 +140,15 @@ pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 				}
 			}
 			if let Some(path) = pb.finish() {
-				pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+				pixmap.stroke_path(&path, &line_paint, &stroke, Transform::identity(), None);
 			}
+			// a, b 端点を目立つドットで上書き
+			let (a, b) = match seg {
+				Edge::Line { a, b } => (*a, *b),
+				Edge::Circle { a, b, .. } => (*a, *b),
+			};
+			dot(&mut pixmap, &dot_paint, a);
+			dot(&mut pixmap, &dot_paint, b);
 		}
 	}
 

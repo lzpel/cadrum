@@ -16,9 +16,9 @@ const POINT_LOOP_RES: usize = 1024;
 /// point_loop に渡す Newton 射影反復回数。
 const POINT_LOOP_NEWTON_ITERS: usize = 8;
 
-/// SDF を入力に Line / Circle セグメント列の EdgeLoop 集合を返す。
+/// SDF を入力に Line / Circle Edge 列の EdgeLoop 集合を返す。
 /// 連結成分ごとに 1 EdgeLoop、面積降順 (外周境界が先頭、穴が後ろ)。
-pub fn regions(sdf: impl Fn(DVec2) -> f64) -> Vec<EdgeLoop> {
+pub fn edge_loop(sdf: impl Fn(DVec2) -> f64) -> Vec<EdgeLoop> {
 	let [raw_min, raw_max] = bounding(&sdf);
 	let bbox_diag = ((raw_max - raw_min) * 1.2).length(); // 10% マージン込みで point_loop と整合
 	let tol = FIT_TOL_REL * bbox_diag;
@@ -266,7 +266,7 @@ mod tests {
 
 	#[test]
 	fn circle() {
-		let loops = regions(sdf_circle);
+		let loops = super::edge_loop(sdf_circle);
 		assert_eq!(loops.len(), 1, "1 loop");
 		let l = &loops[0];
 		assert_eq!(l.len(), 1, "expected 1 segment, got {}", l.len());
@@ -285,7 +285,7 @@ mod tests {
 	#[test]
 	fn rectangle() {
 		let [lo, hi] = [DVec2::new(-1.0, -1.0), DVec2::new(1.0, 1.0)];
-		let loops = regions(|p| sdf_rect(p, lo, hi));
+		let loops = super::edge_loop(|p| sdf_rect(p, lo, hi));
 		assert_eq!(loops.len(), 1);
 		let l = &loops[0];
 		assert_eq!(l.len(), 4, "expected 4 sides, got {}", l.len());
@@ -306,7 +306,7 @@ mod tests {
 			let a = std::f64::consts::TAU * i as f64 / 5.0;
 			DVec2::new(a.cos(), a.sin())
 		});
-		let loops = regions(|p| sdf_polygon(p, pent.iter().copied()));
+		let loops = super::edge_loop(|p| sdf_polygon(p, pent.iter().copied()));
 		assert_eq!(loops.len(), 1);
 		let l = &loops[0];
 		assert_eq!(l.len(), 5, "expected 5 sides");
