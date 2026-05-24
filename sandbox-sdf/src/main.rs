@@ -41,7 +41,14 @@ fn main() {
 	preview(sdf_issue, png);
 	println!("wrote {}", png.display());
 
+	let raw = sandbox_sdf::region::regions_raw(sdf_issue);
+	let segs1 = sandbox_sdf::region::regions_segment(&raw);
 	let png = Path::new("issue_regions.png");
-	preview_regions_segment(sdf_issue, png);
+	preview_regions_segment(sdf_issue, &segs1, png);
+	println!("wrote {}", png.display());
+
+	let segs2 = sandbox_sdf::region2::regions(sdf_issue);
+	let png = Path::new("issue_regions2.png");
+	preview_regions_segment(sdf_issue, &segs2, png);
 	println!("wrote {}", png.display());
 }

@@ -57,7 +57,12 @@ pub fn preview(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 }
 
 /// SDF 背景の上に連結成分ごとの直線・円弧セグメントを重ねて PNG 出力する。
-pub fn preview_regions_segment(sdf: impl Fn(Vec2) -> f32, png: &Path) {
+/// EdgeLoop 列は呼び出し側で生成する (region / region2 を切り替えて比較できる)。
+pub fn preview_regions_segment(
+	sdf: impl Fn(Vec2) -> f32,
+	loops: &[crate::segment::EdgeLoop],
+	png: &Path,
+) {
 	const SIZE: u32 = 512;
 	const FILL: f32 = 0.7;
 
@@ -104,9 +109,6 @@ pub fn preview_regions_segment(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 		)
 	};
 
-	let raw = crate::region::regions_raw(&sdf);
-	let segs = crate::region::regions_segment(&raw);
-
 	const PALETTE: &[(u8, u8, u8)] = &[
 		(255, 255, 255),
 		(255, 200, 50),
@@ -117,7 +119,7 @@ pub fn preview_regions_segment(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 		(200, 255, 50),
 	];
 
-	for (i, comp_segs) in segs.iter().enumerate() {
+	for (i, comp_segs) in loops.iter().enumerate() {
 		let (r, g, b) = PALETTE[i % PALETTE.len()];
 		let mut paint = Paint::default();
 		paint.set_color_rgba8(r, g, b, 220);
@@ -125,7 +127,7 @@ pub fn preview_regions_segment(sdf: impl Fn(Vec2) -> f32, png: &Path) {
 		let stroke = Stroke { width: 1.5, ..Default::default() };
 
 		for seg in comp_segs {
-			use crate::region::Segment;
+			use crate::segment::Segment;
 			match seg {
 				Segment::Line { point, direction } => {
 					let (px, py) = w2p(*point);

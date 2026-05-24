@@ -1,6 +1,6 @@
 //! SDF の内外マップ・連結成分・形状分類。
 
-use crate::{bounding, distance_nabla_laplacian};
+use crate::{bounding, distance_nabla_laplacian, segment::{self, Segment}};
 use glam::Vec2;
 use std::collections::{HashSet, VecDeque};
 
@@ -156,19 +156,13 @@ pub fn regions_raw(sdf: impl Fn(Vec2) -> f32) -> Vec<Vec<(Vec2, f32, Vec2, f32)>
 		.collect()
 }
 
-/// 境界上の直線・円弧を表すセグメント。
-pub enum Segment {
-	Line { point: Vec2, direction: Vec2 },
-	Circle { center: Vec2, radius: f32 },
-}
-
 /// `regions_raw` の出力を受け取り、連結成分ごとに `Segment` 列を返す。
 ///
 /// 分類 (スケール不変):
 /// - `d * |lap| > 0.8` → Corner (スキップ: `d·∇²d = 1` の角点条件)
 /// - `|lap| < 0.3`      → Line
 /// - その他             → Circle
-pub fn regions_segment(regions: &[Vec<(Vec2, f32, Vec2, f32)>]) -> Vec<Vec<Segment>> {
+pub fn regions_segment(regions: &[Vec<(Vec2, f32, Vec2, f32)>]) -> Vec<segment::EdgeLoop> {
 	regions
 		.iter()
 		.map(|loop_pts| {

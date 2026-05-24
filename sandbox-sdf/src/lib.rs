@@ -4,6 +4,8 @@
 pub mod issue;
 pub mod preview;
 pub mod region;
+pub mod region2;
+pub mod segment;
 
 use glam::Vec2;
 
