@@ -1,205 +1,34 @@
-//! SDF の零等位線を marching squares で抽出し、Newton 射影で SDF=0 に貼り付け、
-//! 隣接点の勾配ジャンプでコーナーを切り分けた上で bottom-up merge により
-//! Line / Circle セグメント列に集約する。
+//! SDF=0 等位線の点列ループ (`point_loop`) を入力に、隣接点の勾配ジャンプで
+//! コーナーを切り分けた上で bottom-up merge により Line / Circle セグメント列に
+//! 集約する。境界抽出は `point_loop` に分離してある。
 
-use crate::{bounding, distance_nabla_laplacian, EdgeLoop, Segment};
+use crate::{bounding, distance_nabla_laplacian, point_loop::point_loop, Edge, EdgeLoop};
 use glam::DVec2;
-use std::collections::{HashMap, HashSet};
 
-const RES: usize = 1024;
-const NEWTON_ITERS: usize = 8;
 /// 連続2点の勾配 cos がこれを下回ったらコーナー (= マージ禁止)。cos(0.3 rad) ≈ 0.955。
 const CORNER_COS_THRESHOLD: f64 = 0.955;
 /// フィット残差の許容値 (bbox 対角線比)。
 const FIT_TOL_REL: f64 = 0.003;
 /// Circle として認める最小半径 (bbox 対角線比)。これ未満は corner straddle の誤フィット扱い。
 const MIN_CIRCLE_RADIUS_REL: f64 = 0.003;
+/// point_loop に渡す marching squares 解像度。
+const POINT_LOOP_RES: usize = 1024;
+/// point_loop に渡す Newton 射影反復回数。
+const POINT_LOOP_NEWTON_ITERS: usize = 8;
 
 /// SDF を入力に Line / Circle セグメント列の EdgeLoop 集合を返す。
 /// 連結成分ごとに 1 EdgeLoop、面積降順 (外周境界が先頭、穴が後ろ)。
 pub fn regions(sdf: impl Fn(DVec2) -> f64) -> Vec<EdgeLoop> {
 	let [raw_min, raw_max] = bounding(&sdf);
-	let margin = (raw_max - raw_min) * 0.1;
-	let min = raw_min - margin;
-	let max = raw_max + margin;
-	let size = max - min;
-	let bbox_diag = size.length();
+	let bbox_diag = ((raw_max - raw_min) * 1.2).length(); // 10% マージン込みで point_loop と整合
 	let tol = FIT_TOL_REL * bbox_diag;
 	let min_r = MIN_CIRCLE_RADIUS_REL * bbox_diag;
 
-	let stride = RES + 1;
-	let samples: Vec<f64> = (0..stride * stride)
-		.map(|i| {
-			let [r,c] = [i / stride, i % stride];
-			let p = min + DVec2::new(c as f64 / RES as f64 * size.x, r as f64 / RES as f64 * size.y);
-			sdf(p)
-		})
-		.collect();
-
-	let loops_raw = marching_squares(&samples, min, size, &sdf);
-
-	// MS の生交差点 (cell-edge 線形補間) を SDF=0 にニュートン射影する。
-	let loops_proj: Vec<Vec<DVec2>> = loops_raw
-		.into_iter()
-		.map(|pts| project_loop(pts, &sdf))
-		.collect();
-
-	// ループを面積降順に並べる: 最大ループ = 外周境界、小さい方 = 穴/窓。
-	// 各要素先頭に shoelace 面積の絶対値を持たせて partial_cmp で降順ソート。
-	let mut sorted: Vec<(f64, Vec<DVec2>)> = loops_proj
-		.into_iter()
-		.map(|pts| (signed_area(&pts).abs(), pts))
-		.collect();
-	sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-
 	// 各ループを bottom-up merge にかけて Line/Circle セグメント列に集約する。
 	// コーナー検出に必要な勾配は fit_segments 内部で sdf から再計算する。
-	sorted
+	point_loop(&sdf, POINT_LOOP_RES, POINT_LOOP_NEWTON_ITERS)
 		.into_iter()
-		.map(|(_, pts)| fit_segments(&pts, &sdf, tol, min_r))
-		.collect()
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// marching squares
-// ──────────────────────────────────────────────────────────────────────
-
-/// 16ケース → (from_edge, to_edge) ペア (最大2件)。エッジ番号: B=0, R=1, T=2, L=3。
-/// 5, 10 は saddle で center_inside の符号で分岐。
-/// 「inside on left」の規約で出力する (SDF d<0 側が進行方向の左)。
-fn ms_segments(code: u8, center_inside: bool) -> ([(u8, u8); 2], u8) {
-	let z = ([(0u8, 0u8); 2], 0u8);
-	match code {
-		0 | 15 => z,
-		1 => ([(0, 3), (0, 0)], 1),
-		2 => ([(1, 0), (0, 0)], 1),
-		3 => ([(1, 3), (0, 0)], 1),
-		4 => ([(2, 1), (0, 0)], 1),
-		5 => if center_inside { ([(0, 1), (2, 3)], 2) } else { ([(0, 3), (2, 1)], 2) },
-		6 => ([(2, 0), (0, 0)], 1),
-		7 => ([(2, 3), (0, 0)], 1),
-		8 => ([(3, 2), (0, 0)], 1),
-		9 => ([(0, 2), (0, 0)], 1),
-		10 => if center_inside { ([(3, 0), (1, 2)], 2) } else { ([(1, 0), (3, 2)], 2) },
-		11 => ([(1, 2), (0, 0)], 1),
-		12 => ([(3, 1), (0, 0)], 1),
-		13 => ([(0, 1), (0, 0)], 1),
-		14 => ([(3, 0), (0, 0)], 1),
-		_ => z,
-	}
-}
-
-/// セル(r,c) の指定エッジ (B=0, R=1, T=2, L=3) のグローバル ID。
-/// 隣接セルと共有されるエッジは同一 ID を返す (左下コーナー + 向きで識別)。
-fn cell_edge_id(r: usize, c: usize, edge: u8) -> u32 {
-	let stride = (RES + 1) as u32;
-	let (rr, cc, dir) = match edge {
-		0 => (r as u32,       c as u32,       0),
-		1 => (r as u32,       (c + 1) as u32, 1),
-		2 => ((r + 1) as u32, c as u32,       0),
-		3 => (r as u32,       c as u32,       1),
-		_ => unreachable!(),
-	};
-	(rr * stride + cc) * 2 + dir
-}
-
-/// グローバルエッジ ID の交差位置 (線形補間)。
-fn edge_crossing_pos(edge_id: u32, samples: &[f64], min: DVec2, size: DVec2) -> DVec2 {
-	let stride = (RES + 1) as u32;
-	let corner = edge_id / 2;
-	let r = (corner / stride) as usize;
-	let c = (corner % stride) as usize;
-	let is_vertical = (edge_id & 1) == 1;
-	let d0 = samples[r * (RES + 1) + c];
-	let cell_dx = size.x / RES as f64;
-	let cell_dy = size.y / RES as f64;
-	let p0 = min + DVec2::new(c as f64 * cell_dx, r as f64 * cell_dy);
-	if is_vertical {
-		let d1 = samples[(r + 1) * (RES + 1) + c];
-		let t = d0 / (d0 - d1);
-		p0 + DVec2::new(0.0, t * cell_dy)
-	} else {
-		let d1 = samples[r * (RES + 1) + c + 1];
-		let t = d0 / (d0 - d1);
-		p0 + DVec2::new(t * cell_dx, 0.0)
-	}
-}
-
-fn marching_squares(
-	samples: &[f64],
-	min: DVec2,
-	size: DVec2,
-	sdf: &impl Fn(DVec2) -> f64,
-) -> Vec<Vec<DVec2>> {
-	let stride = RES + 1;
-	let inside = |idx: usize| samples[idx] < 0.0;
-	let mut next: HashMap<u32, u32> = HashMap::new();
-	for r in 0..RES {
-		for c in 0..RES {
-			let bl = inside(r * stride + c);
-			let br = inside(r * stride + c + 1);
-			let tr = inside((r + 1) * stride + c + 1);
-			let tl = inside((r + 1) * stride + c);
-			let code: u8 = (bl as u8) | ((br as u8) << 1) | ((tr as u8) << 2) | ((tl as u8) << 3);
-			if code == 0 || code == 15 { continue; }
-			let center_inside = if code == 5 || code == 10 {
-				let cx = min.x + (c as f64 + 0.5) * (size.x / RES as f64);
-				let cy = min.y + (r as f64 + 0.5) * (size.y / RES as f64);
-				sdf(DVec2::new(cx, cy)) < 0.0
-			} else { false };
-			let (segs, ns) = ms_segments(code, center_inside);
-			for k in 0..ns as usize {
-				let (from, to) = segs[k];
-				next.insert(cell_edge_id(r, c, from), cell_edge_id(r, c, to));
-			}
-		}
-	}
-
-	let mut visited: HashSet<u32> = HashSet::with_capacity(next.len());
-	let mut loops = Vec::new();
-	let keys: Vec<u32> = next.keys().copied().collect();
-	for &start in &keys {
-		if visited.contains(&start) { continue; }
-		let mut loop_edges = Vec::new();
-		let mut cur = start;
-		while visited.insert(cur) {
-			loop_edges.push(cur);
-			match next.get(&cur) {
-				Some(&nx) => {
-					cur = nx;
-					if cur == start { break; }
-				}
-				None => break,
-			}
-		}
-		if loop_edges.len() >= 3 {
-			let pts: Vec<DVec2> = loop_edges
-				.iter()
-				.map(|&e| edge_crossing_pos(e, samples, min, size))
-				.collect();
-			loops.push(pts);
-		}
-	}
-	loops
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Newton 射影
-// ──────────────────────────────────────────────────────────────────────
-
-fn project_loop<F: Fn(DVec2) -> f64>(pts: Vec<DVec2>, sdf: &F) -> Vec<DVec2> {
-	pts.into_iter()
-		.map(|p| {
-			let mut q = p;
-			for _ in 0..NEWTON_ITERS {
-				let (d, g, _) = distance_nabla_laplacian(q, sdf);
-				let g_unit = g.normalize_or_zero();
-				if g_unit == DVec2::ZERO { break; }
-				q -= d * g_unit;
-				if d.abs() < 1e-6 { break; }
-			}
-			q
-		})
+		.map(|pts| fit_segments(&pts, &sdf, tol, min_r))
 		.collect()
 }
 
@@ -257,10 +86,10 @@ fn fit_segments(
 	min_circle_radius: f64,
 ) -> EdgeLoop {
 	let n = pts.len();
-	if n < 2 { return Vec::new(); }
-	if n < 3 {
-		let (p, d, _) = fit_line(pts);
-		return vec![Segment::Line { point: p, direction: d }];
+	match n {
+		0 | 1 => return Vec::new(),
+		2 => return vec![Edge::Line { a: pts[0], b: pts[1] }],
+		_ => {}
 	}
 
 	// ── フェーズ1: コーナー検出 (barrier 配列) ───────────────────────────
@@ -336,7 +165,7 @@ fn fit_segments(
 		}
 	}
 
-	// ── フェーズ4: 残った run を Segment に変換 ────────────────────────
+	// ── フェーズ4: 残った run を Edge に変換 ────────────────────────
 	// run_len < 3 のガード: コーナー付近で barrier に挟まれた1〜2点の
 	// 極小 run は marching squares + Newton 射影の組み合わせで生じる
 	// corner artifact なので捨てる。真面目に Line/Circle にすると
@@ -360,17 +189,20 @@ fn fit_segments(
 }
 
 /// Line / Circle の両方を試し、Line が tol 以下なら Line (Occam)、そうでなければ
-/// 残差の小さい方を採用する。
-fn best_fit_segment(pts: &[DVec2], tol: f64, min_circle_radius: f64) -> Segment {
-	let (lp, ld, lr) = fit_line(pts);
+/// 残差の小さい方を採用する。端点は run の始点・終点・中央点をそのまま用いる。
+fn best_fit_segment(pts: &[DVec2], tol: f64, min_circle_radius: f64) -> Edge {
+	let a = pts[0];
+	let b = pts[pts.len() - 1];
+	let m = pts[pts.len() / 2];
+	let (_, _, lr) = fit_line(pts);
 	let circle = fit_circle(pts).filter(|&(_, r, _)| r >= min_circle_radius);
 	match circle {
-		None => Segment::Line { point: lp, direction: ld },
-		Some((cc, cr, cres)) => {
+		None => Edge::Line { a, b },
+		Some((_, _, cres)) => {
 			if lr <= tol || cres >= lr {
-				Segment::Line { point: lp, direction: ld }
+				Edge::Line { a, b }
 			} else {
-				Segment::Circle { center: cc, radius: cr }
+				Edge::Circle { a, b, m }
 			}
 		}
 	}
@@ -427,18 +259,6 @@ fn fit_circle(pts: &[DVec2]) -> Option<(DVec2, f64, f64)> {
 	Some((center, radius, max_res))
 }
 
-fn signed_area(pts: &[DVec2]) -> f64 {
-	let n = pts.len();
-	if n < 3 { return 0.0; }
-	let mut a = 0.0_f64;
-	for i in 0..n {
-		let p = pts[i];
-		let q = pts[(i + 1) % n];
-		a += p.x * q.y - q.x * p.y;
-	}
-	0.5 * a
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -450,48 +270,51 @@ mod tests {
 		assert_eq!(loops.len(), 1, "1 loop");
 		let l = &loops[0];
 		assert_eq!(l.len(), 1, "expected 1 segment, got {}", l.len());
-		match l[0] {
-			Segment::Circle { center, radius } => {
-				let ec = center.length();
-				let er = (radius - 1.0).abs();
-				assert!(ec < 1e-15, "center err={ec:e}");
-				assert!(er < 1e-15, "radius err={er:e}");
+		match &l[0] {
+			Edge::Circle { a, b, m } => {
+				let (c, r) = Edge::circumcircle(*a, *b, *m).expect("non-collinear");
+				let ec = c.length();
+				let er = (r - 1.0).abs();
+				assert!(ec < 1e-7, "center err={ec:e}");
+				assert!(er < 1e-7, "radius err={er:e}");
 			}
-			Segment::Line { .. } => panic!("expected Circle"),
+			Edge::Line { .. } => panic!("expected Circle"),
 		}
 	}
 
 	#[test]
 	fn rectangle() {
-		let [a, b] = [DVec2::new(-1.0, -1.0), DVec2::new(1.0, 1.0)];
-		let loops = regions(|p| sdf_rect(p, a, b));
+		let [lo, hi] = [DVec2::new(-1.0, -1.0), DVec2::new(1.0, 1.0)];
+		let loops = regions(|p| sdf_rect(p, lo, hi));
 		assert_eq!(loops.len(), 1);
 		let l = &loops[0];
 		assert_eq!(l.len(), 4, "expected 4 sides, got {}", l.len());
+		let corners = [lo, DVec2::new(hi.x, lo.y), hi, DVec2::new(lo.x, hi.y)];
+		let nearest = |p: DVec2| corners.iter().map(|c| (p - *c).length()).fold(f64::INFINITY, f64::min);
 		for seg in l {
-			assert!(matches!(seg, Segment::Line { .. }), "expected Line");
-			let d_min = [a, b].into_iter().map(|v| seg.distance(v)).fold(f64::INFINITY, f64::min);
-			assert!(d_min < 1e-15, "rect vertex distance err={d_min:e}");
+			let Edge::Line { a, b } = *seg else { panic!("expected Line"); };
+			// 各端点は marching squares のセル境界上にあるので、真のコーナーから
+			// 最大でも cell size (≈ 2.2/RES ≈ 2.2e-3) 程度の距離。
+			assert!(nearest(a) < 5e-3, "endpoint a={a:?} far from corner");
+			assert!(nearest(b) < 5e-3, "endpoint b={b:?} far from corner");
 		}
 	}
 
 	#[test]
 	fn pentagon() {
-		let pent: [DVec2;5]=std::array::from_fn(|i| {
+		let pent: [DVec2;5] = std::array::from_fn(|i| {
 			let a = std::f64::consts::TAU * i as f64 / 5.0;
 			DVec2::new(a.cos(), a.sin())
 		});
 		let loops = regions(|p| sdf_polygon(p, pent.iter().copied()));
 		assert_eq!(loops.len(), 1);
 		let l = &loops[0];
+		assert_eq!(l.len(), 5, "expected 5 sides");
+		let nearest = |p: DVec2| pent.iter().map(|v| (p - *v).length()).fold(f64::INFINITY, f64::min);
 		for seg in l {
-			assert!(matches!(seg, Segment::Line { .. }), "expected Line");
-			let d_max_on_edge = pent
-				.iter()
-				.map(|v| seg.distance(*v))
-				.filter(|&d| d < 1e-3)
-				.fold(0.0_f64, f64::max);
-			assert!(d_max_on_edge < 1e-14, "pent vertex on-edge err={d_max_on_edge:e}");
+			let Edge::Line { a, b } = *seg else { panic!("expected Line"); };
+			assert!(nearest(a) < 5e-3, "endpoint a={a:?} far from any pent vertex");
+			assert!(nearest(b) < 5e-3, "endpoint b={b:?} far from any pent vertex");
 		}
 	}
 }

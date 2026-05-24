@@ -2,6 +2,7 @@
 //! 基本形状の SDF (primitive) と、形状を囲むバウンディングボックスの推定を提供する。
 
 pub mod issue;
+pub mod point_loop;
 pub mod preview;
 pub mod primitive;
 pub mod region;
@@ -10,27 +11,90 @@ pub use primitive::*;
 
 use glam::DVec2;
 
-/// 境界上の直線・円弧を表すセグメント。
-pub enum Segment {
-	Line { point: DVec2, direction: DVec2 },
-	Circle { center: DVec2, radius: f64 },
+/// 境界ループを構成する直線・円弧のエッジを端点付きで表す。
+///
+/// 端点で定義することで、隣接 Edge の交点位置や 2 Edge 間の交差判定を呼び出し側で
+/// 計算できる。Circle は始点 `a`・終点 `b`・中間点 `m` の 3 点で円弧を一意に定める
+/// （2 点だけでは円が無数に存在する）。`EdgeLoop = Vec<Edge>` を構成する単位。
+pub enum Edge {
+	Line { a: DVec2, b: DVec2 },
+	Circle { a: DVec2, b: DVec2, m: DVec2 },
 }
 
-impl Segment {
-	/// セグメントの両端点を返す。Line は十分長い線分として扱う。
+impl Edge {
+	/// 点 p からエッジ（線分または円弧）への最短距離。
 	pub fn distance(&self, p: DVec2) -> f64 {
 		match self {
-			Segment::Line { point, direction } => {
-				let d = p - *point;
-				let t = d.dot(*direction) / direction.length_squared().max(f64::EPSILON);
-				(d - *direction * t).length()
+			Edge::Line { a, b } => {
+				let e = *b - *a;
+				let len_sq = e.length_squared().max(f64::EPSILON);
+				let t = ((p - *a).dot(e) / len_sq).clamp(0.0, 1.0);
+				(p - (*a + e * t)).length()
 			}
-			Segment::Circle { center, radius } => (p - *center).length() - *radius,
+			Edge::Circle { a, b, m } => {
+				let Some((center, radius)) = Edge::circumcircle(*a, *b, *m) else {
+					// 共線フォールバック: a, b の線分として扱う
+					return Edge::Line { a: *a, b: *b }.distance(p);
+				};
+				let to_p = p - center;
+				let len = to_p.length();
+				if len > f64::EPSILON && Edge::arc_contains(center, *a, *b, *m, p) {
+					(len - radius).abs()
+				} else {
+					(p - *a).length().min((p - *b).length())
+				}
+			}
 		}
+	}
+	
+
+	/// 3 点を通る外接円 `(center, radius)`。共線なら `None`。
+	///
+	/// perpendicular bisector の交点を 2x2 線形方程式で解く（Cramer の方法）。
+	pub fn circumcircle(a: DVec2, b: DVec2, m: DVec2) -> Option<(DVec2, f64)> {
+		let ax = 2.0 * (b.x - a.x);
+		let ay = 2.0 * (b.y - a.y);
+		let c1 = (b.x * b.x + b.y * b.y) - (a.x * a.x + a.y * a.y);
+		let dx = 2.0 * (m.x - a.x);
+		let dy = 2.0 * (m.y - a.y);
+		let c2 = (m.x * m.x + m.y * m.y) - (a.x * a.x + a.y * a.y);
+		let det = ax * dy - ay * dx;
+		let scale = (ax * ax + ay * ay + dx * dx + dy * dy).max(1.0);
+		if det.abs() < 1e-18 * scale { return None; }
+		let cx = (c1 * dy - ay * c2) / det;
+		let cy = (ax * c2 - c1 * dx) / det;
+		let center = DVec2::new(cx, cy);
+		Some((center, (a - center).length()))
+	}
+
+	/// 点 p の方位ベクトル (p - center) が円弧スパン `a → m → b` 内かを判定。
+	///
+	/// va, vm, vb, vp を中心からの方向ベクトルとし、va→vm の cross 積符号で
+	/// 弧の進行方向を決め、va を基準に vp の累積角度が va→vb のスパン以下なら
+	/// 弧の内側とみなす。完全閉円ケース（a ≈ b）でも span ≈ 2π となり常に内側。
+	fn arc_contains(center: DVec2, a: DVec2, b: DVec2, m: DVec2, p: DVec2) -> bool {
+		let va = (a - center).normalize_or_zero();
+		let vb = (b - center).normalize_or_zero();
+		let vm = (m - center).normalize_or_zero();
+		let vp = (p - center).normalize_or_zero();
+		if va == DVec2::ZERO || vb == DVec2::ZERO || vm == DVec2::ZERO || vp == DVec2::ZERO {
+			return false;
+		}
+		let arc_sign = (va.x * vm.y - va.y * vm.x).signum();
+		if arc_sign == 0.0 { return false; }
+		let to_angle = |v: DVec2| -> f64 {
+			let cross = va.x * v.y - va.y * v.x;
+			let dot = va.dot(v);
+			let theta = cross.atan2(dot) * arc_sign; // forward 方向で正
+			if theta < 0.0 { theta + std::f64::consts::TAU } else { theta }
+		};
+		let span = to_angle(vb);
+		let angle_p = to_angle(vp);
+		angle_p <= span
 	}
 }
 
-pub type EdgeLoop = Vec<Segment>;
+pub type EdgeLoop = Vec<Edge>;
 
 /// 点 p における SDF の値・勾配・ラプラシアンを5点差分で同時に返す。
 /// 戻り値: `(d, ∇d, ∇²d)` — (距離, 勾配, ラプラシアン)

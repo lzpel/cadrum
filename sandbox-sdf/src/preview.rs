@@ -1,15 +1,9 @@
 //! SDF の距離マップとセグメント輪郭を PNG に書き出すプレビュー。
 
-use crate::{bounding, region::regions, Segment};
+use crate::{bounding, region::regions, Edge};
 use glam::{DVec2, Vec3};
 use std::path::Path;
-use tiny_skia::{Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Stroke, Transform};
-
-/// エルミート補間（GLSL の smoothstep 相当）。
-fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-	let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-	t * t * (3.0 - 2.0 * t)
-}
+use tiny_skia::{Paint, PathBuilder, Pixmap, PremultipliedColorU8, Stroke, Transform};
 
 /// SDF をピクセル評価して距離マップを描き、その上に `regions(sdf)` で抽出した
 /// Line / Circle セグメント列を連結成分ごとに色分けして重ねた PNG を出力する。
@@ -50,8 +44,7 @@ pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 				};
 				let cycle = d_f32 / wpx_f32 / 12.0 * std::f32::consts::TAU; // 12px ごとの等高線
 				col *= 0.8 + 0.2 * cycle.cos();
-				let edge = 1.0 - smoothstep(0.0, 1.5 * wpx_f32, d_f32.abs());
-				col = col.lerp(Vec3::new(1.0, 0.0, 1.0), edge); // ゼロ等位線をマゼンタで強調
+				// ゼロ等位線は regions(sdf) からの Edge 描画 (下) に一本化する。
 				let to = |c: f32| (c.clamp(0.0, 1.0) * 255.0) as u8;
 				pixels[(y * SIZE + x) as usize] =
 					PremultipliedColorU8::from_rgba(to(col.x), to(col.y), to(col.z), 255).unwrap();
@@ -86,35 +79,52 @@ pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 		let stroke = Stroke { width: 1.5, ..Default::default() };
 
 		for seg in comp_segs {
+			let mut pb = PathBuilder::new();
 			match seg {
-				Segment::Line { point, direction } => {
-					let (px, py) = w2p(*point);
-					let dpx = direction.normalize_or_zero();
-					let t = SIZE as f32 * 1.5;
-					let dx = dpx.x as f32;
-					let dy = dpx.y as f32;
-					let mut pb = PathBuilder::new();
-					pb.move_to(px - dx * t, py - dy * t);
-					pb.line_to(px + dx * t, py + dy * t);
-					if let Some(path) = pb.finish() {
-						pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-					}
+				Edge::Line { a, b } => {
+					let (ax, ay) = w2p(*a);
+					let (bx, by) = w2p(*b);
+					pb.move_to(ax, ay);
+					pb.line_to(bx, by);
 				}
-				Segment::Circle { center: c, radius } => {
-					let (cx, cy) = w2p(*c);
-					let r_px = (*radius / long * SIZE as f64) as f32;
-					if let Some(rect) =
-						Rect::from_xywh(cx - r_px, cy - r_px, r_px * 2.0, r_px * 2.0)
-					{
-						let mut pb = PathBuilder::new();
-						pb.push_oval(rect);
-						if let Some(path) = pb.finish() {
-							pixmap.stroke_path(
-								&path, &paint, &stroke, Transform::identity(), None,
-							);
+				Edge::Circle { a, b, m } => {
+					// 3 点から円中心を出し、a → m → b を経由する弧を等角度刻みで折れ線近似
+					if let Some((c, _radius)) = Edge::circumcircle(*a, *b, *m) {
+						let va = *a - c;
+						let vb = *b - c;
+						let vm = *m - c;
+						let arc_sign = (va.x * vm.y - va.y * vm.x).signum();
+						let to_angle = |v: DVec2| -> f64 {
+							let cross = va.x * v.y - va.y * v.x;
+							let dot = va.dot(v);
+							let theta = cross.atan2(dot) * arc_sign;
+							if theta < 0.0 { theta + std::f64::consts::TAU } else { theta }
+						};
+						let span = to_angle(vb).max(to_angle(vm)); // closed circle で b≈a のとき m 側を採用
+						const N: u32 = 96;
+						let r = va.length();
+						for k in 0..=N {
+							let t = k as f64 / N as f64 * span;
+							let theta = t * arc_sign;
+							let cs = theta.cos();
+							let sn = theta.sin();
+							// va を theta だけ回転
+							let v = DVec2::new(va.x * cs - va.y * sn, va.x * sn + va.y * cs);
+							let p = c + v * (r / va.length().max(f64::EPSILON));
+							let (px, py) = w2p(p);
+							if k == 0 { pb.move_to(px, py); } else { pb.line_to(px, py); }
 						}
+					} else {
+						// 共線フォールバック: a → b を直線で
+						let (ax, ay) = w2p(*a);
+						let (bx, by) = w2p(*b);
+						pb.move_to(ax, ay);
+						pb.line_to(bx, by);
 					}
 				}
+			}
+			if let Some(path) = pb.finish() {
+				pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 			}
 		}
 	}
