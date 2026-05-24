@@ -1,7 +1,7 @@
 //! SDF の零等位線を marching squares で抽出し、Newton 射影で SDF=0 に貼り付けた
 //! 点列ループを返す。後段の Edge フィッティング (region.rs) と直交する責務。
 
-use crate::{bounding, distance_nabla_laplacian};
+use crate::{bounding, project, Sdf};
 use glam::DVec2;
 use std::collections::{HashMap, HashSet};
 
@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 /// 3. 各点を Newton 射影 `p -= sdf(p) · n̂` で SDF=0 に貼り付け
 /// 4. shoelace 面積の絶対値で降順ソート
 pub fn point_loop(
-	sdf: impl Fn(DVec2) -> f64,
+	sdf: impl Sdf,
 	res: usize,
 	newton_iters: usize,
 ) -> Vec<Vec<DVec2>> {
@@ -42,7 +42,7 @@ pub fn point_loop(
 	// MS の生交差点 (cell-edge 線形補間) を SDF=0 にニュートン射影する。
 	let loops_proj: Vec<Vec<DVec2>> = loops_raw
 		.into_iter()
-		.map(|pts| project_loop(pts, &sdf, newton_iters))
+		.map(|pts| pts.into_iter().map(|p| project(p, &sdf, newton_iters)).collect())
 		.collect();
 
 	// ループを面積降順に並べる: 最大ループ = 外周境界、小さい方 = 穴/窓。
@@ -124,7 +124,7 @@ fn marching_squares(
 	min: DVec2,
 	size: DVec2,
 	res: usize,
-	sdf: &impl Fn(DVec2) -> f64,
+	sdf: &impl Sdf,
 ) -> Vec<Vec<DVec2>> {
 	let stride = res + 1;
 	let inside = |idx: usize| samples[idx] < 0.0;
@@ -176,26 +176,6 @@ fn marching_squares(
 		}
 	}
 	loops
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Newton 射影
-// ──────────────────────────────────────────────────────────────────────
-
-fn project_loop<F: Fn(DVec2) -> f64>(pts: Vec<DVec2>, sdf: &F, iters: usize) -> Vec<DVec2> {
-	pts.into_iter()
-		.map(|p| {
-			let mut q = p;
-			for _ in 0..iters {
-				let (d, g, _) = distance_nabla_laplacian(q, sdf);
-				let g_unit = g.normalize_or_zero();
-				if g_unit == DVec2::ZERO { break; }
-				q -= d * g_unit;
-				if d.abs() < 1e-6 { break; }
-			}
-			q
-		})
-		.collect()
 }
 
 /// 多角形の符号付き面積 (shoelace)。CCW で正、CW で負。

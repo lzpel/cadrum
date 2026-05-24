@@ -6,6 +6,7 @@ pub mod point_loop;
 pub mod preview;
 pub mod primitive;
 pub mod edge_loop;
+pub mod edge_loop2;
 
 pub use primitive::*;
 
@@ -96,11 +97,18 @@ impl Edge {
 
 pub type EdgeLoop = Vec<Edge>;
 
-/// 点 p における SDF の値・勾配・ラプラシアンを5点差分で同時に返す。
-/// 戻り値: `(d, ∇d, ∇²d)` — (距離, 勾配, ラプラシアン)
-pub fn distance_nabla_laplacian(p: DVec2, sdf: impl Fn(DVec2) -> f64) -> (f64, DVec2, f64) {
-	// f64 のマシン精度 ≈ 1e-16 → 一次微分の最適 h ≈ 1e-5, 二次微分の最適 h ≈ 1e-4。
-	// 両方をそこそこ通すために 1e-5 を採用。
+/// 2D の符号付き距離関数 (Signed Distance Function) のトレイトエイリアス。
+///
+/// `Fn(DVec2) -> f64` の長いシグネチャを `impl Sdf` に短縮するだけで、
+/// セマンティクスは変わらない (blanket impl ですべての `Fn(DVec2) -> f64`
+/// クロージャ・関数が自動的に `Sdf` を実装する)。
+pub trait Sdf: Fn(DVec2) -> f64 {}
+impl<T> Sdf for T where T: Fn(DVec2) -> f64 {}
+
+/// 点 p における SDF の値と勾配を 5 点差分で返す。
+/// 戻り値: `(d, ∇d)` — (距離, 勾配)
+pub fn distance_nabla(p: DVec2, sdf: impl Sdf) -> (f64, DVec2) {
+	// f64 のマシン精度 ≈ 1e-16 → 一次微分の最適 h ≈ 1e-5。
 	const EPS: f64 = 1e-5;
 	let c  = sdf(p);
 	let px = sdf(p + DVec2::X * EPS);
@@ -108,8 +116,24 @@ pub fn distance_nabla_laplacian(p: DVec2, sdf: impl Fn(DVec2) -> f64) -> (f64, D
 	let py = sdf(p + DVec2::Y * EPS);
 	let my = sdf(p - DVec2::Y * EPS);
 	let nabla = DVec2::new(px - mx, py - my) / (2.0 * EPS);
-	let lap   = (px + mx + py + my - 4.0 * c) / (EPS * EPS);
-	(c, nabla, lap)
+	(c, nabla)
+}
+
+/// 点 p を Newton 法で SDF=0 等位線に貼り付けて返す。
+///
+/// 各反復で `p -= sdf(p) · n̂` (n̂ は ∇sdf の単位ベクトル) のステップを取る。
+/// 真の SDF なら 1 反復でほぼ収束、近似 SDF でも `iters` 数回でセル精度に張りつく。
+/// 早期終了: `|d| < 1e-6` (= f64 ニュートン射影の実用的な収束しきい値)。
+pub fn project(p: DVec2, sdf: &impl Sdf, iters: usize) -> DVec2 {
+	let mut q = p;
+	for _ in 0..iters {
+		let (d, g) = distance_nabla(q, sdf);
+		let g_unit = g.normalize_or_zero();
+		if g_unit == DVec2::ZERO { break; }
+		q -= d * g_unit;
+		if d.abs() < 1e-6 { break; }
+	}
+	q
 }
 
 /// SDF が表す形状の軸並行バウンディングボックスを [min, max] で返す。
@@ -121,7 +145,7 @@ pub fn distance_nabla_laplacian(p: DVec2, sdf: impl Fn(DVec2) -> f64) -> (f64, D
 ///    `p -= sdf(p)·n̂` で境界 sdf=0 へ落とす。射影先の min/max が bbox。
 ///
 /// 4方向の support 探索と違い、凹形状でも extremum を取りこぼさない。
-pub fn bounding(sdf: impl Fn(DVec2) -> f64) -> [DVec2; 2] {
+pub fn bounding(sdf: impl Sdf) -> [DVec2; 2] {
 	// ── Step 1: 外接円 (center, radius) を反復で求める ──────────────────
 	const FIT_RATE: f64 = 0.2;
 	const FIT_N: usize = 8;
@@ -152,7 +176,7 @@ pub fn bounding(sdf: impl Fn(DVec2) -> f64) -> [DVec2; 2] {
 		let a = std::f64::consts::TAU * i as f64 / N as f64;
 		let mut p = center + probe_r * DVec2::new(a.cos(), a.sin());
 		for _ in 0..32 {
-			let (d, n, _) = distance_nabla_laplacian(p, &sdf);
+			let (d, n) = distance_nabla(p, &sdf);
 			p -= d * n.normalize_or_zero();
 		}
 		min = min.min(p);
@@ -166,23 +190,14 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn distance_nabla_laplacian() {
-		// (1.1,0): sdf_circle=0.1、∇d=(1,0)、∇²d=1/r≈0.909
-		let (d, n, l) =
-			super::distance_nabla_laplacian(DVec2::new(1.1, 0.0), super::sdf_circle);
+	fn distance_nabla() {
+		// (1.1,0): sdf_circle=0.1、∇d=(1,0)
+		let (d, n) =
+			super::distance_nabla(DVec2::new(1.1, 0.0), super::sdf_circle);
 		let ed = (d - 0.1).abs();
 		let en = (n - DVec2::X).length();
-		let el = (l - 1.0 / 1.1).abs();
 		assert!(ed < 1e-15, "d err={ed:e}");
 		assert!(en < 1e-11, "n err={en:e}");
-		assert!(el < 1e-6, "lap err={el:e}");
-		// 辺中央 (1,0): sdf_rect=0、∇²d≈0（直線）
-		let a = DVec2::new(-1.0, -1.0);
-		let b = DVec2::new(1.0, 1.0);
-		let (_, _, l2) = super::distance_nabla_laplacian(DVec2::new(1.0, 0.0), |p| {
-			super::sdf_rect(p, a, b)
-		});
-		assert!(l2.abs() < 1e-5, "rect edge lap err={l2:e}");
 	}
 
 	#[test]

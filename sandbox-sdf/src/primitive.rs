@@ -35,7 +35,7 @@ pub fn sdf_polygon(p: DVec2, vertex: impl IntoIterator<Item = DVec2>) -> f64 {
 /// SDF を origin だけ平行移動し scale 倍に拡縮する。
 /// 評価点を局所座標へ変換して sdf を呼び、距離を scale 倍して戻すことで
 /// 戻り値が正しい符号付き距離（距離の単位）であり続ける。
-pub fn sdf_translate(p: DVec2, origin: DVec2, scale: f64, sdf: impl Fn(DVec2) -> f64) -> f64 {
+pub fn sdf_translate(p: DVec2, origin: DVec2, scale: f64, sdf: impl crate::Sdf) -> f64 {
 	sdf((p - origin) / scale) * scale
 }
 

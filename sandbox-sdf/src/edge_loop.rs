@@ -2,7 +2,7 @@
 //! コーナーを切り分けた上で bottom-up merge により Line / Circle セグメント列に
 //! 集約する。境界抽出は `point_loop` に分離してある。
 
-use crate::{bounding, distance_nabla_laplacian, point_loop::point_loop, Edge, EdgeLoop};
+use crate::{bounding, distance_nabla, point_loop::point_loop, Edge, EdgeLoop, Sdf};
 use glam::DVec2;
 
 /// 連続2点の勾配 cos がこれを下回ったらコーナー (= マージ禁止)。cos(0.3 rad) ≈ 0.955。
@@ -18,7 +18,7 @@ const POINT_LOOP_NEWTON_ITERS: usize = 8;
 
 /// SDF を入力に Line / Circle Edge 列の EdgeLoop 集合を返す。
 /// 連結成分ごとに 1 EdgeLoop、面積降順 (外周境界が先頭、穴が後ろ)。
-pub fn edge_loop(sdf: impl Fn(DVec2) -> f64) -> Vec<EdgeLoop> {
+pub fn edge_loop(sdf: impl Sdf) -> Vec<EdgeLoop> {
 	let [raw_min, raw_max] = bounding(&sdf);
 	let bbox_diag = ((raw_max - raw_min) * 1.2).length(); // 10% マージン込みで point_loop と整合
 	let tol = FIT_TOL_REL * bbox_diag;
@@ -81,7 +81,7 @@ fn merge_residual(
 ///   4. 残った run を Line/Circle にフィット (run_len < 3 は corner artifact として捨てる)
 fn fit_segments(
 	pts: &[DVec2],
-	sdf: &impl Fn(DVec2) -> f64,
+	sdf: &impl Sdf,
 	tol: f64,
 	min_circle_radius: f64,
 ) -> EdgeLoop {
@@ -100,7 +100,7 @@ fn fit_segments(
 	// 点列だけ見ると鈍角コーナーは曲線と区別しづらく、残差判定では「角を
 	// 含んだ円弧」に過大フィットしやすい。SDF 勾配のジャンプは離散的に
 	// 出るので閾値判定が安定する。
-	let grad = |i: usize| distance_nabla_laplacian(pts[i], sdf).1;
+	let grad = |i: usize| distance_nabla(pts[i], sdf).1;
 	let barrier: Vec<bool> = (0..n).map(|i| {
 		let a = grad(i).normalize_or_zero();
 		let b = grad((i + 1) % n).normalize_or_zero();
@@ -213,7 +213,7 @@ fn best_fit_segment(pts: &[DVec2], tol: f64, min_circle_radius: f64) -> Edge {
 // ──────────────────────────────────────────────────────────────────────
 
 /// 直線フィット (PCA / TLS)。戻り値: (centroid, direction_unit, max_perpendicular_residual)
-fn fit_line(pts: &[DVec2]) -> (DVec2, DVec2, f64) {
+pub(crate) fn fit_line(pts: &[DVec2]) -> (DVec2, DVec2, f64) {
 	let n = pts.len() as f64;
 	let centroid = pts.iter().copied().fold(DVec2::ZERO, std::ops::Add::add) / n;
 	let mut sxx = 0.0_f64; let mut sxy = 0.0_f64; let mut syy = 0.0_f64;
@@ -233,7 +233,7 @@ fn fit_line(pts: &[DVec2]) -> (DVec2, DVec2, f64) {
 }
 
 /// 円フィット (Kasa 線形最小二乗、中心化版)。3点未満や共線で None。
-fn fit_circle(pts: &[DVec2]) -> Option<(DVec2, f64, f64)> {
+pub(crate) fn fit_circle(pts: &[DVec2]) -> Option<(DVec2, f64, f64)> {
 	if pts.len() < 3 { return None; }
 	let n = pts.len() as f64;
 	let mean = pts.iter().copied().fold(DVec2::ZERO, std::ops::Add::add) / n;

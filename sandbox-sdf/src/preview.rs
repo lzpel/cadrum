@@ -1,18 +1,31 @@
 //! SDF の距離マップとセグメント輪郭を PNG に書き出すプレビュー。
 
-use crate::{bounding, edge_loop::edge_loop, Edge};
+use crate::{bounding, edge_loop::edge_loop, Edge, EdgeLoop, Sdf};
 use glam::{DVec2, Vec3};
 use std::path::Path;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Stroke, Transform};
 
-/// SDF をピクセル評価して距離マップを描き、その上に `edge_loop(sdf)` で抽出した
+/// デフォルトの `edge_loop::edge_loop` を使うプレビュー。
+/// 別の Edge 抽出器を使いたい場合は [`preview_width_edge_loop`] に切り替える。
+pub fn preview(sdf: impl Sdf, png: &Path) {
+	preview_width_edge_loop(sdf, |s| edge_loop(s), png);
+}
+
+/// SDF をピクセル評価して距離マップを描き、その上に `edges_fn(&sdf)` で抽出した
 /// Line / Circle Edge 列を連結成分ごとに色分けして重ねた PNG を出力する。
 ///
 /// 表示範囲は `bounding(sdf)` の bbox 中央を画像中央に置き、長辺が画像の
 /// FILL（70%）を占めるよう等方スケールで決める。
 /// 内側を cyan、外側を yellow とし、距離の等高線を周期的な明暗で表示する。
 /// EdgeLoop のセグメントは太い線、各 Edge の `a` `b` 端点には目立つドットを置く。
-pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
+///
+/// `edges_fn` を切り替えることで `edge_loop::edge_loop` / `edge_loop2::edge_loop` /
+/// 任意の Edge 抽出器を差し替えて出力比較できる。
+pub fn preview_width_edge_loop<F, G>(sdf: F, edges_fn: G, png: &Path)
+where
+	F: Sdf,
+	G: FnOnce(&F) -> Vec<EdgeLoop>,
+{
 	const SIZE: u32 = 512;
 	const FILL: f64 = 0.7;
 
@@ -84,7 +97,8 @@ pub fn preview(sdf: impl Fn(DVec2) -> f64, png: &Path) {
 		}
 	};
 
-	for (i, comp_segs) in edge_loop(&sdf).iter().enumerate() {
+	let edges = edges_fn(&sdf);
+	for (i, comp_segs) in edges.iter().enumerate() {
 		let (r, g, b) = PALETTE[i % PALETTE.len()];
 		let mut line_paint = Paint::default();
 		line_paint.set_color_rgba8(r, g, b, 220);
