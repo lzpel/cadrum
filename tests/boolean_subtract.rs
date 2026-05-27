@@ -29,8 +29,8 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 			}
 			clauses.push(0);
 		}
-		let solids: Vec<Solid> = a.iter().chain(b.iter()).cloned().collect();
-		(Solid::boolean_build(&solids, &clauses).unwrap(), 0)
+		let solids: Vec<&Solid> = a.iter().chain(b.iter()).collect();
+		(Solid::boolean(solids, clauses).build_vec().unwrap(), 0)
 	} else {
 		let bboxes_b: Vec<[DVec3; 2]> = b.iter().map(|s| s.bounding_box()).collect();
 

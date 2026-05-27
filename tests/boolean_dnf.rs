@@ -74,9 +74,26 @@ fn test_boolean_build_direct() {
 	let solids = vec![a, b, c];
 	// (A∪B)∖C → DNF: A∖C ∪ B∖C → clauses [1,-3,0, 2,-3,0]
 	let clauses = vec![1, -3, 0, 2, -3, 0];
-	let v = Solid::boolean_build(&solids, &clauses).unwrap();
+	let v = Solid::boolean(solids.iter(), clauses).build_vec().unwrap();
 	// A∪B の体積は 15×10×10 = 1500、C を引くので減るはず
 	let total_volume: f64 = v.iter().map(|s| s.volume()).sum();
 	assert!(total_volume < 1500.0);
 	assert!(total_volume > 0.0);
+}
+
+#[test]
+fn test_boolean_preserves_src_face_identity() {
+	// `S::boolean` が shallow copy で TShape を共有することの担保。
+	// ユーザが入力 Solid から face id を集めて boolean 結果の history と
+	// 照合する用途 (examples/08_shell.rs の halved_shelled_torus 等) が動作するか。
+	let torus = Solid::torus(6.0, 2.0, DVec3::Y);
+	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z);
+	let cutter_ids: std::collections::HashSet<u64> =
+		cutter.iter_face().map(|f| f.id()).collect();
+	let half: Solid = (&torus * &cutter).build().unwrap();
+	let matched: Vec<u64> = half.iter_history()
+		.filter_map(|[p, s]| cutter_ids.contains(&s).then_some(p))
+		.collect();
+	assert!(!matched.is_empty(),
+		"history must contain at least one face sourced from cutter");
 }

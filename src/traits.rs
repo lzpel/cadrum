@@ -98,6 +98,7 @@
 
 #[cfg(feature = "color")]
 use crate::common::color::Color;
+use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
 use glam::{DMat3, DQuat, DVec3};
@@ -664,9 +665,15 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	// `Solid::iter_history()`; no separate metadata channel.
 	//
 	// ユーザーは `Boolean<S>` (= Solid に対する `+`/`-`/`*` 演算子で構築) を
-	// `.build()` / `.build_vec()` に渡す経路を使う。本メソッドは Boolean<S> 経由で
-	// 呼ばれる FFI 唯一の通路で、`clauses` は DIMACS-flat DNF。
-	fn boolean_build(solids: &[Self], clauses: &[i64]) -> Result<Vec<Self>, Error>;
+	// `.build()` / `.build_vec()` に渡す経路を使う。下記 2 メソッドが Boolean<S>
+	// と FFI を繋ぐ通路:
+	//
+	// - `boolean(solids, clauses)` — `&Self` を shallow copy しつつ Boolean を構築。
+	//   バックエンドは TShape identity を保つ複製 (OCCT なら clone_shape_handle) を行う。
+	//   common::boolean 内のすべての solid 複製はこの経路を通る。
+	// - `boolean_build(&Boolean)` — DIMACS-flat DNF の `clauses` を FFI に渡して評価。
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a;
+	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error>;
 
 	// --- I/O ---
 	// Co-located with constructors: STEP / BRep readers return `Vec<Self>` (a

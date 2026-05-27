@@ -35,9 +35,10 @@ pub struct Boolean<S: SolidStruct> {
 }
 
 impl<S: SolidStruct> Boolean<S> {
-	/// 単一 Solid から 1-clause Boolean を作る。`+` 演算子の起点。
-	pub(crate) fn singleton(s: S) -> Self {
-		Boolean { solids: vec![s], clauses: vec![1, 0] }
+	/// バックエンドから solids + clauses を受け取って Boolean を組む。
+	/// `S::boolean(...)` 実装専用のコンストラクタ。
+	pub(crate) fn from_parts(solids: Vec<S>, clauses: Vec<i64>) -> Self {
+		Boolean { solids, clauses }
 	}
 
 	/// 内部表現を読むためのアクセサ (FFI から呼ぶ用途)。
@@ -52,14 +53,9 @@ impl<S: SolidStruct> Boolean<S> {
 		I: IntoIterator<Item = &'a S>,
 		S: 'a,
 	{
-		let mut solids: Vec<S> = Vec::new();
-		let mut clauses: Vec<i64> = Vec::new();
-		for s in iter {
-			solids.push(s.clone());
-			clauses.push(solids.len() as i64);
-			clauses.push(0);
-		}
-		Boolean { solids, clauses }
+		let refs: Vec<&S> = iter.into_iter().collect();
+		let clauses: Vec<i64> = (1..=refs.len() as i64).flat_map(|i| [i, 0]).collect();
+		S::boolean(refs, clauses)
 	}
 
 	/// `iter` の要素を全て intersect した `Boolean<S>` を返す。
@@ -69,20 +65,10 @@ impl<S: SolidStruct> Boolean<S> {
 		I: IntoIterator<Item = &'a S>,
 		S: 'a,
 	{
-		let mut solids: Vec<S> = Vec::new();
-		let mut clause: Vec<i64> = Vec::new();
-		for s in iter {
-			solids.push(s.clone());
-			clause.push(solids.len() as i64);
-		}
-		let clauses = if clause.is_empty() {
-			Vec::new()
-		} else {
-			let mut c = clause;
-			c.push(0);
-			c
-		};
-		Boolean { solids, clauses }
+		let refs: Vec<&S> = iter.into_iter().collect();
+		let mut clauses: Vec<i64> = (1..=refs.len() as i64).collect();
+		if !clauses.is_empty() { clauses.push(0); }
+		S::boolean(refs, clauses)
 	}
 
 	/// FFI を呼んで結果が単一 Solid なら返す。複数または 0 個なら `OneFailed(n)`。
@@ -99,7 +85,7 @@ impl<S: SolidStruct> Boolean<S> {
 		if self.solids.is_empty() || self.clauses.is_empty() {
 			return Err(Error::OneFailed(0));
 		}
-		S::boolean_build(&self.solids, &self.clauses)
+		S::boolean_build(&self)
 	}
 
 	// ==================== DNF 合成 ====================
@@ -190,7 +176,10 @@ impl<S: SolidStruct> Boolean<S> {
 
 impl<S: SolidStruct> Clone for Boolean<S> {
 	fn clone(&self) -> Self {
-		Boolean { solids: self.solids.clone(), clauses: self.clauses.clone() }
+		// `S::boolean` 経由でバックエンドの shallow copy (TShape identity 保存) を通す。
+		// `self.solids.clone()` だと `S::clone()` (= OCCT では deep_copy) が走り
+		// face id が変わってしまうため使えない。
+		S::boolean(self.solids.iter(), self.clauses.iter().copied())
 	}
 }
 

@@ -2,6 +2,7 @@ use super::compound::CompoundShape;
 use super::edge::Edge;
 use super::face::Face;
 use super::ffi;
+use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::traits::{Compound, ProfileOrient, SolidStruct, Transform};
 use glam::DVec3;
@@ -436,8 +437,22 @@ impl SolidStruct for Solid {
 
 	// ==================== Boolean primitive ====================
 
-	fn boolean_build(solids: &[Self], clauses: &[i64]) -> Result<Vec<Self>, Error> {
-		Self::boolean_build_impl(solids, clauses)
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a {
+		// TShape* を共有する shallow copy で Boolean を組む。Solid::clone() (=
+		// BRepBuilderAPI_Copy) と違い、各 face の id() が元と一致するため
+		// boolean 結果の history (post_id, src_id) を呼び出し側の face id と
+		// 照合できる。
+		let solids: Vec<Solid> = solids.into_iter().map(|s| Solid {
+			inner: ffi::clone_shape_handle(&s.inner),
+			edges: OnceLock::new(),
+			faces: OnceLock::new(),
+			#[cfg(feature = "color")] colormap: s.colormap.clone(),
+			history: s.history.clone(),
+		}).collect();
+		Boolean::from_parts(solids, clauses.into_iter().collect())
+	}
+	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error> {
+		Self::boolean_build_impl(b.solids(), b.clauses())
 	}
 
 	// --- I/O (delegates to super::io helpers) ---
@@ -680,23 +695,36 @@ impl Solid {
 // 戦略: 演算子内で両辺を `Boolean<Solid>` に変換してから `Boolean::dnf_*` を呼ぶ。
 // orphan rule: 各 impl で LHS/RHS のどちらかが Solid または Boolean<Solid> なので OK。
 
-use crate::common::boolean::Boolean;
-
 /// LHS/RHS のどちらかを `Boolean<Solid>` に正規化するための内部 trait。
 pub(crate) trait IntoBoolean {
 	fn into_boolean(self) -> Boolean<Solid>;
 }
 
 impl IntoBoolean for Solid {
-	fn into_boolean(self) -> Boolean<Solid> { Boolean::singleton(self) }
+	// owned: shallow handle copy + move metadata.
+	// `&self` で `Solid::boolean(...)` を呼ぶと colormap/history が clone されてしまうので
+	// owned 経路では明示的に move する。TShape は clone_shape_handle で refcount 共有。
+	fn into_boolean(self) -> Boolean<Solid> {
+		let s = Solid {
+			inner: ffi::clone_shape_handle(&self.inner),
+			edges: OnceLock::new(),
+			faces: OnceLock::new(),
+			#[cfg(feature = "color")] colormap: self.colormap,
+			history: self.history,
+		};
+		Boolean::from_parts(vec![s], vec![1, 0])
+	}
 }
 impl IntoBoolean for &Solid {
-	fn into_boolean(self) -> Boolean<Solid> { Boolean::singleton(self.clone()) }
+	fn into_boolean(self) -> Boolean<Solid> {
+		<Solid as SolidStruct>::boolean(std::iter::once(self), [1i64, 0])
+	}
 }
 impl IntoBoolean for Boolean<Solid> {
 	fn into_boolean(self) -> Boolean<Solid> { self }
 }
 impl IntoBoolean for &Boolean<Solid> {
+	// Boolean::clone は新実装で S::boolean 経由 → shallow copy で TShape 保存。
 	fn into_boolean(self) -> Boolean<Solid> { self.clone() }
 }
 
