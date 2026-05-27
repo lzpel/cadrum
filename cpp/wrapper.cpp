@@ -59,6 +59,8 @@
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Common.hxx>
+#include <BOPAlgo_CellsBuilder.hxx>
+#include <TopTools_ListOfShape.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 
@@ -606,6 +608,80 @@ std::unique_ptr<TopoDS_Shape> builder_boolean(
         auto shape = std::make_unique<TopoDS_Shape>(copier.Shape());
         emit_from_pairs(op->Shape(), copier.Shape(), relay_a, out_history);
         emit_from_pairs(op->Shape(), copier.Shape(), relay_b, out_history);
+        return shape;
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// CellsBuilder 用の relay 採取。
+// BRepAlgoAPI_BooleanOperation 用の collect_relay_mapping と同じことを
+// BOPAlgo_CellsBuilder のインターフェース (IsDeleted / Modified) で行う。
+static void collect_relay_mapping_cells(
+    BOPAlgo_CellsBuilder& cb,
+    const TopoDS_Shape& src,
+    std::unordered_map<uint64_t, uint64_t>& relay)
+{
+    for (TopExp_Explorer ex(src, TopAbs_FACE); ex.More(); ex.Next()) {
+        const TopoDS_Shape& sf = ex.Current();
+        uint64_t src_id = reinterpret_cast<uint64_t>(sf.TShape().get());
+        if (cb.IsDeleted(sf)) continue;
+        const NCollection_List<TopoDS_Shape>& mods = cb.Modified(sf);
+        if (mods.IsEmpty()) {
+            relay[src_id] = src_id;
+        } else {
+            for (NCollection_List<TopoDS_Shape>::Iterator it(mods); it.More(); it.Next()) {
+                uint64_t pre_id = reinterpret_cast<uint64_t>(it.Value().TShape().get());
+                relay[pre_id] = src_id;
+            }
+        }
+    }
+}
+
+// Evaluate any boolean expression in DNF on N solids via BOPAlgo_CellsBuilder.
+// 1 回の Perform() で全交差を計算し、clause ごとに AddToResult を呼ぶ。
+std::unique_ptr<TopoDS_Shape> builder_cells(
+    const std::vector<TopoDS_Shape>& solids,
+    rust::Slice<const int64_t> clauses,
+    rust::Vec<uint64_t>& out_history)
+{
+    try {
+        if (solids.empty() || clauses.size() == 0) return nullptr;
+
+        BOPAlgo_CellsBuilder cb;
+        NCollection_List<TopoDS_Shape> args;
+        for (const auto& s : solids) args.Append(s);
+        cb.SetArguments(args);
+        cb.Perform();
+        if (cb.HasErrors()) return nullptr;
+
+        const int material = 1;
+        NCollection_List<TopoDS_Shape> take, avoid;
+        for (size_t i = 0; i < clauses.size(); ++i) {
+            int64_t lit = clauses[i];
+            if (lit == 0) {
+                if (!take.IsEmpty()) {
+                    cb.AddToResult(take, avoid, material);
+                }
+                take.Clear();
+                avoid.Clear();
+                continue;
+            }
+            int64_t idx = (lit > 0 ? lit : -lit) - 1;
+            if (idx < 0 || idx >= static_cast<int64_t>(solids.size())) return nullptr;
+            if (lit > 0) take.Append(solids[static_cast<size_t>(idx)]);
+            else         avoid.Append(solids[static_cast<size_t>(idx)]);
+        }
+        cb.RemoveInternalBoundaries();
+
+        std::unordered_map<uint64_t, uint64_t> relay;
+        for (const auto& s : solids) {
+            collect_relay_mapping_cells(cb, s, relay);
+        }
+
+        BRepBuilderAPI_Copy copier(cb.Shape(), true, false);
+        auto shape = std::make_unique<TopoDS_Shape>(copier.Shape());
+        emit_from_pairs(cb.Shape(), copier.Shape(), relay, out_history);
         return shape;
     } catch (const Standard_Failure&) {
         return nullptr;
@@ -1370,6 +1446,14 @@ std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {
 
 void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f) {
     v.push_back(f);
+}
+
+std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new() {
+    return std::make_unique<std::vector<TopoDS_Shape>>();
+}
+
+void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s) {
+    v.push_back(s);
 }
 
 std::unique_ptr<TopoDS_Shape> builder_thick_solid(

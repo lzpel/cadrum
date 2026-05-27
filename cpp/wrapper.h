@@ -134,6 +134,19 @@ std::unique_ptr<TopoDS_Shape> builder_boolean(
     const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
     rust::Vec<uint64_t>& out_history);
 
+// Evaluate an arbitrary boolean expression on N solids in a single pass
+// using BOPAlgo_CellsBuilder. The expression is encoded as DIMACS-flat DNF:
+//   - clauses は signed literal の列、`0` で 1 clause 終端 (末尾 0 必須)
+//   - `+i` (i≥1) は solids[i-1] を AddToResult の toTake に
+//   - `-i`         は solids[i-1] を toAvoid に
+// 例: (A ∪ B) − C → solids=[A,B,C], clauses=[1,-3, 0, 2,-3, 0]
+// 全 clause で同一 material を使い RemoveInternalBoundaries() で内部境界を除去。
+// `out_history` の形式は builder_boolean と同じ。
+std::unique_ptr<TopoDS_Shape> builder_cells(
+    const std::vector<TopoDS_Shape>& solids,
+    rust::Slice<const int64_t> clauses,
+    rust::Vec<uint64_t>& out_history);
+
 // Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
 // `out_history` encodes how each old face maps onto the unified result.
 // Rust uses it to remap the colormap when the `color` feature is enabled.
@@ -380,6 +393,11 @@ void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
 void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
+
+// Helpers for the Rust side to construct a std::vector<TopoDS_Shape>.
+// builder_cells に渡すための入力 solids ベクタを Rust 側から組み立てる。
+std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new();
+void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s);
 
 // Loft (skin) a smooth solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
