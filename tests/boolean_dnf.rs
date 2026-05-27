@@ -12,7 +12,7 @@ fn cube(x: f64, y: f64, z: f64, tx: f64, ty: f64, tz: f64) -> Solid {
 fn test_boolean_singleton_build() {
 	let a = Solid::cube(10.0, 10.0, 10.0);
 	let expected = a.volume();
-	let b = Boolean::union_all([&a]);
+	let b = std::iter::once(&a).sum::<Boolean<Solid>>();
 	let s: Solid = b.build().unwrap();
 	assert!((s.volume() - expected).abs() < 1e-6, "{} vs {}", s.volume(), expected);
 }
@@ -23,7 +23,7 @@ fn test_boolean_union_all_disjoint() {
 	let b = cube(1.0, 1.0, 1.0, 5.0, 0.0, 0.0);
 	let c = cube(1.0, 1.0, 1.0, 10.0, 0.0, 0.0);
 	// disjoint なので Solid 1 個には纏まらない → build_vec で 3 個
-	let v: Vec<Solid> = Boolean::union_all([&a, &b, &c]).build_vec().unwrap();
+	let v: Vec<Solid> = [&a, &b, &c].into_iter().sum::<Boolean<Solid>>().build_vec().unwrap();
 	assert_eq!(v.len(), 3);
 }
 
@@ -33,7 +33,7 @@ fn test_boolean_union_all_connected() {
 	let a = cube(10.0, 10.0, 10.0, 0.0, 0.0, 0.0);
 	let b = cube(10.0, 10.0, 10.0, 3.0, 3.0, 3.0);
 	let c = cube(10.0, 10.0, 10.0, 6.0, 6.0, 6.0);
-	let s: Solid = Boolean::union_all([&a, &b, &c]).build().unwrap();
+	let s: Solid = [&a, &b, &c].into_iter().sum::<Boolean<Solid>>().build().unwrap();
 	// a と c は重なっていない場合がある (距離 6 vs 辺 10) — overlap あるので 1 個
 	assert!(s.volume() > a.volume(), "union volume should grow");
 }
@@ -42,7 +42,7 @@ fn test_boolean_union_all_connected() {
 fn test_boolean_intersect_all() {
 	let a = cube(10.0, 10.0, 10.0, 0.0, 0.0, 0.0);
 	let b = cube(10.0, 10.0, 10.0, 5.0, 0.0, 0.0); // overlap 5×10×10 = 500
-	let s: Solid = Boolean::intersect_all([&a, &b]).build().unwrap();
+	let s: Solid = [&a, &b].into_iter().product::<Boolean<Solid>>().build().unwrap();
 	assert!((s.volume() - 500.0).abs() < 1e-3, "got {}", s.volume());
 }
 
@@ -51,14 +51,14 @@ fn test_boolean_intersect_disjoint_yields_empty() {
 	let a = cube(1.0, 1.0, 1.0, 0.0, 0.0, 0.0);
 	let b = cube(1.0, 1.0, 1.0, 10.0, 0.0, 0.0);
 	// 非交差 → build_vec で 0 個、build で OneFailed(0)
-	let v: Vec<Solid> = Boolean::intersect_all([&a, &b]).build_vec().unwrap();
+	let v: Vec<Solid> = [&a, &b].into_iter().product::<Boolean<Solid>>().build_vec().unwrap();
 	assert_eq!(v.len(), 0);
 }
 
 #[test]
 fn test_boolean_empty_returns_error() {
 	let solids: Vec<Solid> = Vec::new();
-	match Boolean::union_all(solids.iter()).build() {
+	match solids.iter().sum::<Boolean<Solid>>().build() {
 		Err(cadrum::Error::OneFailed(0)) => {}
 		other => panic!("expected OneFailed(0), got {:?}", other.is_ok()),
 	}

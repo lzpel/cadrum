@@ -39,7 +39,7 @@ fn test_union_of_translated_overlapping_solids_has_single_volume() {
 
 	// b_moved を作っても b は変化していないことを確認:
 	// result（x=0付近, volume=1000）と b（x=100付近, volume=1000）を union すると2000になるはず。
-	let result_with_b: Vec<Solid> = cadrum::Boolean::union_all(result.iter().chain(b.iter())).build_vec().expect("union should succeed");
+	let result_with_b: Vec<Solid> = result.iter().chain(b.iter()).sum::<cadrum::Boolean<Solid>>().build_vec().expect("union should succeed");
 	let volume_with_b: f64 = result_with_b.iter().map(|s| s.volume()).sum();
 	assert!((volume_with_b - 2000.0).abs() < 1e-3, "expected volume ~2000, got {volume_with_b}");
 }

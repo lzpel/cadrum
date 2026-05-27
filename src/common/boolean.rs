@@ -22,12 +22,13 @@
 //! FFI は `SolidStruct::boolean_build` を 1 回だけ呼び、BOPAlgo_CellsBuilder
 //! が全交差を 1 パスで計算する。
 //!
-//! 集約コンストラクタ:
-//! - [`Boolean::union_all`] — iter 全要素を union
-//! - [`Boolean::intersect_all`] — iter 全要素を intersect
+//! 集約: `iter.sum::<Boolean<S>>()` / `iter.product::<Boolean<S>>()` で
+//! `&S` のイテレータを union / intersect できる (`Sum<&S>` / `Product<&S>` 実装)。
+//! `+` / `*` 演算子と意味的に対応する。
 
 use crate::common::error::Error;
 use crate::traits::SolidStruct;
+use std::iter::{Product, Sum};
 
 pub struct Boolean<S: SolidStruct> {
 	pub(crate) solids: Vec<S>,
@@ -45,31 +46,6 @@ impl<S: SolidStruct> Boolean<S> {
 	pub fn solids(&self) -> &[S] { &self.solids }
 	/// 内部表現を読むためのアクセサ (FFI から呼ぶ用途)。
 	pub fn clauses(&self) -> &[i64] { &self.clauses }
-
-	/// `iter` の要素を全て union した `Boolean<S>` を返す。
-	/// 空の場合は空の `Boolean` (`build()` で `OneFailed(0)`)。
-	pub fn union_all<'a, I>(iter: I) -> Self
-	where
-		I: IntoIterator<Item = &'a S>,
-		S: 'a,
-	{
-		let refs: Vec<&S> = iter.into_iter().collect();
-		let clauses: Vec<i64> = (1..=refs.len() as i64).flat_map(|i| [i, 0]).collect();
-		S::boolean(refs, clauses)
-	}
-
-	/// `iter` の要素を全て intersect した `Boolean<S>` を返す。
-	/// 空の場合は空の `Boolean` (`build()` で `OneFailed(0)`)。
-	pub fn intersect_all<'a, I>(iter: I) -> Self
-	where
-		I: IntoIterator<Item = &'a S>,
-		S: 'a,
-	{
-		let refs: Vec<&S> = iter.into_iter().collect();
-		let mut clauses: Vec<i64> = (1..=refs.len() as i64).collect();
-		if !clauses.is_empty() { clauses.push(0); }
-		S::boolean(refs, clauses)
-	}
 
 	/// FFI を呼んで結果が単一 Solid なら返す。複数または 0 個なら `OneFailed(n)`。
 	pub fn build(self) -> Result<S, Error> {
@@ -198,3 +174,27 @@ impl<S: SolidStruct> TryFrom<Boolean<S>> for Vec<S> {
 // は orphan rule 違反 (`S` が外部型かもしれないという扱いで coherence チェックに
 // 引っかかる) ため、`Boolean::build` メソッドだけ提供してユーザーは
 // `(expr).build()?` を使う。
+
+// ==================== Sum / Product (集約) ====================
+//
+// `iter.sum::<Boolean<S>>()` / `iter.product::<Boolean<S>>()` で
+// `&S` の iterator を union / intersect する。`+` / `*` 演算子の意味と一致。
+//
+// 空 iterator のとき空の `Boolean` を返す (`build()` で `OneFailed(0)`)。
+// `reduce` を使うので fold の identity を捻り出す必要がない。
+
+impl<'a, S: SolidStruct + 'a> Sum<&'a S> for Boolean<S> {
+	fn sum<I: Iterator<Item = &'a S>>(iter: I) -> Self {
+		iter.map(|s| S::boolean(std::iter::once(s), [1i64, 0]))
+			.reduce(Self::dnf_union)
+			.unwrap_or_else(|| S::boolean(std::iter::empty::<&S>(), std::iter::empty()))
+	}
+}
+
+impl<'a, S: SolidStruct + 'a> Product<&'a S> for Boolean<S> {
+	fn product<I: Iterator<Item = &'a S>>(iter: I) -> Self {
+		iter.map(|s| S::boolean(std::iter::once(s), [1i64, 0]))
+			.reduce(Self::dnf_intersect)
+			.unwrap_or_else(|| S::boolean(std::iter::empty::<&S>(), std::iter::empty()))
+	}
+}

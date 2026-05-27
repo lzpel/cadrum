@@ -13,9 +13,9 @@ fn main() -> Result<(), Error> {
 	let base = part(inner, outer, height)?;
 	let parts = [base.clone(), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU / 3.0), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU * 2.0 / 3.0)];
 	// positive = 各 part の [outer, between] (= p[0], p[1]) を全部 union
-	let positive: Solid = Boolean::union_all(parts.iter().flat_map(|p| [&p[0], &p[1]])).build()?;
+	let positive: Solid = parts.iter().flat_map(|p| [&p[0], &p[1]]).sum::<Boolean<Solid>>().build()?;
 	// negative = 各 part の inner cylinder (= p[2]) を全部 union
-	let negative: Solid = Boolean::union_all(parts.iter().map(|p| &p[2])).build()?;
+	let negative: Solid = parts.iter().map(|p| &p[2]).sum::<Boolean<Solid>>().build()?;
 	let result = [(&positive - &negative).build()?];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;

@@ -44,7 +44,7 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 				skipped += 1;
 				results.push(sa.clone());
 			} else {
-				let r: Vec<Solid> = tools.iter().fold(Boolean::union_all([sa]), |acc, &t| acc - t).build_vec().unwrap();
+				let r: Vec<Solid> = tools.iter().fold(std::iter::once(sa).sum::<Boolean<Solid>>(), |acc, &t| acc - t).build_vec().unwrap();
 				results.extend(r);
 			}
 		}

@@ -17,7 +17,7 @@ fn test_union_disjoint() {
 	let b = Solid::cylinder(1.1, DVec3::Z, 1.0).translate(DVec3::new(4.0, 0.0, 0.0));
 	let c = Solid::cylinder(1.1, DVec3::Z, 1.0).translate(DVec3::new(0.0, 1.0, 0.0));
 	let d = Solid::cylinder(1.1, DVec3::Z, 1.0).translate(DVec3::new(4.0, 1.0, 0.0));
-	let v: Vec<Solid> = Boolean::union_all([&a, &b, &c, &d]).build_vec().unwrap();
+	let v: Vec<Solid> = [&a, &b, &c, &d].into_iter().sum::<Boolean<Solid>>().build_vec().unwrap();
 	// A∪C と B∪D の 2 グループに分かれる (重なる距離 1.0 で連結)
 	assert!(v.len() <= 2, "disjoint groups should be ≤2 solids, got {}", v.len());
 }
@@ -54,7 +54,7 @@ fn test_intersect_sphere_with_multiple_cylinders() {
 	let cyl_y = Solid::cylinder(r, DVec3::Y, len).translate(DVec3::new(0.0, -half, 0.0));
 	let cyl_z = Solid::cylinder(r, DVec3::Z, len).translate(DVec3::new(0.0, 0.0, -half));
 
-	let multi: Vec<Solid> = Boolean::intersect_all([&sphere, &cyl_x, &cyl_y, &cyl_z]).build_vec().unwrap();
+	let multi: Vec<Solid> = [&sphere, &cyl_x, &cyl_y, &cyl_z].into_iter().product::<Boolean<Solid>>().build_vec().unwrap();
 	let vol: f64 = multi.iter().map(|s| s.volume()).sum();
 	// 中心の小さなボリュームのみ ≈ 2.4
 	assert!(vol > 0.0 && vol < 10.0, "expected small intersection volume, got {}", vol);
@@ -98,8 +98,8 @@ fn test_union_olympic_rings_out_of_order() {
 	let ring5 = mk(4.0);
 
 	// out-of-order でも順番通りでも同じ結果
-	let out_of_order: Solid = Boolean::union_all([&ring1, &ring3, &ring5, &ring2, &ring4]).build().unwrap();
-	let in_order: Solid = Boolean::union_all([&ring1, &ring2, &ring3, &ring4, &ring5]).build().unwrap();
+	let out_of_order: Solid = [&ring1, &ring3, &ring5, &ring2, &ring4].into_iter().sum::<Boolean<Solid>>().build().unwrap();
+	let in_order: Solid = [&ring1, &ring2, &ring3, &ring4, &ring5].into_iter().sum::<Boolean<Solid>>().build().unwrap();
 
 	assert!((out_of_order.volume() - in_order.volume()).abs() < 1e-6,
 		"order-independent: {} vs {}", out_of_order.volume(), in_order.volume());

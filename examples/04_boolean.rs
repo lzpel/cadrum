@@ -26,11 +26,11 @@ fn main() -> Result<(), cadrum::Error> {
     let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
 
     // sum = union of all cylinders
-    let sum: Solid = Boolean::union_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().sum::<Boolean<Solid>>().build()?;
     let sum = sum.color("#d875ff");
 
     // product = intersection of all cylinders
-    let product: Solid = Boolean::intersect_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let product: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().product::<Boolean<Solid>>().build()?;
     let product = product.color("#00ff22");
 
     let shapes = [
