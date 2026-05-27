@@ -124,16 +124,6 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
 // and append flat [post_id, src_id, ...] face derivation pairs to
 // `out_history`. The Rust side stores these in `Solid::history`.
 
-// Unified boolean operation: 0=Fuse(union), 1=Cut(a−b), 2=Common(intersect).
-//
-// `out_history` is appended with pairs covering every result face derived
-// from either input (a or b). Self/tool distinction is intentionally
-// collapsed — TShape* pointers are globally unique so callers can filter by
-// matching src_id against either input's face id set.
-std::unique_ptr<TopoDS_Shape> builder_boolean(
-    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
-    rust::Vec<uint64_t>& out_history);
-
 // Evaluate an arbitrary boolean expression on N solids in a single pass
 // using BOPAlgo_CellsBuilder. The expression is encoded as DIMACS-flat DNF:
 //   - clauses は signed literal の列、`0` で 1 clause 終端 (末尾 0 必須)

@@ -1,4 +1,4 @@
-use cadrum::Solid;
+use cadrum::{Boolean, Solid};
 use glam::DVec3;
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,19 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 	let b = make_toruses(offset);
 	let t0 = Instant::now();
 	let (results, skipped) = if !optimized {
-		(Solid::boolean_subtract(&a, &b).unwrap(), 0)
+		// 旧 `Solid::boolean_subtract(&a, &b)` の意味: 各 a_i ごとに (a_i) - (b 全体 union)
+		// を求めて連結。DNF: clauses = ⋃_i [+(i+1), -(n_a+1), -(n_a+2), ..., 0]
+		let n_a = a.len() as i64;
+		let mut clauses: Vec<i64> = Vec::new();
+		for i in 0..a.len() {
+			clauses.push((i + 1) as i64);
+			for j in 0..b.len() {
+				clauses.push(-(n_a + (j as i64) + 1));
+			}
+			clauses.push(0);
+		}
+		let solids: Vec<Solid> = a.iter().chain(b.iter()).cloned().collect();
+		(Solid::boolean_build(&solids, &clauses).unwrap(), 0)
 	} else {
 		let bboxes_b: Vec<[DVec3; 2]> = b.iter().map(|s| s.bounding_box()).collect();
 
@@ -32,7 +44,7 @@ fn run_subtract(offset: DVec3, optimized: bool) -> (Duration, Vec<Solid>) {
 				skipped += 1;
 				results.push(sa.clone());
 			} else {
-				let r = Solid::boolean_subtract([sa], tools.iter().copied()).unwrap();
+				let r: Vec<Solid> = tools.iter().fold(Boolean::union_all([sa]), |acc, &t| acc - t).build_vec().unwrap();
 				results.extend(r);
 			}
 		}

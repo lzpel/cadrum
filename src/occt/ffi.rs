@@ -70,10 +70,6 @@ mod ffi_bridge {
 
 		// ==================== Builders (solid → solid with history) ====================
 
-		// Unified boolean op. `op_kind`: 0 = fuse(union), 1 = cut(a − b), 2 = common(intersect).
-		// `out_history` is appended with flat [post_id, src_id, ...] pairs covering both inputs.
-		fn builder_boolean(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
-
 		// Evaluate any boolean expression on N solids via BOPAlgo_CellsBuilder.
 		// `clauses` は DIMACS-flat DNF (`+i` = solids[i-1] を take、`-i` = avoid、`0` = clause 終端)。
 		// `out_history` の形式は builder_boolean と同じ。

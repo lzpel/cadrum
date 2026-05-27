@@ -434,19 +434,7 @@ impl SolidStruct for Solid {
 		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
 	}
 
-	// ==================== Boolean primitives ====================
-
-	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_union_impl(a, b)
-	}
-
-	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_subtract_impl(a, b)
-	}
-
-	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_intersect_impl(a, b)
-	}
+	// ==================== Boolean primitive ====================
 
 	fn boolean_build(solids: &[Self], clauses: &[i64]) -> Result<Vec<Self>, Error> {
 		Self::boolean_build_impl(solids, clauses)
@@ -639,66 +627,9 @@ impl Clone for Solid {
 	}
 }
 
-// ==================== Boolean operations ====================
-
-#[cfg(feature = "color")]
-fn merge_colormaps(history: &[u64], colormap_a: &std::collections::HashMap<u64, crate::common::color::Color>, colormap_b: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
-	let mut result = std::collections::HashMap::new();
-	for pair in history.chunks_exact(2) {
-		// TShape* pointers are globally unique across both inputs, so a
-		// single lookup against either colormap suffices (no collision).
-		if let Some(&color) = colormap_a.get(&pair[1]).or_else(|| colormap_b.get(&pair[1])) {
-			result.insert(pair[0], color);
-		}
-	}
-	result
-}
-
-// `ca` / `cb` carry the source colormaps and are only consulted by the
-// `color` feature; the boolean result and history are derived purely from
-// the FFI out-parameter, so they go unused without `color`.
-#[cfg_attr(not(feature = "color"), allow(unused_variables))]
-fn build_boolean_result(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, history: Vec<u64>, ca: CompoundShape, cb: CompoundShape) -> Result<Vec<Solid>, Error> {
-	#[cfg(feature = "color")]
-	let colormap = merge_colormaps(&history, ca.colormap(), cb.colormap());
-
-	let compound = CompoundShape::from_raw(
-		inner,
-		#[cfg(feature = "color")]
-		colormap,
-		history,
-	);
-
-	Ok(compound.decompose())
-}
-
-// Op kind tags matching the C++ side `boolean_op` switch.
-const BOOLEAN_OP_FUSE: u32 = 0;
-const BOOLEAN_OP_CUT: u32 = 1;
-const BOOLEAN_OP_COMMON: u32 = 2;
+// ==================== Boolean primitive (CellsBuilder ベース) ====================
 
 impl Solid {
-	fn boolean_op_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>, op_kind: u32) -> Result<Vec<Solid>, Error> {
-		let ca = CompoundShape::new(a);
-		let cb = CompoundShape::new(b);
-		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::builder_boolean(ca.inner(), cb.inner(), op_kind, &mut history);
-		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
-		build_boolean_result(inner, history, ca, cb)
-	}
-
-	pub(crate) fn boolean_union_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_FUSE)
-	}
-
-	pub(crate) fn boolean_subtract_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_CUT)
-	}
-
-	pub(crate) fn boolean_intersect_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_COMMON)
-	}
-
 	/// CellsBuilder ベースの一括評価。DIMACS-flat DNF (`clauses`) を C++ 側に渡す。
 	pub(crate) fn boolean_build_impl(solids: &[Solid], clauses: &[i64]) -> Result<Vec<Solid>, Error> {
 		if solids.is_empty() || clauses.is_empty() {
@@ -737,40 +668,80 @@ impl Solid {
 	}
 }
 
-// ==================== `+` / `-` / `*` for &Solid ====================
+// ==================== `+` / `-` / `*` operators ====================
 //
-// 単体×単体 boolean のシンタックスシュガー。戻り値は Vec ではなく単一 Solid:
-// 結果が 1 個でなければ `Error::OneFailed(n)` を返す。複数ピースになりうる
-// 演算では本演算子は使わず `Solid::boolean_*` を直接使うこと。
+// `Solid` / `&Solid` / `Boolean<Solid>` / `&Boolean<Solid>` の任意組合せで
+// 演算でき、結果は `Boolean<Solid>` (遅延式)。終端評価は `.build()` (= 単一 Solid)
+// または `.build_vec()` (= Vec<Solid>) を呼ぶ。
 //
-// `&Solid` に impl する理由: `Solid` 自身を consume すると clone コストが嵩む。
-// `&a + &b` で書ける。
+// 連結記法: `(&a + &b - &c * solid_d).build()?`
+//
+// 全パターンを手書きすると 4×4×3 = 48 個になるのでマクロで生成する。
+// 戦略: 演算子内で両辺を `Boolean<Solid>` に変換してから `Boolean::dnf_*` を呼ぶ。
+// orphan rule: 各 impl で LHS/RHS のどちらかが Solid または Boolean<Solid> なので OK。
 
-fn exactly_one(mut v: Vec<Solid>) -> Result<Solid, Error> {
-	match v.len() {
-		1 => Ok(v.pop().unwrap()),
-		n => Err(Error::OneFailed(n)),
-	}
+use crate::common::boolean::Boolean;
+
+/// LHS/RHS のどちらかを `Boolean<Solid>` に正規化するための内部 trait。
+pub(crate) trait IntoBoolean {
+	fn into_boolean(self) -> Boolean<Solid>;
 }
 
-impl std::ops::Add for &Solid {
-	type Output = Result<Solid, Error>;
-	fn add(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_union([self], [rhs])?)
-	}
+impl IntoBoolean for Solid {
+	fn into_boolean(self) -> Boolean<Solid> { Boolean::singleton(self) }
+}
+impl IntoBoolean for &Solid {
+	fn into_boolean(self) -> Boolean<Solid> { Boolean::singleton(self.clone()) }
+}
+impl IntoBoolean for Boolean<Solid> {
+	fn into_boolean(self) -> Boolean<Solid> { self }
+}
+impl IntoBoolean for &Boolean<Solid> {
+	fn into_boolean(self) -> Boolean<Solid> { self.clone() }
 }
 
-impl std::ops::Sub for &Solid {
-	type Output = Result<Solid, Error>;
-	fn sub(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_subtract([self], [rhs])?)
-	}
+impl TryFrom<Boolean<Solid>> for Solid {
+	type Error = Error;
+	fn try_from(b: Boolean<Solid>) -> Result<Self, Error> { b.build() }
 }
 
-impl std::ops::Mul for &Solid {
-	type Output = Result<Solid, Error>;
-	fn mul(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_intersect([self], [rhs])?)
-	}
+macro_rules! impl_bool_ops {
+	($lhs:ty, $rhs:ty) => {
+		impl std::ops::Add<$rhs> for $lhs {
+			type Output = Boolean<Solid>;
+			fn add(self, rhs: $rhs) -> Boolean<Solid> {
+				Boolean::<Solid>::dnf_union(self.into_boolean(), rhs.into_boolean())
+			}
+		}
+		impl std::ops::Sub<$rhs> for $lhs {
+			type Output = Boolean<Solid>;
+			fn sub(self, rhs: $rhs) -> Boolean<Solid> {
+				Boolean::<Solid>::dnf_subtract(self.into_boolean(), rhs.into_boolean())
+			}
+		}
+		impl std::ops::Mul<$rhs> for $lhs {
+			type Output = Boolean<Solid>;
+			fn mul(self, rhs: $rhs) -> Boolean<Solid> {
+				Boolean::<Solid>::dnf_intersect(self.into_boolean(), rhs.into_boolean())
+			}
+		}
+	};
 }
+
+impl_bool_ops!(Solid, Solid);
+impl_bool_ops!(Solid, &Solid);
+impl_bool_ops!(Solid, Boolean<Solid>);
+impl_bool_ops!(Solid, &Boolean<Solid>);
+impl_bool_ops!(&Solid, Solid);
+impl_bool_ops!(&Solid, &Solid);
+impl_bool_ops!(&Solid, Boolean<Solid>);
+impl_bool_ops!(&Solid, &Boolean<Solid>);
+impl_bool_ops!(Boolean<Solid>, Solid);
+impl_bool_ops!(Boolean<Solid>, &Solid);
+impl_bool_ops!(Boolean<Solid>, Boolean<Solid>);
+impl_bool_ops!(Boolean<Solid>, &Boolean<Solid>);
+impl_bool_ops!(&Boolean<Solid>, Solid);
+impl_bool_ops!(&Boolean<Solid>, &Solid);
+impl_bool_ops!(&Boolean<Solid>, Boolean<Solid>);
+impl_bool_ops!(&Boolean<Solid>, &Boolean<Solid>);
 

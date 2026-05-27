@@ -48,7 +48,7 @@ fn shape_to_brep_bytes<'a>(shape: impl IntoIterator<Item = &'a Solid>) -> Vec<u8
 fn test_t01_union_drop_result_first() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = Solid::boolean_union([&a], [&b]).unwrap();
+	let result: Vec<Solid> = (&a + &b).build_vec().unwrap();
 	drop(result);
 	drop(a);
 	drop(b);
@@ -58,7 +58,7 @@ fn test_t01_union_drop_result_first() {
 fn test_t01_union_drop_result_last() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = Solid::boolean_union([&a], [&b]).unwrap();
+	let result: Vec<Solid> = (&a + &b).build_vec().unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -68,7 +68,7 @@ fn test_t01_union_drop_result_last() {
 fn test_t01_subtract_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = Solid::boolean_subtract([&a], [&b]).unwrap();
+	let result: Vec<Solid> = (&a - &b).build_vec().unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -78,7 +78,7 @@ fn test_t01_subtract_drop_order() {
 fn test_t01_intersect_drop_order() {
 	let a = test_box();
 	let b = test_box_2();
-	let result = Solid::boolean_intersect([&a], [&b]).unwrap();
+	let result: Vec<Solid> = (&a * &b).build_vec().unwrap();
 	drop(a);
 	drop(b);
 	drop(result);
@@ -89,8 +89,8 @@ fn test_t01_chained_boolean_drops() {
 	let a = test_box();
 	let b = test_box_2();
 	let c = test_box_3();
-	let r1 = Solid::boolean_union([&a], [&b]).unwrap();
-	let r2 = Solid::boolean_subtract(&r1, [&c]).unwrap();
+	let r1: Solid = (&a + &b).build().unwrap();
+	let r2: Solid = (&r1 - &c).build().unwrap();
 	drop(r1);
 	drop(r2);
 	drop(a);
@@ -139,7 +139,7 @@ fn test_t04_approximation_tolerance() {
 fn test_t05_translated_compound() {
 	let a = test_box();
 	let b = test_box_2();
-	let compound = Solid::boolean_union([&a], [&b]).unwrap();
+	let compound: Vec<Solid> = (&a + &b).build_vec().unwrap();
 	let v = dvec3(100.0, 0.0, 0.0);
 	let orig_mesh = cadrum::Solid::mesh(&compound, 0.1).unwrap();
 	let shifted: Vec<Solid> = compound.into_iter().map(|s| s.translate(v)).collect();
@@ -180,9 +180,9 @@ fn test_t06_brep_roundtrip() {
 fn test_t08_boolean_returns_shape() {
 	let a = test_box();
 	let b = test_box_2();
-	let _union: Vec<Solid> = Solid::boolean_union([&a], [&b]).unwrap();
-	let _sub: Vec<Solid> = Solid::boolean_subtract([&a], [&b]).unwrap();
-	let _inter: Vec<Solid> = Solid::boolean_intersect([&a], [&b]).unwrap();
+	let _union: Vec<Solid> = (&a + &b).build_vec().unwrap();
+	let _sub: Vec<Solid> = (&a - &b).build_vec().unwrap();
+	let _inter: Vec<Solid> = (&a * &b).build_vec().unwrap();
 }
 
 // ==================== STEP export ====================
@@ -192,7 +192,7 @@ fn test_t08_boolean_returns_shape() {
 fn test_hollow_cube_write_step() {
 	let outer = [Solid::cube(20.0, 20.0, 20.0).translate(dvec3(-10.0, -10.0, -10.0))];
 	let inner = [Solid::cube(10.0, 10.0, 10.0).translate(dvec3(-5.0, -5.0, -5.0))];
-	let hollow_cube = Solid::boolean_subtract(&outer, &inner).unwrap();
+	let hollow_cube: Vec<Solid> = (&outer[0] - &inner[0]).build_vec().unwrap();
 
 	std::fs::create_dir_all("out").unwrap();
 	let mut file = std::fs::File::create("out/hollow_cube.step").unwrap();
@@ -204,7 +204,7 @@ fn test_hollow_cube_write_step() {
 fn test_half_space_intersect() {
 	let shape = test_box();
 	let half = [Solid::half_space(dvec3(5.0, 0.0, 0.0), dvec3(1.0, 0.0, 0.0))];
-	let result = Solid::boolean_intersect([&shape], &half).unwrap();
+	let result: Vec<Solid> = (&shape * &half[0]).build_vec().unwrap();
 	assert!(!result.iter().all(|s| s.is_null()));
 }
 

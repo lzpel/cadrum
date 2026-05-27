@@ -84,9 +84,6 @@ impl Solid{
 	pub fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<crate::Solid, Error> where Edge: 'a + 'b {<Self as crate::traits::SolidStruct>::sweep(profile, spine, orient)}
 	pub fn loft<'a, S, I>(sections: S) -> Result<crate::Solid, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {<Self as crate::traits::SolidStruct>::loft(sections)}
 	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)}
-	pub fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_union(a, b)}
-	pub fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_subtract(a, b)}
-	pub fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_intersect(a, b)}
 	pub fn boolean_build(solids: &[crate::Solid], clauses: &[i64]) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::boolean_build(solids, clauses)}
 	pub fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_step(reader)}
 	pub fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_binary(reader)}

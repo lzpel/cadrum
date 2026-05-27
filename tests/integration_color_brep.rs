@@ -58,7 +58,7 @@ fn bin_colorless_shape_roundtrip() {
 fn bin_roundtrip_after_boolean() {
 	let cube = read_colored_box();
 	let half = [Solid::half_space(DVec3::ZERO, DVec3::NEG_Z)];
-	let solids = Solid::boolean_intersect(&cube, &half).expect("intersect should succeed");
+	let solids: Vec<Solid> = (&cube[0] * &half[0]).build_vec().expect("intersect should succeed");
 
 	assert!(colormap_len(&solids) >= 1, "at least one color should survive intersect");
 

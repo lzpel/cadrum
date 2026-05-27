@@ -1,6 +1,6 @@
 //! Boolean operations: union, subtract, and intersect between a box and a cylinder.
 
-use cadrum::{DVec3, Solid};
+use cadrum::{Boolean, DVec3, Solid};
 
 fn main() -> Result<(), cadrum::Error> {
     let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
@@ -13,31 +13,25 @@ fn main() -> Result<(), cadrum::Error> {
         .color("#e67e22");
 
     // union: merge both shapes into one — offset X=0
-    let union = (&make_box + &make_cyl)?;
+    let union: Solid = (&make_box + &make_cyl).build()?;
 
     // subtract: box minus cylinder — offset X=40
-    let subtract = (&make_box - &make_cyl)?;
+    let subtract: Solid = (&make_box - &make_cyl).build()?;
 
     // intersect: only the overlapping volume — offset X=80
-    let intersect = (&make_box * &make_cyl)?;
+    let intersect: Solid = (&make_box * &make_cyl).build()?;
 
     let cylinder = Solid::cylinder(8.0, DVec3::Z, 30.0)
         .translate(DVec3::X*4.);
     let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
 
     // sum = union of all cylinders
-    let sum = {
-        let mut v = Solid::boolean_union([&cylinder0], [&cylinder1])?;
-        v = Solid::boolean_union(v.iter(), [&cylinder2])?;
-        v.into_iter().next().ok_or(cadrum::Error::OneFailed(0))?.color("#d875ff")
-    };
+    let sum: Solid = Boolean::union_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let sum = sum.color("#d875ff");
 
     // product = intersection of all cylinders
-    let product = {
-        let mut v = Solid::boolean_intersect([&cylinder0], [&cylinder1])?;
-        v = Solid::boolean_intersect(v.iter(), [&cylinder2])?;
-        v.into_iter().next().ok_or(cadrum::Error::OneFailed(0))?.color("#00ff22")
-    };
+    let product: Solid = Boolean::intersect_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let product = product.color("#00ff22");
 
     let shapes = [
         union.translate(DVec3::X * 0.0), 

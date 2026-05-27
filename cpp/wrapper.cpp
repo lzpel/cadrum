@@ -55,10 +55,6 @@
 #include <BRepPrimAPI_MakeTorus.hxx>
 
 // --- Boolean operations & shape cleanup ---
-#include <BRepAlgoAPI_BooleanOperation.hxx>
-#include <BRepAlgoAPI_Fuse.hxx>
-#include <BRepAlgoAPI_Cut.hxx>
-#include <BRepAlgoAPI_Common.hxx>
 #include <BOPAlgo_CellsBuilder.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
@@ -525,30 +521,6 @@ void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child) {
 //   concatenated into the same out_history (no self/tool split — TShape*
 //   pointers are globally unique).
 
-// Helper: build relay map  pre_copy_result_tshape* → src_tshape*
-// Called before BRepBuilderAPI_Copy, while op history is alive.
-static void collect_relay_mapping(
-    BRepAlgoAPI_BooleanOperation& op,
-    const TopoDS_Shape& src,
-    std::unordered_map<uint64_t, uint64_t>& relay)
-{
-    for (TopExp_Explorer ex(src, TopAbs_FACE); ex.More(); ex.Next()) {
-        const TopoDS_Shape& sf = ex.Current();
-        uint64_t src_id = reinterpret_cast<uint64_t>(sf.TShape().get());
-        if (op.IsDeleted(sf)) continue;
-        const NCollection_List<TopoDS_Shape>& mods = op.Modified(sf);
-        if (mods.IsEmpty()) {
-            // Face is unchanged: its TShape* appears as-is in op.Shape().
-            relay[src_id] = src_id;
-        } else {
-            for (NCollection_List<TopoDS_Shape>::Iterator it(mods); it.More(); it.Next()) {
-                uint64_t pre_id = reinterpret_cast<uint64_t>(it.Value().TShape().get());
-                relay[pre_id] = src_id;
-            }
-        }
-    }
-}
-
 // Helper: after BRepBuilderAPI_Copy, match pre/post faces by their index in
 // NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> (BRepBuilderAPI_Copy preserves traversal order).
 // Emit [post_id, src_id] pairs into `out` for every face tracked in `relay`.
@@ -572,50 +544,7 @@ static void emit_from_pairs(
     }
 }
 
-// Unified boolean operation. `op_kind` selects the OCCT algorithm:
-//   0 = Fuse (union)
-//   1 = Cut  (subtract: a − b)
-//   2 = Common (intersect)
-// Any other value returns nullptr.
-//
-// All three OCCT operations derive from BRepAlgoAPI_BooleanOperation, so the
-// post-build relay/copy logic is identical. Branching only at construction
-// avoids triplicating the bookkeeping.
-//
-// out_history is appended-to (not cleared) — caller passes an empty rust::Vec.
-// Both a and b contributions are pushed into the same flat sequence.
-std::unique_ptr<TopoDS_Shape> builder_boolean(
-    const TopoDS_Shape& a, const TopoDS_Shape& b, uint32_t op_kind,
-    rust::Vec<uint64_t>& out_history)
-{
-    try {
-        std::unique_ptr<BRepAlgoAPI_BooleanOperation> op;
-        switch (op_kind) {
-            case 0: op = std::make_unique<BRepAlgoAPI_Fuse>(a, b); break;
-            case 1: op = std::make_unique<BRepAlgoAPI_Cut>(a, b); break;
-            case 2: op = std::make_unique<BRepAlgoAPI_Common>(a, b); break;
-            default: return nullptr;
-        }
-        op->Build();
-        if (!op->IsDone()) return nullptr;
-
-        std::unordered_map<uint64_t, uint64_t> relay_a, relay_b;
-        collect_relay_mapping(*op, a, relay_a);
-        collect_relay_mapping(*op, b, relay_b);
-
-        BRepBuilderAPI_Copy copier(op->Shape(), true, false);
-        auto shape = std::make_unique<TopoDS_Shape>(copier.Shape());
-        emit_from_pairs(op->Shape(), copier.Shape(), relay_a, out_history);
-        emit_from_pairs(op->Shape(), copier.Shape(), relay_b, out_history);
-        return shape;
-    } catch (const Standard_Failure&) {
-        return nullptr;
-    }
-}
-
 // CellsBuilder 用の relay 採取。
-// BRepAlgoAPI_BooleanOperation 用の collect_relay_mapping と同じことを
-// BOPAlgo_CellsBuilder のインターフェース (IsDeleted / Modified) で行う。
 static void collect_relay_mapping_cells(
     BOPAlgo_CellsBuilder& cb,
     const TopoDS_Shape& src,
