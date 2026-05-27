@@ -26,10 +26,18 @@ fn main() -> Result<(), cadrum::Error> {
     let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
 
     // sum = union of all cylinders
-    let sum = [&cylinder0, &cylinder1, &cylinder2].into_iter().sum::<Result<Solid, _>>()?.color("#d875ff");
-    
+    let sum = {
+        let mut v = Solid::boolean_union([&cylinder0], [&cylinder1])?;
+        v = Solid::boolean_union(v.iter(), [&cylinder2])?;
+        v.into_iter().next().ok_or(cadrum::Error::OneFailed(0))?.color("#d875ff")
+    };
+
     // product = intersection of all cylinders
-    let product = [&cylinder0, &cylinder1, &cylinder2].into_iter().product::<Result<Solid, _>>()?.color("#00ff22");
+    let product = {
+        let mut v = Solid::boolean_intersect([&cylinder0], [&cylinder1])?;
+        v = Solid::boolean_intersect(v.iter(), [&cylinder2])?;
+        v.into_iter().next().ok_or(cadrum::Error::OneFailed(0))?.color("#00ff22")
+    };
 
     let shapes = [
         union.translate(DVec3::X * 0.0), 

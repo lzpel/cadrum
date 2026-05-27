@@ -166,25 +166,12 @@ fn test_operator_overloads() {
 		Ok(_) => panic!("expected OneFailed(0), got Ok"),
 	}
 
-	// iter.sum() / iter.product() で union / intersect を畳む
-	let c = Solid::cube(10.0, 10.0, 10.0).translate(DVec3::new(2.0, 2.0, 2.0));
-	let solids = vec![a.clone(), b.clone(), c.clone()];
-
-	let unioned: Solid = solids.iter().sum::<Result<Solid, _>>().expect("sum union should succeed");
-	println!("sum (union of 3):       volume = {:.4}", unioned.volume());
-
-	let intersected: Solid = solids.iter().product::<Result<Solid, _>>().expect("product intersect should succeed");
-	println!("product (intersect 3):  volume = {:.4}", intersected.volume());
-
-	// 空イテレータ → Err(OneFailed(0))
-	let empty: Vec<Solid> = Vec::new();
-	match empty.iter().sum::<Result<Solid, _>>() {
-		Err(cadrum::Error::OneFailed(0)) => println!("sum of empty -> OneFailed(0) ✓"),
-		other => panic!("expected OneFailed(0), got {:?}", other.is_ok()),
-	}
+	// iter.sum() / iter.product() で union / intersect を畳む部分は Step 4 で
+	// Boolean::union_all/intersect_all ベースに書き換える。
 }
 
 #[test]
+#[ignore = "Sum/Product 廃止のため Step 4 で Boolean<S> ベースに書き換える"]
 fn test_sum_olympic_rings_out_of_order() {
 	// 5 つのソリッドが「隣り合うもの同士のみ重なる」鎖状配置: 1-2-3-4-5
 	// 順 1,3,5,2,4 で sum() すると、1+3 の時点では disjoint (2個) になるが
@@ -199,19 +186,8 @@ fn test_sum_olympic_rings_out_of_order() {
 	let ring4 = Solid::cube(s, s, s).translate(DVec3::new(3.0 * step, 0.0, 0.0));
 	let ring5 = Solid::cube(s, s, s).translate(DVec3::new(4.0 * step, 0.0, 0.0));
 
-	// out-of-order: 1, 3, 5, 2, 4
-	let out_of_order = [&ring1, &ring3, &ring5, &ring2, &ring4];
-	let unioned: Solid = out_of_order.iter().copied().sum::<Result<Solid, _>>()
-		.expect("out-of-order union should succeed at the end");
-	println!("out-of-order sum: volume = {:.4}", unioned.volume());
-
-	// 順番通りでも当然成功
-	let in_order = [&ring1, &ring2, &ring3, &ring4, &ring5];
-	let unioned_ordered: Solid = in_order.iter().copied().sum::<Result<Solid, _>>().unwrap();
-
-	// 両方とも同じ最終ボリュームになるはず
-	assert!((unioned.volume() - unioned_ordered.volume()).abs() < 1e-6,
-		"order-independent: {} vs {}", unioned.volume(), unioned_ordered.volume());
+	// Step 4 で Boolean::union_all + .build() に置換予定
+	let _ = (ring1, ring2, ring3, ring4, ring5);
 }
 
 /// solid を out/ 以下に SVG, STL, STEP で書き出す。

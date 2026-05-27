@@ -13,9 +13,23 @@ fn main() -> Result<(), Error> {
 	let base = part(inner, outer, height)?;
 	let parts = [base.clone(), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU / 3.0), base.clone().rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU * 2.0 / 3.0)];
 	// positive = 各 part の [outer, between] (= p[0], p[1]) を全部 union
-	let positive: Solid = parts.iter().flat_map(|p| [&p[0], &p[1]]).sum::<Result<Solid, _>>()?;
+	let positive: Solid = {
+		let refs: Vec<&Solid> = parts.iter().flat_map(|p| [&p[0], &p[1]]).collect();
+		let mut acc: Vec<Solid> = vec![refs[0].clone()];
+		for s in &refs[1..] {
+			acc = Solid::boolean_union(acc.iter(), [*s])?;
+		}
+		acc.into_iter().next().ok_or(Error::OneFailed(0))?
+	};
 	// negative = 各 part の inner cylinder (= p[2]) を全部 union
-	let negative: Solid = parts.iter().map(|p| &p[2]).sum::<Result<Solid, _>>()?;
+	let negative: Solid = {
+		let refs: Vec<&Solid> = parts.iter().map(|p| &p[2]).collect();
+		let mut acc: Vec<Solid> = vec![refs[0].clone()];
+		for s in &refs[1..] {
+			acc = Solid::boolean_union(acc.iter(), [*s])?;
+		}
+		acc.into_iter().next().ok_or(Error::OneFailed(0))?
+	};
 	let result = [(&positive - &negative)?];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
