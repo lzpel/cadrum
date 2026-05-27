@@ -60,7 +60,6 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BOPAlgo_CellsBuilder.hxx>
-#include <TopTools_ListOfShape.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 
@@ -647,6 +646,24 @@ std::unique_ptr<TopoDS_Shape> builder_cells(
 {
     try {
         if (solids.empty() || clauses.size() == 0) return nullptr;
+
+        // BOPAlgo_CellsBuilder は引数 N≥2 を想定するため、単一 solid の場合は
+        // deep copy のみで返す (DNF clause が `[+1, 0]` の単純ケース)。
+        if (solids.size() == 1 && clauses.size() == 2 && clauses[0] == 1 && clauses[1] == 0) {
+            BRepBuilderAPI_Copy copier(solids[0], true, false);
+            auto shape = std::make_unique<TopoDS_Shape>(copier.Shape());
+            // history: 各 face の self-mapping (post_id = src_id) を出力。
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> pre_map, post_map;
+            TopExp::MapShapes(solids[0], TopAbs_FACE, pre_map);
+            TopExp::MapShapes(copier.Shape(), TopAbs_FACE, post_map);
+            for (int i = 1; i <= pre_map.Extent(); ++i) {
+                uint64_t src_id = reinterpret_cast<uint64_t>(pre_map(i).TShape().get());
+                uint64_t post_id = reinterpret_cast<uint64_t>(post_map(i).TShape().get());
+                out_history.push_back(post_id);
+                out_history.push_back(src_id);
+            }
+            return shape;
+        }
 
         BOPAlgo_CellsBuilder cb;
         NCollection_List<TopoDS_Shape> args;

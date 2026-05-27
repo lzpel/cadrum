@@ -17,7 +17,7 @@ pub use traits::{BSplineEnd, Compound, ProfileOrient, Wire};
 // Re-export common types
 #[cfg(feature = "color")]
 pub use common::color::Color;
-pub use common::{error::Error, mesh::{Mesh, Scene2D}};
+pub use common::{boolean::Boolean, error::Error, mesh::{Mesh, Scene2D}};
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
 // adding a direct `glam` dependency — otherwise a mismatched glam minor
@@ -87,6 +87,7 @@ impl Solid{
 	pub fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_union(a, b)}
 	pub fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_subtract(a, b)}
 	pub fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_intersect(a, b)}
+	pub fn boolean_build(solids: &[crate::Solid], clauses: &[i64]) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::boolean_build(solids, clauses)}
 	pub fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_step(reader)}
 	pub fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_binary(reader)}
 	pub fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_text(reader)}

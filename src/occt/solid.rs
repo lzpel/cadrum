@@ -448,6 +448,10 @@ impl SolidStruct for Solid {
 		Self::boolean_intersect_impl(a, b)
 	}
 
+	fn boolean_build(solids: &[Self], clauses: &[i64]) -> Result<Vec<Self>, Error> {
+		Self::boolean_build_impl(solids, clauses)
+	}
+
 	// --- I/O (delegates to super::io helpers) ---
 
 	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
@@ -693,6 +697,43 @@ impl Solid {
 
 	pub(crate) fn boolean_intersect_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
 		Self::boolean_op_impl(a, b, BOOLEAN_OP_COMMON)
+	}
+
+	/// CellsBuilder ベースの一括評価。DIMACS-flat DNF (`clauses`) を C++ 側に渡す。
+	pub(crate) fn boolean_build_impl(solids: &[Solid], clauses: &[i64]) -> Result<Vec<Solid>, Error> {
+		if solids.is_empty() || clauses.is_empty() {
+			return Err(Error::OneFailed(0));
+		}
+		debug_assert!(clauses.last() == Some(&0), "clauses must be 0-terminated");
+
+		let mut solid_vec = ffi::shape_vec_new();
+		for s in solids {
+			ffi::shape_vec_push(solid_vec.pin_mut(), s.inner());
+		}
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::builder_cells(&solid_vec, clauses, &mut history);
+		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
+
+		#[cfg(feature = "color")]
+		let colormap = {
+			let mut m = std::collections::HashMap::new();
+			for pair in history.chunks_exact(2) {
+				for s in solids {
+					if let Some(&c) = s.colormap.get(&pair[1]) {
+						m.entry(pair[0]).or_insert(c);
+						break;
+					}
+				}
+			}
+			m
+		};
+
+		let compound = CompoundShape::from_raw(
+			inner,
+			#[cfg(feature = "color")] colormap,
+			history,
+		);
+		Ok(compound.decompose())
 	}
 }
 

@@ -668,6 +668,10 @@ pub trait SolidStruct: Sized + Clone + Compound {
 	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
 	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
 	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
+	/// DIMACS-flat DNF (`+i` = solids[i-1] を take、`-i` = avoid、`0` = clause 終端)
+	/// に基づく任意ブール式の一括評価。`Boolean<S>` 経由が正路で、直接呼ぶ用途は
+	/// trait 実装者のテストのみ。
+	fn boolean_build(solids: &[Self], clauses: &[i64]) -> Result<Vec<Self>, Error>;
 
 	// --- I/O ---
 	// Co-located with constructors: STEP / BRep readers return `Vec<Self>` (a
