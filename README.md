@@ -65,7 +65,7 @@ exposes through `Solid::mesh` when an STL export or SVG render is required.
 | **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline` |
 | **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline` |
 | **Editing** | `Solid::shell`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
-| **Booleans** | `Solid::boolean_union`, `Solid::boolean_subtract`, `Solid::boolean_intersect` |
+| **Booleans** | `+` / `-` / `*` 演算子 → `Boolean<Solid>` (遅延式) → `.build()` / `.build_vec()` で評価。低レベルは `Solid::boolean_build(&solids, &clauses)` |
 | **Transforms** *(shared by `Solid` / `Edge` / `Compound` / `Wire`)* | `translate`, `rotate`, `rotate_x` / `_y` / `_z`, `scale`, `mirror`, `align_x` / `_y` / `_z` |
 | **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains` |
 | **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Face::iter_edge`, `Face::project`, `Edge::project` |
@@ -307,7 +307,7 @@ cargo run --example 04_boolean
 ```rust,no_run
 //! Boolean operations: union, subtract, and intersect between a box and a cylinder.
 
-use cadrum::{DVec3, Solid};
+use cadrum::{Boolean, DVec3, Solid};
 
 fn main() -> Result<(), cadrum::Error> {
     let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
@@ -320,23 +320,25 @@ fn main() -> Result<(), cadrum::Error> {
         .color("#e67e22");
 
     // union: merge both shapes into one — offset X=0
-    let union = (&make_box + &make_cyl)?;
+    let union: Solid = (&make_box + &make_cyl).build()?;
 
     // subtract: box minus cylinder — offset X=40
-    let subtract = (&make_box - &make_cyl)?;
+    let subtract: Solid = (&make_box - &make_cyl).build()?;
 
     // intersect: only the overlapping volume — offset X=80
-    let intersect = (&make_box * &make_cyl)?;
+    let intersect: Solid = (&make_box * &make_cyl).build()?;
 
     let cylinder = Solid::cylinder(8.0, DVec3::Z, 30.0)
         .translate(DVec3::X*4.);
     let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
 
     // sum = union of all cylinders
-    let sum = [&cylinder0, &cylinder1, &cylinder2].into_iter().sum::<Result<Solid, _>>()?.color("#d875ff");
-    
+    let sum: Solid = Boolean::union_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let sum = sum.color("#d875ff");
+
     // product = intersection of all cylinders
-    let product = [&cylinder0, &cylinder1, &cylinder2].into_iter().product::<Result<Solid, _>>()?.color("#00ff22");
+    let product: Solid = Boolean::intersect_all([&cylinder0, &cylinder1, &cylinder2]).build()?;
+    let product = product.color("#00ff22");
 
     let shapes = [
         union.translate(DVec3::X * 0.0), 
@@ -594,11 +596,12 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
 	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z, h_thread);
 	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z, h_thread);
-	let thread_shaft = (&(&thread + &shaft)? * &crest)?;
+	let thread_shaft: Solid = ((&thread + &shaft) * &crest).build()?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
 	let head = Solid::cylinder(r_head, DVec3::Z, h_head).translate(DVec3::Z * h_thread);
-	Ok((&thread_shaft + &head)?.color("red"))
+	let res: Solid = (&thread_shaft + &head).build()?;
+	Ok(res.color("red"))
 }
 
 // ==================== Component 2: U-shaped pipe ====================
@@ -724,7 +727,7 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// want to use as shell openings.
 	let cutter_face_ids: std::collections::HashSet<u64> =
 		cutter.iter_face().map(|f| f.id()).collect();
-	let half = (&torus * &cutter)?;
+	let half: Solid = (&torus * &cutter).build()?;
 	let from_cutter: std::collections::HashSet<u64> = half
 		.iter_history()
 		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
@@ -995,8 +998,7 @@ fn main() -> Result<(), cadrum::Error> {
 	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.
 	let corner_cut = Solid::sphere(10.0)
 		.translate(DVec3::new(20.0, 15.0, 10.0));
-	let part = (&block - &hole)?;
-	let part = (&part - &corner_cut)?;
+	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
@@ -1130,11 +1132,17 @@ collection" intent visible at the call site.
 
 ## Booleans and Topology History
 
-Boolean operations return `Vec<Solid>` because a subtraction or
-intersection can split into several disjoint pieces. Each result solid
-carries a `Solid::iter_history` log of `[post_id, src_id]` pairs — every
-face in the result remembers which face of which input it came from. That
-makes face selectors stable across boolean stages:
+Boolean expressions are built lazily with `+` / `-` / `*` on `Solid` (or
+`&Solid`) and produce a `Boolean<Solid>` expression tree. Call
+`.build()` to get a single `Solid` (or `Err(OneFailed(n))` if the result
+splits into `n ≠ 1` pieces) or `.build_vec()` to get all pieces. Internally
+the expression is normalized to **DIMACS-flat DNF** (`Vec<i64>` + 0 終端)
+and passed to OCCT's `BOPAlgo_CellsBuilder`, which computes all
+intersections in a single pass.
+
+Each result `Solid` carries an `iter_history` log of `[post_id, src_id]`
+pairs — every face in the result remembers which face of which input it
+came from. That makes face selectors stable across boolean stages:
 
 ```rust,no_run
 use cadrum::{Compound, DVec3, Solid};
@@ -1143,8 +1151,8 @@ let block = Solid::cube(20.0, 20.0, 20.0);
 let hole  = Solid::cylinder(8.0, DVec3::Z, 30.0)
     .translate(DVec3::new(10.0, 10.0, -5.0));
 
-let drilled = Solid::boolean_subtract([&block], [&hole])?;
-let from_block: Vec<u64> = drilled[0]
+let drilled: Solid = (&block - &hole).build()?;
+let from_block: Vec<u64> = drilled
     .iter_history()
     .filter(|[_, src]| *src == block.id())   // faces inherited from `block`
     .map(|[post, _]| post)
