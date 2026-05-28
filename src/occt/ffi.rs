@@ -70,9 +70,10 @@ mod ffi_bridge {
 
 		// ==================== Builders (solid → solid with history) ====================
 
-		// Unified boolean op. `op_kind`: 0 = fuse(union), 1 = cut(a − b), 2 = common(intersect).
-		// `out_history` is appended with flat [post_id, src_id, ...] pairs covering both inputs.
-		fn builder_boolean(a: &TopoDS_Shape, b: &TopoDS_Shape, op_kind: u32, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
+		// Evaluate any boolean expression on N solids via BOPAlgo_CellsBuilder.
+		// `clauses` は DIMACS-flat DNF (`+i` = solids[i-1] を take、`-i` = avoid、`0` = clause 終端)。
+		// `out_history` の形式は builder_boolean と同じ。
+		fn builder_cells(solids: &CxxVector<TopoDS_Shape>, clauses: &[i64], out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		// Unify shared faces. `out_history` receives flat [new_id, old_id, ...]
 		// pairs (same layout as `builder_boolean`), used by Solid::clean to populate
@@ -168,6 +169,9 @@ mod ffi_bridge {
 
 		fn face_vec_new() -> UniquePtr<CxxVector<TopoDS_Face>>;
 		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);
+
+		fn shape_vec_new() -> UniquePtr<CxxVector<TopoDS_Shape>>;
+		fn shape_vec_push(v: Pin<&mut CxxVector<TopoDS_Shape>>, s: &TopoDS_Shape);
 
 	}
 }

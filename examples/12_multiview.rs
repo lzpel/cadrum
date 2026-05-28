@@ -18,8 +18,7 @@ fn main() -> Result<(), cadrum::Error> {
 	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.
 	let corner_cut = Solid::sphere(10.0)
 		.translate(DVec3::new(20.0, 15.0, 10.0));
-	let part = (&block - &hole)?;
-	let part = (&part - &corner_cut)?;
+	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
