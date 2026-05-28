@@ -678,91 +678,27 @@ impl Clone for Solid {
 
 // ==================== `+` / `-` / `*` operators ====================
 //
-// `Solid` / `&Solid` / `Boolean<Solid>` / `&Boolean<Solid>` の任意組合せで
-// 演算でき、結果は `Boolean<Solid>` (遅延式)。終端評価は `.build()` (= 単一 Solid)
-// または `.build_vec()` (= Vec<Solid>) を呼ぶ。
+// `Solid` / `&Solid` / `Boolean<Solid>` の任意組合せで演算でき、結果は
+// `Boolean<Solid>` (遅延式)。終端評価は `.build()` (= 単一 Solid) または
+// `.build_vec()` (= Vec<Solid>)。連結記法: `(&a + &b - &c * solid_d).build()?`
 //
-// 連結記法: `(&a + &b - &c * solid_d).build()?`
-//
-// 全パターンを手書きすると 4×4×3 = 48 個になるのでマクロで生成する。
-// 戦略: 演算子内で両辺を `Boolean<Solid>` に変換してから `Boolean::dnf_*` を呼ぶ。
-// orphan rule: 各 impl で LHS/RHS のどちらかが Solid または Boolean<Solid> なので OK。
-
-/// LHS/RHS のどちらかを `Boolean<Solid>` に正規化するための内部 trait。
-pub(crate) trait IntoBoolean {
-	fn into_boolean(self) -> Boolean<Solid>;
-}
-
-impl IntoBoolean for Solid {
-	// owned: shallow handle copy + move metadata.
-	// `&self` で `Solid::boolean(...)` を呼ぶと colormap/history が clone されてしまうので
-	// owned 経路では明示的に move する。TShape は clone_shape_handle で refcount 共有。
-	fn into_boolean(self) -> Boolean<Solid> {
-		let s = Solid {
-			inner: ffi::clone_shape_handle(&self.inner),
-			edges: OnceLock::new(),
-			faces: OnceLock::new(),
-			#[cfg(feature = "color")] colormap: self.colormap,
-			history: self.history,
-		};
-		Boolean::from_parts(vec![s], vec![1, 0])
-	}
-}
-impl IntoBoolean for &Solid {
-	fn into_boolean(self) -> Boolean<Solid> {
-		<Solid as SolidStruct>::boolean(std::iter::once(self), [1i64, 0])
-	}
-}
-impl IntoBoolean for Boolean<Solid> {
-	fn into_boolean(self) -> Boolean<Solid> { self }
-}
-impl IntoBoolean for &Boolean<Solid> {
-	// Boolean::clone は新実装で S::boolean 経由 → shallow copy で TShape 保存。
-	fn into_boolean(self) -> Boolean<Solid> { self.clone() }
-}
+// 中核 (From<S>/From<&S>、および Boolean<S> を左辺とする全演算子) は generic に
+// src/common/boolean.rs にある。ここでは orphan rule で generic 化できない
+// 「裸の Solid/&Solid を左辺とする」糖衣だけを `traits::impl_solid_boolean_ops!`
+// で具象 Solid 向けに生成する。本体は LHS を `Boolean::from` で持ち上げ generic 演算子へ委譲。
 
 impl TryFrom<Boolean<Solid>> for Solid {
+	// `.build()` の終端評価。汎用 `impl<S: SolidStruct> TryFrom<Boolean<S>> for S` は
+	// orphan rule 違反なので具象 Solid 側に置く。
 	type Error = Error;
 	fn try_from(b: Boolean<Solid>) -> Result<Self, Error> { b.build() }
 }
 
-macro_rules! impl_bool_ops {
-	($lhs:ty, $rhs:ty) => {
-		impl std::ops::Add<$rhs> for $lhs {
-			type Output = Boolean<Solid>;
-			fn add(self, rhs: $rhs) -> Boolean<Solid> {
-				Boolean::<Solid>::dnf_union(self.into_boolean(), rhs.into_boolean())
-			}
-		}
-		impl std::ops::Sub<$rhs> for $lhs {
-			type Output = Boolean<Solid>;
-			fn sub(self, rhs: $rhs) -> Boolean<Solid> {
-				Boolean::<Solid>::dnf_subtract(self.into_boolean(), rhs.into_boolean())
-			}
-		}
-		impl std::ops::Mul<$rhs> for $lhs {
-			type Output = Boolean<Solid>;
-			fn mul(self, rhs: $rhs) -> Boolean<Solid> {
-				Boolean::<Solid>::dnf_intersect(self.into_boolean(), rhs.into_boolean())
-			}
-		}
-	};
-}
-
-impl_bool_ops!(Solid, Solid);
-impl_bool_ops!(Solid, &Solid);
-impl_bool_ops!(Solid, Boolean<Solid>);
-impl_bool_ops!(Solid, &Boolean<Solid>);
-impl_bool_ops!(&Solid, Solid);
-impl_bool_ops!(&Solid, &Solid);
-impl_bool_ops!(&Solid, Boolean<Solid>);
-impl_bool_ops!(&Solid, &Boolean<Solid>);
-impl_bool_ops!(Boolean<Solid>, Solid);
-impl_bool_ops!(Boolean<Solid>, &Solid);
-impl_bool_ops!(Boolean<Solid>, Boolean<Solid>);
-impl_bool_ops!(Boolean<Solid>, &Boolean<Solid>);
-impl_bool_ops!(&Boolean<Solid>, Solid);
-impl_bool_ops!(&Boolean<Solid>, &Solid);
-impl_bool_ops!(&Boolean<Solid>, Boolean<Solid>);
-impl_bool_ops!(&Boolean<Solid>, &Boolean<Solid>);
+use crate::traits::impl_solid_boolean_ops;
+impl_solid_boolean_ops!(Solid, Solid, Solid);
+impl_solid_boolean_ops!(Solid, Solid, &Solid);
+impl_solid_boolean_ops!(Solid, Solid, Boolean<Solid>);
+impl_solid_boolean_ops!(Solid, &Solid, Solid);
+impl_solid_boolean_ops!(Solid, &Solid, &Solid);
+impl_solid_boolean_ops!(Solid, &Solid, Boolean<Solid>);
 

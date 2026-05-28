@@ -29,6 +29,7 @@
 use crate::common::error::Error;
 use crate::traits::SolidStruct;
 use std::iter::{Product, Sum};
+use std::ops::{Add, Mul, Sub};
 
 pub struct Boolean<S: SolidStruct> {
 	pub(crate) solids: Vec<S>,
@@ -174,6 +175,68 @@ impl<S: SolidStruct> TryFrom<Boolean<S>> for Vec<S> {
 // は orphan rule 違反 (`S` が外部型かもしれないという扱いで coherence チェックに
 // 引っかかる) ため、`Boolean::build` メソッドだけ提供してユーザーは
 // `(expr).build()?` を使う。
+
+// ==================== From / 演算子 ====================
+//
+// `Solid` / `&Solid` を `Boolean<S>` に持ち上げる入口が `From`。演算子の中核は
+// `Boolean<S>` を左辺とする impl に集約し、本体は一律 `dnf_*` を 1 回呼ぶだけ
+// (このファイルが演算子の唯一の dnf 呼び出し箇所)。
+//
+// 裸の `Solid`/`&Solid` を左辺とする糖衣は orphan rule のため generic 化できず、
+// `traits::impl_solid_boolean_ops!` マクロで具象 backend 型向けに生成する
+// (invoke は src/occt/solid.rs)。
+
+impl<S: SolidStruct> From<S> for Boolean<S> {
+	// `S::boolean` は TShape identity を保つ shallow copy。owned 入力でも借用して
+	// 渡すだけで、所有権ベースの metadata move 最適化はしない (generic 契約から
+	// 組む以上の軽微なコスト)。
+	fn from(s: S) -> Self {
+		S::boolean(std::iter::once(&s), [1i64, 0])
+	}
+}
+
+impl<'a, S: SolidStruct> From<&'a S> for Boolean<S> {
+	fn from(s: &'a S) -> Self {
+		S::boolean(std::iter::once(s), [1i64, 0])
+	}
+}
+
+// `Boolean<S>` を左辺とする `+`/`-`/`*`。RHS ∈ {Boolean<S>, S, &S} を `.into()` で
+// `Boolean<S>` に正規化 (Boolean<S> は reflexive `From<T> for T`、S/&S は上記 From)
+// してから dnf 合成する。値 RHS と参照 RHS でライフタイム束縛が異なるので 2 アーム。
+macro_rules! boolean_lhs_ops {
+	(& $rhs:ty) => {
+		impl<'a, S: SolidStruct> Add<&'a $rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn add(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_union(self, rhs.into()) }
+		}
+		impl<'a, S: SolidStruct> Sub<&'a $rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn sub(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_subtract(self, rhs.into()) }
+		}
+		impl<'a, S: SolidStruct> Mul<&'a $rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn mul(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_intersect(self, rhs.into()) }
+		}
+	};
+	($rhs:ty) => {
+		impl<S: SolidStruct> Add<$rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn add(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_union(self, rhs.into()) }
+		}
+		impl<S: SolidStruct> Sub<$rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn sub(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_subtract(self, rhs.into()) }
+		}
+		impl<S: SolidStruct> Mul<$rhs> for Boolean<S> {
+			type Output = Boolean<S>;
+			fn mul(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_intersect(self, rhs.into()) }
+		}
+	};
+}
+boolean_lhs_ops!(Boolean<S>);
+boolean_lhs_ops!(S);
+boolean_lhs_ops!(&S);
 
 // ==================== Sum / Product (集約) ====================
 //
