@@ -58,7 +58,7 @@ fn test_svg_cylinder() {
 fn test_svg_has_hidden_lines() {
 	let a = [Solid::cube(10.0, 10.0, 10.0)];
 	let b = [Solid::cube(10.0, 10.0, 10.0).translate(dvec3(5.0, 5.0, 0.0))];
-	let shape: Vec<Solid> = Solid::boolean_union(&a, &b).unwrap();
+	let shape: Vec<Solid> = (&a[0] + &b[0]).build_vec().unwrap();
 	let svg = svg_string(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1);
 
 	assert!(svg.contains("#bbb"), "should contain hidden line color");

@@ -101,10 +101,10 @@
 //! - `#[cfg(...)]` は直前1行のみ認識し、続く fn に付与される
 //! - `type Foo;` などの associated type 宣言は無視される（メソッド生成対象外）
 
-use std::{iter::{Product, Sum}, ops::{Add, Mul, Sub}};
 
 #[cfg(feature = "color")]
 use crate::common::color::Color;
+use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
 use glam::{DMat3, DQuat, DVec3};
@@ -585,15 +585,20 @@ pub trait SolidStruct: Sized + Clone + Transform where for<'a> &'a Self: Add<Out
 	/// cross-section direction (always closed).
 	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error>;
 
-	// --- Boolean primitives (FFI への唯一の通路) ---
+	// --- Boolean primitive (FFI への唯一の通路) ---
 	// Per-result-Solid face derivation history is attached to each Solid via
 	// `Solid::iter_history()`; no separate metadata channel.
-	// NOTE: multi-args / multi-tools セマンティクスは OCCT 仕様上「グループ内自己交差は
-	// 未定義」となるため将来的に単体×単体ラッパー (`Solid::union/subtract/intersect`)
-	// を公開し本関数群はそれらの内部実装として残る予定。
-	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
-	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
-	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b;
+	//
+	// ユーザーは `Boolean<S>` (= Solid に対する `+`/`-`/`*` 演算子で構築) を
+	// `.build()` / `.build_vec()` に渡す経路を使う。下記 2 メソッドが Boolean<S>
+	// と FFI を繋ぐ通路:
+	//
+	// - `boolean(solids, clauses)` — `&Self` を shallow copy しつつ Boolean を構築。
+	//   バックエンドは TShape identity を保つ複製 (OCCT なら clone_shape_handle) を行う。
+	//   common::boolean 内のすべての solid 複製はこの経路を通る。
+	// - `boolean_build(&Boolean)` — DIMACS-flat DNF の `clauses` を FFI に渡して評価。
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a;
+	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error>;
 
 	// --- I/O ---
 	// Co-located with constructors: STEP / BRep readers return `Vec<Self>` (a

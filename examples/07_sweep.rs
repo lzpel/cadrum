@@ -49,11 +49,12 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
 	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z, h_thread);
 	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z, h_thread);
-	let thread_shaft = (&(&thread + &shaft)? * &crest)?;
+	let thread_shaft: Solid = ((&thread + &shaft) * &crest).build()?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
 	let head = Solid::cylinder(r_head, DVec3::Z, h_head).translate(DVec3::Z * h_thread);
-	Ok((&thread_shaft + &head)?.color("red"))
+	let res: Solid = (&thread_shaft + &head).build()?;
+	Ok(res.color("red"))
 }
 
 // ==================== Component 2: U-shaped pipe ====================

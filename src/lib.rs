@@ -18,7 +18,7 @@ pub use traits::{BSplineEnd, ProfileOrient};
 // Re-export common types
 #[cfg(feature = "color")]
 pub use common::color::Color;
-pub use common::{error::Error, mesh::{Mesh, Scene2D}};
+pub use common::{boolean::Boolean, error::Error, mesh::{Mesh, Scene2D}};
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
 // adding a direct `glam` dependency — otherwise a mismatched glam minor
@@ -93,9 +93,8 @@ impl Solid{
 	pub fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<crate::Solid, Error> where Edge: 'a + 'b {<Self as crate::traits::SolidStruct>::sweep(profile, spine, orient)}
 	pub fn loft<'a, S, I>(sections: S) -> Result<crate::Solid, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {<Self as crate::traits::SolidStruct>::loft(sections)}
 	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)}
-	pub fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_union(a, b)}
-	pub fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_subtract(a, b)}
-	pub fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a crate::Solid>, b: impl IntoIterator<Item = &'b crate::Solid>) -> Result<Vec<crate::Solid>, Error> where Self: 'a + 'b {<Self as crate::traits::SolidStruct>::boolean_intersect(a, b)}
+	pub fn boolean<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, clauses: impl IntoIterator<Item = i64>) -> Boolean<crate::Solid> where Self: 'a {<Self as crate::traits::SolidStruct>::boolean(solids, clauses)}
+	pub fn boolean_build(b: &Boolean<crate::Solid>) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::boolean_build(b)}
 	pub fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_step(reader)}
 	pub fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_binary(reader)}
 	pub fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_text(reader)}
@@ -116,3 +115,26 @@ impl Solid{
 	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)}
 	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)}
 }
+// ==================== Boolean Operations ====================
+macro_rules! impl_solid_boolean_ops {
+	($t:ty, $lhs:ty, $rhs:ty) => {
+		impl ::core::ops::Add<$rhs> for $lhs {
+			type Output = $crate::Boolean<$t>;
+			fn add(self, rhs: $rhs) -> $crate::Boolean<$t> { $crate::Boolean::from(self) + rhs }
+		}
+		impl ::core::ops::Sub<$rhs> for $lhs {
+			type Output = $crate::Boolean<$t>;
+			fn sub(self, rhs: $rhs) -> $crate::Boolean<$t> { $crate::Boolean::from(self) - rhs }
+		}
+		impl ::core::ops::Mul<$rhs> for $lhs {
+			type Output = $crate::Boolean<$t>;
+			fn mul(self, rhs: $rhs) -> $crate::Boolean<$t> { $crate::Boolean::from(self) * rhs }
+		}
+	};
+}
+impl_solid_boolean_ops!(Solid, Solid, Solid);
+impl_solid_boolean_ops!(Solid, Solid, &Solid);
+impl_solid_boolean_ops!(Solid, Solid, Boolean<Solid>);
+impl_solid_boolean_ops!(Solid, &Solid, Solid);
+impl_solid_boolean_ops!(Solid, &Solid, &Solid);
+impl_solid_boolean_ops!(Solid, &Solid, Boolean<Solid>);

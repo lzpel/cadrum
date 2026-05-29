@@ -45,9 +45,9 @@ fn chijin() -> Result<Solid, cadrum::Error> {
 	let blocks: [Solid; N] = std::array::from_fn(|i| block_proto.clone().rotate_z(angle(i)).color(color(i)));
 	let holes: [Solid; N] = std::array::from_fn(|i| hole_proto.clone().rotate_z(angle(i)));
 	// ── Assemble with boolean operations: union, subtract, union ─────────
-	let mut result = (&(&cylinder + &sheets[0])? + &sheets[1])?;
+	let mut result: Solid = (&cylinder + &sheets[0] + &sheets[1]).build()?;
 	for i in 0..N{
-		result=(&(&result - &holes[i])? + &blocks[i])?
+		result = (&result - &holes[i] + &blocks[i]).build()?;
 	}
 	Ok(result)
 }

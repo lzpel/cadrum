@@ -2,6 +2,7 @@ use super::compound::CompoundShape;
 use super::edge::Edge;
 use super::face::Face;
 use super::ffi;
+use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::traits::{ProfileOrient, SolidStruct, Transform};
 use glam::DVec3;
@@ -434,18 +435,58 @@ impl SolidStruct for Solid {
 		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
 	}
 
-	// ==================== Boolean primitives ====================
+	// ==================== Boolean primitive ====================
 
-	fn boolean_union<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_union_impl(a, b)
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a {
+		// TShape* を共有する shallow copy で Boolean を組む。Solid::clone() (=
+		// BRepBuilderAPI_Copy) と違い、各 face の id() が元と一致するため
+		// boolean 結果の history (post_id, src_id) を呼び出し側の face id と
+		// 照合できる。
+		let solids: Vec<Solid> = solids.into_iter().map(|s| Solid {
+			inner: ffi::clone_shape_handle(&s.inner),
+			edges: OnceLock::new(),
+			faces: OnceLock::new(),
+			#[cfg(feature = "color")] colormap: s.colormap.clone(),
+			history: s.history.clone(),
+		}).collect();
+		Boolean::from_parts(solids, clauses.into_iter().collect())
 	}
+	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error> {
+		// CellsBuilder ベースの一括評価。DIMACS-flat DNF (`clauses`) を C++ 側に渡す。
+		let (solids, clauses) = (b.solids(), b.clauses());
+		if solids.is_empty() || clauses.is_empty() {
+			return Err(Error::OneFailed(0));
+		}
+		debug_assert!(clauses.last() == Some(&0), "clauses must be 0-terminated");
 
-	fn boolean_subtract<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_subtract_impl(a, b)
-	}
+		let mut solid_vec = ffi::shape_vec_new();
+		for s in solids {
+			ffi::shape_vec_push(solid_vec.pin_mut(), s.inner());
+		}
+		let mut history: Vec<u64> = Default::default();
+		let inner = ffi::builder_cells(&solid_vec, clauses, &mut history);
+		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
 
-	fn boolean_intersect<'a, 'b>(a: impl IntoIterator<Item = &'a Self>, b: impl IntoIterator<Item = &'b Self>) -> Result<Vec<Self>, Error> where Self: 'a + 'b {
-		Self::boolean_intersect_impl(a, b)
+		#[cfg(feature = "color")]
+		let colormap = {
+			let mut m = std::collections::HashMap::new();
+			for pair in history.chunks_exact(2) {
+				for s in solids {
+					if let Some(&c) = s.colormap.get(&pair[1]) {
+						m.entry(pair[0]).or_insert(c);
+						break;
+					}
+				}
+			}
+			m
+		};
+
+		let compound = CompoundShape::from_raw(
+			inner,
+			#[cfg(feature = "color")] colormap,
+			history,
+		);
+		Ok(compound.decompose())
 	}
 
 	// --- I/O (delegates to super::io helpers) ---
@@ -618,138 +659,3 @@ impl Clone for Solid {
 	}
 }
 
-// ==================== Boolean operations ====================
-
-#[cfg(feature = "color")]
-fn merge_colormaps(history: &[u64], colormap_a: &std::collections::HashMap<u64, crate::common::color::Color>, colormap_b: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
-	let mut result = std::collections::HashMap::new();
-	for pair in history.chunks_exact(2) {
-		// TShape* pointers are globally unique across both inputs, so a
-		// single lookup against either colormap suffices (no collision).
-		if let Some(&color) = colormap_a.get(&pair[1]).or_else(|| colormap_b.get(&pair[1])) {
-			result.insert(pair[0], color);
-		}
-	}
-	result
-}
-
-// `ca` / `cb` carry the source colormaps and are only consulted by the
-// `color` feature; the boolean result and history are derived purely from
-// the FFI out-parameter, so they go unused without `color`.
-#[cfg_attr(not(feature = "color"), allow(unused_variables))]
-fn build_boolean_result(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, history: Vec<u64>, ca: CompoundShape, cb: CompoundShape) -> Result<Vec<Solid>, Error> {
-	#[cfg(feature = "color")]
-	let colormap = merge_colormaps(&history, ca.colormap(), cb.colormap());
-
-	let compound = CompoundShape::from_raw(
-		inner,
-		#[cfg(feature = "color")]
-		colormap,
-		history,
-	);
-
-	Ok(compound.decompose())
-}
-
-// Op kind tags matching the C++ side `boolean_op` switch.
-const BOOLEAN_OP_FUSE: u32 = 0;
-const BOOLEAN_OP_CUT: u32 = 1;
-const BOOLEAN_OP_COMMON: u32 = 2;
-
-impl Solid {
-	fn boolean_op_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>, op_kind: u32) -> Result<Vec<Solid>, Error> {
-		let ca = CompoundShape::new(a);
-		let cb = CompoundShape::new(b);
-		let mut history: Vec<u64> = Default::default();
-		let inner = ffi::builder_boolean(ca.inner(), cb.inner(), op_kind, &mut history);
-		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
-		build_boolean_result(inner, history, ca, cb)
-	}
-
-	pub(crate) fn boolean_union_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_FUSE)
-	}
-
-	pub(crate) fn boolean_subtract_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_CUT)
-	}
-
-	pub(crate) fn boolean_intersect_impl<'a, 'b>(a: impl IntoIterator<Item = &'a Solid>, b: impl IntoIterator<Item = &'b Solid>) -> Result<Vec<Solid>, Error> {
-		Self::boolean_op_impl(a, b, BOOLEAN_OP_COMMON)
-	}
-}
-
-// ==================== `+` / `-` / `*` for &Solid ====================
-//
-// 単体×単体 boolean のシンタックスシュガー。戻り値は Vec ではなく単一 Solid:
-// 結果が 1 個でなければ `Error::OneFailed(n)` を返す。複数ピースになりうる
-// 演算では本演算子は使わず `Solid::boolean_*` を直接使うこと。
-//
-// `&Solid` に impl する理由: `Solid` 自身を consume すると clone コストが嵩む。
-// `&a + &b` で書ける。
-
-fn exactly_one(mut v: Vec<Solid>) -> Result<Solid, Error> {
-	match v.len() {
-		1 => Ok(v.pop().unwrap()),
-		n => Err(Error::OneFailed(n)),
-	}
-}
-
-impl std::ops::Add for &Solid {
-	type Output = Result<Solid, Error>;
-	fn add(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_union([self], [rhs])?)
-	}
-}
-
-impl std::ops::Sub for &Solid {
-	type Output = Result<Solid, Error>;
-	fn sub(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_subtract([self], [rhs])?)
-	}
-}
-
-impl std::ops::Mul for &Solid {
-	type Output = Result<Solid, Error>;
-	fn mul(self, rhs: &Solid) -> Self::Output {
-		exactly_one(Solid::boolean_intersect([self], [rhs])?)
-	}
-}
-
-// `iter.sum::<Result<Solid, Error>>()` / `iter.product::<Result<Solid, Error>>()` で
-// `&Solid` イテレータを union / intersect で畳む。空イテレータは `Err(OneFailed(0))`。
-//
-// **中間結果は `Vec<Solid>` のまま保持**し、終端でのみ「単一 Solid か」をチェックする。
-// `&acc + s` を `try_fold` で連鎖させると中間が複数 Solid になった瞬間 OneFailed で
-// 打ち切られ、オリンピックの輪のような「最終的には 1 連結体だが演算順序によっては
-// 途中で複数ピースになる」ケースを誤って失敗扱いにしてしまう。例: 5 つの輪を
-// 1→3→5→2→4 の順で fold すると 1+3 の時点で disjoint だが、最後の 4 で全体が連結する。
-//
-// 戻り型を `Solid` ではなく `Result<Solid, Error>` にしているのは、`Sum::sum` が
-// `-> Self` で panic か Result しか選択肢がなく、CAD 文脈で panic は避けたいため。
-//
-// `Sum<&'a Solid> for &'a Solid` (= ユーザー初稿) は戻り型 `&Solid` が新規所有値の
-// 借用となり成立しない。`Sum<&'a Solid> for Result<Solid, Error>` で
-// 「`&Solid` を畳んで Owned な Solid を Result でくるんで返す」と素直に書ける。
-
-impl<'a> std::iter::Sum<&'a Solid> for Result<Solid, Error> {
-	fn sum<I: Iterator<Item = &'a Solid>>(mut iter: I) -> Self {
-		let first = iter.next().ok_or(Error::OneFailed(0))?;
-		let mut acc: Vec<Solid> = vec![first.clone()];
-		for s in iter {
-			acc = Solid::boolean_union(&acc, [s])?;
-		}
-		exactly_one(acc)
-	}
-}
-
-impl<'a> std::iter::Product<&'a Solid> for Result<Solid, Error> {
-	fn product<I: Iterator<Item = &'a Solid>>(mut iter: I) -> Self {
-		let first = iter.next().ok_or(Error::OneFailed(0))?;
-		let mut acc: Vec<Solid> = vec![first.clone()];
-		for s in iter {
-			acc = Solid::boolean_intersect(&acc, [s])?;
-		}
-		exactly_one(acc)
-	}
-}
