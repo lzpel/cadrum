@@ -9,6 +9,7 @@ linkedin.md
 *.stl
 *.svg
 *.png
+*.glb
 *.tar.gz
 uv.lock
 *.dockerignore

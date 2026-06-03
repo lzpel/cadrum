@@ -161,22 +161,36 @@ fn render_example(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	s
 }
 
-/// Render README asset markdown (images + download links) for an entry.
-/// entry に属するアセットを GitHub Pages URL 付きの markdown にして連結して返す。
+/// Render README asset markdown for an entry: a single-line `Output:` row of
+/// download links (present artifacts only, fixed type order) followed by the
+/// SVG preview image.
+/// entry に属するアセットを 1 行の `Output:` リンク行 + SVG プレビュー画像にして返す。
 fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	let stem = entry.stem();
-	outputs.iter()
-		.filter_map(|(p, _)| {
-			let name = p.to_str()?;
-			if !name.starts_with(stem) { return None; }
-			match p.extension().and_then(|e| e.to_str()) {
-				Some("svg") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})\n\n<div align=center><img src='https://lzpel.github.io/cadrum/{name}' alt='{stem}' width='360'/></div>\n")),
-				Some("step" | "brep" | "stl" | "png") => Some(format!("- [{name}](https://lzpel.github.io/cadrum/{name})")),
-				_ => None,
-			}
-		})
-		.collect::<Vec<_>>()
-		.join("\n")
+	// Files belonging to this example, e.g. "01_primitives.glb" / この example の生成物
+	let owned = |ext: &str| -> Vec<String> {
+		outputs.iter()
+			.filter_map(|(p, _)| p.to_str().map(str::to_string))
+			.filter(|name| name.starts_with(stem) && name.ends_with(&format!(".{ext}")))
+			.collect()
+	};
+
+	// One link per present artifact, in a fixed type order / 固定順で存在物のみリンク化
+	let links: Vec<String> = ["png", "step", "glb", "brep", "stl", "svg"]
+		.iter()
+		.flat_map(|ext| owned(ext))
+		.map(|name| format!("[{name}](https://lzpel.github.io/cadrum/{name})"))
+		.collect();
+	if links.is_empty() {
+		return String::new();
+	}
+
+	let mut out = format!("Output: {}\n", links.join(" | "));
+	// Keep the SVG preview image below the links / SVG プレビュー画像を下に残す
+	for name in owned("svg") {
+		out.push_str(&format!("\n<div align=center><img src='https://lzpel.github.io/cadrum/{name}' alt='{stem}' width='360'/></div>\n"));
+	}
+	out
 }
 
 /// Render the `## Usage` section: thumbnail table + install instructions.

@@ -21,7 +21,10 @@ fn main() -> Result<(), cadrum::Error> {
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh([&part], Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-	println!("wrote {example_name}.png");
+	println!("wrote {example_name}.png / {example_name}.stl / {example_name}.glb");
 	Ok(())
 }

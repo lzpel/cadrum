@@ -144,18 +144,19 @@ fn main() -> Result<(), cadrum::Error> {
 
     Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
+    let scene = Solid::mesh(&solids, Default::default())?.scene(DVec3::ONE, DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
     scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    let mesh = Solid::mesh(&solids, Default::default())?;
+    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
 }
 
 ```
-- [01_primitives.png](https://lzpel.github.io/cadrum/01_primitives.png)
-- [01_primitives.step](https://lzpel.github.io/cadrum/01_primitives.step)
-- [01_primitives.svg](https://lzpel.github.io/cadrum/01_primitives.svg)
+Output: [01_primitives.png](https://lzpel.github.io/cadrum/01_primitives.png) | [01_primitives.step](https://lzpel.github.io/cadrum/01_primitives.step) | [01_primitives.glb](https://lzpel.github.io/cadrum/01_primitives.glb) | [01_primitives.stl](https://lzpel.github.io/cadrum/01_primitives.stl) | [01_primitives.svg](https://lzpel.github.io/cadrum/01_primitives.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/01_primitives.svg' alt='01_primitives' width='360'/></div>
 
@@ -209,11 +210,12 @@ fn main() -> Result<(), cadrum::Error> {
         .flat_map(|(i, solids)| solids.into_iter().map(move |s| s.translate(DVec3::X * spacing * i as f64)))
         .collect();
 
-    let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
+    let scene = Solid::mesh(&all, Default::default())?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
     scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
-    Solid::mesh(&all, 0.1)?.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    Solid::mesh(&all, Default::default())?.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    Solid::mesh(&all, Default::default())?.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
     // 5. Print summary
     let stl_path = format!("{example_name}.stl");
@@ -226,15 +228,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
-- [02_write_read.brep](https://lzpel.github.io/cadrum/02_write_read.brep)
-- [02_write_read.png](https://lzpel.github.io/cadrum/02_write_read.png)
-- [02_write_read.step](https://lzpel.github.io/cadrum/02_write_read.step)
-- [02_write_read.stl](https://lzpel.github.io/cadrum/02_write_read.stl)
-- [02_write_read.svg](https://lzpel.github.io/cadrum/02_write_read.svg)
+Output: [02_write_read.png](https://lzpel.github.io/cadrum/02_write_read.png) | [02_write_read.step](https://lzpel.github.io/cadrum/02_write_read.step) | [02_write_read.glb](https://lzpel.github.io/cadrum/02_write_read.glb) | [02_write_read.brep](https://lzpel.github.io/cadrum/02_write_read.brep) | [02_write_read_text.brep](https://lzpel.github.io/cadrum/02_write_read_text.brep) | [02_write_read.stl](https://lzpel.github.io/cadrum/02_write_read.stl) | [02_write_read.svg](https://lzpel.github.io/cadrum/02_write_read.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/02_write_read.svg' alt='02_write_read' width='360'/></div>
 
-- [02_write_read_text.brep](https://lzpel.github.io/cadrum/02_write_read_text.brep)
 
 #### Transform
 
@@ -282,18 +279,19 @@ fn main() -> Result<(), cadrum::Error> {
 
     Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let scene = Solid::mesh(&solids, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
+    let scene = Solid::mesh(&solids, Default::default())?.scene(DVec3::ONE, DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
     scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    let mesh = Solid::mesh(&solids, Default::default())?;
+    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
 }
 
 ```
-- [03_transform.png](https://lzpel.github.io/cadrum/03_transform.png)
-- [03_transform.step](https://lzpel.github.io/cadrum/03_transform.step)
-- [03_transform.svg](https://lzpel.github.io/cadrum/03_transform.svg)
+Output: [03_transform.png](https://lzpel.github.io/cadrum/03_transform.png) | [03_transform.step](https://lzpel.github.io/cadrum/03_transform.step) | [03_transform.glb](https://lzpel.github.io/cadrum/03_transform.glb) | [03_transform.stl](https://lzpel.github.io/cadrum/03_transform.stl) | [03_transform.svg](https://lzpel.github.io/cadrum/03_transform.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/03_transform.svg' alt='03_transform' width='360'/></div>
 
@@ -352,18 +350,19 @@ fn main() -> Result<(), cadrum::Error> {
 
     Solid::write_step(&shapes, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let scene = Solid::mesh(&shapes, 0.5)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
+    let scene = Solid::mesh(&shapes, Default::default())?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false);
     scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
     scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+    let mesh = Solid::mesh(&shapes, Default::default())?;
+    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
     println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
     Ok(())
 }
 
 ```
-- [04_boolean.png](https://lzpel.github.io/cadrum/04_boolean.png)
-- [04_boolean.step](https://lzpel.github.io/cadrum/04_boolean.step)
-- [04_boolean.svg](https://lzpel.github.io/cadrum/04_boolean.svg)
+Output: [04_boolean.png](https://lzpel.github.io/cadrum/04_boolean.png) | [04_boolean.step](https://lzpel.github.io/cadrum/04_boolean.step) | [04_boolean.glb](https://lzpel.github.io/cadrum/04_boolean.glb) | [04_boolean.stl](https://lzpel.github.io/cadrum/04_boolean.stl) | [04_boolean.svg](https://lzpel.github.io/cadrum/04_boolean.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/04_boolean.svg' alt='04_boolean' width='360'/></div>
 
@@ -446,18 +445,19 @@ fn main() -> Result<(), Error> {
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
+	let scene = Solid::mesh(&result, Default::default())?.scene(DVec3::ONE, DVec3::Z, true, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&result, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [05_extrude.png](https://lzpel.github.io/cadrum/05_extrude.png)
-- [05_extrude.step](https://lzpel.github.io/cadrum/05_extrude.step)
-- [05_extrude.svg](https://lzpel.github.io/cadrum/05_extrude.svg)
+Output: [05_extrude.png](https://lzpel.github.io/cadrum/05_extrude.png) | [05_extrude.step](https://lzpel.github.io/cadrum/05_extrude.step) | [05_extrude.glb](https://lzpel.github.io/cadrum/05_extrude.glb) | [05_extrude.stl](https://lzpel.github.io/cadrum/05_extrude.stl) | [05_extrude.svg](https://lzpel.github.io/cadrum/05_extrude.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/05_extrude.svg' alt='05_extrude' width='360'/></div>
 
@@ -522,18 +522,19 @@ fn main() -> Result<(), Error> {
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&result, 0.5)?.scene(DVec3::ONE, DVec3::Z, true, false);
+	let scene = Solid::mesh(&result, Default::default())?.scene(DVec3::ONE, DVec3::Z, true, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&result, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [06_loft.png](https://lzpel.github.io/cadrum/06_loft.png)
-- [06_loft.step](https://lzpel.github.io/cadrum/06_loft.step)
-- [06_loft.svg](https://lzpel.github.io/cadrum/06_loft.svg)
+Output: [06_loft.png](https://lzpel.github.io/cadrum/06_loft.png) | [06_loft.step](https://lzpel.github.io/cadrum/06_loft.step) | [06_loft.glb](https://lzpel.github.io/cadrum/06_loft.glb) | [06_loft.stl](https://lzpel.github.io/cadrum/06_loft.stl) | [06_loft.svg](https://lzpel.github.io/cadrum/06_loft.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/06_loft.svg' alt='06_loft' width='360'/></div>
 
@@ -672,18 +673,19 @@ fn main() -> Result<(), Error> {
 	Solid::write_step(&all, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
 	// Helical threads have dense hidden lines that clutter the output; disable them.
-	let scene = Solid::mesh(&all, 0.5)?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false);
+	let scene = Solid::mesh(&all, Default::default())?.scene(DVec3::new(1.0, 1.0, -1.0), DVec3::Z, false, false);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&all, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png ({} solids)", all.len());
 	Ok(())
 }
 
 ```
-- [07_sweep.png](https://lzpel.github.io/cadrum/07_sweep.png)
-- [07_sweep.step](https://lzpel.github.io/cadrum/07_sweep.step)
-- [07_sweep.svg](https://lzpel.github.io/cadrum/07_sweep.svg)
+Output: [07_sweep.png](https://lzpel.github.io/cadrum/07_sweep.png) | [07_sweep.step](https://lzpel.github.io/cadrum/07_sweep.step) | [07_sweep.glb](https://lzpel.github.io/cadrum/07_sweep.glb) | [07_sweep.stl](https://lzpel.github.io/cadrum/07_sweep.stl) | [07_sweep.svg](https://lzpel.github.io/cadrum/07_sweep.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/07_sweep.svg' alt='07_sweep' width='360'/></div>
 
@@ -751,18 +753,19 @@ fn main() -> Result<(), Error> {
 
 	// Isometric view from (1, 1, 2) with shading so the cavity depth reads
 	// naturally.
-	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
+	let scene = Solid::mesh(&result, Default::default())?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&result, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [08_shell.png](https://lzpel.github.io/cadrum/08_shell.png)
-- [08_shell.step](https://lzpel.github.io/cadrum/08_shell.step)
-- [08_shell.svg](https://lzpel.github.io/cadrum/08_shell.svg)
+Output: [08_shell.png](https://lzpel.github.io/cadrum/08_shell.png) | [08_shell.step](https://lzpel.github.io/cadrum/08_shell.step) | [08_shell.glb](https://lzpel.github.io/cadrum/08_shell.glb) | [08_shell.stl](https://lzpel.github.io/cadrum/08_shell.stl) | [08_shell.svg](https://lzpel.github.io/cadrum/08_shell.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/08_shell.svg' alt='08_shell' width='360'/></div>
 
@@ -817,18 +820,19 @@ fn main() -> Result<(), cadrum::Error> {
 
 	Solid::write_step(&objects, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&objects, 0.05)?.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true);
+	let scene = Solid::mesh(&objects, Default::default())?.scene(DVec3::new(0.05, 0.05, 1.0), DVec3::Y, false, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&objects, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [09_bspline.png](https://lzpel.github.io/cadrum/09_bspline.png)
-- [09_bspline.step](https://lzpel.github.io/cadrum/09_bspline.step)
-- [09_bspline.svg](https://lzpel.github.io/cadrum/09_bspline.svg)
+Output: [09_bspline.png](https://lzpel.github.io/cadrum/09_bspline.png) | [09_bspline.step](https://lzpel.github.io/cadrum/09_bspline.step) | [09_bspline.glb](https://lzpel.github.io/cadrum/09_bspline.glb) | [09_bspline.stl](https://lzpel.github.io/cadrum/09_bspline.stl) | [09_bspline.svg](https://lzpel.github.io/cadrum/09_bspline.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/09_bspline.svg' alt='09_bspline' width='360'/></div>
 
@@ -886,18 +890,19 @@ fn main() -> Result<(), Error> {
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
+	let scene = Solid::mesh(&result, Default::default())?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&result, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [10_fillet.png](https://lzpel.github.io/cadrum/10_fillet.png)
-- [10_fillet.step](https://lzpel.github.io/cadrum/10_fillet.step)
-- [10_fillet.svg](https://lzpel.github.io/cadrum/10_fillet.svg)
+Output: [10_fillet.png](https://lzpel.github.io/cadrum/10_fillet.png) | [10_fillet.step](https://lzpel.github.io/cadrum/10_fillet.step) | [10_fillet.glb](https://lzpel.github.io/cadrum/10_fillet.glb) | [10_fillet.stl](https://lzpel.github.io/cadrum/10_fillet.stl) | [10_fillet.svg](https://lzpel.github.io/cadrum/10_fillet.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/10_fillet.svg' alt='10_fillet' width='360'/></div>
 
@@ -955,18 +960,19 @@ fn main() -> Result<(), Error> {
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-	let scene = Solid::mesh(&result, 0.2)?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
+	let scene = Solid::mesh(&result, Default::default())?.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, true);
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&result, Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
 	Ok(())
 }
 
 ```
-- [11_chamfer.png](https://lzpel.github.io/cadrum/11_chamfer.png)
-- [11_chamfer.step](https://lzpel.github.io/cadrum/11_chamfer.step)
-- [11_chamfer.svg](https://lzpel.github.io/cadrum/11_chamfer.svg)
+Output: [11_chamfer.png](https://lzpel.github.io/cadrum/11_chamfer.png) | [11_chamfer.step](https://lzpel.github.io/cadrum/11_chamfer.step) | [11_chamfer.glb](https://lzpel.github.io/cadrum/11_chamfer.glb) | [11_chamfer.stl](https://lzpel.github.io/cadrum/11_chamfer.stl) | [11_chamfer.svg](https://lzpel.github.io/cadrum/11_chamfer.svg)
 
 <div align=center><img src='https://lzpel.github.io/cadrum/11_chamfer.svg' alt='11_chamfer' width='360'/></div>
 
@@ -1003,13 +1009,17 @@ fn main() -> Result<(), cadrum::Error> {
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh([&part], Default::default())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-	println!("wrote {example_name}.png");
+	println!("wrote {example_name}.png / {example_name}.stl / {example_name}.glb");
 	Ok(())
 }
 
 ```
-- [12_multiview.png](https://lzpel.github.io/cadrum/12_multiview.png)
+Output: [12_multiview.png](https://lzpel.github.io/cadrum/12_multiview.png) | [12_multiview.glb](https://lzpel.github.io/cadrum/12_multiview.glb) | [12_multiview.stl](https://lzpel.github.io/cadrum/12_multiview.stl)
+
 
 
 ## The Type Map
