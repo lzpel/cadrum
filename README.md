@@ -80,7 +80,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cadrum = "^0.7"
+cadrum = "^0.8"
 ```
 
 `cargo build` automatically downloads a prebuilt OCCT 8.0.0 binary for the targets below.
@@ -1051,130 +1051,6 @@ let total: f64 = shifted.iter().map(|s| s.volume()).sum();
 
 An ordered `Vec<Edge>` *is* a wire (open or closed polyline); sweep / loft /
 extrude all take any `IntoIterator<Item = &Edge>`.
-
-### Spatial transforms
-
-The transform family — `translate`, `rotate`, `rotate_x` / `_y` / `_z`,
-`scale`, `mirror`, `align_x` / `_y` / `_z` — is an inherent method on each
-single shape (`Solid`, `Edge`). Apply it to a collection element-wise with
-`map`:
-
-```rust,no_run
-use cadrum::{DVec3, Edge, Solid};
-use std::f64::consts::FRAC_PI_4;
-
-let s: Solid        = Solid::sphere(1.0).translate(DVec3::X);
-let e: Edge         = Edge::circle(1.0, DVec3::Z)?.rotate_x(FRAC_PI_4);
-let v_s: Vec<Solid> = vec![Solid::cube(1.0, 1.0, 1.0)].into_iter().map(|s| s.translate(DVec3::Y)).collect();
-let v_e: Vec<Edge>  = Edge::polygon(&[
-    DVec3::ZERO, DVec3::X, DVec3::X + DVec3::Y, DVec3::Y,
-])?.into_iter().map(|e| e.rotate_z(FRAC_PI_4)).collect();
-# Ok::<(), cadrum::Error>(())
-```
-
-## Working with Wires
-
-Wire constructors return either a single `Edge` or `Vec<Edge>` depending on
-what is natural for the curve:
-
-```rust,no_run
-use cadrum::{BSplineEnd, DVec3, Edge};
-
-// Single-edge primitives → Edge
-let line   = Edge::line(DVec3::ZERO, DVec3::X)?;
-let arc    = Edge::arc_3pts(DVec3::ZERO, DVec3::X, DVec3::Y)?;
-let circle = Edge::circle(1.0, DVec3::Z)?;
-let helix  = Edge::helix(1.0, 0.4, 6.0, DVec3::Z, DVec3::X)?;
-
-// Multi-edge primitive → Vec<Edge>
-let square = Edge::polygon(&[
-    DVec3::new(0.0, 0.0, 0.0),
-    DVec3::new(1.0, 0.0, 0.0),
-    DVec3::new(1.0, 1.0, 0.0),
-    DVec3::new(0.0, 1.0, 0.0),
-])?;
-
-// Free-form curve → Edge (single B-spline)
-let curve = Edge::bspline(
-    &[DVec3::ZERO, DVec3::X, DVec3::X + DVec3::Y, DVec3::Y],
-    BSplineEnd::NotAKnot,
-)?;
-# Ok::<(), cadrum::Error>(())
-```
-
-Either shape feeds `Solid::extrude`, `Solid::sweep`, or `Solid::loft`
-uniformly because they take `IntoIterator<Item = &Edge>`:
-
-```rust,no_run
-# use cadrum::{DVec3, Edge, Solid};
-# let circle = Edge::circle(1.0, DVec3::Z)?;
-# let square: Vec<Edge> = vec![];
-let s1 = Solid::extrude(&[circle], DVec3::Z * 5.0)?;
-let s2 = Solid::extrude(&square,   DVec3::Z * 5.0)?;
-# Ok::<(), cadrum::Error>(())
-```
-
-Pass a single edge as `&[edge]` rather than relying on a sugar that lets
-`&edge` adapt — the slice form keeps the "this function consumes a
-collection" intent visible at the call site.
-
-## Booleans and Topology History
-
-Boolean expressions are built lazily with `+` / `-` / `*` on `Solid` (or
-`&Solid`) and produce a `Boolean<Solid>` expression tree. Call
-`.build()` to get a single `Solid` (or `Err(OneFailed(n))` if the result
-splits into `n ≠ 1` pieces) or `.build_vec()` to get all pieces. Internally
-the expression is normalized to **DIMACS-flat DNF** (`Vec<i64>` + 0 終端)
-and passed to OCCT's `BOPAlgo_CellsBuilder`, which computes all
-intersections in a single pass.
-
-Each result `Solid` carries an `iter_history` log of `[post_id, src_id]`
-pairs — every face in the result remembers which face of which input it
-came from. That makes face selectors stable across boolean stages:
-
-```rust,no_run
-use cadrum::{DVec3, Solid};
-
-let block = Solid::cube(20.0, 20.0, 20.0);
-let hole  = Solid::cylinder(8.0, DVec3::Z, 30.0)
-    .translate(DVec3::new(10.0, 10.0, -5.0));
-
-let drilled: Solid = (&block - &hole).build()?;
-let from_block: Vec<u64> = drilled
-    .iter_history()
-    .filter(|[_, src]| *src == block.id())   // faces inherited from `block`
-    .map(|[post, _]| post)
-    .collect();
-# Ok::<(), cadrum::Error>(())
-```
-
-See `examples/08_shell.rs` for a worked end-to-end use of this mechanism
-(shelling a torus through cut faces produced by a half-space subtraction).
-
-## Mesh and Visual Output
-
-`Solid::mesh` flattens any number of solids into a single triangle `Mesh`
-using OCCT's BRep mesher (`BRepMesh_IncrementalMesh`). From a `Mesh`,
-`Mesh::write_stl` emits a binary STL; `Mesh::scene` builds a backend-
-agnostic `Scene2D` (projection + shading + silhouette + occlusion) which
-each 2D backend (currently SVG) consumes — handy for documentation and
-quick visual diffs:
-
-```rust,no_run
-use cadrum::{DVec3, Solid};
-
-let parts = [Solid::cube(10.0, 20.0, 30.0)];
-let mesh  = Solid::mesh(&parts, 0.5)?;
-
-mesh.write_stl(&mut std::fs::File::create("out.stl").unwrap())?;
-mesh.scene(
-    DVec3::ONE,   // view direction
-    DVec3::Z,     // up direction
-    true,         // classify hidden lines
-    false,        // Lambertian shading off
-).write_svg(&mut std::fs::File::create("out.svg").unwrap())?;
-# Ok::<(), cadrum::Error>(())
-```
 
 ## Errors
 
