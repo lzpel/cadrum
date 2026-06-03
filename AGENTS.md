@@ -7,3 +7,4 @@
 # Agent
 
 - For implementation instructions, run tests to verify after implementation
+- Keep comments to the essential points only
