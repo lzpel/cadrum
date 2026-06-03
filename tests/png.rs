@@ -24,7 +24,7 @@ fn png_dimensions(buf: &[u8]) -> (u32, u32) {
 fn test_png_box_isometric() {
 	let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
-	let scene = mesh.scene(dvec3(1.0, 1.0, 1.0).normalize(), DVec3::Z, true, false);
+	let scene = mesh.scene(cadrum::SceneOption { view: dvec3(1.0, 1.0, 1.0).normalize(), ..Default::default() });
 
 	let mut buf = Vec::new();
 	scene.write_png([400, 400], &mut buf).unwrap();
@@ -40,7 +40,7 @@ fn test_png_box_isometric() {
 fn test_png_cylinder_shaded() {
 	let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0)];
 	let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
-	let scene = mesh.scene(dvec3(1.0, 0.5, 0.3).normalize(), DVec3::Z, true, true);
+	let scene = mesh.scene(cadrum::SceneOption { view: dvec3(1.0, 0.5, 0.3).normalize(), shading: true, ..Default::default() });
 
 	let mut buf = Vec::new();
 	scene.write_png([400, 600], &mut buf).unwrap();
@@ -58,7 +58,7 @@ fn test_png_dimensions_are_exact() {
 	// regardless of viewbox aspect (letterboxed when aspects differ).
 	let shape = [Solid::cube(DVec3::ZERO, DVec3::new(50.0, 10.0, 10.0))];
 	let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.5, relative_linear: false, ..Default::default() }).unwrap();
-	let scene = mesh.scene(DVec3::Z, DVec3::Y, false, false);
+	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::Z, up: DVec3::Y, hidden_edges: false, shading: false });
 
 	for dims in [[500, 500], [800, 200], [200, 800]] {
 		let mut buf = Vec::new();
