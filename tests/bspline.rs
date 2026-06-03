@@ -16,9 +16,9 @@ fn write_outputs(solids: &[Solid], name: &str) {
 	let mut f = std::fs::File::create(format!("out/{name}.step")).unwrap();
 	cadrum::Solid::write_step(solids, &mut f).expect("step write");
 	let mut f = std::fs::File::create(format!("out/{name}.stl")).unwrap();
-	cadrum::Solid::mesh(solids, 0.1).and_then(|m| m.write_stl(&mut f)).expect("stl write");
+	cadrum::Solid::mesh(solids, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).and_then(|m| m.write_stl(&mut f)).expect("stl write");
 	let mut f = std::fs::File::create(format!("out/{name}.svg")).unwrap();
-	cadrum::Solid::mesh(solids, 0.5).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false).write_svg(&mut f)).expect("svg write");
+	cadrum::Solid::mesh(solids, cadrum::Tessellation { deflection_linear: 0.5, relative_linear: false, ..Default::default() }).and_then(|m| m.scene(DVec3::new(1.0, 1.0, 2.0), DVec3::Z, true, false).write_svg(&mut f)).expect("svg write");
 }
 
 /// XZ 平面(法線 Y)と YZ 平面(法線 X)で 4 象限に分割し、180° 回転対称

@@ -122,8 +122,8 @@ fn test_t04_approximation_tolerance() {
 	let cyl = [Solid::cylinder(10.0, dvec3(0.0, 0.0, 1.0) * 20.0)];
 	let mut has_difference = false;
 	for edge in cyl.iter().flat_map(|s| s.iter_edge()) {
-		let coarse = edge.approximation_segments(1.0).len();
-		let fine = edge.approximation_segments(0.01).len();
+		let coarse = edge.approximation_segments(cadrum::Tessellation { deflection_linear: 1.0, relative_linear: false, ..Default::default() }).len();
+		let fine = edge.approximation_segments(cadrum::Tessellation { deflection_linear: 0.01, relative_linear: false, ..Default::default() }).len();
 		if fine > coarse {
 			has_difference = true;
 		}
@@ -141,9 +141,9 @@ fn test_t05_translated_compound() {
 	let b = test_box_2();
 	let compound: Vec<Solid> = (&a + &b).build_vec().unwrap();
 	let v = dvec3(100.0, 0.0, 0.0);
-	let orig_mesh = cadrum::Solid::mesh(&compound, 0.1).unwrap();
+	let orig_mesh = cadrum::Solid::mesh(&compound, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 	let shifted: Vec<Solid> = compound.into_iter().map(|s| s.translate(v)).collect();
-	let shifted_mesh = cadrum::Solid::mesh(&shifted, 0.1).unwrap();
+	let shifted_mesh = cadrum::Solid::mesh(&shifted, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), shifted_mesh.vertices.len());
 	for (o, s) in orig_mesh.vertices.iter().zip(shifted_mesh.vertices.iter()) {
@@ -159,11 +159,11 @@ fn test_t05_translated_compound() {
 #[test]
 fn test_t06_brep_roundtrip() {
 	let original = test_box();
-	let orig_mesh = cadrum::Solid::mesh([&original], 0.1).unwrap();
+	let orig_mesh = cadrum::Solid::mesh([&original], cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 
 	let brep_data = shape_to_brep_bytes([&original]);
 	let restored = cadrum::Solid::read_brep_binary(&mut brep_data.as_slice()).unwrap();
-	let rest_mesh = cadrum::Solid::mesh(&restored, 0.1).unwrap();
+	let rest_mesh = cadrum::Solid::mesh(&restored, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 	for (o, r) in orig_mesh.vertices.iter().zip(rest_mesh.vertices.iter()) {
@@ -226,7 +226,7 @@ fn test_brep_text_roundtrip() {
 	assert!(!text_data.is_empty());
 
 	let restored = cadrum::Solid::read_brep_text(&mut text_data.as_slice()).unwrap();
-	let orig_mesh = cadrum::Solid::mesh([&original], 0.1).unwrap();
-	let rest_mesh = cadrum::Solid::mesh(&restored, 0.1).unwrap();
+	let orig_mesh = cadrum::Solid::mesh([&original], cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
+	let rest_mesh = cadrum::Solid::mesh(&restored, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 }
