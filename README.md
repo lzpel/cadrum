@@ -91,6 +91,8 @@ cadrum = "^0.7"
 | ![img](figure/linux.svg) | `aarch64-unknown-linux-gnu` | ✅ |
 | ![img](figure/windows.svg) | `x86_64-pc-windows-msvc` | ✅ |
 | ![img](figure/windows.svg) | `x86_64-pc-windows-gnu` | ✅ |
+| ![img](figure/apple.svg) | `aarch64-apple-darwin` | ✅ |
+| ![img](figure/apple.svg) | `x86_64-apple-darwin` | ✅ |
 
 For other targets, build OCCT from source:
 
