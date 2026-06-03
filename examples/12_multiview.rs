@@ -10,9 +10,9 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let block = Solid::cube(40.0, 30.0, 20.0)
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(40.0, 30.0, 20.0))
 		.translate(-DVec3::new(20.0, 15.0, 10.0));
-	let hole = Solid::cylinder(5.0, DVec3::Z, 30.0)
+	let hole = Solid::cylinder(5.0, DVec3::Z * 30.0)
 		.translate(-DVec3::Z * 15.0);
 	// Axis-orientation check: carve only the +X+Y+Z corner with a sphere.
 	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.

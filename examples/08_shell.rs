@@ -9,14 +9,14 @@
 use cadrum::{DVec3, Error, Solid};
 
 fn hollow_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(8.0, 8.0, 8.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
 	// TopExp_Explorer order on a box is stable; +Z face ends up last.
 	let top = cube.iter_face().last().expect("cube has faces");
 	cube.shell(-1.0, [top])
 }
 
 fn sealed_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(8.0, 8.0, 8.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
 	cube.shell(-1.0, std::iter::empty::<&cadrum::Face>())
 }
 

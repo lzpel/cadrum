@@ -66,10 +66,10 @@ impl Face{
 impl Solid{
     ////////// codegen.rs
 	pub fn id(&self) -> u64 {<Self as crate::traits::SolidStruct>::id(self)}
-	pub fn cube(x: f64, y: f64, z: f64) -> crate::Solid {<Self as crate::traits::SolidStruct>::cube(x, y, z)}
+	pub fn cube(corner0: DVec3, corner1: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cube(corner0, corner1)}
 	pub fn sphere(radius: f64) -> crate::Solid {<Self as crate::traits::SolidStruct>::sphere(radius)}
-	pub fn cylinder(r: f64, axis: DVec3, h: f64) -> crate::Solid {<Self as crate::traits::SolidStruct>::cylinder(r, axis, h)}
-	pub fn cone(r1: f64, r2: f64, axis: DVec3, h: f64) -> crate::Solid {<Self as crate::traits::SolidStruct>::cone(r1, r2, axis, h)}
+	pub fn cylinder(r: f64, height: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cylinder(r, height)}
+	pub fn cone(r1: f64, r2: f64, height: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cone(r1, r2, height)}
 	pub fn torus(r1: f64, r2: f64, axis: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::torus(r1, r2, axis)}
 	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::half_space(plane_origin, plane_normal)}
 	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {<Self as crate::traits::SolidStruct>::iter_edge(self)}

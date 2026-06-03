@@ -6,13 +6,13 @@
 use cadrum::{DVec3, Error, Solid};
 
 fn rounded_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(size, size, size).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
 	let radius = size * 0.2;
 	cube.fillet_edges(radius, cube.iter_edge())
 }
 
 fn soft_top_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(size, size, size).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
 	let radius = size * 0.2;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_edges = cube
@@ -22,7 +22,7 @@ fn soft_top_cube(size: f64) -> Result<Solid, Error> {
 }
 
 fn coin(radius: f64, height: f64) -> Result<Solid, Error> {
-	let cyl = Solid::cylinder(radius, DVec3::Z, height);
+	let cyl = Solid::cylinder(radius, DVec3::Z * height);
 	let radius = height * 0.3;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_circle = cyl

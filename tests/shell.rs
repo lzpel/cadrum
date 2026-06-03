@@ -1,8 +1,8 @@
-use cadrum::Solid;
+use cadrum::{DVec3, Solid};
 
 #[test]
 fn test_shell_cube_reduces_volume() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let original_volume = cube.volume();
 
 	let open = cube.iter_face().next().unwrap();
@@ -14,7 +14,7 @@ fn test_shell_cube_reduces_volume() {
 
 #[test]
 fn test_shell_cube_preserves_solid_structure() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let open = cube.iter_face().next().unwrap();
 	let shelled = cube.shell(-0.5, [open]).expect("shell should succeed");
 	assert!(shelled.volume() > 0.0, "shelled cube should produce a valid solid");
@@ -22,7 +22,7 @@ fn test_shell_cube_preserves_solid_structure() {
 
 #[test]
 fn test_shell_outward_produces_wall() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let open = cube.iter_face().next().unwrap();
 	// Positive thickness: wall grows outward. The original solid becomes the
 	// inner cavity of a 0.5-thick shell.
@@ -32,7 +32,7 @@ fn test_shell_outward_produces_wall() {
 
 #[test]
 fn test_shell_empty_open_faces_inward_seals_cavity() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	// Negative thickness + empty open_faces: sealed solid with an internal void.
 	// Expected wall-material volume = 10³ − 9³ = 271.
 	let sealed = cube.shell(-0.5, std::iter::empty::<&cadrum::Face>()).expect("inward empty-open shell should succeed");
@@ -41,7 +41,7 @@ assert!((sealed.volume() - 271.0).abs() < 1e-3, "inward empty shell volume = 10�
 
 #[test]
 fn test_shell_empty_open_faces_outward_seals_cavity() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	// Positive thickness + empty open_faces: outer shell expands outward with
 	// GeomAbs_Arc join (spheres at corners, quarter-cylinders along edges),
 	// original surface becomes the internal cavity wall.

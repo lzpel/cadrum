@@ -1,10 +1,10 @@
 use cadrum::{Boolean, Edge, Error, Solid};
 use glam::DVec3;
 fn part(inner: f64, outer: f64, height: f64) -> Result<[Solid; 3], Error> {
-	let outer_solid = Solid::cube(outer, outer, height).translate(DVec3::ONE * -outer / 2.0);
+	let outer_solid = Solid::cube(DVec3::ZERO, DVec3::new(outer, outer, height)).translate(DVec3::ONE * -outer / 2.0);
 	let between_edge = Edge::polygon(&[DVec3::new(outer / 2.0, height - outer / 2.0, 0.0), DVec3::new(outer / 2.0, outer / 2.0, 0.0), DVec3::new(height - outer / 2.0, outer / 2.0, 0.0)])?;
 	let between_solid = Solid::extrude(&between_edge, DVec3::Z * outer / 2.0)?;
-	let inner_solid = Solid::cylinder(inner / 2.0, DVec3::Z, height * 1000.0);
+	let inner_solid = Solid::cylinder(inner / 2.0, DVec3::Z * height * 1000.0);
 	Ok([outer_solid, between_solid, inner_solid])
 }
 fn main() -> Result<(), Error> {

@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 
 fn chijin() -> Result<Solid, cadrum::Error> {
 	// ── Body (cylinder): r=15, h=8, centered at origin (z=-4..+4) ────────
-	let cylinder = Solid::cylinder(15.0, DVec3::Z, 8.0)
+	let cylinder = Solid::cylinder(15.0, DVec3::Z * 8.0)
 		.translate(DVec3::Z * -4.0)
 		.color("#999");
 
@@ -28,13 +28,13 @@ fn chijin() -> Result<Solid, cadrum::Error> {
 	let sheets = [sheet.clone().mirror(DVec3::ZERO, DVec3::Z), sheet];
 
 	// ── Lacing blocks: 2x8x1, rotated 60° around Z, placed at y=15 ──────
-	let block_proto = Solid::cube(2.0, 8.0, 1.0)
+	let block_proto = Solid::cube(DVec3::ZERO, DVec3::new(2.0, 8.0, 1.0))
 		.translate(DVec3::new(-1.0, -4.0, -0.5))
 		.rotate_z(60.0_f64.to_radians())
 		.translate(DVec3::Y * 15.0);
 
 	// ── Lacing holes: thin cylinders through each block ──────────────────
-	let hole_proto = Solid::cylinder(0.7, DVec3::X * 10.0 + DVec3::Z * 30.0, 30.0)
+	let hole_proto = Solid::cylinder(0.7, (DVec3::X * 10.0 + DVec3::Z * 30.0).normalize() * 30.0)
 		.translate(DVec3::new(-5.0, 16.0, -15.0));
 
 	// Distribute N blocks and holes evenly around Z, each block in a rainbow color

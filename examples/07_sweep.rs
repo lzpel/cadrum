@@ -47,12 +47,12 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	// Reconstruct the ISO 68-1 basic profile (trapezoid) from the sharp triangle:
 	//   union(shaft) fills the bottom H/4 → P/4-wide flat at the root
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
-	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z, h_thread);
-	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z, h_thread);
+	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z * h_thread);
+	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z * h_thread);
 	let thread_shaft: Solid = ((&thread + &shaft) * &crest).build()?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
-	let head = Solid::cylinder(r_head, DVec3::Z, h_head).translate(DVec3::Z * h_thread);
+	let head = Solid::cylinder(r_head, DVec3::Z * h_head).translate(DVec3::Z * h_thread);
 	let res: Solid = (&thread_shaft + &head).build()?;
 	Ok(res.color("red"))
 }

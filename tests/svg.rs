@@ -16,7 +16,7 @@ fn svg_string(shape: &[Solid], direction: DVec3, tol: f64) -> String {
 
 #[test]
 fn test_svg_box_isometric() {
-	let shape = [Solid::cube(10.0, 10.0, 10.0)];
+	let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let svg = svg_string(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1);
 
 	assert!(svg.starts_with("<svg"), "should start with <svg tag");
@@ -33,7 +33,7 @@ fn test_svg_box_isometric() {
 
 #[test]
 fn test_svg_box_top_down() {
-	let shape = [Solid::cube(10.0, 10.0, 10.0)];
+	let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let svg = svg_string(&shape, DVec3::Z, 0.1);
 
 	assert!(svg.starts_with("<svg"));
@@ -45,7 +45,7 @@ fn test_svg_box_top_down() {
 
 #[test]
 fn test_svg_cylinder() {
-	let shape = [Solid::cylinder(5.0, DVec3::Z, 10.0)];
+	let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0)];
 	let svg = svg_string(&shape, dvec3(1.0, 0.5, 0.3).normalize(), 0.1);
 
 	assert!(svg.contains("<polyline"));
@@ -56,8 +56,8 @@ fn test_svg_cylinder() {
 
 #[test]
 fn test_svg_has_hidden_lines() {
-	let a = [Solid::cube(10.0, 10.0, 10.0)];
-	let b = [Solid::cube(10.0, 10.0, 10.0).translate(dvec3(5.0, 5.0, 0.0))];
+	let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
+	let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(5.0, 5.0, 0.0))];
 	let shape: Vec<Solid> = (&a[0] + &b[0]).build_vec().unwrap();
 	let svg = svg_string(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1);
 

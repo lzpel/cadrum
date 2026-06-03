@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 fn main() -> Result<(), cadrum::Error> {
     let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-    let base = Solid::cone(8.0, 0.0, DVec3::Z, 20.0)
+    let base = Solid::cone(8.0, 0.0, DVec3::Z * 20.0)
         .color("#888888");
 
     let solids = [

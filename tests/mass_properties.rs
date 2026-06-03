@@ -20,7 +20,7 @@ const EPS: f64 = 1e-6;
 #[test]
 fn test_cube_mass_properties_match_analytical() {
 	let a = 10.0_f64;
-	let cube = Solid::cube(a, a, a);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
 
 	assert!((cube.volume() - a.powi(3)).abs() < EPS);
 	assert!((cube.area() - 6.0 * a.powi(2)).abs() < EPS);
@@ -73,8 +73,8 @@ fn test_vec_center_is_volume_weighted_average() {
 	let a = 2.0_f64;
 	let offset = 10.0_f64;
 	let cubes = vec![
-		Solid::cube(a, a, a),
-		Solid::cube(a, a, a).translate(DVec3::new(offset, 0.0, 0.0)),
+		Solid::cube(DVec3::ZERO, DVec3::splat(a)),
+		Solid::cube(DVec3::ZERO, DVec3::splat(a)).translate(DVec3::new(offset, 0.0, 0.0)),
 	];
 
 	let expected_center = DVec3::new((a / 2.0 + (a / 2.0 + offset)) / 2.0, a / 2.0, a / 2.0);
@@ -96,8 +96,8 @@ fn test_vec_center_is_volume_weighted_average() {
 /// `map(..).fold(DMat3::ZERO, +)` idiom is the correct way to aggregate.
 #[test]
 fn test_inertia_is_additive_over_elements() {
-	let single = Solid::cube(3.0, 3.0, 3.0).inertia();
-	let cubes = vec![Solid::cube(3.0, 3.0, 3.0), Solid::cube(3.0, 3.0, 3.0)];
+	let single = Solid::cube(DVec3::ZERO, DVec3::splat(3.0)).inertia();
+	let cubes = vec![Solid::cube(DVec3::ZERO, DVec3::splat(3.0)), Solid::cube(DVec3::ZERO, DVec3::splat(3.0))];
 	let summed = cubes.iter().map(|c| c.inertia()).fold(glam::DMat3::ZERO, |a, b| a + b);
 	for col in 0..3 {
 		for row in 0..3 {

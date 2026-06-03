@@ -148,8 +148,8 @@ impl SolidStruct for Solid {
 
 	// ==================== Constructors ====================
 
-	fn cube(x: f64, y: f64, z: f64) -> Solid {
-		let inner = ffi::make_box(0.0, 0.0, 0.0, x, y, z);
+	fn cube(corner0: DVec3, corner1: DVec3) -> Solid {
+		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z);
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
@@ -158,8 +158,8 @@ impl SolidStruct for Solid {
 		)
 	}
 
-	fn cylinder(r: f64, axis: DVec3, h: f64) -> Solid {
-		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r, h);
+	fn cylinder(r: f64, height: DVec3) -> Solid {
+		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length());
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]
@@ -178,8 +178,8 @@ impl SolidStruct for Solid {
 		)
 	}
 
-	fn cone(r1: f64, r2: f64, axis: DVec3, h: f64) -> Solid {
-		let inner = ffi::make_cone(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2, h);
+	fn cone(r1: f64, r2: f64, height: DVec3) -> Solid {
+		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length());
 		Solid::new(
 			inner,
 			#[cfg(feature = "color")]

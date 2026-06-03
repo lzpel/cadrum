@@ -22,7 +22,7 @@ fn png_dimensions(buf: &[u8]) -> (u32, u32) {
 
 #[test]
 fn test_png_box_isometric() {
-	let shape = [Solid::cube(10.0, 10.0, 10.0)];
+	let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let mesh = Solid::mesh(&shape, 0.1).unwrap();
 	let scene = mesh.scene(dvec3(1.0, 1.0, 1.0).normalize(), DVec3::Z, true, false);
 
@@ -38,7 +38,7 @@ fn test_png_box_isometric() {
 
 #[test]
 fn test_png_cylinder_shaded() {
-	let shape = [Solid::cylinder(5.0, DVec3::Z, 10.0)];
+	let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0)];
 	let mesh = Solid::mesh(&shape, 0.1).unwrap();
 	let scene = mesh.scene(dvec3(1.0, 0.5, 0.3).normalize(), DVec3::Z, true, true);
 
@@ -56,7 +56,7 @@ fn test_png_cylinder_shaded() {
 fn test_png_dimensions_are_exact() {
 	// User-specified [width, height] must appear verbatim in the IHDR,
 	// regardless of viewbox aspect (letterboxed when aspects differ).
-	let shape = [Solid::cube(50.0, 10.0, 10.0)];
+	let shape = [Solid::cube(DVec3::ZERO, DVec3::new(50.0, 10.0, 10.0))];
 	let mesh = Solid::mesh(&shape, 0.5).unwrap();
 	let scene = mesh.scene(DVec3::Z, DVec3::Y, false, false);
 

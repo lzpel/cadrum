@@ -7,7 +7,7 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 
 /// 10×10×10 ボックス（体積 1000）
 fn test_box() -> Solid {
-	Solid::cube(10.0, 10.0, 10.0)
+	Solid::cube(DVec3::ZERO, DVec3::splat(10.0))
 }
 
 // ==================== translated ====================
@@ -23,8 +23,8 @@ fn test_translated_preserves_volume() {
 fn test_union_of_translated_overlapping_solids_has_single_volume() {
 	// 異なる場所に同じ大きさの立方体を2つ作り、translatedで同じ場所に重ねてからunionする。
 	// 結果のvolumeは1つ分（1000）になるはず。
-	let a = [Solid::cube(10.0, 10.0, 10.0)];
-	let b = [Solid::cube(10.0, 10.0, 10.0).translate(dvec3(100.0, 0.0, 0.0))];
+	let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
+	let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(100.0, 0.0, 0.0))];
 	let b_moved: Vec<Solid> = b.clone().into_iter().map(|s| s.translate(dvec3(-100.0, 0.0, 0.0))).collect();
 
 	// b と b_moved は実態が別であることを確認: a と b（移動前）を union するとvolumeは2つ分（2000）。
@@ -143,8 +143,8 @@ fn test_face_edge_incidence_via_id() {
 fn test_new_faces_subtract_b_inside_a() {
 	// small_box が big_box に完全に収まる → small の 6 面はすべて Modified されない
 	// 新実装（iter_history の post_id 集合）では unchanged 面も history に入る → tool faces = 6
-	let big = [Solid::cube(10.0, 10.0, 10.0)];
-	let small = [Solid::cube(4.0, 4.0, 4.0).translate(dvec3(3.0, 3.0, 3.0))];
+	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
+	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> =
 		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] - &small[0]).build_vec().unwrap();
@@ -164,8 +164,8 @@ fn test_new_faces_subtract_b_inside_a() {
 fn test_new_faces_intersect_b_inside_a() {
 	// intersect(big, small) の結果は small そのもの
 	// small の 6 面はすべて unchanged → tool faces = 結果の全フェイス = 6
-	let big = [Solid::cube(10.0, 10.0, 10.0)];
-	let small = [Solid::cube(4.0, 4.0, 4.0).translate(dvec3(3.0, 3.0, 3.0))];
+	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
+	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> =
 		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] * &small[0]).build_vec().unwrap();
@@ -178,17 +178,30 @@ fn test_new_faces_intersect_b_inside_a() {
 	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).count(), tool_count, "intersect with B fully inside A: tool faces should cover all result faces");
 }
 
+// ==================== cube corner order ====================
+
+#[test]
+fn cube_corner_order_independent() {
+	// cube は対角の 2 隅で定義され、どちらが +x+y+z 側かは無関係。
+	// cube(ZERO, ONE) と cube(ONE, ZERO) は完全に同一の立方体になる。
+	let a = Solid::cube(DVec3::ZERO, DVec3::ONE);
+	let b = Solid::cube(DVec3::ONE, DVec3::ZERO);
+	assert_eq!(a.bounding_box(), b.bounding_box(), "corner order must not change the box");
+	assert!((a.volume() - b.volume()).abs() < 1e-9);
+	assert!((a.volume() - 1.0).abs() < 1e-9, "unit cube volume should be 1");
+}
+
 // ==================== bounding_box ====================
 
 #[test]
 fn test_bounding_box() {
 	// 単一 solid
-	let [min, max] = Solid::cube(3.0, 4.0, 5.0).translate(dvec3(1.0, 2.0, 3.0)).bounding_box();
+	let [min, max] = Solid::cube(DVec3::ZERO, DVec3::new(3.0, 4.0, 5.0)).translate(dvec3(1.0, 2.0, 3.0)).bounding_box();
 	assert!((min - dvec3(1.0, 2.0, 3.0)).length() < 1e-6);
 	assert!((max - dvec3(4.0, 6.0, 8.0)).length() < 1e-6);
 
 	// 複数 solid のマージ
-	let solids = [Solid::cube(2.0, 2.0, 2.0), Solid::cube(2.0, 3.0, 4.0).translate(dvec3(5.0, 5.0, 5.0))];
+	let solids = [Solid::cube(DVec3::ZERO, DVec3::splat(2.0)), Solid::cube(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0)).translate(dvec3(5.0, 5.0, 5.0))];
 	let bboxes: Vec<[DVec3; 2]> = solids.iter().map(|s| s.bounding_box()).collect();
 	let min = bboxes.iter().map(|b| b[0]).reduce(|a, b| a.min(b)).unwrap();
 	let max = bboxes.iter().map(|b| b[1]).reduce(|a, b| a.max(b)).unwrap();

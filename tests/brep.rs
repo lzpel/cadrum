@@ -4,10 +4,10 @@
 //! then read it back.  If the reader only consumes what it needs
 //! (count-driven parsing) and ignores trailing data, these tests pass.
 
-use cadrum::Solid;
+use cadrum::{DVec3, Solid};
 
 fn test_box() -> Vec<Solid> {
-	vec![Solid::cube(1.0, 1.0, 1.0)]
+	vec![Solid::cube(DVec3::ZERO, DVec3::ONE)]
 }
 
 /// Write BRep binary, append 1 KB of 0xAB, read back.

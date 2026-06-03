@@ -21,15 +21,15 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 }
 
 fn test_box() -> Solid {
-	Solid::cube(10.0, 10.0, 10.0)
+	Solid::cube(DVec3::ZERO, DVec3::splat(10.0))
 }
 
 fn test_box_2() -> Solid {
-	Solid::cube(10.0, 10.0, 10.0).translate(dvec3(5.0, 5.0, 5.0))
+	Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(5.0, 5.0, 5.0))
 }
 
 fn test_box_3() -> Solid {
-	Solid::cube(5.0, 5.0, 5.0).translate(dvec3(3.0, 3.0, 3.0))
+	Solid::cube(DVec3::ZERO, DVec3::splat(5.0)).translate(dvec3(3.0, 3.0, 3.0))
 }
 
 /// Helper: write shape to BRep binary bytes
@@ -119,7 +119,7 @@ fn test_t02_multiple_reads_no_crash() {
 
 #[test]
 fn test_t04_approximation_tolerance() {
-	let cyl = [Solid::cylinder(10.0, dvec3(0.0, 0.0, 1.0), 20.0)];
+	let cyl = [Solid::cylinder(10.0, dvec3(0.0, 0.0, 1.0) * 20.0)];
 	let mut has_difference = false;
 	for edge in cyl.iter().flat_map(|s| s.iter_edge()) {
 		let coarse = edge.approximation_segments(1.0).len();
@@ -190,8 +190,8 @@ fn test_t08_boolean_returns_shape() {
 
 #[test]
 fn test_hollow_cube_write_step() {
-	let outer = [Solid::cube(20.0, 20.0, 20.0).translate(dvec3(-10.0, -10.0, -10.0))];
-	let inner = [Solid::cube(10.0, 10.0, 10.0).translate(dvec3(-5.0, -5.0, -5.0))];
+	let outer = [Solid::cube(DVec3::ZERO, DVec3::splat(20.0)).translate(dvec3(-10.0, -10.0, -10.0))];
+	let inner = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(-5.0, -5.0, -5.0))];
 	let hollow_cube: Vec<Solid> = (&outer[0] - &inner[0]).build_vec().unwrap();
 
 	std::fs::create_dir_all("out").unwrap();
@@ -211,7 +211,7 @@ fn test_half_space_intersect() {
 // cylinder プリミティブの体積が πr²h と一致することを確認。
 #[test]
 fn test_cylinder() {
-	let cyl = [Solid::cylinder(5.0, dvec3(0.0, 0.0, 1.0), 10.0)];
+	let cyl = [Solid::cylinder(5.0, dvec3(0.0, 0.0, 1.0) * 10.0)];
 	let expected = std::f64::consts::PI * 5.0f64.powi(2) * 10.0;
 	assert!((cyl.iter().map(|s| s.volume()).sum::<f64>() - expected).abs() < 1e-6);
 }

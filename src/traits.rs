@@ -444,10 +444,10 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	fn id(&self) -> u64;
 
 	// --- Constructors ---
-	fn cube(x: f64, y: f64, z: f64) -> Self;
+	fn cube(corner0: DVec3, corner1: DVec3) -> Self;
 	fn sphere(radius: f64) -> Self;
-	fn cylinder(r: f64, axis: DVec3, h: f64) -> Self;
-	fn cone(r1: f64, r2: f64, axis: DVec3, h: f64) -> Self;
+	fn cylinder(r: f64, height: DVec3) -> Self;
+	fn cone(r1: f64, r2: f64, height: DVec3) -> Self;
 	fn torus(r1: f64, r2: f64, axis: DVec3) -> Self;
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Self;
 

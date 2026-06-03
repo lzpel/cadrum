@@ -7,7 +7,7 @@
 //!     `r³ − (4/3) π r³ / 8 = r³ − π r³ / 6`
 //! The analytical result below is used to validate OCCT's output within 0.1%.
 
-use cadrum::{Error, Solid};
+use cadrum::{DVec3, Error, Solid};
 use std::f64::consts::PI;
 
 const EPS: f64 = 1e-6;
@@ -16,7 +16,7 @@ const EPS: f64 = 1e-6;
 fn test_fillet_cube_reduces_volume_and_area() {
 	let a = 10.0_f64;
 	let r = 1.0_f64;
-	let cube = Solid::cube(a, a, a);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
 	let original_volume = cube.volume();
 	let original_area = cube.area();
 	let edges: Vec<_> = cube.iter_edge().collect();
@@ -32,7 +32,7 @@ fn test_fillet_cube_reduces_volume_and_area() {
 fn test_fillet_cube_matches_analytical_volume() {
 	let a = 10.0_f64;
 	let r = 1.0_f64;
-	let cube = Solid::cube(a, a, a);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
 	let edges: Vec<_> = cube.iter_edge().collect();
 	let rounded = cube.fillet_edges(r, edges).expect("fillet cube");
 
@@ -47,7 +47,7 @@ fn test_fillet_cube_matches_analytical_volume() {
 
 #[test]
 fn test_fillet_empty_edges_is_noop() {
-	let cube = Solid::cube(5.0, 5.0, 5.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(5.0));
 	let original_volume = cube.volume();
 	let unchanged = cube
 		.fillet_edges(0.5, std::iter::empty::<&cadrum::Edge>())
@@ -58,7 +58,7 @@ fn test_fillet_empty_edges_is_noop() {
 
 #[test]
 fn test_fillet_radius_too_large_returns_err() {
-	let cube = Solid::cube(2.0, 2.0, 2.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
 	let edges: Vec<_> = cube.iter_edge().collect();
 	// r = 5 > a/2 = 1 → geometrically impossible; OCCT reports not-done.
 	let err = cube.fillet_edges(5.0, edges).err().expect("oversized radius must fail");
