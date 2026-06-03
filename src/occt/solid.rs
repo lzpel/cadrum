@@ -120,6 +120,13 @@ impl Solid {
 		&mut self.colormap
 	}
 
+	/// Carry each source face's color onto its derived result faces via
+	/// `history` `[post_id, src_id]` pairs (shell/fillet/chamfer/clean).
+	#[cfg(feature = "color")]
+	fn remap_colormap(&self, history: &[u64]) -> std::collections::HashMap<u64, crate::common::color::Color> {
+		history.chunks_exact(2).filter_map(|p| Some((p[0], *self.colormap.get(&p[1])?))).collect()
+	}
+
 	// ==================== Constructors ====================
 
 	/// Returns `true` if this solid wraps a null shape.
@@ -264,16 +271,12 @@ impl SolidStruct for Solid {
 		for f in open_faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
 		}
-		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness);
+		let mut history: Vec<u64> = Default::default();
+		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness, &mut history);
 		if shape.is_null() {
 			return Err(Error::ShellFailed);
 		}
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Fillet / Chamfer ====================
@@ -283,16 +286,12 @@ impl SolidStruct for Solid {
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
-		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius);
+		let mut history: Vec<u64> = Default::default();
+		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history);
 		if shape.is_null() {
 			return Err(Error::FilletFailed);
 		}
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
@@ -300,16 +299,12 @@ impl SolidStruct for Solid {
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
-		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance);
+		let mut history: Vec<u64> = Default::default();
+		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history);
 		if shape.is_null() {
 			return Err(Error::ChamferFailed);
 		}
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Sweep ====================
@@ -422,17 +417,7 @@ impl SolidStruct for Solid {
 		if inner.is_null() {
 			return Err(Error::CleanFailed);
 		}
-		#[cfg(feature = "color")]
-		let colormap = {
-			let mut m = std::collections::HashMap::new();
-			for pair in history.chunks_exact(2) {
-				if let Some(&color) = self.colormap.get(&pair[1]) {
-					m.entry(pair[0]).or_insert(color);
-				}
-			}
-			m
-		};
-		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
+		Ok(Solid::new(inner, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Boolean primitive ====================

@@ -149,24 +149,26 @@ std::unique_ptr<TopoDS_Shape> builder_clean(
 // thickness hollows inward, positive thickens outward. Returns nullptr on
 // failure (e.g. self-intersecting offset at sharp corners).
 //
-// TODO: populate `out_history` via BRepOffsetAPI_MakeThickSolid::Modified()
-// — currently the Rust side stores an empty history.
+// `out_history`: flat [post_id, src_id] face-derivation pairs (Modified(),
+// identity for pass-through). Generated walls have no face source, absent.
 std::unique_ptr<TopoDS_Shape> builder_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
-    double thickness);
+    double thickness,
+    rust::Vec<uint64_t>& out_history);
 
 // Fillet the given edges of `solid` with a uniform radius using
 // BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
 // copy of `solid`). Returns nullptr on OCCT failure (radius too large,
 // tangent discontinuity, edges not belonging to `solid`, etc.).
 //
-// TODO: populate `out_history` via BRepFilletAPI_MakeFillet::Modified() /
-// Generated() — currently the Rust side stores an empty history.
+// `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
+// untouched). Generated fillet arc faces come from edges, absent.
 std::unique_ptr<TopoDS_Shape> builder_fillet(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
-    double radius);
+    double radius,
+    rust::Vec<uint64_t>& out_history);
 
 // Chamfer (symmetric bevel) the given edges of `solid` with a uniform
 // distance using BRepFilletAPI_MakeChamfer. Empty `edges` is a no-op
@@ -174,12 +176,13 @@ std::unique_ptr<TopoDS_Shape> builder_fillet(
 // (distance too large, tangent discontinuity, edges not belonging to
 // `solid`, etc.).
 //
-// TODO: populate `out_history` via BRepFilletAPI_MakeChamfer::Modified() /
-// Generated() — currently the Rust side stores an empty history.
+// `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
+// untouched). Generated chamfer faces come from edges, absent.
 std::unique_ptr<TopoDS_Shape> builder_chamfer(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
-    double distance);
+    double distance,
+    rust::Vec<uint64_t>& out_history);
 
 // ==================== Transforms (solid → solid, no history) ====================
 //

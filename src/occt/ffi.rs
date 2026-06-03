@@ -80,12 +80,11 @@ mod ffi_bridge {
 		// `Solid::history` and remap the colormap when color is enabled.
 		fn builder_clean(shape: &TopoDS_Shape, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
-		// TODO: builder_thick_solid / builder_fillet / builder_chamfer should
-		// also gain `out_history` populated via OCCT's Modified()/Generated()
-		// — currently no history (Rust side stores Default::default()).
-		fn builder_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64) -> UniquePtr<TopoDS_Shape>;
-		fn builder_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64) -> UniquePtr<TopoDS_Shape>;
-		fn builder_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64) -> UniquePtr<TopoDS_Shape>;
+		// shell/fillet/chamfer fill `out_history` with flat [post_id, src_id]
+		// pairs (same layout as builder_cells) → Solid::history + colormap remap.
+		fn builder_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
+		fn builder_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
+		fn builder_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
 		// ==================== Transforms (solid → solid, no history) ====================
 
