@@ -54,6 +54,32 @@ pub struct Scene2D {
 	pub edges_hidden: Vec<DVec2>,
 }
 
+/// Camera + rendering options for `Mesh::scene`.
+///
+/// Use `SceneOption::default()` for the standard Z-up isometric CAD view, and
+/// override individual fields with struct update syntax, e.g.
+/// `SceneOption { view: DVec3::new(1.0, 1.0, 2.0), shading: true, ..Default::default() }`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SceneOption {
+	/// Camera direction (higher `dot(view)` = closer).
+	pub view: DVec3,
+	/// World-space up axis on the output. Gram-Schmidt-orthogonalized against
+	/// `view`. Panics if zero or parallel to `view`.
+	pub up: DVec3,
+	/// Classify occluded edges into `Scene2D::edges_hidden`. When false, hidden
+	/// edges are dropped entirely.
+	pub hidden_edges: bool,
+	/// Lambertian shading with light == `view`. On for curved shapes, off for
+	/// flat CAD-style output.
+	pub shading: bool,
+}
+
+impl Default for SceneOption {
+	fn default() -> Self {
+		Self { view: DVec3::ONE, up: DVec3::Z, hidden_edges: true, shading: false }
+	}
+}
+
 impl Mesh {
 	/// Write this mesh as binary STL to a writer.
 	/// このメッシュをバイナリ STL 形式で書き出す。
@@ -254,16 +280,13 @@ impl Mesh {
 
 	/// Build a 2D scene from this mesh for the given camera.
 	///
-	/// - `view`: camera direction (higher `dot(view)` = closer).
-	/// - `up`: world-space up axis on the output. Gram-Schmidt-orthogonalized
-	///   against `view`. Panics if zero or parallel to `view`.
-	/// - `hidden_lines`: classify occluded edges into `Scene2D::edges_hidden`.
-	///   When `false`, hidden edges are dropped entirely.
-	/// - `shading`: Lambertian shading with light == `view`. On for curved
-	///   shapes, off for flat CAD-style output.
+	/// See `SceneOption` for the camera (`view` / `up`) and rendering
+	/// (`hidden_edges` / `shading`) parameters. `SceneOption::default()` is the
+	/// standard Z-up isometric CAD view.
 	///
 	/// Render via `Scene2D::to_svg` / `Scene2D::write_svg`.
-	pub fn scene(&self, view: DVec3, up: DVec3, hidden_lines: bool, shading: bool) -> Scene2D {
+	pub fn scene(&self, option: SceneOption) -> Scene2D {
+		let SceneOption { view, up, hidden_edges, shading } = option;
 		let (u, v, dir) = projection_basis(view, up);
 
 		let (triangles, color) = project_and_sort_triangles(self, dir, u, v, shading);
@@ -278,7 +301,7 @@ impl Mesh {
 		// throw away the hidden output when disabled.
 		let occlusion_tris = build_occlusion_data(self, dir, u, v);
 		let (edges_visible, hidden) = classify_edges(&all_edges, &occlusion_tris, dir, u, v);
-		let edges_hidden = if hidden_lines { hidden } else { Vec::new() };
+		let edges_hidden = if hidden_edges { hidden } else { Vec::new() };
 
 		Scene2D { triangles, color, edges_visible, edges_hidden }
 	}
@@ -909,7 +932,7 @@ impl Mesh {
 		// 前面三角形頂点の bbox) の絶対値最大から共通 h を導く。
 		// 含意: 各パネルは原点中心の `[-h, h]²` を表示し、コンテンツは全パネルで必ず収まる。
 		// 世界 AABB 角投影より tight (球面など曲面で part が panel いっぱいに描かれる)。
-		let scenes: [Scene2D; 4] = std::array::from_fn(|i| self.scene(views[i].0, views[i].1, true, false));
+		let scenes: [Scene2D; 4] = std::array::from_fn(|i| self.scene(SceneOption { view: views[i].0, up: views[i].1, ..Default::default() }));
 		let h = scenes.iter()
 			.map(|v| v.viewbox())
 			.flat_map(|[a,b]| [a.x,a.y,b.x,b.y])
