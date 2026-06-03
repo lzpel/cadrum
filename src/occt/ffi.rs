@@ -80,9 +80,8 @@ mod ffi_bridge {
 		// `Solid::history` and remap the colormap when color is enabled.
 		fn builder_clean(shape: &TopoDS_Shape, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 
-		// shell/fillet/chamfer populate `out_history` with flat [post_id, src_id]
-		// face derivation pairs (same layout as builder_cells / builder_clean),
-		// used to set Solid::history and remap the colormap.
+		// shell/fillet/chamfer fill `out_history` with flat [post_id, src_id]
+		// pairs (same layout as builder_cells) → Solid::history + colormap remap.
 		fn builder_thick_solid(solid: &TopoDS_Shape, open_faces: &CxxVector<TopoDS_Face>, thickness: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 		fn builder_fillet(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, radius: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;
 		fn builder_chamfer(solid: &TopoDS_Shape, edges: &CxxVector<TopoDS_Edge>, distance: f64, out_history: &mut Vec<u64>) -> UniquePtr<TopoDS_Shape>;

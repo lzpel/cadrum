@@ -149,10 +149,8 @@ std::unique_ptr<TopoDS_Shape> builder_clean(
 // thickness hollows inward, positive thickens outward. Returns nullptr on
 // failure (e.g. self-intersecting offset at sharp corners).
 //
-// `out_history` receives flat [post_id, src_id, ...] pairs: each retained face
-// mapped from its source face via Modified() (identity for pass-through faces).
-// Offset-generated wall faces have no face source (Generated, src is an edge)
-// and are intentionally absent.
+// `out_history`: flat [post_id, src_id] face-derivation pairs (Modified(),
+// identity for pass-through). Generated walls have no face source, absent.
 std::unique_ptr<TopoDS_Shape> builder_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
@@ -164,9 +162,8 @@ std::unique_ptr<TopoDS_Shape> builder_thick_solid(
 // copy of `solid`). Returns nullptr on OCCT failure (radius too large,
 // tangent discontinuity, edges not belonging to `solid`, etc.).
 //
-// `out_history` receives flat [post_id, src_id, ...] pairs (Modified() face
-// derivation, identity for untouched faces). The newly generated fillet arc
-// faces come from edges (Generated) and are intentionally absent.
+// `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
+// untouched). Generated fillet arc faces come from edges, absent.
 std::unique_ptr<TopoDS_Shape> builder_fillet(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
@@ -179,9 +176,8 @@ std::unique_ptr<TopoDS_Shape> builder_fillet(
 // (distance too large, tangent discontinuity, edges not belonging to
 // `solid`, etc.).
 //
-// `out_history` receives flat [post_id, src_id, ...] pairs (Modified() face
-// derivation, identity for untouched faces). The newly generated chamfer
-// faces come from edges (Generated) and are intentionally absent.
+// `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
+// untouched). Generated chamfer faces come from edges, absent.
 std::unique_ptr<TopoDS_Shape> builder_chamfer(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,

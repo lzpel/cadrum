@@ -120,18 +120,11 @@ impl Solid {
 		&mut self.colormap
 	}
 
-	/// Build a colormap for a single-input op (shell/fillet/chamfer/clean) by
-	/// carrying each `self` source face's color onto its derived result faces
-	/// via `history` flat `[post_id, src_id]` pairs.
+	/// Carry each source face's color onto its derived result faces via
+	/// `history` `[post_id, src_id]` pairs (shell/fillet/chamfer/clean).
 	#[cfg(feature = "color")]
 	fn remap_colormap(&self, history: &[u64]) -> std::collections::HashMap<u64, crate::common::color::Color> {
-		let mut m = std::collections::HashMap::new();
-		for pair in history.chunks_exact(2) {
-			if let Some(&color) = self.colormap.get(&pair[1]) {
-				m.entry(pair[0]).or_insert(color);
-			}
-		}
-		m
+		history.chunks_exact(2).filter_map(|p| Some((p[0], *self.colormap.get(&p[1])?))).collect()
 	}
 
 	// ==================== Constructors ====================
@@ -283,9 +276,7 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::ShellFailed);
 		}
-		#[cfg(feature = "color")]
-		let colormap = self.remap_colormap(&history);
-		Ok(Solid::new(shape, #[cfg(feature = "color")] colormap, history))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Fillet / Chamfer ====================
@@ -300,9 +291,7 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::FilletFailed);
 		}
-		#[cfg(feature = "color")]
-		let colormap = self.remap_colormap(&history);
-		Ok(Solid::new(shape, #[cfg(feature = "color")] colormap, history))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
@@ -315,9 +304,7 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::ChamferFailed);
 		}
-		#[cfg(feature = "color")]
-		let colormap = self.remap_colormap(&history);
-		Ok(Solid::new(shape, #[cfg(feature = "color")] colormap, history))
+		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Sweep ====================
@@ -430,9 +417,7 @@ impl SolidStruct for Solid {
 		if inner.is_null() {
 			return Err(Error::CleanFailed);
 		}
-		#[cfg(feature = "color")]
-		let colormap = self.remap_colormap(&history);
-		Ok(Solid::new(inner, #[cfg(feature = "color")] colormap, history))
+		Ok(Solid::new(inner, #[cfg(feature = "color")] self.remap_colormap(&history), history))
 	}
 
 	// ==================== Boolean primitive ====================
