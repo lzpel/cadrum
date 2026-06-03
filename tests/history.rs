@@ -24,7 +24,7 @@ fn square(side: f64) -> Vec<Edge> {
 /// history が空のまま（保持元 face が無いので by design）。
 #[test]
 fn test_no_face_source_ops_have_empty_history() {
-	assert_eq!(Solid::cube(1.0, 1.0, 1.0).iter_history().count(), 0, "cube");
+	assert_eq!(Solid::cube(DVec3::ZERO, DVec3::splat(1.0)).iter_history().count(), 0, "cube");
 	assert_eq!(Solid::sphere(1.0).iter_history().count(), 0, "sphere");
 
 	let extruded = Solid::extrude(&square(4.0), DVec3::Z * 3.0).expect("extrude");
@@ -55,7 +55,7 @@ fn test_no_face_source_ops_have_empty_history() {
 /// なので出ない。
 #[test]
 fn test_shell_history_maps_five_retained_faces() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let top = cube.iter_face().last().expect("cube has faces");
 	let top_id = top.id();
@@ -76,7 +76,7 @@ fn test_shell_history_maps_five_retained_faces() {
 /// src として登場する（= 無変更面の tshape 保持＝設計前提の検証）。
 #[test]
 fn test_fillet_history_modifies_adjacent_identity_elsewhere() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
@@ -105,7 +105,7 @@ fn test_fillet_history_modifies_adjacent_identity_elsewhere() {
 /// chamfer: fillet と同形（edge を共有する 2 面が Modified、全 6 面が src 登場）。
 #[test]
 fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
-	let cube = Solid::cube(10.0, 10.0, 10.0);
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
@@ -136,7 +136,7 @@ fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
 #[cfg(feature = "color")]
 #[test]
 fn test_fillet_carries_face_color_via_history() {
-	let cube = Solid::cube(10.0, 10.0, 10.0).color("#ff0000");
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color("#ff0000");
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let filleted = cube.fillet_edges(0.5, [edge]).expect("fillet");
 
