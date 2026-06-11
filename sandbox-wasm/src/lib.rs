@@ -1,11 +1,24 @@
-pub mod chijin;
-
-use cadrum::Solid;
-use glam::DVec3;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn box_svg() -> String {
+
+#[cfg(feature = "pure")]
+pub fn volume() -> f64 {
+	1.0
+}
+
+#[cfg(feature = "cpp")]
+pub fn volume() -> f64 {
+	1.0
+}
+
+#[cfg(feature = "cadrum")]
+pub fn volume() -> f64 {
+	use cadrum::{DVec3, Solid};
 	let solid = Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).color("#4a90d9");
-	cadrum::Solid::mesh(&[solid], 0.5).unwrap().to_svg(DVec3::new(1.0, 1.0, 1.0), false).unwrap();
+	solid.volume()
+}
+
+#[wasm_bindgen]
+pub fn print_volume() -> String {
+	format!("Solid volume: {}", volume())
 }

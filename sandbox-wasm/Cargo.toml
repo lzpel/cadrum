@@ -8,4 +8,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "*"
-cadrum = { path = ".." }
+cadrum = { path = "..", optional = true }
+
+[features]
+cadrum = ["dep:cadrum"]
+cpp = []
+pure = []
