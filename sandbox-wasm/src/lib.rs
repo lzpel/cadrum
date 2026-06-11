@@ -7,8 +7,17 @@ pub fn volume() -> f64 {
 }
 
 #[cfg(feature = "cpp")]
+#[cxx::bridge]
+mod ffi {
+	unsafe extern "C++" {
+		include!("cpp.h");
+		fn add(a: f64, b: f64) -> f64;
+	}
+}
+
+#[cfg(feature = "cpp")]
 pub fn volume() -> f64 {
-	1.0
+	ffi::add(2.0, 3.0)
 }
 
 #[cfg(feature = "cadrum")]
