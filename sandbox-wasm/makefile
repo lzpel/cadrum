@@ -22,7 +22,7 @@ run-raw-%: download # build wasm, and run it with node. hyphens in % become comm
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
 generate: download
 	# build out/wasi-sdk-32
-	ls ../out/wasi-sysroot || cmake -G "Unix Makefiles" -S ../out/$(call stem,$(WASISDK)) -B ../out/$(call stem,$(WASISDK))/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build ../out/$(call stem,$(WASISDK))/build && cmake --install ../out/$(call stem,$(WASISDK))/build
+	ls ../out/wasi-sysroot || cmake -G "Unix Makefiles" -S ../out/$(call stem,$(WASISDK)) -B ../out/$(call stem,$(WASISDK))/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build ../out/$(call stem,$(WASISDK))/build && cmake --install ../out/$(call stem,$(WASISDK))/build
 download: download-cmake # download llvm for clang++ and wasi-sdk for libc.
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(notdir $(CLANG)) || ( curl -L -O $(CLANG) && tar xf $(notdir $(CLANG)) --transform="s,^[^/]+,$(call stem,$(CLANG)),x" ) )
