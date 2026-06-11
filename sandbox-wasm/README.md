@@ -46,11 +46,11 @@ $ find . \( -name libc.a -or -name libc++.a \) -exec ls -lh {} +
 -rw-r--r-- 1 smith 197121 9.0M May  1 02:08 ./wasi-sdk-33.0-x86_64-linux/share/wasi-sysroot/lib/wasm32-wasip2/noeh/llvm-lto/22.1.0-wasi-sdk/libc++.a
 ```
 
-## Experiment 0: ok
+## Experiment 0: pure ✅ok
 
 make -C sandbox-wasm run-pure
 
-## Experiment 1
+## Experiment 1: cc ✅ok
 
 make minimum crate sandbox_wasm_add which includes simple C `int add(int a, int b){return a+b;}` and built into wasm.
 provide C and C++ from llvm's libc++ and wasi-libc
@@ -94,3 +94,48 @@ error: failed to run custom build command for `cxx v1.0.194`
 ```
 make -C sandbox-wasm run-cc
 ```
+
+## Experiment 2: cc + libc ✖ng
+
+```
+make -C sandbox-wasm run-cc
+```
+
+I would like to know the difference among follwings
+https://github.com/kraj/musl/tree/kraj/master/include
+https://github.com/llvm/llvm-project/tree/main/libc
+https://github.com/WebAssembly/wasi-libc
+
+```
+● 3つはどれも「C標準ライブラリ(libc)」ですが、「移植可能な上半分(関数の実装)」と「OSに触る下半分(システムコール)」をどう持つかで性格が全く違います。
+
+  それぞれの正体
+
+  1. musl (kraj/musl)
+
+  - Linux 向けの libc 実装。kraj/musl は本家 musl の GitHub ミラーで、include/ は標準ヘッダ群（math.h/stdio.h…）。
+  - 軽量・クリーンで有名だが、下半分が Linux のシステムコール ABI に直結している。
+  - → wasm にはそのままでは使えない（Linux syscall が無いため）。ただしコードの「上半分」（文字列処理・math・printf 整形・malloc 等、OS非依存の部分）は移植性が高い。
+
+  2. llvm-libc (llvm-project/libc)
+
+  - LLVM がゼロから書き直している新しい libc。musl とは別系統の独立コードベース。
+  - モジュール化・overlay/full-build 対応を狙うが、まだ実験的で未完成。
+  - wasm 向けの定番ではない。今回の用途で第一選択にはならない。
+
+  3. wasi-libc (WebAssembly/wasi-libc)
+
+  - wasm/WASI 専用の libc。これが実際に wasm32-wasi をビルドするとき使うもの。
+  - 構造が肝で、ハイブリッドになっている:
+    - 上半分（top-half）= musl 由来（issue 本文の「this is from musl」がこれ）。math・string・stdio 整形・dlmalloc など OS非依存部分を musl から流用。
+    - 下半分（bottom-half）= WASI 実装。Linux syscall の代わりに WASI の API に対して OS インタフェースを実装。
+  - つまり 「musl の移植可能な部分 + WASI のOS層」 = wasm のための libc。
+
+  関係を一言で
+
+  musl        : (musl上半分) + (Linux syscall 下半分)   → Linux 用
+  wasi-libc   : (musl上半分) + (WASI       下半分)      → wasm/WASI 用  ← これを使う
+  llvm-libc   : 全部 LLVM が独自実装（別物・実験的）     → 今は非推奨
+```
+
+### libc供給用に make -C sandbox-wasm generate で wasi-libcがビルドされるようになった

@@ -8,17 +8,17 @@ pub fn volume() -> f64 {
 
 #[cfg(feature = "cc")]
 unsafe extern "C" {
-	fn add(a: i32, b: i32) -> i32;
+	fn add(a: f64, b: f64) -> f64;
 }
 #[cfg(feature = "cc")]
 pub fn volume() -> f64 {
-	unsafe { add(2, 3) as f64 }
+	unsafe { add(2.0, 3.0) }
 }
 
 #[cfg(feature = "cxx")]
 #[cxx::bridge]
 unsafe extern "C++" {
-	include!("cpp.h");
+	include!("ffi.h");
 	fn add(a: f64, b: f64) -> f64;
 }
 

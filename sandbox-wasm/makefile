@@ -1,5 +1,7 @@
 LLVM = clang+llvm-18.1.8-x86_64-pc-windows-msvc
-export PATH := $(CURDIR)/../out/$(LLVM)/bin:$(PATH)
+WASISDK = wasi-sdk-32
+CMAKE = cmake-3.31.12
+export PATH := $(CURDIR)/../out/$(LLVM)/bin:$(CURDIR)/../out/$(CMAKE)/bin:$(PATH)
 
 # pure rust. I got wasm successfully.
 run: run-raw-pure
@@ -8,12 +10,25 @@ run-cc: run-raw-cc
 run-cxx: run-raw-cxx
 # with cadrum. This is that target of this sandbox.
 run-cadrum: run-raw-cadrum
-run-raw-%: generate
+run-raw-%: download
 	cargo build --target wasm32-unknown-unknown --features $*
 	../out/bin/wasm-pack build . -d ../out --features $*
-generate:
+generate: download
+	# build out/wasi-sdk-32
+	ls ../out/wasi-sysroot || cmake -G "Unix Makefiles" -S ../out/$(WASISDK) -B ../out/$(WASISDK)/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build ../out/$(WASISDK)/build && cmake --install ../out/$(WASISDK)/build
+download: download-cmake # download llvm for clang++ and wasi-sdk for libc.
 	cargo install --root ../out wasm-pack
 	ls ../out/$(LLVM) || ( cd ../out && curl -L -O https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/$(LLVM).tar.xz && tar xf $(LLVM).tar.xz )
-test:
-	clang++ --version
-	
+	ls ../out/$(WASISDK) || ( cd ../out && curl -L -O https://github.com/WebAssembly/wasi-libc/archive/refs/tags/$(WASISDK).tar.gz && tar xf $(WASISDK).tar.gz --transform="s,^[^/]+,$(WASISDK),x" )
+ifeq ($(OS),Windows_NT)
+  CMAKE_SRC = $(CMAKE)-windows-x86_64
+  CMAKE_ARCHIVE = $(CMAKE_SRC).zip
+  CMAKE_EXTRACT = unzip -q $(CMAKE_ARCHIVE)
+else
+  CMAKE_SRC = $(CMAKE)-linux-x86_64
+  CMAKE_ARCHIVE = $(CMAKE_SRC).tar.gz
+  CMAKE_EXTRACT = tar xf $(CMAKE_ARCHIVE)
+endif
+download-cmake: # download appropriate cmake binary. wasi-libc requires cmake 3.31 or later ( occt 8.0.0 requires cmake 3.31 or lower, so 3.31 is good choice ). 
+	ls ../out/$(CMAKE) || ( cd ../out && curl -L -O https://github.com/Kitware/CMake/releases/download/v3.31.12/$(CMAKE_ARCHIVE) && $(CMAKE_EXTRACT) && mv $(CMAKE_SRC) $(CMAKE) )
+	cmake --version

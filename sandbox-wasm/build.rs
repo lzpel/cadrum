@@ -3,7 +3,7 @@ fn main() {
 	if std::env::var("CARGO_FEATURE_CC").is_ok() {
 		cc::Build::new().file("src/ffi.c").compile("sandbox_cc");
 		println!("cargo:rerun-if-changed=src/ffi.c");
-		println!("cargo:rerun-if-changed=src/cpp.h");
+		println!("cargo:rerun-if-changed=src/ffi.h");
 	}
 	// cxx feature: cxx bridge 経由で C++ をコンパイル。
 	if std::env::var("CARGO_FEATURE_CXX").is_ok() {
@@ -12,8 +12,8 @@ fn main() {
 			.include("src")
 			.std("c++17")
 			.compile("sandbox_cxx");
-		println!("cargo:rerun-if-changed=src/cpp.cpp");
-		println!("cargo:rerun-if-changed=src/cpp.h");
+		println!("cargo:rerun-if-changed=src/ffi.cpp");
+		println!("cargo:rerun-if-changed=src/ffi.h");
 	}
 	println!("cargo:rerun-if-changed=src/lib.rs");
 }
