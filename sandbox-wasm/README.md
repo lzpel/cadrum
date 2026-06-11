@@ -141,3 +141,194 @@ https://github.com/WebAssembly/wasi-libc
 ### libc供給用に make -C sandbox-wasm generate で wasi-libcがビルドされるようになった
 
 ### make -C sandbox-wasm run-cc-libcでfeature cc,libcが渡り sinが動くことを確認
+
+## Experiment 3: cxx
+
+wasi-sdkのなかにllvm libcxx のコンパイル設定が書いてある
+
+https://github.com/WebAssembly/wasi-sdk/blob/5faf80805397ae2a96ab224d1f103798af06dd92/cmake/wasi-sdk-sysroot.cmake#L241
+
+
+```
+# =============================================================================
+# libcxx build logic
+# =============================================================================
+
+execute_process(
+  COMMAND ${CMAKE_C_COMPILER} -dumpversion
+  OUTPUT_VARIABLE llvm_version
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+function(define_libcxx_sub target target_suffix extra_target_flags extra_libdir_suffix exceptions)
+  if(${target} MATCHES threads)
+    set(pic OFF)
+    set(target_flags -pthread)
+  else()
+    set(pic ON)
+    set(target_flags "")
+  endif()
+  if(${target_suffix} MATCHES lto)
+    set(pic OFF)
+  endif()
+  list(APPEND target_flags ${extra_target_flags})
+
+  set(runtimes "libcxx;libcxxabi")
+
+  get_property(dir_compile_opts DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY COMPILE_OPTIONS)
+  get_property(dir_link_opts DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY LINK_OPTIONS)
+  set(extra_flags
+    ${WASI_SDK_CPU_CFLAGS}
+    ${target_flags}
+    --target=${target}
+    ${dir_compile_opts}
+    ${dir_link_opts}
+    --sysroot ${wasi_sysroot}
+    -resource-dir ${wasi_resource_dir})
+
+  set(exnsuffix "")
+
+  if (exceptions)
+    # TODO: lots of builds fail with shared libraries and `-fPIC`. Looks like
+    # things are maybe changing in llvm/llvm-project#159143 but otherwise I'm at
+    # least not really sure what the state of shared libraries and exceptions
+    # are. For now shared libraries are disabled and supporting them is left for
+    # a future endeavor.
+    set(pic OFF)
+    set(runtimes "libunwind;${runtimes}")
+    list(APPEND extra_flags -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false)
+    if (WASI_SDK_EXCEPTIONS STREQUAL "DUAL")
+      set(exnsuffix "/eh")
+    endif()
+  else()
+    if (WASI_SDK_EXCEPTIONS STREQUAL "DUAL")
+      set(exnsuffix "/noeh")
+    endif()
+  endif()
+
+  # The `wasm32-wasi` target is deprecated in clang, so ignore the deprecation
+  # warnings for now.
+  if(${target} STREQUAL wasm32-wasi OR ${target} STREQUAL wasm32-wasi-threads)
+    list(APPEND extra_flags -Wno-deprecated)
+  endif()
+
+  # `shared` is computed here, after the exceptions branch above may have forced
+  # pic OFF, so that LIBCXX_ENABLE_SHARED/LIBCXXABI_ENABLE_SHARED/LIBUNWIND_ENABLE_SHARED
+  # stay consistent with the final value of CMAKE_POSITION_INDEPENDENT_CODE.
+  if(WASI_SDK_BUILD_SHARED AND pic)
+    set(shared ON)
+  else()
+    set(shared OFF)
+  endif()
+
+  set(extra_cflags_list ${CMAKE_C_FLAGS} ${extra_flags})
+  list(JOIN extra_cflags_list " " extra_cflags)
+  set(extra_cxxflags_list ${CMAKE_CXX_FLAGS} ${extra_flags})
+  list(JOIN extra_cxxflags_list " " extra_cxxflags)
+
+  ExternalProject_Add(libcxx-${target}${target_suffix}-build
+    SOURCE_DIR ${llvm_proj_dir}/runtimes
+    CMAKE_ARGS
+      ${default_cmake_args}
+      # Ensure headers are installed in a target-specific path instead of a
+      # target-generic path.
+      -DCMAKE_INSTALL_INCLUDEDIR=${wasi_sysroot}/include/${target}${exnsuffix}
+      -DCMAKE_STAGING_PREFIX=${wasi_sysroot}
+      -DCMAKE_POSITION_INDEPENDENT_CODE=${pic}
+      -DLIBCXX_ENABLE_THREADS:BOOL=ON
+      -DLIBCXX_HAS_PTHREAD_API:BOOL=ON
+      -DLIBCXX_HAS_EXTERNAL_THREAD_API:BOOL=OFF
+      -DLIBCXX_HAS_WIN32_THREAD_API:BOOL=OFF
+      -DLLVM_COMPILER_CHECKED=ON
+      -DLIBCXX_ENABLE_SHARED:BOOL=${shared}
+      -DLIBCXX_ENABLE_EXCEPTIONS:BOOL=${exceptions}
+      -DLIBCXX_ENABLE_FILESYSTEM:BOOL=ON
+      -DLIBCXX_ENABLE_ABI_LINKER_SCRIPT:BOOL=OFF
+      -DLIBCXX_CXX_ABI=libcxxabi
+      -DLIBCXX_HAS_MUSL_LIBC:BOOL=OFF
+      -DLIBCXX_ABI_VERSION=2
+      -DLIBCXXABI_ENABLE_EXCEPTIONS:BOOL=${exceptions}
+      -DLIBCXXABI_ENABLE_SHARED:BOOL=${shared}
+      -DLIBCXXABI_SILENT_TERMINATE:BOOL=ON
+      -DLIBCXXABI_ENABLE_THREADS:BOOL=ON
+      -DLIBCXXABI_HAS_PTHREAD_API:BOOL=ON
+      -DLIBCXXABI_HAS_EXTERNAL_THREAD_API:BOOL=OFF
+      -DLIBCXXABI_HAS_WIN32_THREAD_API:BOOL=OFF
+      -DLIBCXXABI_USE_LLVM_UNWINDER:BOOL=${exceptions}
+      -DLIBUNWIND_ENABLE_SHARED:BOOL=${shared}
+      -DLIBUNWIND_ENABLE_THREADS:BOOL=ON
+      -DLIBUNWIND_USE_COMPILER_RT:BOOL=ON
+      -DLIBUNWIND_INCLUDE_TESTS:BOOL=OFF
+      -DUNIX:BOOL=ON
+      -DCMAKE_C_FLAGS=${extra_cflags}
+      -DCMAKE_ASM_FLAGS=${extra_cflags}
+      -DCMAKE_CXX_FLAGS=${extra_cxxflags}
+      -DLIBCXX_LIBDIR_SUFFIX=/${target}${exnsuffix}${extra_libdir_suffix}
+      -DLIBCXXABI_LIBDIR_SUFFIX=/${target}${exnsuffix}${extra_libdir_suffix}
+      -DLIBUNWIND_LIBDIR_SUFFIX=/${target}${exnsuffix}${extra_libdir_suffix}
+      -DLIBCXX_INCLUDE_TESTS=OFF
+      -DLIBCXX_INCLUDE_BENCHMARKS=OFF
+
+    # See https://www.scivision.dev/cmake-externalproject-list-arguments/ for
+    # why this is in `CMAKE_CACHE_ARGS` instead of above
+    CMAKE_CACHE_ARGS
+      -DLLVM_ENABLE_RUNTIMES:STRING=${runtimes}
+    DEPENDS
+      wasi-libc-${target}
+      compiler-rt
+    EXCLUDE_FROM_ALL ON
+    USES_TERMINAL_CONFIGURE ON
+    USES_TERMINAL_BUILD ON
+    USES_TERMINAL_INSTALL ON
+    USES_TERMINAL_PATCH ON
+    PATCH_COMMAND
+      ${CMAKE_COMMAND} -E chdir .. bash -c
+        "git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-168449.patch || git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-168449.patch -R --check"
+    COMMAND
+      ${CMAKE_COMMAND} -E chdir .. bash -c
+        "git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-186054.patch || git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-186054.patch -R --check"
+    COMMAND
+      ${CMAKE_COMMAND} -E chdir .. bash -c
+        "git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-185770.patch || git apply ${CMAKE_SOURCE_DIR}/src/llvm-pr-185770.patch -R --check"
+  )
+  add_dependencies(libcxx-${target} libcxx-${target}${target_suffix}-build)
+endfunction()
+
+function(define_libcxx_and_lto target target_suffix exceptions)
+  define_libcxx_sub(${target} "${target_suffix}" "" "" ${exceptions})
+  if (WASI_SDK_LTO)
+    # Note: clang knows this /llvm-lto/${llvm_version} convention.
+    # https://github.com/llvm/llvm-project/blob/llvmorg-18.1.8/clang/lib/Driver/ToolChains/WebAssembly.cpp#L204-L210
+    define_libcxx_sub(${target} ${target_suffix}-lto "-flto=full" "/llvm-lto/${llvm_version}" ${exceptions})
+  endif()
+endfunction()
+
+function(define_libcxx target)
+  add_custom_target(libcxx-${target})
+
+  # For dual-mode exceptions-and-not there are two versions of libcxx which are
+  # compiled and placed into the sysroot. They're named slightly differently to
+  # have unique CMake rules.
+  #
+  # Otherwise there's only one build of libcxx and it's either got exceptions or
+  # it doesn't depending on configuration.
+  if (WASI_SDK_EXCEPTIONS STREQUAL "DUAL")
+    define_libcxx_and_lto(${target} "" OFF)
+    define_libcxx_and_lto(${target} "-exn" ON)
+  elseif(WASI_SDK_EXCEPTIONS STREQUAL "ON")
+    define_libcxx_and_lto(${target} "" ON)
+  else()
+    define_libcxx_and_lto(${target} "" OFF)
+  endif()
+
+  # As of this writing, `clang++` will ignore the target-specific include dirs
+  # unless this one also exists:
+  add_custom_target(libcxx-${target}-extra-dir
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${wasi_sysroot}/include/c++/v1
+    COMMENT "creating libcxx-specific header file folder")
+  add_dependencies(libcxx-${target} libcxx-${target}-extra-dir)
+endfunction()
+
+foreach(target IN LISTS WASI_SDK_TARGETS)
+  define_libcxx(${target})
+endforeach()
+```

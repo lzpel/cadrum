@@ -1,8 +1,11 @@
-LLVM = clang+llvm-18.1.8-x86_64-pc-windows-msvc
-WASISDK = wasi-sdk-32
+# stem: filename up to the first dot. e.g. $(call stem,.../libcxx-18.1.8.src.tar.xz) -> libcxx-18
+stem = $(firstword $(subst ., ,$(notdir $(1))))
+CLANG = https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz
+LIBCXX = https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/libcxx-18.1.8.src.tar.xz
+WASISDK = https://github.com/WebAssembly/wasi-libc/archive/refs/tags/wasi-sdk-32.tar.gz
 CMAKE = cmake-3.31.12
 comma := ,
-export PATH := $(CURDIR)/../out/$(LLVM)/bin:$(CURDIR)/../out/$(CMAKE)/bin:$(PATH)
+export PATH := $(CURDIR)/../out/$(call stem,$(CLANG))/bin:$(CURDIR)/../out/$(CMAKE)/bin:$(PATH)
 
 # pure rust. I got wasm successfully.
 run: run-raw-pure
@@ -19,11 +22,12 @@ run-raw-%: download # build wasm, and run it with node. hyphens in % become comm
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
 generate: download
 	# build out/wasi-sdk-32
-	ls ../out/wasi-sysroot || cmake -G "Unix Makefiles" -S ../out/$(WASISDK) -B ../out/$(WASISDK)/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build ../out/$(WASISDK)/build && cmake --install ../out/$(WASISDK)/build
+	ls ../out/wasi-sysroot || cmake -G "Unix Makefiles" -S ../out/$(call stem,$(WASISDK)) -B ../out/$(call stem,$(WASISDK))/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build ../out/$(call stem,$(WASISDK))/build && cmake --install ../out/$(call stem,$(WASISDK))/build
 download: download-cmake # download llvm for clang++ and wasi-sdk for libc.
 	cargo install --root ../out wasm-pack
-	ls ../out/$(LLVM) || ( cd ../out && curl -L -O https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/$(LLVM).tar.xz && tar xf $(LLVM).tar.xz )
-	ls ../out/$(WASISDK) || ( cd ../out && curl -L -O https://github.com/WebAssembly/wasi-libc/archive/refs/tags/$(WASISDK).tar.gz && tar xf $(WASISDK).tar.gz --transform="s,^[^/]+,$(WASISDK),x" )
+	cd ../out && ( ls $(notdir $(CLANG)) || ( curl -L -O $(CLANG) && tar xf $(notdir $(CLANG)) --transform="s,^[^/]+,$(call stem,$(CLANG)),x" ) )
+	cd ../out && ( ls $(notdir $(LIBCXX)) || ( curl -L -O $(LIBCXX) && tar xf $(notdir $(LIBCXX)) --transform="s,^[^/]+,$(call stem,$(LIBCXX)),x" ) )
+	cd ../out && ( ls $(notdir $(WASISDK)) || ( curl -L -O $(WASISDK) && tar xf $(notdir $(WASISDK)) --transform="s,^[^/]+,$(call stem,$(WASISDK)),x" ) )
 ifeq ($(OS),Windows_NT)
   CMAKE_SRC = $(CMAKE)-windows-x86_64
   CMAKE_ARCHIVE = $(CMAKE_SRC).zip
