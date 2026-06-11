@@ -12,9 +12,11 @@ cadrum = { path = "..", optional = true }
 cxx = { version = "1", optional = true }
 
 [build-dependencies]
+cc = "1"
 cxx-build = "1"
 
 [features]
-cadrum = ["dep:cadrum"]
-cpp = ["dep:cxx"]
 pure = []
+cc = []
+cxx = ["dep:cxx"]
+cadrum = ["dep:cadrum"]

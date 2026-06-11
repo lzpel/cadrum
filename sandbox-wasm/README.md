@@ -88,3 +88,9 @@ warning: cxx@1.0.194: 1 error generated.
 error: failed to run custom build command for `cxx v1.0.194`
 ...
 ```
+
+#### Building with c source is success.
+
+```
+make -C sandbox-wasm run-cc
+```

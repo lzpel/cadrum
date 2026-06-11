@@ -735,6 +735,7 @@ name = "wasm-experiment"
 version = "0.1.0"
 dependencies = [
  "cadrum",
+ "cc",
  "cxx",
  "cxx-build",
  "wasm-bindgen",
