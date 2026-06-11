@@ -95,10 +95,10 @@ error: failed to run custom build command for `cxx v1.0.194`
 make -C sandbox-wasm run-cc
 ```
 
-## Experiment 2: cc + libc ✖ng
+## Experiment 2: cc + libc ✅ok
 
 ```
-make -C sandbox-wasm run-cc
+make -C sandbox-wasm run-cc-libc
 ```
 
 I would like to know the difference among follwings
@@ -139,3 +139,5 @@ https://github.com/WebAssembly/wasi-libc
 ```
 
 ### libc供給用に make -C sandbox-wasm generate で wasi-libcがビルドされるようになった
+
+### make -C sandbox-wasm run-cc-libcでfeature cc,libcが渡り sinが動くことを確認
