@@ -23,8 +23,8 @@ export CFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSRO
 # pure ビルドには取り込まれない。これで build.rs から sysroot/libc 記述を排除できる。
 export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS := -L native=$(SYSROOT)/lib/wasm32-wasip1 -l static=c
 
-# pure rust. I got wasm successfully.
-run: run-raw-pure
+run: run-pure run-cc run-cxx
+run-pure: run-raw-pure
 # cc + libc (wasi-sysroot). __has_include(<math.h>) is true so add() returns sin(a+b).
 run-cc: run-raw-cc
 run-cxx: run-raw-cxx-libcxx
