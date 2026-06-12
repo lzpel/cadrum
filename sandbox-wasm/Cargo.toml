@@ -8,12 +8,17 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "*"
-cadrum = { path = "..", features=["source-build"], optional = true }
+cadrum = { path = "..", default-features = false, features = ["source-build", "color"], optional = true }
 cxx = { version = "1", optional = true }
 
 [build-dependencies]
 cc = "1"
 cxx-build = "1"
+
+# OCCT 由来の wasm 例外ハンドリングを含むと wasm-opt(binaryen) が Precompute pass で
+# クラッシュするため wasm-opt を無効化（最適化を外すだけで機能には影響しない）。
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [features]
 pure = []

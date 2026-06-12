@@ -13,15 +13,25 @@ export MSYS_NO_PATHCONV := 1
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
 SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
+# cadrum(ルート) build.rs が OCCT を wasm クロスビルドする際のツールチェイン bin パス。
+export WASI_SDK_BIN := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/bin
 # C/C++ のコンパイルだけ --target=wasm32-wasip1 にすると、clang が --sysroot から
-# include/wasm32-wasip1 と（-fno-exceptions 時は）noeh/c++/v1 を自動解決するので -isystem 不要。
+# include/wasm32-wasip1 と（-fwasm-exceptions 時は）eh/c++/v1 を自動解決するので -isystem 不要。
 # __wasi__ が定義され libc++ の __locale も正規の rune table を選ぶため rune table hack も不要。
+# OCCT は例外/RTTI を多用するので -fwasm-exceptions（eh 版 libc++）で通す。RTTI は既定で有効。
 # 最終リンクは rustc が wasm32-unknown-unknown で行う（オブジェクトは wasm32 で互換）。
-export CXXFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT) -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS
-export CFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT)
+# OCCT が引く wasi-libc 条件付きヘッダ（sys/times.h 等）を通すための emulation マクロ。
+# OSD はスタブ化して実体は呼ばないので、対応する -lwasi-emulated-* のリンクは不要。
+WASI_EMU := -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID
+# cc-rs(cxx-build) は既定で -fno-exceptions を先頭付近に付ける。-fwasm-exceptions は EH
+# モデルを選ぶだけで例外を再有効化しないので、後勝ちの env 末尾で -fexceptions を足す。
+export CXXFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT) -fwasm-exceptions -fexceptions $(WASI_EMU)
+export CFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT) $(WASI_EMU)
 # libc.a のリンクは rustc(rust-lld)側。静的アーカイブは遅延リンクなので、libc を参照しない
 # pure ビルドには取り込まれない。これで build.rs から sysroot/libc 記述を排除できる。
-export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS := -L native=$(SYSROOT)/lib/wasm32-wasip1 -l static=c
+# eh: 例外あり libc++ の場所。c++ は link-cplusplus(CXXSTDLIB=c++)が出すので search path を
+# 足すだけ。OCCT/libc++ が要求する c++abi・unwind も繋ぐ（未参照なら遅延リンクで無害）。
+export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS := -L native=$(SYSROOT)/lib/wasm32-wasip1/eh -L native=$(SYSROOT)/lib/wasm32-wasip1 -l static=c++abi -l static=unwind -l static=c
 
 run: run-pure run-cc run-cxx
 run-pure: run-raw-pure
@@ -33,7 +43,7 @@ run-cadrum: run-raw-cadrum
 run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separated features (e.g. run-raw-cc-libc -> --features cc,libc).
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
-	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
+	node --experimental-wasm-exnref -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )

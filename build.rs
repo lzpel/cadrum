@@ -298,8 +298,8 @@ mod source {
 
 		eprintln!("Building OCCT with CMake (this may take a while)...");
 
-		let built = cmake::Config::new(&source_dir)
-			.profile("Release")
+		let mut cfg = cmake::Config::new(&source_dir);
+		cfg.profile("Release")
 			.define("BUILD_LIBRARY_TYPE", "Static")
 			.define("CMAKE_INSTALL_PREFIX", effective_root.to_str().unwrap())
 			.define("USE_FREETYPE", "OFF")
@@ -332,8 +332,32 @@ mod source {
 			.define("BUILD_SAMPLES_QT", "OFF")
 			.define("BUILD_Inspector", "OFF")
 			.define("BUILD_ENABLE_FPE_SIGNAL_HANDLER", "OFF")
-			.define("CMAKE_RC_FLAGS_INIT", "-C 1252")
-			.build();
+			.define("CMAKE_RC_FLAGS_INIT", "-C 1252");
+
+		// wasm32: wasi-sdk ツールチェインでクロスビルド。コンパイラ実体・アーカイバと
+		// CMAKE_SYSTEM_NAME=Generic（OS 無し）だけ build.rs で固定し、target/sysroot/
+		// -fwasm-exceptions は makefile の CFLAGS_/CXXFLAGS_<target> 経由で OCCT の
+		// compile flags に流れる（cmake クレートが env を読む）。
+		if env::var("TARGET").unwrap_or_default().starts_with("wasm32") {
+			let bin = env::var("WASI_SDK_BIN")
+				.expect("WASI_SDK_BIN must be set for the wasm OCCT build (see sandbox-wasm/makefile)");
+			let tool = |n: &str| {
+				let exe = Path::new(&bin).join(format!("{n}.exe"));
+				if exe.exists() { exe } else { Path::new(&bin).join(n) }
+			};
+			cfg.generator("Unix Makefiles")
+				.define("CMAKE_SYSTEM_NAME", "Generic")
+				.define("CMAKE_SYSTEM_PROCESSOR", "wasm32")
+				.define("CMAKE_C_COMPILER", tool("clang"))
+				.define("CMAKE_CXX_COMPILER", tool("clang++"))
+				.define("CMAKE_AR", tool("llvm-ar"))
+				.define("CMAKE_RANLIB", tool("llvm-ranlib"))
+				// クロスのため test バイナリのリンク/実行ができない。コンパイラ検査を飛ばす。
+				.define("CMAKE_C_COMPILER_WORKS", "1")
+				.define("CMAKE_CXX_COMPILER_WORKS", "1");
+		}
+
+		let built = cfg.build();
 
 		eprintln!("OCCT built at: {}", built.display());
 
@@ -371,9 +395,29 @@ mod source {
 
 	/// Return the patched content for a file if it needs patching, `None` otherwise.
 	/// Pure function — does not write to disk.
+	/// wasm(wasi-libc) に無い POSIX API（ファイルロック fcntl/F_*, mkstemp/mkdtemp,
+	/// opendir, stat, signal, times, gethostname, statvfs, syslog, getpwuid 等）を使う
+	/// Unix 実装。sandbox は cube().volume() しか叩かず実行時に未使用なので、シグネチャを
+	/// 残してボディだけ潰す（リンク用にシンボルは存在させる）。
+	const WASM_POSIX_STUBS: &[&str] = &[
+		"OSD_File.cxx", "OSD_Directory.cxx", "OSD_DirectoryIterator.cxx",
+		"OSD_FileIterator.cxx", "OSD_FileNode.cxx", "OSD_Path.cxx",
+		"OSD_Protection.cxx", "OSD_Process.cxx", "OSD_Host.cxx", "OSD_Disk.cxx",
+		"OSD_Environment.cxx", "OSD_signal.cxx", "OSD_Chronometer.cxx",
+		"OSD_MemInfo.cxx", "OSD_SharedLibrary.cxx",
+		"Message_PrinterSystemLog.cxx", "STEPConstruct_AP203Context.cxx",
+	];
+
+	/// wasm(wasi-libc) に存在しないヘッダ。スタブ化済みファイルから #include を外す。
+	const WASM_MISSING_HEADERS: &[&str] = &[
+		"netdb.h", "sys/socket.h", "arpa/inet.h", "net/if.h", "ifaddrs.h",
+		"pwd.h", "grp.h", "dlfcn.h", "sys/statvfs.h", "sys/mount.h", "syslog.h",
+	];
+
 	fn patch_or_none(path: &Path) -> Option<String> {
 		let name = path.file_name()?.to_str()?;
 		let is_windows = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
+		let is_wasm = env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32");
 
 		match name {
 			"XCAFDoc_VisMaterial.cxx" => Some(stub_content(path, true)),
@@ -382,6 +426,14 @@ mod source {
 			"Standard_StackTrace.cxx" => {
 				let stubbed = stub_content(path, true);
 				Some(comment_out_include_in(&stubbed, "execinfo.h"))
+			}
+
+			n if is_wasm && WASM_POSIX_STUBS.contains(&n) => {
+				let mut s = stub_content(path, true);
+				for h in WASM_MISSING_HEADERS {
+					s = comment_out_include_in(&s, h);
+				}
+				Some(s)
 			}
 
 			"OSD_WNT.cxx" if is_windows => Some(stub_content(path, false)),
