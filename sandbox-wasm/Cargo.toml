@@ -8,4 +8,17 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "*"
-cadrum = { path = ".." }
+cadrum = { path = "..", optional = true }
+cxx = { version = "1", optional = true }
+
+[build-dependencies]
+cc = "1"
+cxx-build = "1"
+
+[features]
+pure = []
+cc = []
+cxx = ["dep:cxx"]
+cadrum = ["dep:cadrum"]
+libc = [] # build with libc
+libcxx = [] # build with libcxx
