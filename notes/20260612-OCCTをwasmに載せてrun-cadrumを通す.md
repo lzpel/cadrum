@@ -32,20 +32,21 @@ run-cadrum -> Solid volume: 6000                    (OCCT in wasm)
 - まず最小の `run-cxx` で EH×wasm-bindgen×node を通してから OCCT へ。
 
 ### Phase 1: ルート `build.rs` に wasm クロスビルド分岐
-`cadrum/build.rs` の `source-build`(cmake) に wasm 分岐を注入（`TARGET` が wasm32 のとき）:
+`cadrum/build.rs` の `source-build`(cmake) に wasm 分岐を注入（`TARGET` が wasm32 のとき）。
+**env で決まらない 2 点だけ**を固定すれば足りる（実験で最小化、9→3 directive）:
 ```
-.generator("Unix Makefiles")          # ninja 無し / "MinGW Makefiles" は sh.exe を嫌うため
-.define("CMAKE_SYSTEM_NAME", "Generic")
-.define("CMAKE_C/CXX_COMPILER", wasi-sdk clang/clang++)
-.define("CMAKE_AR/RANLIB", llvm-ar/llvm-ranlib)
-.define("CMAKE_C/CXX_COMPILER_WORKS", "1")   # クロスで test バイナリのリンク/実行が不可
+.generator("Unix Makefiles")          # 既定だと Windows で VS generator が選ばれ cl.exe を探して失敗
+.define("CMAKE_C/CXX_COMPILER", wasi-sdk clang/clang++)  # 無いと PATH の mingw cc/gcc が選ばれ --target で死ぬ
 ```
 - target/sysroot/`-fwasm-exceptions`/emulation マクロは makefile の `CFLAGS_/CXXFLAGS_<target>`
   経由で cmake クレートが拾い、OCCT の compile flags に流れる。
+- 実験で **不要（自動解決）** と確認したもの: `CMAKE_SYSTEM_NAME=Generic` / `SYSTEM_PROCESSOR` /
+  `CMAKE_AR` / `CMAKE_RANLIB` / `CMAKE_C/CXX_COMPILER_WORKS`。generator を固定すれば cmake が
+  PATH から archiver を見つけ、コンパイラ検査も通り、cross 指定なしでも OCCT は configure できた。
 - bin パスは makefile が `export WASI_SDK_BIN := .../wasi-sdk-33/bin` で渡す。
 - 依存縮小: sandbox の cadrum を `default-features=false, features=["source-build","color"]`
   （`png`/tiny-skia を外す。`.color()` 用に `color` は残す）。
-- 結果: OCCT の cmake configure は `Generic`+wasi-sdk で**そのまま通った**（OCCT 側パッチ不要）。
+- 結果: OCCT の cmake configure は wasi-sdk の clang 指定だけで**そのまま通った**（OCCT 側パッチ不要）。
 
 ### Phase 2: OCCT の POSIX 依存ファイルをスタブ
 既存の `patch_or_none`(これまで Windows 用) を wasm にも拡張。`stub_content(path,true)` で

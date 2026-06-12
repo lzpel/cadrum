@@ -334,10 +334,13 @@ mod source {
 			.define("BUILD_ENABLE_FPE_SIGNAL_HANDLER", "OFF")
 			.define("CMAKE_RC_FLAGS_INIT", "-C 1252");
 
-		// wasm32: wasi-sdk ツールチェインでクロスビルド。コンパイラ実体・アーカイバと
-		// CMAKE_SYSTEM_NAME=Generic（OS 無し）だけ build.rs で固定し、target/sysroot/
-		// -fwasm-exceptions は makefile の CFLAGS_/CXXFLAGS_<target> 経由で OCCT の
-		// compile flags に流れる（cmake クレートが env を読む）。
+		// wasm32: wasi-sdk でクロスビルド。env で決まらない 2 点だけ固定する:
+		//   1. generator … 既定だと Windows で VS generator が選ばれ cl.exe を探して失敗する。
+		//   2. C/C++ コンパイラ実体 … 無いと PATH 上の mingw cc/gcc が選ばれ `--target` で死ぬ。
+		// target/sysroot/-fwasm-exceptions/emulation マクロ等の compile flags は makefile の
+		// CFLAGS_/CXXFLAGS_<target> から（cmake クレートが env を読む）。
+		// CMAKE_SYSTEM_NAME=Generic / SYSTEM_PROCESSOR / AR / RANLIB / *_COMPILER_WORKS は
+		// 実験で不要（自動解決）と確認したため設定しない。
 		if env::var("TARGET").unwrap_or_default().starts_with("wasm32") {
 			let bin = env::var("WASI_SDK_BIN")
 				.expect("WASI_SDK_BIN must be set for the wasm OCCT build (see sandbox-wasm/makefile)");
@@ -346,17 +349,9 @@ mod source {
 				if exe.exists() { exe } else { Path::new(&bin).join(n) }
 			};
 			cfg.generator("Unix Makefiles")
-				.define("CMAKE_SYSTEM_NAME", "Generic")
-				.define("CMAKE_SYSTEM_PROCESSOR", "wasm32")
 				.define("CMAKE_C_COMPILER", tool("clang"))
-				.define("CMAKE_CXX_COMPILER", tool("clang++"))
-				.define("CMAKE_AR", tool("llvm-ar"))
-				.define("CMAKE_RANLIB", tool("llvm-ranlib"))
-				// クロスのため test バイナリのリンク/実行ができない。コンパイラ検査を飛ばす。
-				.define("CMAKE_C_COMPILER_WORKS", "1")
-				.define("CMAKE_CXX_COMPILER_WORKS", "1");
+				.define("CMAKE_CXX_COMPILER", tool("clang++"));
 		}
-
 		let built = cfg.build();
 
 		eprintln!("OCCT built at: {}", built.display());
