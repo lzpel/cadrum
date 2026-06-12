@@ -631,6 +631,25 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// stray faces that belong to no closed shell.
 	fn sew<'a>(faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error> where Self::Face: 'a;
 
+	/// Offset every face of this solid by a constant signed distance,
+	/// producing a new solid whose boundary is parallel to the original
+	/// surface. `offset > 0` grows outward, `offset < 0` shrinks inward —
+	/// the mold/tooling primitive (cavity = `part.offset_surface(t, tol)`).
+	///
+	/// Wraps `BRepOffsetAPI_MakeOffsetShape` (`PerformByJoin`, mode=Skin,
+	/// join=Arc): convex edges/corners are blended with cylindrical/spherical
+	/// arcs of radius `offset`; concave ones are extended and intersected.
+	/// `tolerance` is the offset algorithm's working precision (`1e-6` is a
+	/// reasonable default at millimeter scale).
+	///
+	/// **Known failure mode — thin features**: an inward offset whose
+	/// magnitude reaches half the local wall thickness makes opposing offset
+	/// faces cross, and an outward offset pinches shut inside narrow concave
+	/// slots ≤ `2·offset` wide. OCCT rejects the self-intersecting result and
+	/// this method returns [`Error::OffsetFailed`] — reduce `offset` or
+	/// remove/split the thin feature first.
+	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error>;
+
 	/// Build a B-spline surface solid from a 2D control-point grid.
 	///
 	/// `grid[i][j]` — index `i` (0..M) runs along the longitudinal (U) direction,

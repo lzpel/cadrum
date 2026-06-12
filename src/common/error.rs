@@ -65,6 +65,12 @@ pub enum Error {
 	/// identifies which precondition or stage failed.
 	SewFailed(String),
 
+	/// Surface offset (`Solid::offset_surface` / `BRepOffsetAPI_MakeOffsetShape`)
+	/// failed: the offset surfaces self-intersect (thin walls/slots thinner
+	/// than 2x the offset magnitude) or OCCT rejected the join. The string
+	/// carries the offending parameters.
+	OffsetFailed(String),
+
 	/// B-spline solid (`Solid::bspline`) construction failed: grid too small,
 	/// surface interpolation rejected the input, or sewing/capping failed.
 	/// The string identifies which stage failed and with what parameters.
@@ -113,6 +119,7 @@ impl std::fmt::Display for Error {
 			Error::ChamferFailed => write!(f, "Chamfer failed"),
 			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
 			Error::SewFailed(msg) => write!(f, "Sew failed: {}", msg),
+			Error::OffsetFailed(msg) => write!(f, "Offset failed: {}", msg),
 			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
 			Error::SvgExportFailed => write!(f, "SVG export failed"),

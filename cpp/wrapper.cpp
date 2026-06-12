@@ -1803,6 +1803,64 @@ std::unique_ptr<TopoDS_Shape> make_sewn_solid(
     }
 }
 
+// Offset every face of `shape` by signed `offset` (positive = outward)
+// using BRepOffsetAPI_MakeOffsetShape. Same PerformByJoin configuration as
+// builder_thick_solid's sealed-shell fallback (Skin mode, Arc join). The
+// result of offsetting a solid is normally a SOLID, but OCCT occasionally
+// returns the bare offset SHELL or a one-element compound — both are
+// upgraded here so the Rust side always receives a TopAbs_SOLID. Returns
+// nullptr when OCCT rejects the offset (self-intersecting offset surfaces:
+// |offset| ≥ half the local wall thickness, or a concave slot narrower
+// than 2*offset pinching shut).
+std::unique_ptr<TopoDS_Shape> make_offset_shape(
+    const TopoDS_Shape& shape,
+    double offset,
+    double tolerance)
+{
+    try {
+        BRepOffsetAPI_MakeOffsetShape offsetter;
+        offsetter.PerformByJoin(
+            shape, offset, tolerance,
+            /*mode=*/ BRepOffset_Skin,
+            /*intersection=*/ false,
+            /*selfInter=*/ false,
+            /*join=*/ GeomAbs_Arc);
+        if (!offsetter.IsDone()) return nullptr;
+        TopoDS_Shape result = offsetter.Shape();
+        if (result.IsNull()) return nullptr;
+
+        if (result.ShapeType() == TopAbs_COMPOUND) {
+            // Unwrap a one-solid (or one-shell) compound.
+            TopExp_Explorer solid_ex(result, TopAbs_SOLID);
+            if (solid_ex.More()) {
+                result = solid_ex.Current();
+                solid_ex.Next();
+                if (solid_ex.More()) return nullptr;
+            } else {
+                TopExp_Explorer shell_ex(result, TopAbs_SHELL);
+                if (!shell_ex.More()) return nullptr;
+                result = shell_ex.Current();
+                shell_ex.Next();
+                if (shell_ex.More()) return nullptr;
+            }
+        }
+
+        if (result.ShapeType() == TopAbs_SOLID) {
+            return std::make_unique<TopoDS_Shape>(result);
+        }
+        if (result.ShapeType() == TopAbs_SHELL && BRep_Tool::IsClosed(result)) {
+            BRepBuilderAPI_MakeSolid solid_maker(TopoDS::Shell(result));
+            if (!solid_maker.IsDone()) return nullptr;
+            TopoDS_Solid solid = solid_maker.Solid();
+            BRepLib::OrientClosedSolid(solid);
+            return std::make_unique<TopoDS_Shape>(solid);
+        }
+        return nullptr;
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
 std::unique_ptr<TopoDS_Shape> make_bspline_solid(
     rust::Slice<const double> coords,
     uint32_t nu, uint32_t nv,

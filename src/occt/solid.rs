@@ -408,6 +408,25 @@ impl SolidStruct for Solid {
 		))
 	}
 
+	// ==================== Offset surface ====================
+
+	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error> {
+		let shape = ffi::make_offset_shape(&self.inner, offset, tolerance);
+		if shape.is_null() {
+			return Err(Error::OffsetFailed(format!(
+				"offset_surface: OCCT BRepOffsetAPI_MakeOffsetShape failed (offset={}, tolerance={}). \
+				 Thin walls/slots whose local thickness is ≤ 2|offset| self-intersect and are rejected.",
+				offset, tolerance
+			)));
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+			Default::default(),
+		))
+	}
+
 	// ==================== Bspline ====================
 
 	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error> {
