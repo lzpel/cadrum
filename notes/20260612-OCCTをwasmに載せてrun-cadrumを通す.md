@@ -96,6 +96,40 @@ run-cadrum -> Solid volume: 6000                    (OCCT in wasm)
   `path_filestat_get`・`path_open`（path 系は NOENT を返して OCCT を内蔵既定へフォールバック）。
 - つまり「不可」なのは **ファイルパス指定の I/O のみ**。メモリ⇄Solid は OK。
 
+## wasm サイズ最適化の調査（追記）
+
+前提: wasm-opt は何に効くか
+
+- `wasm-opt`(binaryen) は **リンク済みの最終 .wasm 1個**にかける後段最適化器。OCCT の prebuilt
+  (`.a` 静的ライブラリ) には**一切触れない**（OCCT の最適化は OCCT コンパイル時の `-O2/Release`）。
+- 効くのは**最終 wasm の容量と（副次的に）速度**。容量が主、速度は各コンポーネントが既に
+  最適化済み(rust release / OCCT -O2)なので控えめ。
+
+現状の wasm サイズと内訳
+
+- STEP I/O を入れると **~3.85MB（cube/volume のみ）→ ~14.9MB** に膨らむ。STEP/XDE が到達可能に
+  なるためで、これは**実コード**なので DCE では消えない（圧縮・サイズ最適化で縮むだけ）。
+
+サイズ削減レバー（OCCT が大半なので効く順）
+
+| レバー | 支配元 | OCCT に効く | キャッシュ再ビルド | 状態 |
+|---|---|---|---|---|
+| #1 wasm-opt `-Oz` | 最終 wasm | ✅(全体) | 不要(最終段) | **OFF**（v117 が Precompute でクラッシュ。issue #6639、v118+ で修正済み。v130 待ち） |
+| #2 OCCT `MinSizeRel`(`-Os`) | `build.rs` の cmake `.profile()` | ✅ | **要**（フラグ変更=焼き直し） | 未着手。速度 -O2 比 ~5–20% 低下の見込み（要実測） |
+| #3 rust `[profile.release]` | cargo/rustc + cc-rs | ❌(strip の最終段除去のみ) | 不要 | **導入済**（下記） |
+| #4 配布圧縮 gzip/brotli | サーブ側 | — | — | スコープ外 |
+
+　#3 の実測（導入済み）
+- `sandbox-wasm/Cargo.toml` に `[profile.release]`（`opt-level="s"`, `lto=true`,
+  `codegen-units=1`, `panic="abort"`, `strip=true`）を追加。
+- 結果: **14,866,904 B → 12,779,239 B（-2.09MB / -14%）**、機能維持（`run-cadrum`=6000）。
+- 主因は `strip`(names/debug 除去) と `panic=abort`(unwind 表削減) + LTO。**速度ホットパス(OCCT)
+  には無影響＝実質ノーコスト**。
+- cargo の `[profile.release]` は **rustc と cc-rs(`wrapper.cpp`/`ffi.cpp`/`wasi_stub.c`)** を支配するが、
+  **OCCT(C++) は支配しない**。OCCT は `build.rs` の `.profile("Release")`(=`-O2`)で固定。
+- ゆえに **キャッシュを捨てて OCCT を焼き直しても #3 では OCCT は縮まない**。OCCT を縮めるのは
+  #2(`MinSizeRel`)のみで、これは cargo profile とは独立・要キャッシュ再ビルド。
+
 ## 既知の制限 / 今後
 - OCCT の OSD 層はスタブ。**ファイルパス指定の I/O・スレッド・ディスク上のリソース/スキーマ参照は不可**
   （`path_open` は NOENT 固定）。メモリ経由の STEP/BRep I/O と純幾何は動く。

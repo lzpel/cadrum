@@ -26,3 +26,12 @@ cc = []
 cxx = ["dep:cxx"]
 cadrum = ["dep:cadrum"]
 libcxx = [] # build with libcxx
+
+# 最終 wasm のサイズ最適化（rust コード全部＝cadrum の rust 側も含む。OCCT/C++ は
+# cmake/cc 管轄なので対象外）。panic=abort と strip は速度ノーコストで効く。
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
