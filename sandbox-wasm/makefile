@@ -7,6 +7,16 @@ WASI = https://github.com/WebAssembly/wasi-libc/archive/refs/tags/wasi-sdk-32.ta
 # LLVM runtimes (libc++) build hard-requires a real Python3; portable embeddable build avoids a system install.
 PYTHON = https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip
 export PATH := $(CURDIR)/../out/$(call stem,$(CLANG))/bin:$(CURDIR)/../out/python:$(CURDIR)/../out/$(CMAKE)/bin:$(PATH)
+# cxx crate は cxx.cc を自前の cc::Build でコンパイルするので、libc++ ヘッダ(-isystem)と
+# 例外無効フラグを cc crate が読む CXXFLAGS_<target> 経由で全 C++ TU に届ける。
+# MSYS/Git-bash は env 値中の 2 つ目の `C:` をパスリスト区切りと誤認し `C;` に化けさせる
+# ので、この env 変数だけパス変換の対象外にする。
+export MSYS2_ENV_CONV_EXCL := CXXFLAGS_wasm32_unknown_unknown
+# cxx が依存する link-cplusplus は wasm では既定で libstdc++ をリンクしようとする。
+# 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
+export CXXSTDLIB := c++
+SYSROOT := $(CURDIR)/../out/wasi-sysroot
+export CXXFLAGS_wasm32_unknown_unknown := -isystem$(SYSROOT)/include/c++/v1 -isystem$(SYSROOT)/include/wasm32-wasip1 -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS -D_LIBCPP_HAS_MUSL_LIBC
 
 # pure rust. I got wasm successfully.
 run: run-raw-pure
@@ -14,10 +24,10 @@ run: run-raw-pure
 run-cc: run-raw-cc
 # cc + libc (wasi-libc). __has_include(<math.h>) becomes true so add() returns sin(a+b).
 run-cc-libc: run-raw-cc-libc
-run-cxx: run-raw-cxx
+run-cxx: run-raw-cxx-libcxx
 # with cadrum. This is that target of this sandbox.
 run-cadrum: run-raw-cadrum
-run-raw-%: download # build wasm, and run it with node. hyphens in % become comma-separated features (e.g. run-raw-cc-libc -> --features cc,libc).
+run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separated features (e.g. run-raw-cc-libc -> --features cc,libc).
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"

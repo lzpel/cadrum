@@ -332,3 +332,70 @@ foreach(target IN LISTS WASI_SDK_TARGETS)
   define_libcxx(${target})
 endforeach()
 ```
+
+### cxx ビルド完了 ✅ok
+
+`cxx` crate 経由の C++ を libc++ とリンクして wasm 化、node で実行できるようになった。
+
+```
+make -C sandbox-wasm generate   # wasi-libc + libc++/libc++abi を out/wasi-sysroot にビルド（初回のみ）
+make -C sandbox-wasm run-cxx     # => Solid volume: 5
+```
+
+`run-cxx` は `run-raw-cxx-libcxx`（`--features "cxx libcxx"`）に張り替えてある。`cc`/`libc` の関係と同様、`cxx` が C++ ソース、`libcxx` が libc++ sysroot 供給を担当する。bridge は些末な `double add(double,double)` で、`volume() = add(2,3) = 5`。
+
+#### libc++ のビルド（generate）
+
+`out/wasi-sysroot`（target `wasm32-wasip1`）に wasi-libc と libc++ を同居させる。libc++ は LLVM monorepo の `runtimes` を入口に `libcxx;libcxxabi` をビルド。詰まった点:
+
+- **`CMAKE_SYSTEM_NAME=WASI` は LLVM が知らない**（`HandleLLVMOptions` は Win32/UNIX/Generic のみ）→ `Generic` を使う。wasm のコード生成は `--target=wasm32-wasip1` が駆動する。
+- **`runtimes` は実 Python3 必須**（`find_package(Python3 REQUIRED)`）→ Store スタブではダメ。`out/python` に公式 embeddable を落として PATH に通す。
+- **`CMAKE_AR=llvm-ar`（相対名）は CWD 前置で誤絶対化**されアーカイブで `no such file or directory` → AR/RANLIB/NM/clang を絶対パスで渡す。
+- threads/filesystem は OFF、localization と例外は ON（既定）。`__config_site` に `_LIBCPP_HAS_NO_THREADS` / `_LIBCPP_HAS_NO_FILESYSTEM` が入る。
+
+> 補足: wasi-sdk の prebuilt（このファイル冒頭の表）を使えば libc++ ビルドを丸ごと省略できる。ただし配布版は eh/noeh など構成が固定なので、例外の扱いを自前で選びたいなら source ビルドのほうが融通が利く。
+
+#### 実装中の発見（run-cxx を通すまで）
+
+`wasm32-unknown-unknown`（Rust 側）のまま、C++ TU だけ libc++ ヘッダを食わせる方針（`cc-libc` と同じ）。`--target=wasm32-wasip1` にすると `__wasi__` が定義され libc++/libc が WASI bottom-half 経路（実 import を出す）に化けるので避ける。
+
+1. **`cxx` crate は `cxx.cc`（C++ ランタイム）を自前の `cc::Build` でコンパイル**する。ここに libc++ ヘッダを届けるには `build.rs` の `.flag()` では不足で、`cc` crate が読む env `CXXFLAGS_wasm32_unknown_unknown` を **Makefile から export** する必要がある。
+2. **MSYS/Git-bash の env パス変換**が、値中 2 つ目の `C:` をパスリスト区切りと誤認し `C;` に化けさせる → `MSYS2_ENV_CONV_EXCL` でその変数を変換対象外に。
+3. **`__wasi__` 未定義だと libc++ の `__locale` が ctype マスク（`alpha`/`digit`…）を定義できない**（`#elif defined(__wasi__)` ブランチを外すため）。同じ musl ロケールを選ぶ **`-D_LIBCPP_HAS_MUSL_LIBC`** で回避。target は unknown-unknown のまま。
+4. **`cxx::bridge` は `mod` 形式必須**（`cxx_build::bridge()` が「expected a module」）。`#[cxx::bridge] mod ffi { unsafe extern "C++" { ... } }` に直し、呼び出しを `ffi::add` に。
+5. **`link-cplusplus`（cxx の依存）は wasm 既定で `-lstdc++`** を要求 → 我々は libc++ なので `CXXSTDLIB=c++`。
+
+#### 例外の扱い（今後）
+
+今は **例外オフ**で通している:
+
+- bridge fn `add` は `f64` 返却 → cxx は `noexcept` トランポリンを生成し try/catch を出さない。
+- `cxx.cc` の唯一の `throw` は `-DRUST_CXX_NO_EXCEPTIONS` で `abort()` に切り替わる。
+- よって `-fno-exceptions -fno-rtti` でコンパイルでき、libc++ を `-fwasm-exceptions` で作り直す必要がない。正常系は決して throw しないので実害なし。
+
+**OCCT を載せる段階では例外が要る**（`Standard_Failure` 等）。その時は wasi-sdk の `define_libcxx`（このファイル上部）が示すとおり、
+
+- libc++/libc++abi/**libunwind** を `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false` で**作り直し**、
+- cadrum/cxx 側も同じ `-fwasm-exceptions` でコンパイルし（ABI 一致）、
+- 実行する node が wasm EH 対応（最近の Node は既定で可）、
+
+が必要になる。wasi-sdk が eh/noeh の 2 系統を別ディレクトリに分けているのはこのため。`RUST_CXX_NO_EXCEPTIONS` / `-fno-exceptions` は外すことになる。
+
+#### libc bottom-half（WASI import）の扱い
+
+`wasm32-unknown-unknown` には WASI ランタイムが無い。ところが `cxx.cc` の `#include <iostream>` が生成する `std::ios_base::Init` 静的初期化子が stdio を参照し、リンク後の wasm に **`wasi_snapshot_preview1` への import（`fd_write`/`fd_seek`/`fd_close`）が残る**（グローバルコンストラクタなので `--gc-sections` で消えない）。node は ESM 解決でこれを package と誤認し `ERR_MODULE_NOT_FOUND` になる。
+
+対処は **bottom-half import を no-op スタブで定義して消す**（`src/wasi_stub.c`）:
+
+- 実 import シンボルは `__wasi_fd_write` ではなく **`__imported_wasi_snapshot_preview1_fd_*`**（`__wasi_*` は libc.a 側で定義済みの wrapper）。`llvm-nm libc.a` で確認した。
+- スタブは静的アーカイブで、実 import シンボルは libc.a 処理時に初めて undefined になりリンク順で取りこぼすため、**`+whole-archive` で強制リンク**する。
+- 正常系で stdout に書かないので no-op で実害なし。最終的に残る import は wasm-bindgen の glue のみ（`node -e "...WebAssembly.Module.imports..."` で確認可）。
+
+将来 wasm 内で本当に stdout 等を使いたくなったら、スタブを外して node 側に WASI shim を渡す（`wasi_snapshot_preview1` を import object で供給）か、wasm-bindgen のターゲット設定を変える方向になる。
+
+#### 懸念点 / 残課題
+
+- **cmake が project 内の `out/cmake-3.31.12` でなく PATH 上の別 cmake を使っている**（PATH 行が `$(CMAKE)`=URL で壊れている）。動くが再現性のため要修正。
+- stale な `build-libcxx` が「Device or resource busy」で `rm` 不可になることがある（AV/エクスプローラのハンドル）。`CMakeCache.txt` 削除で回避できる。
+- `wasm32-unknown-unknown` の C++ オブジェクトと `wasm32-wasip1` ビルドの libc++/libc を混在リンクしている。今は純計算経路のみで成立しているが、使う libc++ 機能が増えると新たな bottom-half import が出る可能性がある（その都度スタブを足す or wasip1 + shim へ移行）。
+- 次は `make -C sandbox-wasm run-cadrum`（本命）。OCCT は例外多用なので、上記「例外の扱い（今後）」の eh 版 libc++ ビルドが前提になる。
