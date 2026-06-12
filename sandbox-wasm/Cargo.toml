@@ -20,5 +20,4 @@ pure = []
 cc = []
 cxx = ["dep:cxx"]
 cadrum = ["dep:cadrum"]
-libc = [] # build with libc
 libcxx = [] # build with libcxx

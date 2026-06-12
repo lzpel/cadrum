@@ -1,21 +1,9 @@
 fn main() {
-	// cc feature: ヘッダを含まない純 C をコンパイル（libc 不要のはず）。
+	// cc feature: ffi.c をコンパイル。wasi-sysroot のヘッダ(-isystem)と libc.a(-L/-lc)は
+	// makefile の CFLAGS_wasm32_unknown_unknown / CARGO_TARGET_*_RUSTFLAGS から供給される。
+	// これで __has_include(<math.h>) が true になり ffi.c は sin 分岐を採る。
 	if std::env::var("CARGO_FEATURE_CC").is_ok() {
-		let mut build = cc::Build::new();
-		build.file("src/ffi.c");
-		if std::env::var("CARGO_FEATURE_LIBC").is_ok() {
-			// ターゲットは wasm32-unknown-unknown のまま。先に生成した wasi-libc の
-			// sysroot があれば、ヘッダ(-I)と libc.a(-lc) を足す。これで
-			// __has_include(<math.h>) が true になり ffi.c は sin 分岐を採る。
-			// sin は top-half(純粋計算)なので unknown でもリンクでき、WASI import を出さない。
-			let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-			let sysroot = format!("{manifest}/../out/wasi-sdk-33/share/wasi-sysroot");
-			let inc = format!("{sysroot}/include/wasm32-wasip1");
-			build.include(&inc);
-			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1");
-			println!("cargo:rustc-link-lib=static=c");
-		}
-		build.compile("sandbox_cc");
+		cc::Build::new().file("src/ffi.c").compile("sandbox_cc");
 		println!("cargo:rerun-if-changed=src/ffi.c");
 		println!("cargo:rerun-if-changed=src/ffi.h");
 	}
@@ -39,13 +27,8 @@ fn main() {
 		if std::env::var("CARGO_FEATURE_LIBCXX").is_ok() {
 			let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
 			let sysroot = format!("{manifest}/../out/wasi-sdk-33/share/wasi-sysroot");
-			build.flag(format!("-isystem{sysroot}/include/wasm32-wasip1/noeh/c++/v1"));
-			build.flag(format!("-isystem{sysroot}/include/wasm32-wasip1"));
-			// target は unknown-unknown のままなので __wasi__ が未定義。wasi-sdk-33 の
-			// libc++ は __locale の rune table を __wasi__ 等で選ぶが該当分岐が無く
-			// ctype マスクが未定義になる。libc++ 自前のデフォルト rune table を選ぶ
-			// _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE を定義して回避する。
-			build.define("_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE", None);
+			// ヘッダ(-isystem)と __wasi__ rune table は makefile の CXXFLAGS_<target>
+			// (--target=wasm32-wasip1 --sysroot=...) が供給する。ここはリンクのみ。
 			// noeh: -fno-exceptions ビルドに対応する libc++ / libc++abi バリアント。
 			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1/noeh");
 			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1");

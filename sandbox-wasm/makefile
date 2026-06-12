@@ -13,14 +13,20 @@ export MSYS_NO_PATHCONV := 1
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
 SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
-export CXXFLAGS_wasm32_unknown_unknown := -isystem$(SYSROOT)/include/wasm32-wasip1/noeh/c++/v1 -isystem$(SYSROOT)/include/wasm32-wasip1 -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS -D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
+# C/C++ のコンパイルだけ --target=wasm32-wasip1 にすると、clang が --sysroot から
+# include/wasm32-wasip1 と（-fno-exceptions 時は）noeh/c++/v1 を自動解決するので -isystem 不要。
+# __wasi__ が定義され libc++ の __locale も正規の rune table を選ぶため rune table hack も不要。
+# 最終リンクは rustc が wasm32-unknown-unknown で行う（オブジェクトは wasm32 で互換）。
+export CXXFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT) -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS
+export CFLAGS_wasm32_unknown_unknown := --target=wasm32-wasip1 --sysroot=$(SYSROOT)
+# libc.a のリンクは rustc(rust-lld)側。静的アーカイブは遅延リンクなので、libc を参照しない
+# pure ビルドには取り込まれない。これで build.rs から sysroot/libc 記述を排除できる。
+export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS := -L native=$(SYSROOT)/lib/wasm32-wasip1 -l static=c
 
 # pure rust. I got wasm successfully.
 run: run-raw-pure
-# with simple cpp. such as "double add(double a, double b) { return a + b; }".
+# cc + libc (wasi-sysroot). __has_include(<math.h>) is true so add() returns sin(a+b).
 run-cc: run-raw-cc
-# cc + libc (wasi-libc). __has_include(<math.h>) becomes true so add() returns sin(a+b).
-run-cc-libc: run-raw-cc-libc
 run-cxx: run-raw-cxx-libcxx
 # with cadrum. This is that target of this sandbox.
 run-cadrum: run-raw-cadrum
@@ -28,8 +34,6 @@ run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separat
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
-# prebuilt sysroot を同梱する SDK を落とすだけ。from-source ビルドは不要。
-generate: download
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
