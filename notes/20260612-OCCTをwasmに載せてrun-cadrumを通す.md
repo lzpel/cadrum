@@ -86,9 +86,20 @@ run-cadrum -> Solid volume: 6000                    (OCCT in wasm)
 - `sandbox-wasm/src/wasi_stub.c` … WASI import 10 種＋`setjmp/longjmp`＋`__cxa_atexit` スタブ。
 - `sandbox-wasm/Cargo.toml` … cadrum features、`wasm-opt=false`。
 
+## メモリ経由の STEP I/O は動く（追記）
+- cadrum の I/O は完全にストリームベース（`Solid::write_step<W: Write>` / `read_step<R: Read>`、
+  C++ 側は `RustReader/RustWriter` streambuf → `std::istream/ostream`）。スタブ化した `OSD_File`
+  層を通らないので **メモリ往復が可能**。sandbox の `volume()` を
+  cube→`write_step(Vec<u8>)`→`read_step(Cursor)`→`volume()` に変えても `run-cadrum` は **6000**。
+  color(XDE) 込みでも動作（フォールバック不要だった）。
+- 追加で必要だった WASI スタブ: `clock_time_get`(STEP ヘッダ時刻)・`fd_fdstat_set_flags`・
+  `path_filestat_get`・`path_open`（path 系は NOENT を返して OCCT を内蔵既定へフォールバック）。
+- つまり「不可」なのは **ファイルパス指定の I/O のみ**。メモリ⇄Solid は OK。
+
 ## 既知の制限 / 今後
-- OCCT の OSD 層はスタブ。**ファイル I/O・スレッド・環境変数・ディスクからの STEP 読み込みは不可**。
-  cube/volume 等の純幾何は動く。STEP/ファイル系を wasm で使うなら実 wasi シム or JS 側 WASI が要る。
+- OCCT の OSD 層はスタブ。**ファイルパス指定の I/O・スレッド・ディスク上のリソース/スキーマ参照は不可**
+  （`path_open` は NOENT 固定）。メモリ経由の STEP/BRep I/O と純幾何は動く。
+  実ファイルや環境依存リソースを使うなら実 wasi シム or JS 側 WASI が要る。
 - wasm-opt 無効（最適化のみ。機能影響なし）。生成 wasm は ~3.8MB。
 - OCCT ソースビルドは初回数分。以後 `sandbox-wasm/target/cadrum-occt-v800-wasm32-unknown-unknown` を再利用。
 - スレッド系(`OSD_Thread/ThreadPool/Parallel`)は今回は未参照で済んだが、並列を使う算法を載せると

@@ -49,6 +49,27 @@ int __imported_wasi_snapshot_preview1_fd_read(int fd, int iovs, int iovs_len, un
 	*nread = 0;
 	return 0;
 }
+// STEP write/read が引きずる時刻・ファイル系 import。
+// 時刻は 0、path 系は NOENT(44) を返して「ファイル無し」とし OCCT を内蔵既定へフォールバックさせる。
+int __imported_wasi_snapshot_preview1_clock_time_get(int id, long long precision, unsigned long long *time) {
+	(void)id; (void)precision;
+	*time = 0;
+	return 0;
+}
+int __imported_wasi_snapshot_preview1_fd_fdstat_set_flags(int fd, int flags) {
+	(void)fd; (void)flags;
+	return 0;
+}
+int __imported_wasi_snapshot_preview1_path_filestat_get(int fd, int flags, int path, int path_len, int buf) {
+	(void)fd; (void)flags; (void)path; (void)path_len; (void)buf;
+	return 44; /* __WASI_ERRNO_NOENT */
+}
+int __imported_wasi_snapshot_preview1_path_open(int fd, int dirflags, int path, int path_len, int oflags,
+                                                long long rights_base, long long rights_inheriting, int fdflags, int opened_fd) {
+	(void)fd; (void)dirflags; (void)path; (void)path_len; (void)oflags;
+	(void)rights_base; (void)rights_inheriting; (void)fdflags; (void)opened_fd;
+	return 44; /* __WASI_ERRNO_NOENT */
+}
 // OCCT の Standard_ErrorHandler が参照する setjmp/longjmp。wasm では env import になる。
 // シグナル経由の例外変換は使わず C++ 例外を使うので、setjmp は 0 を返すだけでよく
 // (保護ブロックへ素通り)、longjmp は到達しない（万一来たら trap）。

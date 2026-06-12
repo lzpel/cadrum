@@ -33,7 +33,12 @@ pub fn volume() -> f64 {
 pub fn volume() -> f64 {
 	use cadrum::{DVec3, Solid};
 	let solid = Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).color("#4a90d9");
-	solid.volume()
+	// ファイルを経由せずメモリへ STEP を書き、メモリから読み戻す（OSD_File スタブ層を通らない）。
+	let mut bytes: Vec<u8> = Vec::new();
+	Solid::write_step([&solid], &mut bytes).expect("write_step to memory failed");
+	let mut cursor = std::io::Cursor::new(&bytes);
+	let solids = Solid::read_step(&mut cursor).expect("read_step from memory failed");
+	solids.first().expect("no solid after round-trip").volume()
 }
 
 #[wasm_bindgen]
