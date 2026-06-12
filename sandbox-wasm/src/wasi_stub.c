@@ -15,3 +15,17 @@ int __imported_wasi_snapshot_preview1_fd_close(int fd) {
 	(void)fd;
 	return 0;
 }
+// libc++abi の terminate / abort 経路が引きずる proc_exit。正常系では呼ばれない。
+void __imported_wasi_snapshot_preview1_proc_exit(int code) {
+	(void)code;
+}
+// 起動時の preopen 走査 (__wasilibc_populate_preopens) が引きずる。fd_prestat_get は
+// エラーが返るまで fd を増やしながら呼ばれるので、BADF(8) を返して即座に走査を終わらせる。
+int __imported_wasi_snapshot_preview1_fd_prestat_get(int fd, int buf) {
+	(void)fd; (void)buf;
+	return 8; /* __WASI_ERRNO_BADF */
+}
+int __imported_wasi_snapshot_preview1_fd_prestat_dir_name(int fd, int path, int path_len) {
+	(void)fd; (void)path; (void)path_len;
+	return 8; /* __WASI_ERRNO_BADF */
+}

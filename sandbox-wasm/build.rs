@@ -9,7 +9,7 @@ fn main() {
 			// __has_include(<math.h>) が true になり ffi.c は sin 分岐を採る。
 			// sin は top-half(純粋計算)なので unknown でもリンクでき、WASI import を出さない。
 			let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-			let sysroot = format!("{manifest}/../out/wasi-sysroot");
+			let sysroot = format!("{manifest}/../out/wasi-sdk-33/share/wasi-sysroot");
 			let inc = format!("{sysroot}/include/wasm32-wasip1");
 			build.include(&inc);
 			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1");
@@ -38,13 +38,16 @@ fn main() {
 		// 出す）に化けるのを避ける（cc+libc と同じ方式）。
 		if std::env::var("CARGO_FEATURE_LIBCXX").is_ok() {
 			let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-			let sysroot = format!("{manifest}/../out/wasi-sysroot");
-			build.flag(format!("-isystem{sysroot}/include/c++/v1"));
+			let sysroot = format!("{manifest}/../out/wasi-sdk-33/share/wasi-sysroot");
+			build.flag(format!("-isystem{sysroot}/include/wasm32-wasip1/noeh/c++/v1"));
 			build.flag(format!("-isystem{sysroot}/include/wasm32-wasip1"));
-			// target は unknown-unknown のままなので __wasi__ が未定義。libc++ の
-			// __locale は __wasi__ で musl ロケールを選ぶため、同じ musl 分岐を選ぶ
-			// _LIBCPP_HAS_MUSL_LIBC を定義して ctype マスク未定義を回避する。
-			build.define("_LIBCPP_HAS_MUSL_LIBC", None);
+			// target は unknown-unknown のままなので __wasi__ が未定義。wasi-sdk-33 の
+			// libc++ は __locale の rune table を __wasi__ 等で選ぶが該当分岐が無く
+			// ctype マスクが未定義になる。libc++ 自前のデフォルト rune table を選ぶ
+			// _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE を定義して回避する。
+			build.define("_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE", None);
+			// noeh: -fno-exceptions ビルドに対応する libc++ / libc++abi バリアント。
+			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1/noeh");
 			println!("cargo:rustc-link-search=native={sysroot}/lib/wasm32-wasip1");
 			println!("cargo:rustc-link-lib=static=c++");
 			println!("cargo:rustc-link-lib=static=c++abi");

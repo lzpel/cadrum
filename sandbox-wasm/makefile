@@ -1,22 +1,19 @@
 # stem: filename up to the first dot. e.g. $(call stem,.../libcxx-18.1.8.src.tar.xz) -> libcxx-18
 stem = $(firstword $(subst ., ,$(notdir $(1))))
-CMAKE = https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-windows-x86_64.zip
-CLANG = https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz
-LLVM = https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-18.1.8.tar.gz
-WASI = https://github.com/WebAssembly/wasi-libc/archive/refs/tags/wasi-sdk-32.tar.gz
-# LLVM runtimes (libc++) build hard-requires a real Python3; portable embeddable build avoids a system install.
-PYTHON = https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip
-export PATH := $(CURDIR)/../out/$(call stem,$(CLANG))/bin:$(CURDIR)/../out/python:$(CURDIR)/../out/$(CMAKE)/bin:$(PATH)
+# wasi-sdk Windows SDK 1 個で完結: bin/clang.exe 等のツールと、prebuilt sysroot
+# (wasm 互換の libc / libc++) を share/wasi-sysroot/ に同梱している。
+WASI_SDK = https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-windows.tar.gz
+export PATH := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/bin:$(PATH)
 # cxx crate は cxx.cc を自前の cc::Build でコンパイルするので、libc++ ヘッダ(-isystem)と
 # 例外無効フラグを cc crate が読む CXXFLAGS_<target> 経由で全 C++ TU に届ける。
 # MSYS/Git-bash は env 値中の 2 つ目の `C:` をパスリスト区切りと誤認し `C;` に化けさせる
-# ので、この env 変数だけパス変換の対象外にする。
-export MSYS2_ENV_CONV_EXCL := CXXFLAGS_wasm32_unknown_unknown
+# ので、MSYS_NO_PATHCONV=1 でパス変換を無効化する。
+export MSYS_NO_PATHCONV := 1
 # cxx が依存する link-cplusplus は wasm では既定で libstdc++ をリンクしようとする。
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
-SYSROOT := $(CURDIR)/../out/wasi-sysroot
-export CXXFLAGS_wasm32_unknown_unknown := -isystem$(SYSROOT)/include/c++/v1 -isystem$(SYSROOT)/include/wasm32-wasip1 -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS -D_LIBCPP_HAS_MUSL_LIBC
+SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
+export CXXFLAGS_wasm32_unknown_unknown := -isystem$(SYSROOT)/include/wasm32-wasip1/noeh/c++/v1 -isystem$(SYSROOT)/include/wasm32-wasip1 -fno-exceptions -fno-rtti -DRUST_CXX_NO_EXCEPTIONS -D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
 
 # pure rust. I got wasm successfully.
 run: run-raw-pure
@@ -31,34 +28,8 @@ run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separat
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
+# prebuilt sysroot を同梱する SDK を落とすだけ。from-source ビルドは不要。
 generate: download
-	# build out/wasi-sdk-32
-	cd ../out && ( ls wasi-sysroot || ( cmake -G "Unix Makefiles" -S $(call stem,$(WASI)) -B $(call stem,$(WASI))/build -DCMAKE_C_COMPILER=clang -DCMAKE_AR=llvm-ar -DCMAKE_RANLIB=llvm-ranlib -DCMAKE_NM=llvm-nm -DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot && cmake --build $(call stem,$(WASI))/build && cmake --install $(call stem,$(WASI))/build ) )
-	# build libc++ / libc++abi for wasm32-wasip1 into the same wasi-sysroot
-	ls $(CURDIR)/../out/wasi-sysroot/lib/wasm32-wasip1/libc++.a || ( cmake -G "Unix Makefiles" \
-		-S ../out/$(call stem,$(LLVM))/runtimes -B ../out/$(call stem,$(LLVM))/build-libcxx \
-		-DCMAKE_C_COMPILER=$(CURDIR)/../out/$(call stem,$(CLANG))/bin/clang.exe -DCMAKE_CXX_COMPILER=$(CURDIR)/../out/$(call stem,$(CLANG))/bin/clang++.exe \
-		-DCMAKE_AR=$(CURDIR)/../out/$(call stem,$(CLANG))/bin/llvm-ar.exe -DCMAKE_RANLIB=$(CURDIR)/../out/$(call stem,$(CLANG))/bin/llvm-ranlib.exe -DCMAKE_NM=$(CURDIR)/../out/$(call stem,$(CLANG))/bin/llvm-nm.exe \
-		-DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_CXX_COMPILER_WORKS=1 \
-		-DCMAKE_SYSTEM_NAME=Generic -DCMAKE_SYSTEM_PROCESSOR=wasm32 \
-		-DCMAKE_C_COMPILER_TARGET=wasm32-wasip1 -DCMAKE_CXX_COMPILER_TARGET=wasm32-wasip1 \
-		-DCMAKE_SYSROOT=$(CURDIR)/../out/wasi-sysroot -DCMAKE_INSTALL_PREFIX=$(CURDIR)/../out/wasi-sysroot \
-		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
-		-DLIBCXX_ENABLE_SHARED=OFF -DLIBCXXABI_ENABLE_SHARED=OFF \
-		-DLIBCXX_ENABLE_THREADS=OFF -DLIBCXXABI_ENABLE_THREADS=OFF \
-		-DLIBCXX_ENABLE_FILESYSTEM=OFF \
-		-DLIBCXX_CXX_ABI=libcxxabi -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
-		-DLIBCXX_INCLUDE_TESTS=OFF -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
-		-DLIBCXX_INSTALL_LIBRARY_DIR=lib/wasm32-wasip1 -DLIBCXXABI_INSTALL_LIBRARY_DIR=lib/wasm32-wasip1 \
-		-DLIBCXX_INSTALL_INCLUDE_DIR=include/c++/v1 -DLIBCXX_INSTALL_INCLUDE_TARGET_DIR=include/c++/v1 \
-		&& cmake --build ../out/$(call stem,$(LLVM))/build-libcxx \
-		&& cmake --install ../out/$(call stem,$(LLVM))/build-libcxx )
-download: # download llvm for clang++ and wasi-sdk for libc.
+download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
-	cd ../out && ( ls $(notdir $(CMAKE)) || ( curl -L -O $(CMAKE) && unzip -q $(notdir $(CMAKE)) ) )
-	cd ../out && ( ls $(notdir $(CLANG)) || ( curl -L -O $(CLANG) && tar xf $(notdir $(CLANG)) --transform="s,^[^/]+,$(call stem,$(CLANG)),x" ) )
-	cd ../out && ( ls $(notdir $(LLVM)) || ( curl -L -O $(LLVM) && tar xf $(notdir $(LLVM)) --transform="s,^[^/]+,$(call stem,$(LLVM)),xSH" --exclude='*/clang/test/*' ) ) # avoid pathes like ../../opt/cuda*
-	cd ../out && ( ls $(notdir $(WASI)) || ( curl -L -O $(WASI) && tar xf $(notdir $(WASI)) --transform="s,^[^/]+,$(call stem,$(WASI)),x" ) )
-	cd ../out && ( ls python/python.exe || ( curl -L -O $(PYTHON) && unzip -q $(notdir $(PYTHON)) -d python ) )
-	cmake --version
-	python --version
+	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
