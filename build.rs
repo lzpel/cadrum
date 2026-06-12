@@ -393,13 +393,12 @@ mod source {
 		}
 	}
 
-	/// Return the patched content for a file if it needs patching, `None` otherwise.
-	/// Pure function — does not write to disk.
-	/// wasm(wasi-libc) に無い POSIX API（ファイルロック fcntl/F_*, mkstemp/mkdtemp,
-	/// opendir, stat, signal, times, gethostname, statvfs, syslog, getpwuid 等）を使う
-	/// Unix 実装。sandbox は cube().volume() しか叩かず実行時に未使用なので、シグネチャを
-	/// 残してボディだけ潰す（リンク用にシンボルは存在させる）。
-	const WASM_POSIX_STUBS: &[&str] = &[
+	/// OS 依存(OSD)層など OS API を直接使う OCCT 実装ファイル。全 target で body-stub 化し
+	/// （シグネチャは残しリンク用シンボルを維持）、STUB_DROP_HEADERS の #include を外す。
+	/// cadrum の公開 I/O はストリームベースで OSD ファイル層を通らず、テストも std::fs で
+	/// バイト列を読み書きするので、source-build にこのスタブを当てても cargo test で検証できる。
+	/// 性能の要 OSD_ThreadPool / OSD_Parallel(_Threads/_TBB) / OSD_Thread は意図的に非対象。
+	const OSD_POSIX_STUBS: &[&str] = &[
 		"OSD_File.cxx", "OSD_Directory.cxx", "OSD_DirectoryIterator.cxx",
 		"OSD_FileIterator.cxx", "OSD_FileNode.cxx", "OSD_Path.cxx",
 		"OSD_Protection.cxx", "OSD_Process.cxx", "OSD_Host.cxx", "OSD_Disk.cxx",
@@ -408,16 +407,17 @@ mod source {
 		"Message_PrinterSystemLog.cxx", "STEPConstruct_AP203Context.cxx",
 	];
 
-	/// wasm(wasi-libc) に存在しないヘッダ。スタブ化済みファイルから #include を外す。
-	const WASM_MISSING_HEADERS: &[&str] = &[
+	/// 上記スタブから外す、環境により不在のヘッダ（wasm に無い等）。
+	/// native では既存ヘッダを消すだけで無害（body-stub 済みなので参照されない）。
+	const STUB_DROP_HEADERS: &[&str] = &[
 		"netdb.h", "sys/socket.h", "arpa/inet.h", "net/if.h", "ifaddrs.h",
 		"pwd.h", "grp.h", "dlfcn.h", "sys/statvfs.h", "sys/mount.h", "syslog.h",
 	];
 
+	/// Return the patched content for a file if it needs patching, `None` otherwise.
+	/// Pure function — does not write to disk. 全 target 共通（target 分岐なし）。
 	fn patch_or_none(path: &Path) -> Option<String> {
 		let name = path.file_name()?.to_str()?;
-		let is_windows = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
-		let is_wasm = env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32");
 
 		match name {
 			"XCAFDoc_VisMaterial.cxx" => Some(stub_content(path, true)),
@@ -428,23 +428,21 @@ mod source {
 				Some(comment_out_include_in(&stubbed, "execinfo.h"))
 			}
 
-			n if is_wasm && WASM_POSIX_STUBS.contains(&n) => {
+			// OSD/POSIX 依存ファイル: body-stub + 不在ヘッダ除去（全 target 共通）。
+			n if OSD_POSIX_STUBS.contains(&n) => {
 				let mut s = stub_content(path, true);
-				for h in WASM_MISSING_HEADERS {
+				for h in STUB_DROP_HEADERS {
 					s = comment_out_include_in(&s, h);
 				}
 				Some(s)
 			}
 
-			"OSD_WNT.cxx" if is_windows => Some(stub_content(path, false)),
-			"OSD_File.cxx" | "OSD_Protection.cxx" | "OSD_signal.cxx"
-			| "OSD_FileNode.cxx" | "OSD_Process.cxx"
-				if is_windows =>
-			{
-				Some(stub_content(path, true))
-			}
+			// Windows 専用 OSD 実装。windows.h + SEH(__try/__except) を含み body-stub できない
+			// ため空ファイル化（Windows 以外ではコンパイルされず無害）。
+			"OSD_WNT.cxx" => Some(stub_content(path, false)),
 
-			"occt_defs_flags.cmake" if is_windows => {
+			// OCC_CONVERT_SIGNALS(signal→例外変換) を全 target で無効化。OSD_signal スタブ化と整合。
+			"occt_defs_flags.cmake" => {
 				let content = std::fs::read_to_string(path).ok()?;
 				let needle = "add_definitions(-DOCC_CONVERT_SIGNALS)";
 				let replacement = "# add_definitions(-DOCC_CONVERT_SIGNALS)  # patched out by cadrum build.rs";
