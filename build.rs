@@ -249,7 +249,7 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "source-build")]
 mod source {
-	use super::{download_and_extract_tar_gz, find_occt_dirs, OCCT_VERSION};
+	use super::{download_and_extract_tar_gz, find_occt_dirs, OCC_LIBS, OCCT_VERSION};
 	use std::env;
 	use std::path::{Path, PathBuf};
 
