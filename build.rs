@@ -365,9 +365,12 @@ mod source {
 
 		// lib/ からリンク対象(OCC_LIBS)以外を削除。cmake/pkgconfig も対象だが cadrum は build.rs で
 		// 直リンクし cmake/pkgconfig を消費しないので実害なし。min_depth(1) で lib root 自身は消さない。
+		// 拡張子を外した basename(file_stem)が OCC_LIBS のいずれかで終わるものだけ残す。contains だと
+		// "TKDE" が TKDEIGES 等を巻き込むので suffix 判定にする（libcadrum_* は後段で同梱され無関係）。
 		if let Some([_include_dir, lib_dir]) = find_occt_dirs(effective_root) {
 			for child in walkdir::WalkDir::new(&lib_dir).min_depth(1).into_iter().flatten() {
-				if !OCC_LIBS.iter().any(|lib| child.file_name().to_str().unwrap_or_default().contains(lib)) {
+				let stem = child.path().file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+				if !OCC_LIBS.iter().any(|lib| stem.ends_with(lib)) {
 					if child.file_type().is_file() {
 						let _ = std::fs::remove_file(child.path());
 					} else {
