@@ -1,6 +1,6 @@
 # cadrum
 
-Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0).
+Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0) — runs natively and in the browser via WebAssembly.
 
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]
@@ -19,60 +19,25 @@ Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCC
 <tr><td width='25%'><a href='#bspline'><img src='https://lzpel.github.io/cadrum/09_bspline.png' width='100%' height='auto' alt='bspline'/></a></td><td width='25%'><a href='#fillet'><img src='https://lzpel.github.io/cadrum/10_fillet.png' width='100%' height='auto' alt='fillet'/></a></td><td width='25%'><a href='#chamfer'><img src='https://lzpel.github.io/cadrum/11_chamfer.png' width='100%' height='auto' alt='chamfer'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/12_multiview.png' width='100%' height='auto' alt='multiview'/></a></td></tr>
 </table>
 
-## Summary
+## What is cadrum
 
-Other Rust CAD bindings either require the user to install OCCT ahead of time
-(with all the version skew this entails on Linux distros and Windows) or
-expose OCCT's class hierarchy 1:1, where building a cube ends up touching
-`gp_Pnt`, `gp_Ax2`, `BRepPrimAPI_MakeBox`, and `TopoDS_Shape` before any
-geometry actually appears.
+`cadrum` is a Rust library for building parametric 3D CAD models. It is
+designed to be a clean, scriptable foundation for scientific and engineering
+work — short, deterministic Rust programs that produce high-quality solid
+geometry.
 
-`cadrum` takes a different bet:
+cadrum has several goals:
 
-- **Static linking with prebuilt binaries.** `cargo build` on a supported
-  target downloads a self-contained OCCT 8.0.0 tarball and links it
-  statically. No system OCCT, no dynamic libraries to ship, no
-  `LD_LIBRARY_PATH` in production.
-- **A minimal type surface.** Three concrete shape types — `Solid`, `Edge`,
-  `Face` — plus a triangle `Mesh` for visual output and `glam` vectors for
-  input. Operations are inherent methods on the shape types, so
-  `Solid::cube(...).rotate_z(0.5).translate(DVec3::X * 10.0)` chains like
-  any value-returning Rust API.
-- **Single-type surface; collections via iterators.** Every operation lives
-  on the concrete shape types (`Solid`, `Edge`). A collection is just a
-  `Vec<Solid>` / `[Solid; N]` — transform or aggregate it with ordinary
-  iterator idioms (`parts.iter().map(|s| s.translate(v)).collect()`,
-  `parts.iter().map(|s| s.volume()).sum::<f64>()`). Booleans, sweep, loft,
-  extrude and I/O take any `IntoIterator<Item = &Solid>` / `&Edge` directly.
-
-## Introduction
-
-OpenCASCADE represents shapes as a *boundary representation* (BRep): a solid
-is a topological assembly of faces, faces are trimmed surfaces bounded by
-edges, edges are 3D curves with a parameter range. Booleans, fillets,
-sweeps, and the like rebuild this assembly under the hood; CAD I/O formats
-like STEP / IGES preserve it exactly across applications.
-
-Working at that level pays off when the application needs to reason about
-geometry — closest-point queries, swept profiles along arbitrary spines,
-history-tracked face derivation through booleans — and not merely render
-triangles. Triangle meshes are a separate, lossy projection that `cadrum`
-exposes through `Solid::mesh` when an STL export or SVG render is required.
-
-## Capabilities
-
-| Area | Methods |
-|---|---|
-| **Primitives** | `Solid::cube`, `Solid::sphere`, `Solid::cylinder`, `Solid::cone`, `Solid::torus`, `Solid::half_space` |
-| **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline` |
-| **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline` |
-| **Editing** | `Solid::shell`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
-| **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains` |
-| **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Face::iter_edge`, `Face::project`, `Edge::project` |
-| **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` |
-| **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep_binary` / `Solid::write_brep_binary`, `Solid::read_brep_text` / `Solid::write_brep_text` |
-| **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_svg` |
-| **Color** *(feature `color`)* | per-face color preserved across STEP / BRep / STL / SVG round-trips |
+- **Parametric and scriptable.** Models are ordinary Rust values, so
+  dimensions and topology are driven by code, not a GUI.
+- **Single-binary redistribution.** cadrum ships statically linkable
+  OpenCASCADE binaries, so a build links OCCT in with no system install and
+  redistributes as one self-contained binary.
+- **Runs in the browser.** cadrum also ships a static OpenCASCADE build for
+  the `wasm32-unknown-unknown` target, making it well suited to running what
+  you build directly in the browser via WebAssembly.
+- **Fully headless.** No GUI, no windowing, no OS-specific dependencies —
+  cadrum is pure geometry and I/O, suitable for servers, CI, and wasm.
 
 ## Build
 
@@ -93,6 +58,7 @@ cadrum = "^0.8"
 | ![img](figure/windows.svg) | `x86_64-pc-windows-gnu` | ✅ |
 | ![img](figure/apple.svg) | `aarch64-apple-darwin` | ✅ |
 | ![img](figure/apple.svg) | `x86_64-apple-darwin` | ✅ |
+| ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅¹ |
 
 For other targets, build OCCT from source:
 
@@ -102,10 +68,28 @@ OCCT_ROOT=/path/to/occt cargo build --features source-build
 
 If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
 
+> ¹ wasm builds via `--features source-build` for now; only in-memory
+> STEP/BRep I/O and pure geometry are available (no filesystem or threads).
+
 #### Requirements when building OpenCASCADE from source
 
 - C++17 compiler (GCC, Clang, or MSVC)
 - CMake
+
+## Capabilities
+
+| Area | Methods |
+|---|---|
+| **Primitives** | `Solid::cube`, `Solid::sphere`, `Solid::cylinder`, `Solid::cone`, `Solid::torus`, `Solid::half_space` |
+| **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline` |
+| **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline` |
+| **Editing** | `Solid::shell`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
+| **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains` |
+| **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Face::iter_edge`, `Face::project`, `Edge::project` |
+| **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` |
+| **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep_binary` / `Solid::write_brep_binary`, `Solid::read_brep_text` / `Solid::write_brep_text` |
+| **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_gltf_binary`, `Mesh::scene` → `Scene2D`, `Scene2D::write_svg`, `Scene2D::write_png` *(png)*, `Solid::write_multiview_png` *(png)* |
+| **Color** *(feature `color`)* | per-face color preserved across STEP / BRep / STL / glTF / SVG round-trips |
 
 ## Examples
 
