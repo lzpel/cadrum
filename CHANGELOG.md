@@ -5,6 +5,7 @@ All notable changes to `cadrum` will be documented in this file.
 This document is written according to the [Keep a Changelog][kac] style.
 
 1. [Version 0](#version-0)
+	1. [0.8.10](#0810)
 	1. [0.8.0](#080)
 	1. [0.7.6](#076)
 	1. [0.7.5](#075)
@@ -16,6 +17,31 @@ This document is written according to the [Keep a Changelog][kac] style.
 
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
+
+### 0.8.10
+
+> 0.8.6〜0.8.9 は欠番。wasm 対応の節目として 0.8.10 へ飛ばした
+> (`^0.8` 互換は維持)。
+
+#### Added
+
+- **`wasm32-unknown-unknown` ターゲット対応。** OCCT (OpenCASCADE 8.0.0) を
+  WebAssembly 向けに静的ビルドし、cadrum をブラウザ／wasm ランタイム上で
+  動かせるようにした。メモリ経由の STEP / BRep I/O と純幾何が動作する。
+  現状 OCCT の OSD 層はスタブのため、ファイルパス I/O・スレッド・ディスク上
+  リソースは利用できない。default(prebuilt) 解決は後続で、現状 wasm は
+  `--features source-build` 前提。
+
+#### Changed
+
+- **Prebuilt tarball を rev1 (`cadrum-occt-v800-rev1`) に更新。** `build.rs` の
+  `BUILD_REVISION` を `rev1` に上げ、wasm を含むビルドマトリクスで再生成・配布。
+  既存ターゲット (Linux / Windows / macOS × x86_64 / aarch64) の解決挙動は不変。
+- **README を全面改訂。** 冒頭に `What is cadrum` を新設し、`Summary` /
+  `Introduction` を削除。セクション順を What is cadrum → Build → Capabilities に
+  整理し、Build に wasm ターゲットを追加。Capabilities / Features の記述を現状
+  API (`Scene2D::write_svg` / `write_png`、`Mesh::write_gltf_binary`、
+  `Solid::write_multiview_png`、`png` feature、glTF カラー往復) に合わせて修正。
 
 ### 0.8.0
 
