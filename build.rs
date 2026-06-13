@@ -249,7 +249,7 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "source-build")]
 mod source {
-	use super::{download_and_extract_tar_gz, find_occt_dirs, OCCT_VERSION};
+	use super::{download_and_extract_tar_gz, find_occt_dirs, OCC_LIBS, OCCT_VERSION};
 	use std::env;
 	use std::path::{Path, PathBuf};
 
@@ -338,17 +338,15 @@ mod source {
 			.define("BUILD_ENABLE_FPE_SIGNAL_HANDLER", "OFF")
 			.define("CMAKE_RC_FLAGS_INIT", "-C 1252");
 
-		// cmake クレートは cc-rs の CC_<target>/CXX_<target>/AR_<target> を CMAKE_* へ転送しない。
-		// クロスツールチェインを env で差せるよう、ここで橋渡しする（target 非依存）。
-		// 汎用(CC/CXX/AR) → target 固有(CC_<target> 等) の順で後勝ち。env が無い target(native 等)は
-		// 何もせず cmake の既定探索に任せる。generator は CMAKE_GENERATOR env、target/sysroot 等は
-		// CFLAGS_/CXXFLAGS_<target> から供給される（いずれも cmake クレートが env を読む）。
+		// cmake クレートは cc-rs の CC_<target>/CXX_<target> を CMAKE_C/CXX_COMPILER へ転送しない。
+		// クロスツールチェインを env で差せるよう、ここで橋渡しする（target 非依存）。汎用(CC/CXX)
+		// → target 固有(CC_<target>) の順で後勝ち。env が無い target(native 等)は何もせず cmake の
+		// 既定探索に任せる。generator は CMAKE_GENERATOR env、target/sysroot 等は CFLAGS_/CXXFLAGS_<target>。
+		// AR は転送しない: cmake は CMAKE_AR を PATH 解決せず bare 名だとリンクが壊れる。
+		// CMAKE_C_COMPILER を指定すれば cmake が compiler prefix から正しい ar を自動導出する
+		// （AR_<target> は cc-rs が wrapper.cpp の archive に使うので無駄にはならない）。
 		let tgt = env::var("TARGET").unwrap_or_default().replace('-', "_");
-		for (cmake_key, base) in [
-			("CMAKE_C_COMPILER", "CC"),
-			("CMAKE_CXX_COMPILER", "CXX"),
-			("CMAKE_AR", "AR"),
-		] {
+		for (cmake_key, base) in [("CMAKE_C_COMPILER", "CC"), ("CMAKE_CXX_COMPILER", "CXX")] {
 			for name in [base.to_string(), format!("{base}_{tgt}")] {
 				if let Ok(v) = env::var(&name) {
 					cfg.define(cmake_key, &v);
@@ -359,6 +357,29 @@ mod source {
 
 		eprintln!("OCCT built at: {}", built.display());
 
+		// tarball を slim 化: cadrum は include/lib しか使わない。share/(doc・resource) と
+		// bin/(OCCT スクリプト) を削除。OCCT-8_0_0/(改変ソース) は LGPL 2.1 §2 のため下で残す。
+		for d in ["share", "bin"] {
+			let _ = std::fs::remove_dir_all(effective_root.join(d));
+		}
+
+		// lib/ からリンク対象(OCC_LIBS)以外を削除。cmake/pkgconfig も対象だが cadrum は build.rs で
+		// 直リンクし cmake/pkgconfig を消費しないので実害なし。min_depth(1) で lib root 自身は消さない。
+		// 拡張子を外した basename(file_stem)が OCC_LIBS のいずれかで終わるものだけ残す。contains だと
+		// "TKDE" が TKDEIGES 等を巻き込むので suffix 判定にする（libcadrum_* は後段で同梱され無関係）。
+		if let Some([_include_dir, lib_dir]) = find_occt_dirs(effective_root) {
+			for child in walkdir::WalkDir::new(&lib_dir).min_depth(1).into_iter().flatten() {
+				let stem = child.path().file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+				if !OCC_LIBS.iter().any(|lib| stem.ends_with(lib)) {
+					if child.file_type().is_file() {
+						let _ = std::fs::remove_file(child.path());
+					} else {
+						let _ = std::fs::remove_dir_all(child.path());
+					}
+				}
+			}
+		}
+
 		// LGPL 2.1 §2: keep only patched files; remove everything else
 		walk_occt_sources(&source_dir, |path| {
 			if path.is_dir() {
@@ -367,7 +388,6 @@ mod source {
 				let _ = std::fs::remove_file(path);
 			}
 		});
-
 		find_occt_dirs(effective_root)
 	}
 
@@ -615,9 +635,13 @@ mod source {
 				let before = sig_norm[..pos].trim_end();
 				let id_start = before.rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).map(|p| p + 1).unwrap_or(0);
 				let ident = &before[id_start..];
+				// Handle(X) は OCCT のスマートポインタマクロ。返り値型に現れる `(` を関数の引数 `(`
+				// と誤認しないよう、ALL_CAPS マクロと同様に読み飛ばす（さもないと Handle 返り関数が
+				// `{}` になり MSVC C4716「must return a value」で落ちる）。
 				let is_macro = !ident.is_empty()
-					&& ident.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-					&& ident.chars().any(|c| c.is_ascii_uppercase());
+					&& (ident == "Handle"
+						|| (ident.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+							&& ident.chars().any(|c| c.is_ascii_uppercase())));
 				if !is_macro {
 					break pos;
 				}

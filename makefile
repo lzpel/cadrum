@@ -16,12 +16,14 @@ publish: deploy # publish to crates.io
 cadrum-occt: generate # build occt from source natively
 	cargo clean
 	# CADRUM_BUNDLE_GCC_RUNTIME=1 で OCCT lib dir に libstdc++.a / libgcc.a / libgcc_eh.a を libcadrum_* として同梱し、ホスト側 GCC との ABI 不整合を回避する (#89 / #147 対策)。
-	CADRUM_BUNDLE_GCC_RUNTIME=1 cargo build --example 01_primitives --release --features source-build 2>&1 | tee out/log.txt
+	# pipefail is required so tee's exit code does not mask a cargo build failure
+	bash -c "set -o pipefail && CADRUM_BUNDLE_GCC_RUNTIME=1 cargo build --example 01_primitives --release --features source-build 2>&1 | tee out/log.txt"
 	find target -maxdepth 1 -type d -name 'cadrum*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
 cadrum-occt-%: # build occt from source in cross ( = native build in container ) cadrum-occt-aarch64-unknown-linux-gnu cadrum-occt-x86_64-pc-windows-gnu cadrum-occt-x86_64-unknown-linux-gnu
 	docker build -f docker/Dockerfile_$(*) -t cadrum-occt-$(*) .
 	docker run --rm -v $(PWD)/out/$(*):/src/out cadrum-occt-$(*) make cadrum-occt
-check-cadrum-occt-%: cadrum-occt-% # varidate builded occt to run binary which is linked with host's code and container's static occt libraries
+cadrum-occt-%-check: # varidate builded occt to run binary which is linked with host's code and container's static occt libraries
+	$(MAKE) cadrum-occt-$*
 	mkdir -p target
 	find out -maxdepth 2 -type f -name '*.tar.gz' | xargs -IX tar -xzf X -C target
 	timeout 300 cargo run --example 01_primitives
