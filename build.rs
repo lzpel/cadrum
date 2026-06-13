@@ -6,13 +6,17 @@ use std::path::{Path, PathBuf};
 /// the prebuilt tarball / cache directory name (with target) from this.
 const OCCT_VERSION: &str = "V8_0_0";
 
-/// `target` 指定あり: `cadrum-occt-v800-x86_64-pc-windows-gnu` (tarball / cache dir 名)
-/// `target` 指定なし: `cadrum-occt-v800` (`lzpel/cadrum` の GitHub Release タグ)
+/// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, etc).
+const BUILD_REVISION: &str = "rev0";
+
+/// `target` 指定あり: `cadrum-occt-v800-rev0-x86_64-pc-windows-gnu` (tarball / cache dir 名)
+/// `target` 指定なし: `cadrum-occt-v800-rev0` (`lzpel/cadrum` の GitHub Release タグ)
 fn cadrum_occt_name(target: Option<&str>) -> String {
 	let slug = OCCT_VERSION.to_ascii_lowercase().replace('_', "");
+	let release = format!("cadrum-occt-{}-{}", slug, BUILD_REVISION);
 	match target {
-		Some(t) => format!("cadrum-occt-{}-{}", slug, t),
-		None => format!("cadrum-occt-{}", slug),
+		Some(target) => format!("{}-{}", release, target),
+		None => release,
 	}
 }
 
