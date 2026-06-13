@@ -13,8 +13,13 @@ export MSYS_NO_PATHCONV := 1
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
 SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
-# cadrum(ルート) build.rs が OCCT を wasm クロスビルドする際のツールチェイン bin パス。
-export WASI_SDK_BIN := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/bin
+# OCCT の wasm クロスビルドのツールチェインを env で差す（Dockerfile の CC_<target> と同じ流儀）。
+# build.rs が CC_<target>/CXX_<target> を CMAKE_C/CXX_COMPILER へ転送する。
+# PATH 先頭が wasi-sdk/bin なので `clang`/`clang++` は wasi-sdk のものに解決される。
+export CC_wasm32_unknown_unknown := clang
+export CXX_wasm32_unknown_unknown := clang++
+# generator は env で渡せる（cmake は CMAKE_GENERATOR を尊重）。Windows 既定の VS generator を避ける。
+export CMAKE_GENERATOR := Unix Makefiles
 # C/C++ のコンパイルだけ --target=wasm32-wasip1 にすると、clang が --sysroot から
 # include/wasm32-wasip1 と（-fwasm-exceptions 時は）eh/c++/v1 を自動解決するので -isystem 不要。
 # __wasi__ が定義され libc++ の __locale も正規の rune table を選ぶため rune table hack も不要。

@@ -334,23 +334,22 @@ mod source {
 			.define("BUILD_ENABLE_FPE_SIGNAL_HANDLER", "OFF")
 			.define("CMAKE_RC_FLAGS_INIT", "-C 1252");
 
-		// wasm32: wasi-sdk でクロスビルド。env で決まらない 2 点だけ固定する:
-		//   1. generator … 既定だと Windows で VS generator が選ばれ cl.exe を探して失敗する。
-		//   2. C/C++ コンパイラ実体 … 無いと PATH 上の mingw cc/gcc が選ばれ `--target` で死ぬ。
-		// target/sysroot/-fwasm-exceptions/emulation マクロ等の compile flags は makefile の
-		// CFLAGS_/CXXFLAGS_<target> から（cmake クレートが env を読む）。
-		// CMAKE_SYSTEM_NAME=Generic / SYSTEM_PROCESSOR / AR / RANLIB / *_COMPILER_WORKS は
-		// 実験で不要（自動解決）と確認したため設定しない。
-		if env::var("TARGET").unwrap_or_default().starts_with("wasm32") {
-			let bin = env::var("WASI_SDK_BIN")
-				.expect("WASI_SDK_BIN must be set for the wasm OCCT build (see sandbox-wasm/makefile)");
-			let tool = |n: &str| {
-				let exe = Path::new(&bin).join(format!("{n}.exe"));
-				if exe.exists() { exe } else { Path::new(&bin).join(n) }
-			};
-			cfg.generator("Unix Makefiles")
-				.define("CMAKE_C_COMPILER", tool("clang"))
-				.define("CMAKE_CXX_COMPILER", tool("clang++"));
+		// cmake クレートは cc-rs の CC_<target>/CXX_<target>/AR_<target> を CMAKE_* へ転送しない。
+		// クロスツールチェインを env で差せるよう、ここで橋渡しする（target 非依存）。
+		// 汎用(CC/CXX/AR) → target 固有(CC_<target> 等) の順で後勝ち。env が無い target(native 等)は
+		// 何もせず cmake の既定探索に任せる。generator は CMAKE_GENERATOR env、target/sysroot 等は
+		// CFLAGS_/CXXFLAGS_<target> から供給される（いずれも cmake クレートが env を読む）。
+		let tgt = env::var("TARGET").unwrap_or_default().replace('-', "_");
+		for (cmake_key, base) in [
+			("CMAKE_C_COMPILER", "CC"),
+			("CMAKE_CXX_COMPILER", "CXX"),
+			("CMAKE_AR", "AR"),
+		] {
+			for name in [base.to_string(), format!("{base}_{tgt}")] {
+				if let Ok(v) = env::var(&name) {
+					cfg.define(cmake_key, &v);
+				}
+			}
 		}
 		let built = cfg.build();
 

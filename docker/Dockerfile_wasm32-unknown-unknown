@@ -1,0 +1,47 @@
+# Prebuild OCCT for wasm32-unknown-unknown via the Linux wasi-sdk (clang + wasi-sysroot).
+#
+# manylinux_2_28 ships gcc (C++17 capable), cmake, make, curl, and git out of the
+# box. Rust is NOT bundled, so we install it via rustup.
+#
+# The wasm output is produced by the wasi-sdk clang, so the host image is
+# irrelevant to the result. HOST build-dependencies use the image's gcc; the
+# wasm TARGET (OCCT cmake + cxx-build) uses the wasi-sdk clang found first on PATH.
+# The example .wasm cannot run here; `cadrum-occt` tolerates that via `... | tee`,
+# then tarballs the OCCT static libraries.
+FROM quay.io/pypa/manylinux_2_28_x86_64
+
+# wasi-sdk (Linux): clang + prebuilt wasi-sysroot (libc / libc++, eh & noeh variants).
+# Rename the tarball's top dir to /wasi-sdk. The S/H flags keep the transform from
+# also rewriting sym/hardlink targets (e.g. bin/clang -> clang-22), which would break them.
+# NOTE: manylinux already ships a non-wasm clang at /opt/clang/bin, so /wasi-sdk/bin must
+# come first on PATH AND resolve correctly.
+RUN curl -L https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz | tar xzv --transform="s,^[^/]+,/wasi-sdk,xSH"
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+# wasi-sdk bin first so `clang`/`clang++` resolve to the wasi-sdk cross-compiler.
+ENV PATH=/wasi-sdk/bin:/root/.cargo/bin:$PATH
+
+ENV CARGO_BUILD_TARGET=wasm32-unknown-unknown
+# add cargo target
+RUN rustup target add ${CARGO_BUILD_TARGET}
+
+# === wasm toolchain env (mirrors sandbox-wasm/makefile) ===
+ENV SYSROOT=/wasi-sdk/share/wasi-sysroot
+# build.rs forwards CC_<target>/CXX_<target> to CMAKE_C/CXX_COMPILER; host build-deps
+# keep using the image's gcc because these are target-specific.
+ENV CC_wasm32_unknown_unknown=clang
+ENV CXX_wasm32_unknown_unknown=clang++
+# Avoid the host default generator; cmake honors CMAKE_GENERATOR.
+ENV CMAKE_GENERATOR="Unix Makefiles"
+# link-cplusplus defaults to libstdc++ on wasm; we use libc++.
+ENV CXXSTDLIB=c++
+# Compile C/C++ as wasm32-wasip1 so --sysroot auto-resolves include/lib (and eh/c++/v1
+# under -fwasm-exceptions) and __wasi__ selects the proper libc++ rune table.
+ENV CFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT} -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
+ENV CXXFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT} -fwasm-exceptions -fexceptions -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
+# Final link (rustc) pulls the eh libc++ / libc++abi / libunwind and libc.
+ENV CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-L native=${SYSROOT}/lib/wasm32-wasip1/eh -L native=${SYSROOT}/lib/wasm32-wasip1 -l static=c++abi -l static=unwind -l static=c"
+
+# copy source and build OCCT prebuilt
+WORKDIR /src
+COPY . /src
