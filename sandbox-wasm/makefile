@@ -48,7 +48,7 @@ run-cadrum: run-raw-cadrum
 run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separated features (e.g. run-raw-cc-libc -> --features cc,libc).
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
-	node --experimental-wasm-exnref -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
+	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
