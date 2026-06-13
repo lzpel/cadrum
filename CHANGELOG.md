@@ -37,6 +37,11 @@ changes until `1.0`.
 - **Prebuilt tarball を rev1 (`cadrum-occt-v800-rev1`) に更新。** `build.rs` の
   `BUILD_REVISION` を `rev1` に上げ、wasm を含むビルドマトリクスで再生成・配布。
   既存ターゲット (Linux / Windows / macOS × x86_64 / aarch64) の解決挙動は不変。
+- **Prebuilt tarball を slim 化（配布サイズを大幅削減）。** インストール後に
+  リンク対象の 24 ツールキット (`.a` / `.lib`) だけを残し、`doc` / `resource` /
+  `bin` スクリプト・`cmake` / `pkgconfig` を除去。`cargo build` 時のダウンロード量・
+  ディスク使用量・CI キャッシュが大きく減る。LGPL 2.1 §2 の都合で改変 OCCT ソース
+  (`OCCT-8_0_0/`) は同梱を維持。
 - **README を全面改訂。** 冒頭に `What is cadrum` を新設し、`Summary` /
   `Introduction` を削除。セクション順を What is cadrum → Build → Capabilities に
   整理し、Build に wasm ターゲットを追加。Capabilities / Features の記述を現状
