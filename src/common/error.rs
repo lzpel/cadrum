@@ -59,6 +59,18 @@ pub enum Error {
 	/// The string identifies which precondition or stage failed.
 	LoftFailed(String),
 
+	/// Sewing (`Solid::sew` / `BRepBuilderAPI_Sewing`) failed: the faces do
+	/// not form exactly one closed shell within the given tolerance (gaps,
+	/// overlaps, multiple disconnected shells, or stray faces). The string
+	/// identifies which precondition or stage failed.
+	SewFailed(String),
+
+	/// Surface offset (`Solid::offset_surface` / `BRepOffsetAPI_MakeOffsetShape`)
+	/// failed: the offset surfaces self-intersect (thin walls/slots thinner
+	/// than 2x the offset magnitude) or OCCT rejected the join. The string
+	/// carries the offending parameters.
+	OffsetFailed(String),
+
 	/// B-spline solid (`Solid::bspline`) construction failed: grid too small,
 	/// surface interpolation rejected the input, or sewing/capping failed.
 	/// The string identifies which stage failed and with what parameters.
@@ -106,6 +118,8 @@ impl std::fmt::Display for Error {
 			Error::FilletFailed => write!(f, "Fillet failed"),
 			Error::ChamferFailed => write!(f, "Chamfer failed"),
 			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
+			Error::SewFailed(msg) => write!(f, "Sew failed: {}", msg),
+			Error::OffsetFailed(msg) => write!(f, "Offset failed: {}", msg),
 			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
 			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
 			Error::SvgExportFailed => write!(f, "SVG export failed"),

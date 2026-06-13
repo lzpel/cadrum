@@ -92,6 +92,9 @@ impl Solid{
 	pub fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::chamfer_edges(self, distance, edges)}
 	pub fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<crate::Solid, Error> where Edge: 'a + 'b {<Self as crate::traits::SolidStruct>::sweep(profile, spine, orient)}
 	pub fn loft<'a, S, I>(sections: S) -> Result<crate::Solid, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {<Self as crate::traits::SolidStruct>::loft(sections)}
+	pub fn thru_sections<'a, S, I>(sections: S, ruled: bool) -> Result<crate::Solid, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {<Self as crate::traits::SolidStruct>::thru_sections(sections, ruled)}
+	pub fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<crate::Solid, Error> where Face: 'a {<Self as crate::traits::SolidStruct>::sew(faces, tolerance)}
+	pub fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::offset_surface(self, offset, tolerance)}
 	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)}
 	pub fn boolean<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, clauses: impl IntoIterator<Item = i64>) -> Boolean<crate::Solid> where Self: 'a {<Self as crate::traits::SolidStruct>::boolean(solids, clauses)}
 	pub fn boolean_build(b: &Boolean<crate::Solid>) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::boolean_build(b)}

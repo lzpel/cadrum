@@ -331,9 +331,9 @@ impl SolidStruct for Solid {
 		))
 	}
 
-	// ==================== Loft ====================
+	// ==================== Loft / ThruSections ====================
 
-	fn loft<'a, S, I>(sections: S) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {
+	fn thru_sections<'a, S, I>(sections: S, ruled: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {
 		let _guard = LOFT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
 		let mut all_edges = ffi::edge_vec_new();
@@ -350,7 +350,7 @@ impl SolidStruct for Solid {
 			}
 			if count == 0 {
 				return Err(Error::LoftFailed(format!(
-					"loft: section {} is empty (each section must contain ≥1 edge)",
+					"thru_sections: section {} is empty (each section must contain ≥1 edge)",
 					section_count
 				)));
 			}
@@ -359,17 +359,64 @@ impl SolidStruct for Solid {
 
 		if section_count < 2 {
 			return Err(Error::LoftFailed(format!(
-				"loft: need ≥2 sections, got {} (a single section has no thickness to skin across)",
+				"thru_sections: need ≥2 sections, got {} (a single section has no thickness to skin across)",
 				section_count
 			)));
 		}
 
-		let shape = ffi::make_loft(&all_edges);
+		let shape = ffi::make_loft(&all_edges, ruled);
 		if shape.is_null() {
 			return Err(Error::LoftFailed(format!(
-				"loft: OCCT BRepOffsetAPI_ThruSections failed (sections={}). \
+				"thru_sections: OCCT BRepOffsetAPI_ThruSections failed (sections={}, ruled={}). \
 				 Check that each section forms a valid closed wire and sections are not coplanar.",
-				section_count
+				section_count, ruled
+			)));
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+			Default::default(),
+		))
+	}
+
+	// ==================== Sew ====================
+
+	fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<Self, Error> where Face: 'a {
+		let mut face_vec = ffi::face_vec_new();
+		let mut count = 0usize;
+		for f in faces {
+			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
+			count += 1;
+		}
+		if count == 0 {
+			return Err(Error::SewFailed("sew: no faces given (need a face set forming one closed shell)".into()));
+		}
+		let shape = ffi::make_sewn_solid(&face_vec, tolerance);
+		if shape.is_null() {
+			return Err(Error::SewFailed(format!(
+				"sew: {} faces do not form exactly one closed shell within tolerance {} \
+				 (gaps, overlaps, multiple shells, or stray faces)",
+				count, tolerance
+			)));
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+			Default::default(),
+		))
+	}
+
+	// ==================== Offset surface ====================
+
+	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error> {
+		let shape = ffi::make_offset_shape(&self.inner, offset, tolerance);
+		if shape.is_null() {
+			return Err(Error::OffsetFailed(format!(
+				"offset_surface: OCCT BRepOffsetAPI_MakeOffsetShape failed (offset={}, tolerance={}). \
+				 Thin walls/slots whose local thickness is ≤ 2|offset| self-intersect and are rejected.",
+				offset, tolerance
 			)));
 		}
 		Ok(Solid::new(

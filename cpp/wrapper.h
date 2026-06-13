@@ -392,10 +392,35 @@ void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
 std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new();
 void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s);
 
-// Loft (skin) a smooth solid through N cross-section wires.
+// Loft (skin) a solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
+// `ruled=false` interpolates a smooth B-spline surface through all sections;
+// `ruled=true` connects adjacent sections with straight ruled panels.
 std::unique_ptr<TopoDS_Shape> make_loft(
-    const std::vector<TopoDS_Edge>& all_edges);
+    const std::vector<TopoDS_Edge>& all_edges,
+    bool ruled);
+
+// Sew (stitch) free faces into a single closed shell and upgrade it to a
+// solid via BRepBuilderAPI_MakeSolid. The sewn result must contain exactly
+// one closed shell — gaps wider than `tolerance` (open shell), leftover free
+// faces, or multiple disconnected shells all return nullptr. The solid is
+// oriented with BRepLib::OrientClosedSolid so the enclosed volume is
+// positive regardless of input face orientation.
+std::unique_ptr<TopoDS_Shape> make_sewn_solid(
+    const std::vector<TopoDS_Face>& faces,
+    double tolerance);
+
+// Offset every face of `shape` by signed `offset` (positive = outward,
+// negative = inward) using BRepOffsetAPI_MakeOffsetShape (PerformByJoin,
+// BRepOffset_Skin, GeomAbs_Arc). A SHELL/compound result is upgraded to a
+// solid when it contains exactly one closed shell or one solid. Returns
+// nullptr when OCCT rejects the offset — typically a self-intersecting
+// result (|offset| ≥ half the local wall thickness of a thin feature, or a
+// concave slot narrower than 2*offset pinching shut).
+std::unique_ptr<TopoDS_Shape> make_offset_shape(
+    const TopoDS_Shape& shape,
+    double offset,
+    double tolerance);
 
 // Build a B-spline surface solid from a 2D point grid.
 // `coords` is a flat array of xyz triples, length = 3 * nu * nv.

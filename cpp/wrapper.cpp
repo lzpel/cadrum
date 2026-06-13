@@ -1708,20 +1708,22 @@ std::unique_ptr<TopoDS_Shape> make_pipe_shell(
     }
 }
 
-// Loft (skin) a smooth solid through a sequence of cross-section wires.
+// Loft (skin) a solid through a sequence of cross-section wires.
 //
 // `all_edges` is a flat edge list with sections delimited by null-edge
 // sentinels (TopoDS_Edge().IsNull()); ≥2 sections required. Built via
 // BRepOffsetAPI_ThruSections with isSolid=true (cap open ends with planar
-// faces) and isRuled=false (B-spline / C² smoothed interpolation rather
-// than per-panel ruled surfaces).
+// faces). `ruled=false` gives B-spline / C² smoothed interpolation through
+// all sections; `ruled=true` gives per-panel ruled (straight-line) surfaces
+// between adjacent sections. Both pass through every section wire exactly.
 std::unique_ptr<TopoDS_Shape> make_loft(
-    const std::vector<TopoDS_Edge>& all_edges)
+    const std::vector<TopoDS_Edge>& all_edges,
+    bool ruled)
 {
     try {
         BRepOffsetAPI_ThruSections loft(
             /*isSolid=*/true,
-            /*isRuled=*/false,
+            /*isRuled=*/ruled,
             Precision::Confusion());
 
         // Split all_edges by null sentinels into section wires.
@@ -1754,6 +1756,106 @@ std::unique_ptr<TopoDS_Shape> make_loft(
         loft.Build();
         if (!loft.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Shape>(loft.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Sew (stitch) free faces into a single closed shell and upgrade it to a
+// solid. BRepBuilderAPI_Sewing merges boundary edges that coincide within
+// `tolerance`; the sewn result must contain exactly one closed shell —
+// gaps (open shell), leftover free faces, or multiple disconnected shells
+// all return nullptr. The solid is oriented with BRepLib::OrientClosedSolid
+// so the enclosed volume is positive regardless of input face orientation.
+std::unique_ptr<TopoDS_Shape> make_sewn_solid(
+    const std::vector<TopoDS_Face>& faces,
+    double tolerance)
+{
+    try {
+        if (faces.empty()) return nullptr;
+        BRepBuilderAPI_Sewing sewing(tolerance);
+        for (const auto& f : faces) sewing.Add(f);
+        sewing.Perform();
+        const TopoDS_Shape& sewn = sewing.SewedShape();
+        if (sewn.IsNull()) return nullptr;
+
+        // A fully sewn input comes back as a single TopAbs_SHELL; partial
+        // sewing yields a compound mixing shells and free faces, in which
+        // case requiring exactly one shell rejects the stray-face cases.
+        std::vector<TopoDS_Shell> shells;
+        if (sewn.ShapeType() == TopAbs_SHELL) {
+            shells.push_back(TopoDS::Shell(sewn));
+        } else {
+            for (TopExp_Explorer ex(sewn, TopAbs_SHELL); ex.More(); ex.Next()) {
+                shells.push_back(TopoDS::Shell(ex.Current()));
+            }
+        }
+        if (shells.size() != 1) return nullptr;
+        if (!BRep_Tool::IsClosed(shells.front())) return nullptr;
+
+        BRepBuilderAPI_MakeSolid solid_maker(shells.front());
+        if (!solid_maker.IsDone()) return nullptr;
+        TopoDS_Solid solid = solid_maker.Solid();
+        BRepLib::OrientClosedSolid(solid);
+        return std::make_unique<TopoDS_Shape>(solid);
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Offset every face of `shape` by signed `offset` (positive = outward)
+// using BRepOffsetAPI_MakeOffsetShape. Same PerformByJoin configuration as
+// builder_thick_solid's sealed-shell fallback (Skin mode, Arc join). The
+// result of offsetting a solid is normally a SOLID, but OCCT occasionally
+// returns the bare offset SHELL or a one-element compound — both are
+// upgraded here so the Rust side always receives a TopAbs_SOLID. Returns
+// nullptr when OCCT rejects the offset (self-intersecting offset surfaces:
+// |offset| ≥ half the local wall thickness, or a concave slot narrower
+// than 2*offset pinching shut).
+std::unique_ptr<TopoDS_Shape> make_offset_shape(
+    const TopoDS_Shape& shape,
+    double offset,
+    double tolerance)
+{
+    try {
+        BRepOffsetAPI_MakeOffsetShape offsetter;
+        offsetter.PerformByJoin(
+            shape, offset, tolerance,
+            /*mode=*/ BRepOffset_Skin,
+            /*intersection=*/ false,
+            /*selfInter=*/ false,
+            /*join=*/ GeomAbs_Arc);
+        if (!offsetter.IsDone()) return nullptr;
+        TopoDS_Shape result = offsetter.Shape();
+        if (result.IsNull()) return nullptr;
+
+        if (result.ShapeType() == TopAbs_COMPOUND) {
+            // Unwrap a one-solid (or one-shell) compound.
+            TopExp_Explorer solid_ex(result, TopAbs_SOLID);
+            if (solid_ex.More()) {
+                result = solid_ex.Current();
+                solid_ex.Next();
+                if (solid_ex.More()) return nullptr;
+            } else {
+                TopExp_Explorer shell_ex(result, TopAbs_SHELL);
+                if (!shell_ex.More()) return nullptr;
+                result = shell_ex.Current();
+                shell_ex.Next();
+                if (shell_ex.More()) return nullptr;
+            }
+        }
+
+        if (result.ShapeType() == TopAbs_SOLID) {
+            return std::make_unique<TopoDS_Shape>(result);
+        }
+        if (result.ShapeType() == TopAbs_SHELL && BRep_Tool::IsClosed(result)) {
+            BRepBuilderAPI_MakeSolid solid_maker(TopoDS::Shell(result));
+            if (!solid_maker.IsDone()) return nullptr;
+            TopoDS_Solid solid = solid_maker.Solid();
+            BRepLib::OrientClosedSolid(solid);
+            return std::make_unique<TopoDS_Shape>(solid);
+        }
+        return nullptr;
     } catch (const Standard_Failure&) {
         return nullptr;
     }

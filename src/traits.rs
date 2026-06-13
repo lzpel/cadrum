@@ -592,8 +592,63 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// OCCT caps the first/last sections with planar faces to form a closed
 	/// solid (the standard "trunk" / "frustum" shape).
 	///
-	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=false)`.
-	fn loft<'a, S, I>(sections: S) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a;
+	/// Shorthand for [`SolidStruct::thru_sections`] with `ruled=false`
+	/// (`BRepOffsetAPI_ThruSections(isSolid=true, isRuled=false)`).
+	fn loft<'a, S, I>(sections: S) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a { Self::thru_sections(sections, false) }
+
+	/// Loft a solid through cross-section wires with an explicit `ruled` flag.
+	///
+	/// Same input contract as [`SolidStruct::loft`]: each `section` is an
+	/// ordered edge list forming a closed wire, ≥2 sections, end sections are
+	/// capped with planar faces.
+	///
+	/// **どちらを選ぶか:**
+	///
+	/// | `ruled` | surface | 適 |
+	/// |---|---|---|
+	/// | `false` | 全 section を **正確に通る** C² B-spline 補間面 | 翼 (NACA 断面列 → 正確な NURBS 翼)、船体、滑らかな遷移形状 |
+	/// | `true`  | 隣接 section 間を直線で結ぶ ruled パネル (section 間 C⁰) | 板金・テーパー柱・展開可能面、断面間の膨らみを許さない形状 |
+	///
+	/// Either way the surface contains every section wire exactly — `ruled`
+	/// only changes how the surface behaves *between* sections (interpolating
+	/// spline vs straight lines).
+	///
+	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=ruled)`.
+	fn thru_sections<'a, S, I>(sections: S, ruled: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a;
+
+	/// Sew (stitch) faces into a closed solid.
+	///
+	/// `faces` are face handles — typically harvested from existing solids
+	/// via `iter_face()`, or read from a surface-only exchange file — whose
+	/// boundary edges coincide pairwise within `tolerance`. Wraps OCCT's
+	/// `BRepBuilderAPI_Sewing`; the sewn shell must be **exactly one closed
+	/// shell**, which is then upgraded to a `Solid` (orientation is fixed
+	/// automatically so the enclosed volume is positive regardless of the
+	/// input faces' orientations).
+	///
+	/// Fails with [`Error::SewFailed`] when the faces leave gaps wider than
+	/// `tolerance`, overlap, form multiple disconnected shells, or include
+	/// stray faces that belong to no closed shell.
+	fn sew<'a>(faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error> where Self::Face: 'a;
+
+	/// Offset every face of this solid by a constant signed distance,
+	/// producing a new solid whose boundary is parallel to the original
+	/// surface. `offset > 0` grows outward, `offset < 0` shrinks inward —
+	/// the mold/tooling primitive (cavity = `part.offset_surface(t, tol)`).
+	///
+	/// Wraps `BRepOffsetAPI_MakeOffsetShape` (`PerformByJoin`, mode=Skin,
+	/// join=Arc): convex edges/corners are blended with cylindrical/spherical
+	/// arcs of radius `offset`; concave ones are extended and intersected.
+	/// `tolerance` is the offset algorithm's working precision (`1e-6` is a
+	/// reasonable default at millimeter scale).
+	///
+	/// **Known failure mode — thin features**: an inward offset whose
+	/// magnitude reaches half the local wall thickness makes opposing offset
+	/// faces cross, and an outward offset pinches shut inside narrow concave
+	/// slots ≤ `2·offset` wide. OCCT rejects the self-intersecting result and
+	/// this method returns [`Error::OffsetFailed`] — reduce `offset` or
+	/// remove/split the thin feature first.
+	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error>;
 
 	/// Build a B-spline surface solid from a 2D control-point grid.
 	///
