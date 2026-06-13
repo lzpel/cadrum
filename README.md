@@ -38,6 +38,9 @@ cadrum has several goals:
   you build directly in the browser via WebAssembly.
 - **Fully headless.** <br/> No GUI, no windowing, no OS-specific dependencies —
   cadrum is pure geometry and I/O, suitable for servers, CI, and wasm.
+- **Major formats in and out.** <br/> Reads and writes **STEP** and **BRep**,
+  and exports **glTF (`.glb`)**, **STL**, and **PNG** — so models flow into CAD
+  tools, web / three.js viewers, 3D printers, and docs.
 
 ## Build
 

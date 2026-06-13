@@ -5,6 +5,7 @@ All notable changes to `cadrum` will be documented in this file.
 This document is written according to the [Keep a Changelog][kac] style.
 
 1. [Version 0](#version-0)
+	1. [0.8.10](#0810)
 	1. [0.8.0](#080)
 	1. [0.7.6](#076)
 	1. [0.7.5](#075)
@@ -16,6 +17,20 @@ This document is written according to the [Keep a Changelog][kac] style.
 
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
+
+### 0.8.10
+
+#### Notes
+
+Aggregates changes since 0.8.0. Headline: cadrum runs in the browser, and the
+prebuilt OCCT tarballs are much smaller.
+
+#### Changes
+
+- **WebAssembly support (`wasm32-unknown-unknown`).** A static OCCT 8.0.0 build
+  is now published for wasm, so models can be built directly in the browser. (#187)
+- **Smaller prebuilt tarballs.** The prebuilt OCCT is slimmed to just the
+  include / lib that cadrum links, dropping unused toolkits and resources. (#193)
 
 ### 0.8.0
 

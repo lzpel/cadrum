@@ -1,12 +1,12 @@
 [package]
 name = "cadrum"
-version = "0.8.5"
+version = "0.8.10"
 edition = "2021"
 description = "Rust CAD library powered by statically linked, headless OpenCASCADE (OCCT 8.0.0) — runs natively and in the browser via WebAssembly"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lzpel/cadrum"
-keywords = ["opencascade", "cad", "step", "b-rep", "geometry"]
+keywords = ["opencascade", "cad", "step", "gltf", "geometry"]
 categories = ["graphics", "science"]
 exclude = ["/figure", "/notes", "/steps", "/sandbox*", "/.github"]
 
