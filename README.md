@@ -28,15 +28,15 @@ geometry.
 
 cadrum has several goals:
 
-- **Parametric and scriptable.** Models are ordinary Rust values, so
+- **Parametric and scriptable.** <br/> Models are ordinary Rust values, so
   dimensions and topology are driven by code, not a GUI.
-- **Single-binary redistribution.** cadrum ships statically linkable
+- **Single-binary redistribution.** <br/> cadrum ships statically linkable
   OpenCASCADE binaries, so a build links OCCT in with no system install and
   redistributes as one self-contained binary.
-- **Runs in the browser.** cadrum also ships a static OpenCASCADE build for
+- **Runs in the browser.** <br/> cadrum also ships a static OpenCASCADE build for
   the `wasm32-unknown-unknown` target, making it well suited to running what
   you build directly in the browser via WebAssembly.
-- **Fully headless.** No GUI, no windowing, no OS-specific dependencies —
+- **Fully headless.** <br/> No GUI, no windowing, no OS-specific dependencies —
   cadrum is pure geometry and I/O, suitable for servers, CI, and wasm.
 
 ## Build
@@ -58,7 +58,7 @@ cadrum = "^0.8"
 | ![img](figure/windows.svg) | `x86_64-pc-windows-gnu` | ✅ |
 | ![img](figure/apple.svg) | `aarch64-apple-darwin` | ✅ |
 | ![img](figure/apple.svg) | `x86_64-apple-darwin` | ✅ |
-| ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅¹ |
+| ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅ |
 
 For other targets, build OCCT from source:
 
@@ -67,9 +67,6 @@ OCCT_ROOT=/path/to/occt cargo build --features source-build
 ```
 
 If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
-
-> ¹ wasm builds via `--features source-build` for now; only in-memory
-> STEP/BRep I/O and pure geometry are available (no filesystem or threads).
 
 #### Requirements when building OpenCASCADE from source
 
@@ -90,6 +87,19 @@ If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
 | **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep_binary` / `Solid::write_brep_binary`, `Solid::read_brep_text` / `Solid::write_brep_text` |
 | **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_gltf_binary`, `Mesh::scene` → `Scene2D`, `Scene2D::write_svg`, `Scene2D::write_png` *(png)*, `Solid::write_multiview_png` *(png)* |
 | **Color** *(feature `color`)* | per-face color preserved across STEP / BRep / STL / glTF / SVG round-trips |
+
+## Features
+
+- **`color`** *(default)*: Enables `Solid::color` and per-face colormap
+  propagation through STEP / BRep / STL / glTF / SVG I/O via OCCT's XDE
+  document model. Disable for a smaller binary if shape color is irrelevant.
+- **`png`** *(default)*: PNG raster output — `Scene2D::write_png` and
+  `Solid::write_multiview_png` — via the pure-Rust `tiny-skia` rasterizer.
+  Disable to drop the `tiny-skia` dependency when SVG / STL / glTF output is
+  enough.
+- **`source-build`**: Build OCCT from upstream sources with CMake instead of
+  downloading a prebuilt tarball. Off by default — most users use the
+  prebuilt path. Enable it for targets that have no published prebuilt.
 
 ## Examples
 
@@ -1027,26 +1037,6 @@ let s = Solid::cube(DVec3::ZERO, DVec3::ONE).rotate_z(0.5).translate(DVec3::X);
 let v = s.volume();
 ```
 
-A collection of shapes is just a `Vec<Solid>` / `[Solid; N]` (or `Vec<Edge>`
-for a wire). cadrum does not special-case collections with a trait; you
-transform and aggregate them with ordinary iterator idioms:
-
-```rust,no_run
-use cadrum::{DVec3, Solid};
-
-let parts: Vec<Solid> = vec![
-    Solid::cube(DVec3::ZERO, DVec3::ONE),
-    Solid::sphere(1.0),
-];
-// element-wise transform
-let shifted: Vec<Solid> = parts.into_iter().map(|s| s.translate(DVec3::X * 5.0)).collect();
-// aggregate query — Σ per-element volumes
-let total: f64 = shifted.iter().map(|s| s.volume()).sum();
-```
-
-An ordered `Vec<Edge>` *is* a wire (open or closed polyline); sweep / loft /
-extrude all take any `IntoIterator<Item = &Edge>`.
-
 ## Errors
 
 Every fallible operation returns `Result<T, Error>` with `Error`
@@ -1054,23 +1044,6 @@ enumerating the failure modes (`Error::SweepFailed`,
 `Error::FilletFailed`, `Error::InvalidEdge`, etc.). Variants that need
 detail carry a `String` payload identifying which constructor or parameter
 combination tripped OCCT, so panics are reserved for true logic bugs.
-
-## Features
-
-- **`color`** *(default)*: Enables `Solid::color` and per-face colormap
-  propagation through STEP / BRep / STL / SVG I/O via OCCT's XDE document
-  model. Disable for a smaller binary if shape color is irrelevant.
-- **`source-build`**: When the prebuilt-binary cache is empty, fall back
-  to building OCCT from upstream sources via CMake instead of failing.
-  Required on targets without a published prebuilt (anything outside the
-  four-way Linux / Windows × x86_64 / aarch64 table). Pulls `cmake` in as
-  a build-dep.
-
-## Showcase
-
-[Try it now →](https://katachiform.com/out/21)
-
-A browser-based configurator that lets you tweak dimensions of a STEP model and get an instant 3D preview and quote. cadrum powers the parametric reshaping and meshing on the backend.
 
 ## License
 
