@@ -614,6 +614,68 @@ mod source {
 		String::from_utf8(out).expect("lex_normalize produced invalid utf-8")
 	}
 
+	/// `)` の直後（`rest`）が「引数リストを閉じた後の末尾」かどうかを判定する。
+	/// 末尾修飾子（`const`/`volatile`/`noexcept`/`override`/`final`/`mutable`/`&`/`&&`、
+	/// および `noexcept(...)`/`throw(...)` の例外指定）だけを読み飛ばしてシグネチャ終端に
+	/// 達するか、`->`（末尾戻り値型）で始まれば true。返り値型中の `(`（`Handle(X)` 等）は
+	/// `)` の後ろに関数名が続くので false になる。
+	fn is_parameter_list_tail(rest: &str) -> bool {
+		let mut s = rest.trim_start();
+		loop {
+			if s.is_empty() || s.starts_with("->") {
+				return true;
+			}
+			// コンストラクタ初期化リスト（`) : Base(x), member(y)`）が続く `)` も引数リスト。
+			// `::`（名前修飾）と区別するため単独 `:` のみを見る。これを引数リストと認めないと
+			// 初期化リスト内の `(...)` を引数リストと誤認し、コンストラクタに `{ return {}; }` を
+			// 付けて MSVC C2534/C2562 になる。
+			if s.starts_with(':') && !s.starts_with("::") {
+				return true;
+			}
+			// `noexcept(...)` / `throw(...)`: 括弧ごと読み飛ばす。
+			let mut consumed = false;
+			for kw in ["noexcept", "throw"] {
+				if let Some(after) = s.strip_prefix(kw) {
+					let after = after.trim_start();
+					if let Some(inner) = after.strip_prefix('(') {
+						let b = inner.as_bytes();
+						let mut depth = 1usize;
+						let mut k = 0;
+						while k < b.len() && depth > 0 {
+							match b[k] {
+								b'(' => depth += 1,
+								b')' => depth -= 1,
+								_ => {}
+							}
+							k += 1;
+						}
+						s = inner[k..].trim_start();
+						consumed = true;
+						break;
+					}
+				}
+			}
+			if consumed {
+				continue;
+			}
+			// 単独の末尾修飾子キーワード / 参照修飾子（長い `&&` を先に判定）。
+			let mut stripped = false;
+			for kw in ["const", "volatile", "noexcept", "override", "final", "mutable", "&&", "&"] {
+				if let Some(after) = s.strip_prefix(kw) {
+					let boundary = after.chars().next().map_or(true, |c| !(c.is_ascii_alphanumeric() || c == '_'));
+					if boundary {
+						s = after.trim_start();
+						stripped = true;
+						break;
+					}
+				}
+			}
+			if !stripped {
+				return false;
+			}
+		}
+	}
+
 	fn stub_body_for_sig(sig: &str) -> &'static str {
 		let sig_norm: String = {
 			let mut s = sig.to_string();
@@ -626,25 +688,17 @@ mod source {
 			}
 		};
 
+		// 引数リストの `(` を構造的に探す。返り値型に現れる `(`（`Handle(X)`・`decltype(...)`・
+		// ALL_CAPS マクロ・`operator()` 等）を関数引数の `(` と誤認しないよう、対応する `)` の
+		// 後続が「末尾修飾子だけ→終端／`->`」になっているものを引数リストと判定する。返り値型側の
+		// `(` はその `)` の後ろに必ず関数名（修飾子でない識別子）が続くので除外される。マクロ名の
+		// 列挙に依存しないためコンパイラ非依存。
 		let paren_pos = {
 			let bytes = sig_norm.as_bytes();
 			let mut cursor = 0;
 			loop {
 				let Some(off) = sig_norm[cursor..].find('(') else { return "{}"; };
 				let pos = cursor + off;
-				let before = sig_norm[..pos].trim_end();
-				let id_start = before.rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).map(|p| p + 1).unwrap_or(0);
-				let ident = &before[id_start..];
-				// Handle(X) は OCCT のスマートポインタマクロ。返り値型に現れる `(` を関数の引数 `(`
-				// と誤認しないよう、ALL_CAPS マクロと同様に読み飛ばす（さもないと Handle 返り関数が
-				// `{}` になり MSVC C4716「must return a value」で落ちる）。
-				let is_macro = !ident.is_empty()
-					&& (ident == "Handle"
-						|| (ident.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-							&& ident.chars().any(|c| c.is_ascii_uppercase())));
-				if !is_macro {
-					break pos;
-				}
 				let mut depth = 1;
 				let mut j = pos + 1;
 				while j < bytes.len() && depth > 0 {
@@ -655,11 +709,30 @@ mod source {
 					}
 					j += 1;
 				}
+				if is_parameter_list_tail(&sig_norm[j..]) {
+					break pos;
+				}
 				cursor = j;
 			}
 		};
 		let head_full = sig_norm[..paren_pos].trim();
-		let head = head_full.rsplit('\n').next().unwrap_or(head_full).trim();
+		// シグネチャは物理行をまたいで折り返されることがある（clang-format は長い
+		// `ReturnType Class::Method` を `::` 直後や返り値型の後で改行する）。最終行だけを
+		// 採ると返り値型が失われ、値を返す関数を void と誤判定して `{}` を出力し
+		// MSVC C4716「must return a value」になる。全空白を 1 スペースに畳み、`::` 周りを
+		// 詰めて 1 論理行にしてから処理する。
+		let head_joined = head_full.split_whitespace().collect::<Vec<_>>().join(" ");
+		let head_tight = {
+			let mut s = head_joined;
+			loop {
+				let next = s.replace(" ::", "::").replace(":: ", "::");
+				if next == s {
+					break s;
+				}
+				s = next;
+			}
+		};
+		let head = head_tight.as_str();
 		if head.is_empty() {
 			return "{}";
 		}
