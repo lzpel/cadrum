@@ -7,3 +7,4 @@
 # Agent
 
 - For implementation instructions, run tests to verify after implementation
+- run rustfmt to all new changes.
