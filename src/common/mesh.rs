@@ -140,22 +140,11 @@ impl Mesh {
 		// ---- Triangle primitives (shared POSITION accessor) ----
 		let tri_groups = self.gltf_triangle_groups(&mut materials);
 		if !tri_groups.is_empty() && !self.vertices.is_empty() {
-			let mut bytes = Vec::with_capacity(self.vertices.len() * 12);
-			let (mut min, mut max) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
-			for v in &self.vertices {
-				let f = [v.x as f32, v.y as f32, v.z as f32];
-				for k in 0..3 { min[k] = min[k].min(f[k]); max[k] = max[k].max(f[k]); }
-				for c in f { bytes.extend_from_slice(&c.to_le_bytes()); }
-			}
-			let pos_bv = push_buffer_view(&mut buffer_views, &mut bin, &bytes, 34962);
-			let pos_acc = push_accessor_vec3(&mut accessors, pos_bv, self.vertices.len(), min, max);
+			let pos_acc = push_accessor_position(&mut buffer_views, &mut accessors, &mut bin, self.vertices.iter().map(|v| [v.x as f32, v.y as f32, v.z as f32]));
 
 			for (indices, material) in tri_groups {
 				if indices.is_empty() { continue; }
-				let mut bytes = Vec::with_capacity(indices.len() * 4);
-				for &i in &indices { bytes.extend_from_slice(&i.to_le_bytes()); }
-				let bv = push_buffer_view(&mut buffer_views, &mut bin, &bytes, 34963);
-				let acc = push_accessor_scalar_u32(&mut accessors, bv, indices.len());
+				let acc = push_accessor_index(&mut buffer_views, &mut accessors, &mut bin, &indices, self.vertices.len());
 				let mat = material.map_or(String::new(), |m| format!(r#","material":{}"#, m));
 				primitives.push(format!(r#"{{"attributes":{{"POSITION":{}}},"indices":{},"mode":4{}}}"#, pos_acc, acc, mat));
 			}
@@ -164,18 +153,8 @@ impl Mesh {
 		// ---- Edge LINES primitive ----
 		let (epos, eidx) = self.gltf_edge_buffers();
 		if !eidx.is_empty() {
-			let mut pbytes = Vec::with_capacity(epos.len() * 12);
-			let (mut min, mut max) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
-			for p in &epos {
-				for k in 0..3 { min[k] = min[k].min(p[k]); max[k] = max[k].max(p[k]); }
-				for c in p { pbytes.extend_from_slice(&c.to_le_bytes()); }
-			}
-			let pos_bv = push_buffer_view(&mut buffer_views, &mut bin, &pbytes, 34962);
-			let pos_acc = push_accessor_vec3(&mut accessors, pos_bv, epos.len(), min, max);
-			let mut ibytes = Vec::with_capacity(eidx.len() * 4);
-			for &i in &eidx { ibytes.extend_from_slice(&i.to_le_bytes()); }
-			let idx_bv = push_buffer_view(&mut buffer_views, &mut bin, &ibytes, 34963);
-			let idx_acc = push_accessor_scalar_u32(&mut accessors, idx_bv, eidx.len());
+			let pos_acc = push_accessor_position(&mut buffer_views, &mut accessors, &mut bin, epos.iter().copied());
+			let idx_acc = push_accessor_index(&mut buffer_views, &mut accessors, &mut bin, &eidx, epos.len());
 			primitives.push(format!(r#"{{"attributes":{{"POSITION":{}}},"indices":{},"mode":1,"extras":{{"cadrum":"edges"}}}}"#, pos_acc, idx_acc));
 		}
 
@@ -322,20 +301,41 @@ fn push_buffer_view(views: &mut Vec<String>, bin: &mut Vec<u8>, data: &[u8], tar
 	idx
 }
 
-/// Register a VEC3 float accessor (POSITION; min/max are required by glTF).
-fn push_accessor_vec3(accs: &mut Vec<String>, bv: usize, count: usize, min: [f32; 3], max: [f32; 3]) -> usize {
+/// Append a POSITION buffer to BIN and register the VEC3 float accessor over it,
+/// computing the glTF-required min/max in the same pass. Returns the accessor index.
+fn push_accessor_position(views: &mut Vec<String>, accs: &mut Vec<String>, bin: &mut Vec<u8>, points: impl ExactSizeIterator<Item = [f32; 3]>) -> usize {
+	let n = points.len();
+	let mut bytes = Vec::with_capacity(n * 12);
+	let (mut min, mut max) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
+	for p in points {
+		for k in 0..3 { min[k] = min[k].min(p[k]); max[k] = max[k].max(p[k]); }
+		for c in p { bytes.extend_from_slice(&c.to_le_bytes()); }
+	}
+	let bv = push_buffer_view(views, bin, &bytes, 34962);
 	let idx = accs.len();
-	accs.push(format!(
-		r#"{{"bufferView":{},"componentType":5126,"count":{},"type":"VEC3","min":[{},{},{}],"max":[{},{},{}]}}"#,
-		bv, count, min[0], min[1], min[2], max[0], max[1], max[2]
-	));
+	accs.push(format!(r#"{{"bufferView":{},"componentType":5126,"count":{},"type":"VEC3","min":[{},{},{}],"max":[{},{},{}]}}"#, bv, n, min[0], min[1], min[2], max[0], max[1], max[2]));
 	idx
 }
 
-/// Register a SCALAR unsigned-int accessor (index buffer).
-fn push_accessor_scalar_u32(accs: &mut Vec<String>, bv: usize, count: usize) -> usize {
+/// Append an index buffer to BIN and register a SCALAR accessor over it. Uses
+/// `UNSIGNED_SHORT` (componentType 5123, 2 bytes/index) when the referenced vertex
+/// count fits in u16 (`<= 65535`), else `UNSIGNED_INT` (5125, 4 bytes). Halving the
+/// index width shrinks the BIN chunk for the common small-mesh case (every cadrum
+/// example qualifies). `push_buffer_view` 4-byte-aligns the start, which also
+/// satisfies the 2-byte alignment `UNSIGNED_SHORT` requires.
+fn push_accessor_index(views: &mut Vec<String>, accs: &mut Vec<String>, bin: &mut Vec<u8>, indices: &[u32], vertex_count: usize) -> usize {
+	let (bytes, component_type) = if vertex_count <= u16::MAX as usize {
+		let mut b = Vec::with_capacity(indices.len() * 2);
+		for &i in indices { b.extend_from_slice(&(i as u16).to_le_bytes()); }
+		(b, 5123)
+	} else {
+		let mut b = Vec::with_capacity(indices.len() * 4);
+		for &i in indices { b.extend_from_slice(&i.to_le_bytes()); }
+		(b, 5125)
+	};
+	let bv = push_buffer_view(views, bin, &bytes, 34963);
 	let idx = accs.len();
-	accs.push(format!(r#"{{"bufferView":{},"componentType":5125,"count":{},"type":"SCALAR"}}"#, bv, count));
+	accs.push(format!(r#"{{"bufferView":{},"componentType":{},"count":{},"type":"SCALAR"}}"#, bv, component_type, indices.len()));
 	idx
 }
 
