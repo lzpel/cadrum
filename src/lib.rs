@@ -32,90 +32,240 @@ pub use glam;
 // `cargo run --example codegen` whenever src/traits.rs is modified.
 impl Edge{
     ////////// codegen.rs
-	pub fn id(&self) -> u64 {<Self as crate::traits::EdgeStruct>::id(self)}
-	pub fn start_point(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::start_point(self)}
-	pub fn end_point(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::end_point(self)}
-	pub fn start_tangent(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::start_tangent(self)}
-	pub fn end_tangent(&self) -> DVec3 {<Self as crate::traits::EdgeStruct>::end_tangent(self)}
-	pub fn is_closed(&self) -> bool {<Self as crate::traits::EdgeStruct>::is_closed(self)}
-	pub fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3> {<Self as crate::traits::EdgeStruct>::approximation_segments(self, tessellation)}
-	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {<Self as crate::traits::EdgeStruct>::project(self, p)}
-	pub fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::helix(radius, pitch, height, axis, x_ref)}
-	pub fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<crate::Edge>, Error> {<Self as crate::traits::EdgeStruct>::polygon(points)}
-	pub fn circle(radius: f64, axis: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::circle(radius, axis)}
-	pub fn line(a: DVec3, b: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::line(a, b)}
-	pub fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::arc_3pts(start, mid, end)}
-	pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {<Self as crate::traits::EdgeStruct>::bspline(points, end)}
-	pub fn translate(self, translation: DVec3) -> crate::Edge {<Self as crate::traits::Transform>::translate(self, translation)}
-	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Edge {<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)}
-	pub fn rotate_x(self, angle: f64) -> crate::Edge {<Self as crate::traits::Transform>::rotate_x(self, angle)}
-	pub fn rotate_y(self, angle: f64) -> crate::Edge {<Self as crate::traits::Transform>::rotate_y(self, angle)}
-	pub fn rotate_z(self, angle: f64) -> crate::Edge {<Self as crate::traits::Transform>::rotate_z(self, angle)}
-	pub fn scale(self, center: DVec3, factor: f64) -> crate::Edge {<Self as crate::traits::Transform>::scale(self, center, factor)}
-	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Edge {<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)}
-	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Edge {<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)}
-	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Edge {<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)}
-	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Edge {<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)}
+	pub fn id(&self) -> u64 {
+		<Self as crate::traits::EdgeStruct>::id(self)
+	}
+	pub fn start_point(&self) -> DVec3 {
+		<Self as crate::traits::EdgeStruct>::start_point(self)
+	}
+	pub fn end_point(&self) -> DVec3 {
+		<Self as crate::traits::EdgeStruct>::end_point(self)
+	}
+	pub fn start_tangent(&self) -> DVec3 {
+		<Self as crate::traits::EdgeStruct>::start_tangent(self)
+	}
+	pub fn end_tangent(&self) -> DVec3 {
+		<Self as crate::traits::EdgeStruct>::end_tangent(self)
+	}
+	pub fn is_closed(&self) -> bool {
+		<Self as crate::traits::EdgeStruct>::is_closed(self)
+	}
+	pub fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3> {
+		<Self as crate::traits::EdgeStruct>::approximation_segments(self, tessellation)
+	}
+	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		<Self as crate::traits::EdgeStruct>::project(self, p)
+	}
+	pub fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::helix(radius, pitch, height, axis, x_ref)
+	}
+	pub fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<crate::Edge>, Error> {
+		<Self as crate::traits::EdgeStruct>::polygon(points)
+	}
+	pub fn circle(radius: f64, axis: DVec3) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::circle(radius, axis)
+	}
+	pub fn line(a: DVec3, b: DVec3) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::line(a, b)
+	}
+	pub fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::arc_3pts(start, mid, end)
+	}
+	pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::bspline(points, end)
+	}
+	pub fn translate(self, translation: DVec3) -> crate::Edge {
+		<Self as crate::traits::Transform>::translate(self, translation)
+	}
+	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Edge {
+		<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)
+	}
+	pub fn rotate_x(self, angle: f64) -> crate::Edge {
+		<Self as crate::traits::Transform>::rotate_x(self, angle)
+	}
+	pub fn rotate_y(self, angle: f64) -> crate::Edge {
+		<Self as crate::traits::Transform>::rotate_y(self, angle)
+	}
+	pub fn rotate_z(self, angle: f64) -> crate::Edge {
+		<Self as crate::traits::Transform>::rotate_z(self, angle)
+	}
+	pub fn scale(self, center: DVec3, factor: f64) -> crate::Edge {
+		<Self as crate::traits::Transform>::scale(self, center, factor)
+	}
+	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Edge {
+		<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)
+	}
+	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Edge {
+		<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)
+	}
+	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Edge {
+		<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)
+	}
+	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Edge {
+		<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)
+	}
 }
 impl Face{
     ////////// codegen.rs
-	pub fn id(&self) -> u64 {<Self as crate::traits::FaceStruct>::id(self)}
-	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {<Self as crate::traits::FaceStruct>::project(self, p)}
-	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {<Self as crate::traits::FaceStruct>::iter_edge(self)}
+	pub fn id(&self) -> u64 {
+		<Self as crate::traits::FaceStruct>::id(self)
+	}
+	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+		<Self as crate::traits::FaceStruct>::project(self, p)
+	}
+	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
+		<Self as crate::traits::FaceStruct>::iter_edge(self)
+	}
 }
 impl Solid{
     ////////// codegen.rs
-	pub fn id(&self) -> u64 {<Self as crate::traits::SolidStruct>::id(self)}
-	pub fn cube(corner0: DVec3, corner1: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cube(corner0, corner1)}
-	pub fn sphere(radius: f64) -> crate::Solid {<Self as crate::traits::SolidStruct>::sphere(radius)}
-	pub fn cylinder(r: f64, height: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cylinder(r, height)}
-	pub fn cone(r1: f64, r2: f64, height: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::cone(r1, r2, height)}
-	pub fn torus(r1: f64, r2: f64, axis: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::torus(r1, r2, axis)}
-	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {<Self as crate::traits::SolidStruct>::half_space(plane_origin, plane_normal)}
-	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {<Self as crate::traits::SolidStruct>::iter_edge(self)}
-	pub fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {<Self as crate::traits::SolidStruct>::iter_face(self)}
-	pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {<Self as crate::traits::SolidStruct>::iter_history(self)}
-	pub fn volume(&self) -> f64 {<Self as crate::traits::SolidStruct>::volume(self)}
-	pub fn area(&self) -> f64 {<Self as crate::traits::SolidStruct>::area(self)}
-	pub fn center(&self) -> DVec3 {<Self as crate::traits::SolidStruct>::center(self)}
-	pub fn inertia(&self) -> DMat3 {<Self as crate::traits::SolidStruct>::inertia(self)}
-	pub fn contains(&self, point: DVec3) -> bool {<Self as crate::traits::SolidStruct>::contains(self, point)}
-	pub fn bounding_box(&self) -> [DVec3; 2] {<Self as crate::traits::SolidStruct>::bounding_box(self)}
+	pub fn id(&self) -> u64 {
+		<Self as crate::traits::SolidStruct>::id(self)
+	}
+	pub fn cube(corner0: DVec3, corner1: DVec3) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::cube(corner0, corner1)
+	}
+	pub fn sphere(radius: f64) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::sphere(radius)
+	}
+	pub fn cylinder(r: f64, height: DVec3) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::cylinder(r, height)
+	}
+	pub fn cone(r1: f64, r2: f64, height: DVec3) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::cone(r1, r2, height)
+	}
+	pub fn torus(r1: f64, r2: f64, axis: DVec3) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::torus(r1, r2, axis)
+	}
+	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::half_space(plane_origin, plane_normal)
+	}
+	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
+		<Self as crate::traits::SolidStruct>::iter_edge(self)
+	}
+	pub fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
+		<Self as crate::traits::SolidStruct>::iter_face(self)
+	}
+	pub fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
+		<Self as crate::traits::SolidStruct>::iter_history(self)
+	}
+	pub fn volume(&self) -> f64 {
+		<Self as crate::traits::SolidStruct>::volume(self)
+	}
+	pub fn area(&self) -> f64 {
+		<Self as crate::traits::SolidStruct>::area(self)
+	}
+	pub fn center(&self) -> DVec3 {
+		<Self as crate::traits::SolidStruct>::center(self)
+	}
+	pub fn inertia(&self) -> DMat3 {
+		<Self as crate::traits::SolidStruct>::inertia(self)
+	}
+	pub fn contains(&self, point: DVec3) -> bool {
+		<Self as crate::traits::SolidStruct>::contains(self, point)
+	}
+	pub fn bounding_box(&self) -> [DVec3; 2] {
+		<Self as crate::traits::SolidStruct>::bounding_box(self)
+	}
 	#[cfg(feature = "color")]
-	pub fn color(self, color: impl Into<Color>) -> crate::Solid {<Self as crate::traits::SolidStruct>::color(self, color)}
+	pub fn color(self, color: impl Into<Color>) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::color(self, color)
+	}
 	#[cfg(feature = "color")]
-	pub fn color_clear(self) -> crate::Solid {<Self as crate::traits::SolidStruct>::color_clear(self)}
-	pub fn clean(&self) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::clean(self)}
-	pub fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::extrude(profile, dir)}
-	pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> where Face: 'a {<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)}
-	pub fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::fillet_edges(self, radius, edges)}
-	pub fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> where Edge: 'a {<Self as crate::traits::SolidStruct>::chamfer_edges(self, distance, edges)}
-	pub fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<crate::Solid, Error> where Edge: 'a + 'b {<Self as crate::traits::SolidStruct>::sweep(profile, spine, orient)}
-	pub fn loft<'a, S, I>(sections: S, ruled: bool) -> Result<crate::Solid, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {<Self as crate::traits::SolidStruct>::loft(sections, ruled)}
-	pub fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<crate::Solid, Error> where Face: 'a {<Self as crate::traits::SolidStruct>::sew(faces, tolerance)}
-	pub fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::offset_surface(self, offset, tolerance)}
-	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)}
-	pub fn boolean<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, clauses: impl IntoIterator<Item = i64>) -> Boolean<crate::Solid> where Self: 'a {<Self as crate::traits::SolidStruct>::boolean(solids, clauses)}
-	pub fn boolean_build(b: &Boolean<crate::Solid>) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::boolean_build(b)}
-	pub fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_step(reader)}
-	pub fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_binary(reader)}
-	pub fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {<Self as crate::traits::SolidStruct>::read_brep_text(reader)}
-	pub fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_step(solids, writer)}
-	pub fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_binary(solids, writer)}
-	pub fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> where Self: 'a {<Self as crate::traits::SolidStruct>::write_brep_text(solids, writer)}
-	pub fn mesh<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, options: Tessellation) -> Result<Mesh, Error> where Self: 'a {<Self as crate::traits::SolidStruct>::mesh(solids, options)}
+	pub fn color_clear(self) -> crate::Solid {
+		<Self as crate::traits::SolidStruct>::color_clear(self)
+	}
+	pub fn clean(&self) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::clean(self)
+	}
+	pub fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::extrude(profile, dir)
+	}
+	pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)
+	}
+	pub fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::fillet_edges(self, radius, edges)
+	}
+	pub fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::chamfer_edges(self, distance, edges)
+	}
+	pub fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::sweep(profile, spine, orient)
+	}
+	pub fn loft<'a, I: IntoIterator<Item = &'a Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::loft(sections, ruled)
+	}
+	pub fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::sew(faces, tolerance)
+	}
+	pub fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::offset_surface(self, offset, tolerance)
+	}
+	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)
+	}
+	pub fn boolean<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, clauses: impl IntoIterator<Item = i64>) -> Boolean<crate::Solid> {
+		<Self as crate::traits::SolidStruct>::boolean(solids, clauses)
+	}
+	pub fn boolean_build(b: &Boolean<crate::Solid>) -> Result<Vec<crate::Solid>, Error> {
+		<Self as crate::traits::SolidStruct>::boolean_build(b)
+	}
+	pub fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {
+		<Self as crate::traits::SolidStruct>::read_step(reader)
+	}
+	pub fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {
+		<Self as crate::traits::SolidStruct>::read_brep_binary(reader)
+	}
+	pub fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<crate::Solid>, Error> {
+		<Self as crate::traits::SolidStruct>::read_brep_text(reader)
+	}
+	pub fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> {
+		<Self as crate::traits::SolidStruct>::write_step(solids, writer)
+	}
+	pub fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> {
+		<Self as crate::traits::SolidStruct>::write_brep_binary(solids, writer)
+	}
+	pub fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a crate::Solid>, writer: &mut W) -> Result<(), Error> {
+		<Self as crate::traits::SolidStruct>::write_brep_text(solids, writer)
+	}
+	pub fn mesh<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, options: Tessellation) -> Result<Mesh, Error> {
+		<Self as crate::traits::SolidStruct>::mesh(solids, options)
+	}
 	#[cfg(feature = "png")]
-	pub fn write_multiview_png<W: std::io::Write>(&self, writer: &mut W) -> Result<(), Error> {<Self as crate::traits::SolidStruct>::write_multiview_png(self, writer)}
-	pub fn translate(self, translation: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::translate(self, translation)}
-	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Solid {<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)}
-	pub fn rotate_x(self, angle: f64) -> crate::Solid {<Self as crate::traits::Transform>::rotate_x(self, angle)}
-	pub fn rotate_y(self, angle: f64) -> crate::Solid {<Self as crate::traits::Transform>::rotate_y(self, angle)}
-	pub fn rotate_z(self, angle: f64) -> crate::Solid {<Self as crate::traits::Transform>::rotate_z(self, angle)}
-	pub fn scale(self, center: DVec3, factor: f64) -> crate::Solid {<Self as crate::traits::Transform>::scale(self, center, factor)}
-	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)}
-	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)}
-	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)}
-	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Solid {<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)}
+	pub fn write_multiview_png<W: std::io::Write>(&self, writer: &mut W) -> Result<(), Error> {
+		<Self as crate::traits::SolidStruct>::write_multiview_png(self, writer)
+	}
+	pub fn translate(self, translation: DVec3) -> crate::Solid {
+		<Self as crate::traits::Transform>::translate(self, translation)
+	}
+	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Solid {
+		<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)
+	}
+	pub fn rotate_x(self, angle: f64) -> crate::Solid {
+		<Self as crate::traits::Transform>::rotate_x(self, angle)
+	}
+	pub fn rotate_y(self, angle: f64) -> crate::Solid {
+		<Self as crate::traits::Transform>::rotate_y(self, angle)
+	}
+	pub fn rotate_z(self, angle: f64) -> crate::Solid {
+		<Self as crate::traits::Transform>::rotate_z(self, angle)
+	}
+	pub fn scale(self, center: DVec3, factor: f64) -> crate::Solid {
+		<Self as crate::traits::Transform>::scale(self, center, factor)
+	}
+	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {
+		<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)
+	}
+	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Solid {
+		<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)
+	}
+	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Solid {
+		<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)
+	}
+	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Solid {
+		<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)
+	}
 }
 // ==================== Boolean Operations ====================
 macro_rules! impl_solid_boolean_ops {
