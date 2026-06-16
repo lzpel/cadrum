@@ -75,10 +75,6 @@ int __imported_wasi_snapshot_preview1_path_open(int fd, int dirflags, int path, 
 // (保護ブロックへ素通り)、longjmp は到達しない（万一来たら trap）。
 int setjmp(void *env) { (void)env; return 0; }
 void longjmp(void *env, int val) { (void)env; (void)val; __builtin_trap(); }
-// 静的デストラクタ登録を抑止する。一回限りの実行なので終了時クリーンアップは不要で、
-// __wasm_call_dtors 経由で OCCT 静的オブジェクトの dtor が不正な間接呼び出し
-// (null function / signature mismatch) を起こすのを根本回避する。
-int __cxa_atexit(void (*f)(void *), void *arg, void *dso) {
-	(void)f; (void)arg; (void)dso;
-	return 0;
-}
+// 注: __cxa_atexit は libc が実定義を持つため、ここで no-op 再定義すると wasm リンクで
+// duplicate symbol になる。cadrum は cdylib 用途で終了時 dtor を自動実行しない
+// (__wasm_call_dtors は呼ばれない) ので、静的 dtor 抑止のための再定義は不要・有害。
