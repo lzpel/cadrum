@@ -211,18 +211,9 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 
 	build.compile("cadrum_cpp");
 
-	// wasm: libc++ <iostream> static init and OCCT (getenv / STEP I/O / Standard_ErrorHandler
-	// setjmp) drag in `wasi_snapshot_preview1` imports, which have no runtime on
-	// wasm32-unknown-unknown. Define them as no-ops so cadrum's wasm output is self-contained
-	// (no WASI stub needed downstream). Compiled separately and linked +whole-archive because
-	// the stub symbols only become undefined when libc.a is processed, after cadrum_cpp.
-	if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
-		let out_dir = env::var("OUT_DIR").unwrap();
-		cc::Build::new().file("cpp/wasi_stub.c").cargo_metadata(false).compile("wasi_stub");
-		println!("cargo:rustc-link-search=native={}", out_dir);
-		println!("cargo:rustc-link-lib=static:+whole-archive=wasi_stub");
-		println!("cargo:rerun-if-changed=cpp/wasi_stub.c");
-	}
+	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
+	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
+	// `wasm_start!`), so no separate C stub / `+whole-archive` link is needed here.
 
 	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
