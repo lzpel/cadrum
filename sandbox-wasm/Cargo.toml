@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "*"
-cadrum = { path = "..", default-features = false, features = ["source-build", "color"], optional = true }
+cadrum = { path = "..", default-features = false, features = ["source", "color"], optional = true }
 cxx = { version = "1", optional = true }
 
 [build-dependencies]

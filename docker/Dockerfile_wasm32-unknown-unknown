@@ -38,7 +38,10 @@ ENV CXXSTDLIB=c++
 # Compile C/C++ as wasm32-wasip1 so --sysroot auto-resolves include/lib (and eh/c++/v1
 # under -fwasm-exceptions) and __wasi__ selects the proper libc++ rune table.
 ENV CFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT} -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
-ENV CXXFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT} -fwasm-exceptions -fexceptions -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
+# `-mllvm -wasm-use-legacy-eh=false` emits the new (exnref) wasm EH encoding so OCCT /
+# wrapper match the exnref-built wasi-sdk eh sysroot libs (#199). cmake forwards this
+# env CXXFLAGS to OCCT's CMAKE_CXX_FLAGS; build.rs adds the same flag for the wrapper.
+ENV CXXFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT} -fwasm-exceptions -fexceptions -mllvm -wasm-use-legacy-eh=false -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
 # Final link (rustc) pulls the eh libc++ / libc++abi / libunwind and libc.
 ENV CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-L native=${SYSROOT}/lib/wasm32-wasip1/eh -L native=${SYSROOT}/lib/wasm32-wasip1 -l static=c++abi -l static=unwind -l static=c"
 

@@ -5,6 +5,7 @@ All notable changes to `cadrum` will be documented in this file.
 This document is written according to the [Keep a Changelog][kac] style.
 
 1. [Version 0](#version-0)
+	1. [Unreleased](#unreleased)
 	1. [0.8.10](#0810)
 	1. [0.8.0](#080)
 	1. [0.7.6](#076)
@@ -17,6 +18,25 @@ This document is written according to the [Keep a Changelog][kac] style.
 
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
+
+### Unreleased
+
+#### Breaking
+
+- **Renamed the `source-build` feature to `source`.** Update
+  `--features source-build` to `--features source`. (#182)
+
+#### Changes
+
+- **New prebuilt artifact naming scheme.** Tarballs / release tag move to
+  `occt-<version>_<rev>-<target>` (single sorted list, `-` between fields and
+  `_` within a field, target hyphens underscored), e.g.
+  `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`. (#203)
+- **wasm exception-handling unified on exnref.** OCCT and the cxx wrapper are
+  now compiled with `-mllvm -wasm-use-legacy-eh=false` so their EH encoding
+  matches the exnref-built wasi-sdk eh sysroot, fixing the `module uses a mix of
+  legacy and new exception handling instructions` error. (#199)
+- Prebuilt `BUILD_REVISION` bumped to `rev2` (naming + EH encoding change).
 
 ### 0.8.10
 

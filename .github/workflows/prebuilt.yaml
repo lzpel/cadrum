@@ -37,7 +37,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cadrum-occt-${{ matrix.target }}
-          path: out/${{ matrix.target }}/cadrum-occt-*.tar.gz
+          path: out/${{ matrix.target }}/occt-*.tar.gz
 
   # The following prebuilt tarball is built on a native Windows runner with
   # native cl.exe:
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cadrum-occt-x86_64-pc-windows-msvc
-          path: out/cadrum-occt-*.tar.gz
+          path: out/occt-*.tar.gz
 
   # The following prebuilt tarballs are built on native macOS runners with Apple
   # clang/libc++:
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cadrum-occt-${{ matrix.target }}
-          path: out/cadrum-occt-*.tar.gz
+          path: out/occt-*.tar.gz
 
   release:
     needs: [build, build-windows-msvc, build-macos]
@@ -132,10 +132,10 @@ jobs:
           merge-multiple: true
 
       # NOTE: tag_name must match build.rs `cadrum_occt_name(None)` =
-      # `cadrum-occt-<slug>-<BUILD_REVISION>`. Bump this in lockstep with
-      # OCCT_VERSION / BUILD_REVISION in build.rs (same coupling as the v800 slug).
+      # `occt-<occt_version>_<BUILD_REVISION>` (e.g. `occt-8_0_0_rev2`). Bump this in
+      # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: cadrum-occt-v800-rev1
-          name: OCCT prebuilt v8.0.0 (rev1)
+          tag_name: occt-8_0_0_rev2
+          name: OCCT prebuilt v8.0.0 (rev2)
           files: dist/*.tar.gz

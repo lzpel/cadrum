@@ -17,7 +17,7 @@ color = []
 # Build OCCT from upstream sources when the cache is empty, instead of
 # downloading a prebuilt tarball. Off by default — most users will use the
 # prebuilt binary path.
-source-build = ["dep:cmake"]
+source = ["dep:cmake"]
 # PNG raster output for Scene2D via tiny-skia.
 png = ["dep:tiny-skia"]
 # Pure Rust CAD backend (no OCCT dependency)
@@ -39,9 +39,9 @@ minreq = { version = "2", features = ["https-rustls"] }
 libflate = "2"
 tar = "0.4"
 walkdir = "2"
-# source-build only: build OCCT from upstream sources
+# source feature only: build OCCT from upstream sources
 cmake = { version = "0.1", optional = true }
-# source-build + CADRUM_BUNDLE_GCC_RUNTIME: query the target compiler for libstdc++.a path
+# source feature + CADRUM_BUNDLE_GCC_RUNTIME: query the target compiler for libstdc++.a path
 cc = "1"
 
 [dev-dependencies]

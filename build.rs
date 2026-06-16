@@ -6,16 +6,18 @@ use std::path::{Path, PathBuf};
 /// the prebuilt tarball / cache directory name (with target) from this.
 const OCCT_VERSION: &str = "V8_0_0";
 
-/// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, etc).
-const BUILD_REVISION: &str = "rev1";
+/// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
+const BUILD_REVISION: &str = "rev2";
 
-/// `target` 指定あり: `cadrum-occt-v800-rev1-x86_64-pc-windows-gnu` (tarball / cache dir 名)
-/// `target` 指定なし: `cadrum-occt-v800-rev1` (`lzpel/cadrum` の GitHub Release タグ)
+/// Artifact name. Fields are separated by `-` and characters within a field by `_`,
+/// so the name parses by splitting on `-` (the target's hyphens are underscored too).
+/// `target` 指定あり: `occt-8_0_0_rev2-wasm32_unknown_unknown` (tarball / cache dir 名)
+/// `target` 指定なし: `occt-8_0_0_rev2` (`lzpel/cadrum` の GitHub Release タグ)
 fn cadrum_occt_name(target: Option<&str>) -> String {
-	let slug = OCCT_VERSION.to_ascii_lowercase().replace('_', "");
-	let release = format!("cadrum-occt-{}-{}", slug, BUILD_REVISION);
+	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
+	let release = format!("occt-{}_{}", occt, BUILD_REVISION);
 	match target {
-		Some(target) => format!("{}-{}", release, target),
+		Some(target) => format!("{}-{}", release, target.replace('-', "_")),
 		None => release,
 	}
 }
@@ -66,7 +68,7 @@ fn cargo_target_dir(target: &str) -> PathBuf {
 /// Resolve `[include_dir, lib_dir]` for OCCT.
 ///
 ///   1. Cache hit → use it
-///   2. Cache miss + `source-build` → build from upstream sources
+///   2. Cache miss + `source` → build from upstream sources
 ///   3. Cache miss otherwise → download prebuilt tarball
 fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 	println!("cargo:rerun-if-changed={}", effective_root.display());
@@ -74,26 +76,26 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 	match find_occt_dirs(effective_root) {
 		Some(dirs) => return dirs,
 		None => {
-			#[cfg(feature = "source-build")]
+			#[cfg(feature = "source")]
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
 				let dirs = source::build_from_source(effective_root).expect("Failed to build OCCT from source");
 				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
-				// gate を切らないと source-build user 全員のホスト libstdc++ が静的取り込みされてしまう。
+				// gate を切らないと source user 全員のホスト libstdc++ が静的取り込みされてしまう。
 				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
 				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
 					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
 				}
 				return dirs;
 			}
-			#[cfg(not(feature = "source-build"))]
+			#[cfg(not(feature = "source"))]
 			{
 				return download_prebuilt(effective_root, target).unwrap_or_else(|| {
 					panic!(
 						"\nFailed to download prebuilt OCCT for target `{}`.\n\
 						 See README for the list of supported prebuilt targets, or enable\n\
-						 the `source-build` feature to build OCCT from upstream sources:\n\
-						 \n    cargo build --features source-build\n",
+						 the `source` feature to build OCCT from upstream sources:\n\
+						 \n    cargo build --features source\n",
 						target
 					)
 				});
@@ -178,6 +180,13 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 		build.flag("/utf-8");
 	}
 
+	// wasm: emit the new (exnref) wasm EH encoding so wrapper.cpp + cxx glue match the
+	// exnref-built wasi-sdk eh sysroot libs and the exnref OCCT (#199). No-op without
+	// -fwasm-exceptions, so it is safe even when exceptions are off.
+	if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+		build.flag("-mllvm").flag("-wasm-use-legacy-eh=false");
+	}
+
 	#[cfg(feature = "color")]
 	build.define("CADRUM_COLOR", None);
 
@@ -189,7 +198,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 }
 
 /// Download a prebuilt OCCT tarball for `target` into `dest`.
-#[cfg(not(feature = "source-build"))]
+#[cfg(not(feature = "source"))]
 fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
 	let top_name = cadrum_occt_name(Some(target));
 	let tarball_name = format!("{}.tar.gz", top_name);
@@ -242,8 +251,8 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 /// Bundle GCC runtime archives (libstdc++.a / libgcc.a / libgcc_eh.a) into
 /// the OCCT lib dir as `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_GCC_RUNTIME`
 /// only — used by the prebuilt-tarball makefile recipe so end users running
-/// source-build don't get their host libstdc++ silently bundled.
-#[cfg(feature = "source-build")]
+/// source don't get their host libstdc++ silently bundled.
+#[cfg(feature = "source")]
 fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 	let compiler = cc::Build::new().get_compiler();
 	for &lib in libs {
@@ -260,10 +269,10 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 }
 
 // ---------------------------------------------------------------------------
-// source-build: build OCCT from upstream sources.
+// source: build OCCT from upstream sources.
 // Dependencies on cmake and walkdir live here only.
 // ---------------------------------------------------------------------------
-#[cfg(feature = "source-build")]
+#[cfg(feature = "source")]
 mod source {
 	use super::{download_and_extract_tar_gz, find_occt_dirs, OCCT_VERSION, OCC_LIBS};
 	use std::env;
@@ -364,6 +373,13 @@ mod source {
 				}
 			}
 		}
+
+		// wasm: build OCCT with the new (exnref) wasm EH encoding so it matches the
+		// wrapper and the exnref wasi-sdk eh sysroot (#199). No-op without -fwasm-exceptions.
+		if env::var("TARGET").unwrap_or_default().starts_with("wasm32") {
+			cfg.cxxflag("-mllvm").cxxflag("-wasm-use-legacy-eh=false");
+		}
+
 		let built = cfg.build();
 
 		eprintln!("OCCT built at: {}", built.display());
@@ -425,7 +441,7 @@ mod source {
 	/// OS 依存(OSD)層など OS API を直接使う OCCT 実装ファイル。全 target で body-stub 化し
 	/// （シグネチャは残しリンク用シンボルを維持）、STUB_DROP_HEADERS の #include を外す。
 	/// cadrum の公開 I/O はストリームベースで OSD ファイル層を通らず、テストも std::fs で
-	/// バイト列を読み書きするので、source-build にこのスタブを当てても cargo test で検証できる。
+	/// バイト列を読み書きするので、source にこのスタブを当てても cargo test で検証できる。
 	/// 性能の要 OSD_ThreadPool / OSD_Parallel(_Threads/_TBB) / OSD_Thread は意図的に非対象。
 	const OSD_POSIX_STUBS: &[&str] = &["OSD_File.cxx", "OSD_Directory.cxx", "OSD_DirectoryIterator.cxx", "OSD_FileIterator.cxx", "OSD_FileNode.cxx", "OSD_Path.cxx", "OSD_Protection.cxx", "OSD_Process.cxx", "OSD_Host.cxx", "OSD_Disk.cxx", "OSD_Environment.cxx", "OSD_signal.cxx", "OSD_Chronometer.cxx", "OSD_MemInfo.cxx", "OSD_SharedLibrary.cxx", "Message_PrinterSystemLog.cxx", "STEPConstruct_AP203Context.cxx"];
 

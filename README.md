@@ -68,7 +68,7 @@ cadrum = "^0.8"
 For other targets, build OCCT from source:
 
 ```sh
-OCCT_ROOT=/path/to/occt cargo build --features source-build
+OCCT_ROOT=/path/to/occt cargo build --features source
 ```
 
 If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
@@ -102,7 +102,7 @@ If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
   `Solid::write_multiview_png` — via the pure-Rust `tiny-skia` rasterizer.
   Disable to drop the `tiny-skia` dependency when SVG / STL / glTF output is
   enough.
-- **`source-build`**: Build OCCT from upstream sources with CMake instead of
+- **`source`**: Build OCCT from upstream sources with CMake instead of
   downloading a prebuilt tarball. Off by default — most users use the
   prebuilt path. Enable it for targets that have no published prebuilt.
 
