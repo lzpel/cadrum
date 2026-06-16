@@ -145,6 +145,23 @@ const OCC_LIBS: &[&str] = &[
 	"TKCDF",
 ];
 
+/// Apply target-conditional C++ compiler flags through `apply`, which forwards each flag
+/// to the concrete builder (`cc::Build::flag` for the wrapper, `cmake::Config::cxxflag` for
+/// the OCCT source build). Shared so the wrapper and OCCT get identical flags — in particular
+/// the same wasm EH encoding, which must match the exnref-built wasi-sdk eh sysroot (#199).
+fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
+	// MSVC: compile sources as UTF-8.
+	if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+		apply("/utf-8");
+	}
+	// wasm: force the new (exnref) EH encoding so it matches the exnref wasi-sdk eh sysroot.
+	// No-op without -fwasm-exceptions, so it is safe even when exceptions are off.
+	if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+		apply("-mllvm");
+		apply("-wasm-use-legacy-eh=false");
+	}
+}
+
 fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	println!("cargo:rustc-link-search=native={}", occt_lib_dir.display());
 	for lib in OCC_LIBS {
@@ -176,16 +193,9 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	let mut build = cxx_build::bridge("src/occt/ffi.rs");
 	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
-	if target_env == "msvc" {
-		build.flag("/utf-8");
-	}
-
-	// wasm: emit the new (exnref) wasm EH encoding so wrapper.cpp + cxx glue match the
-	// exnref-built wasi-sdk eh sysroot libs and the exnref OCCT (#199). No-op without
-	// -fwasm-exceptions, so it is safe even when exceptions are off.
-	if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
-		build.flag("-mllvm").flag("-wasm-use-legacy-eh=false");
-	}
+	apply_compiler_flags(|s| {
+		build.flag(s);
+	});
 
 	#[cfg(feature = "color")]
 	build.define("CADRUM_COLOR", None);
@@ -374,11 +384,11 @@ mod source {
 			}
 		}
 
-		// wasm: build OCCT with the new (exnref) wasm EH encoding so it matches the
-		// wrapper and the exnref wasi-sdk eh sysroot (#199). No-op without -fwasm-exceptions.
-		if env::var("TARGET").unwrap_or_default().starts_with("wasm32") {
-			cfg.cxxflag("-mllvm").cxxflag("-wasm-use-legacy-eh=false");
-		}
+		// Same target-conditional flags as the wrapper (MSVC `/utf-8`, wasm exnref EH) so
+		// OCCT's EH encoding matches the wrapper and the exnref eh sysroot (#199).
+		super::apply_compiler_flags(|s| {
+			cfg.cxxflag(s);
+		});
 
 		let built = cfg.build();
 
