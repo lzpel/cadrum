@@ -18,9 +18,24 @@
 //!
 //! ## Parser constraints
 //!
-//!   - fn signatures must fit on one line (where/lifetime/generics included)
+//!   - the `fn` line up to (but excluding) any `where` is the captured signature;
+//!     it must fit on one line (lifetime/generics included)
+//!   - `where` clauses are dropped from the forwarder — both the inline form
+//!     (`... -> R where T: Bound;`) and the multi-line form (clause on following
+//!     lines). A forwarder never needs them: `Self` is concrete in the inherent
+//!     impl, so lifetime/assoc-type bounds are auto-satisfied. Any bound the
+//!     forwarder actually needs must be inline in the generic list, e.g.
+//!     `fn loft<'a, I: IntoIterator<Item = &'a Self::Edge>, S: IntoIterator<Item = I>>`.
 //!   - `#[cfg(...)]` attaches to the next fn only (single-line attribute)
 //!   - default impl bodies may span multiple lines (skipped via brace counting)
+//!
+//! ## Output shape
+//!
+//! Each forwarder is emitted as a 3-line block (signature + ` {`, tab-indented
+//! body, closing `}`) — the canonical form rustfmt produces under this repo's
+//! `rustfmt.toml` (`hard_tabs=true`, `max_width=1000`). Dropping `where` and
+//! matching rustfmt's block shape keeps `cargo fmt` and codegen idempotent:
+//! neither rewrites the other's output.
 
 use regex::Regex;
 use std::collections::HashSet;
@@ -184,7 +199,15 @@ fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option
 			args.push(arg[..colon].trim().to_string());
 		}
 	}
-	let signature = line[fn_idx..].trim().to_string();
+	// Drop any `where` clause from the captured signature. The forwarder never
+	// needs it: in the inherent impl `Self` is the concrete type, so lifetime /
+	// associated-type bounds (`Self::Edge: 'a`) are auto-satisfied. Emitting a
+	// `where` would also force rustfmt to break the block across lines, fighting
+	// codegen and breaking `cargo fmt` ⇄ codegen idempotency. Bounds the
+	// forwarder genuinely needs (e.g. loft's `S: IntoIterator<Item = I>`) must be
+	// written inline in the generic list instead.
+	let sig = line[fn_idx..].trim();
+	let signature = sig.split(" where ").next().unwrap_or(sig).trim().to_string();
 	Some(Method { cfg, signature, name, args, has_self, origin_trait })
 }
 
@@ -383,7 +406,9 @@ fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 		}
 		let sig = resolve_types_for_impl(&m.signature, &concrete);
 		let trait_path = format!("crate::traits::{}", m.origin_trait);
-		out.push(format!("{}pub {} {{<Self as {}>::{}({})}}", indent, sig, trait_path, m.name, format_call_args(m)));
+		out.push(format!("{}pub {} {{", indent, sig));
+		out.push(format!("{}\t<Self as {}>::{}({})", indent, trait_path, m.name, format_call_args(m)));
+		out.push(format!("{}}}", indent));
 	}
 	out
 }
@@ -397,7 +422,9 @@ fn render_trait_body(name: &str, indent: &str, traits: &[TraitDef]) -> Vec<Strin
 			if let Some(cfg) = &m.cfg {
 				out.push(format!("{}{}", indent, cfg));
 			}
-			out.push(format!("{}{} {{ <Self as {}>::{}({}) }}", indent, m.signature, super_name, m.name, format_call_args(m)));
+			out.push(format!("{}{} {{", indent, m.signature));
+			out.push(format!("{}\t<Self as {}>::{}({})", indent, super_name, m.name, format_call_args(m)));
+			out.push(format!("{}}}", indent));
 		}
 	}
 	out
