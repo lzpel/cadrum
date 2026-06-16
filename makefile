@@ -22,8 +22,12 @@ cadrum-occt: generate # build occt from source natively
 cadrum-occt-%: # build occt from source in cross ( = native build in container ) cadrum-occt-aarch64-unknown-linux-gnu cadrum-occt-x86_64-pc-windows-gnu cadrum-occt-x86_64-unknown-linux-gnu
 	docker build -f docker/Dockerfile_$(*) -t cadrum-occt-$(*) .
 	docker run --rm -v $(PWD)/out/$(*):/src/out cadrum-occt-$(*) make cadrum-occt
-cadrum-occt-%-check: # varidate builded occt to run binary which is linked with host's code and container's static occt libraries
+cadrum-occt-%-check: # validate the built occt: link+run a host binary, or for wasm build+run sandbox-wasm under node
 	$(MAKE) cadrum-occt-$*
 	mkdir -p target
 	find out -maxdepth 2 -type f -name '*.tar.gz' | xargs -IX tar -xzf X -C target
-	timeout 300 cargo run --example 01_primitives
+	if [ "$*" = "wasm32-unknown-unknown" ]; then \
+		$(MAKE) -C sandbox-wasm check-cadrum; \
+	else \
+		timeout 300 cargo run --example 01_primitives; \
+	fi

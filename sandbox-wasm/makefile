@@ -49,6 +49,12 @@ run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separat
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
+check-cadrum: download # build the cadrum wasm sample against ../target's extracted prebuilt OCCT (OCCT_ROOT, no re-source-build) and assert it runs under node (exnref EH)
+	cargo clean
+	OCCT="$$(find $(CURDIR)/../target -maxdepth 1 -type d -name 'occt-*-wasm32_unknown_unknown' | head -1)"; \
+	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make cadrum-occt-wasm32-unknown-unknown-check' first"; exit 1; }; \
+	OCCT_ROOT="$$OCCT" ../out/bin/wasm-pack build . -d ./target --features cadrum
+	node --experimental-wasm-exnref -e "import('./target/wasm_experiment.js').then(m=>{const v=m.print_volume();console.log(v);if(!/Solid volume:\s*[0-9]/.test(v))process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})"
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
