@@ -1,0 +1,59 @@
+name: release_cadrum
+
+# Build and release the per-crate-version prebuilt cxx wrapper archive
+# (`libcadrum_cpp.a`) for wasm32-unknown-unknown, so consumers can build cadrum's
+# wasm output with only `rustc` + `rustup target add wasm32-unknown-unknown` — no
+# wasi-sdk (#207). The wasm C++ runtime libs ship in the OCCT tarball (release_occt).
+#
+# The artifact is coupled to the cadrum crate version + cxx version + feature set
+# (default `color`), so this must be re-run on every crate version bump. Names/tag
+# mirror build.rs `release_name(Some(t), true)` / `release_name(None, true)`.
+
+on:
+  push:
+    branches: [release-cadrum]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reuses docker/Dockerfile_wasm32-unknown-unknown (wasi-sdk clang) to compile
+      # cpp/wrapper.cpp + cxx glue into libcadrum_cpp.a, packaged as
+      # occt-<ver>_<rev>-wasm32_unknown_unknown-cadrum-<crate_version>.tar.gz.
+      - name: build wasm FFI archive
+        run: make cadrum-ffi-wasm32-unknown-unknown
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cadrum-ffi-wasm32-unknown-unknown
+          path: out/wasm32-unknown-unknown/occt-*-cadrum-*.tar.gz
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # tag_name must match build.rs `release_name(None, true)` =
+      # `occt-<occt_version>_<BUILD_REVISION>-cadrum-<crate_version underscored>`.
+      # `occt-8_0_0_rev2` is tied to OCCT_VERSION/BUILD_REVISION in build.rs; the crate
+      # version is read from Cargo.toml so the tag tracks releases automatically.
+      - name: compute tag
+        id: tag
+        run: echo "name=occt-8_0_0_rev2-cadrum-$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/' | tr . _)" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: cadrum FFI prebuilt (wasm32) ${{ steps.tag.outputs.name }}
+          files: dist/*.tar.gz

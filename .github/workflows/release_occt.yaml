@@ -1,8 +1,8 @@
-name: prebuilt
+name: release_occt
 
 on:
   push:
-    branches: [prebuilt]
+    branches: [release-occt]
   workflow_dispatch:
 
 jobs:
@@ -91,8 +91,8 @@ jobs:
   # NOTE: macos-13 (the old Intel label) was retired on 2025-12-04, so we use its
   #       successor macos-15-intel. https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
   # cmake / make / clang are preinstalled on the GitHub macOS runner.
-  # CADRUM_BUNDLE_GCC_RUNTIME=1 inside `make cadrum-occt` is a no-op on Darwin
-  # (build.rs bundles libstdc++/libgcc only for *-windows-gnu / *-linux-gnu).
+  # CADRUM_BUNDLE_RUNTIME=1 inside `make cadrum-occt` is a no-op on Darwin
+  # (build.rs bundles runtime libs only for *-windows-gnu / *-linux-gnu / wasm32).
   build-macos:
     strategy:
       fail-fast: false
