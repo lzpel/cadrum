@@ -2,24 +2,33 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 /// OCCT release used by cadrum. Update this tag when bumping OCCT versions.
-/// `cadrum_occt_name()` derives both the GitHub Release tag (no target) and
-/// the prebuilt tarball / cache directory name (with target) from this.
+/// `release_name()` derives the GitHub Release tag, the prebuilt tarball, and the
+/// cache directory name from this.
 const OCCT_VERSION: &str = "V8_0_0";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
 const BUILD_REVISION: &str = "rev2";
 
-/// Artifact name. Fields are separated by `-` and characters within a field by `_`,
-/// so the name parses by splitting on `-` (the target's hyphens are underscored too).
-/// `target` 指定あり: `occt-8_0_0_rev2-wasm32_unknown_unknown` (tarball / cache dir 名)
-/// `target` 指定なし: `occt-8_0_0_rev2` (`lzpel/cadrum` の GitHub Release タグ)
-fn cadrum_occt_name(target: Option<&str>) -> String {
+/// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
+/// characters within a field by `_`, so the name parses by splitting on `-` (the
+/// target's hyphens are underscored too). `has_version` appends the cadrum crate
+/// version for the per-crate FFI artifact.
+///
+/// - `release_name(None, false)`    → `occt-8_0_0_rev2`                              (GitHub Release タグ)
+/// - `release_name(Some(t), false)` → `occt-8_0_0_rev2-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
+/// - `release_name(Some(t), true)`  → `occt-8_0_0_rev2-wasm32_unknown_unknown-cadrum-0_8_11` (FFI tarball)
+fn release_name(target: Option<&str>, has_version: bool) -> String {
 	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
-	let release = format!("occt-{}_{}", occt, BUILD_REVISION);
-	match target {
-		Some(target) => format!("{}-{}", release, target.replace('-', "_")),
-		None => release,
+	let mut name = format!("occt-{}_{}", occt, BUILD_REVISION);
+	if let Some(target) = target {
+		name.push('-');
+		name.push_str(&target.replace('-', "_"));
 	}
+	if has_version {
+		name.push_str("-cadrum-");
+		name.push_str(&env!("CARGO_PKG_VERSION").replace('.', "_"));
+	}
+	name
 }
 
 fn main() {
@@ -43,7 +52,7 @@ fn main() {
 				p
 			}
 		})
-		.unwrap_or(cargo_target_dir(&target).join(cadrum_occt_name(Some(&target))));
+		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target), false)));
 
 	let [occt_include, occt_lib_dir] = resolve_occt(&effective_root, &target);
 
@@ -210,9 +219,9 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 /// Download a prebuilt OCCT tarball for `target` into `dest`.
 #[cfg(not(feature = "source"))]
 fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
-	let top_name = cadrum_occt_name(Some(target));
+	let top_name = release_name(Some(target), false);
 	let tarball_name = format!("{}.tar.gz", top_name);
-	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", cadrum_occt_name(None), tarball_name));
+	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None, false), tarball_name));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
 

@@ -131,7 +131,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # NOTE: tag_name must match build.rs `cadrum_occt_name(None)` =
+      # NOTE: tag_name must match build.rs `release_name(None, false)` =
       # `occt-<occt_version>_<BUILD_REVISION>` (e.g. `occt-8_0_0_rev2`). Bump this in
       # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
       - uses: softprops/action-gh-release@v2
