@@ -655,6 +655,11 @@ struct Layout {
 	hidden_stroke_width: f64,
 	dash_len: f64,
 	dash_gap: f64,
+	/// AA policy for triangle *fills* (lines are always anti-aliased).
+	/// `false` disables fill AA to kill the conflation seams between
+	/// adjacent same-surface triangles (the meshy white cracks, #201).
+	/// PNG maps this to `paint.anti_alias`; SVG to `shape-rendering`.
+	anti_alias: bool,
 }
 
 impl Scene2D {
@@ -692,6 +697,8 @@ impl Scene2D {
 			hidden_stroke_width: stroke_width * 0.6,
 			dash_len: stroke_width * 5.0,
 			dash_gap: stroke_width * 4.0,
+			// Fixed noaa: disable fill AA to remove the conflation seams (#201).
+			anti_alias: false,
 		}
 	}
 }
@@ -701,7 +708,7 @@ impl Scene2D {
 impl Scene2D {
 	/// Write this scene as an SVG to a writer.
 	pub fn write_svg<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
-		let Layout { vx, vy, vw, vh, stroke_width: sw, hidden_stroke_width: hidden_sw, dash_len, dash_gap } = self.layout();
+		let Layout { vx, vy, vw, vh, stroke_width: sw, hidden_stroke_width: hidden_sw, dash_len, dash_gap, anti_alias } = self.layout();
 
 		let mut svg = String::with_capacity(4096 + self.triangles.len() * 120);
 		svg.push_str(&format!(
@@ -709,6 +716,12 @@ impl Scene2D {
 			 stroke-width=\"{sw:.4}\">\n"
 		));
 
+		// Fills: wrap in a group with `crispEdges` when AA is off so adjacent
+		// same-surface triangles don't leave hairline gaps (#201). Lines stay
+		// outside the group and keep default (anti-aliased) rendering.
+		if !anti_alias {
+			svg.push_str("<g shape-rendering=\"crispEdges\">\n");
+		}
 		for (tri, color) in self.triangles.iter().zip(self.color.iter()) {
 			let [p0, p1, p2] = *tri;
 			let [r, g, b] = *color;
@@ -717,6 +730,9 @@ impl Scene2D {
 				 fill=\"#{r:02x}{g:02x}{b:02x}\" stroke=\"none\"/>\n",
 				p0.x, -p0.y, p1.x, -p1.y, p2.x, -p2.y,
 			));
+		}
+		if !anti_alias {
+			svg.push_str("</g>\n");
 		}
 
 		polylines_to_svg(&mut svg, &self.edges_visible, "black", "", None);
@@ -797,7 +813,7 @@ impl Scene2D {
 		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
 
 		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
-		self.render_to_pixmap(&mut pixmap, transform, layout.stroke_width as f32, layout.hidden_stroke_width as f32, layout.dash_len as f32, layout.dash_gap as f32);
+		self.render_to_pixmap(&mut pixmap, transform, layout.stroke_width as f32, layout.hidden_stroke_width as f32, layout.dash_len as f32, layout.dash_gap as f32, layout.anti_alias);
 
 		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
 		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
@@ -808,7 +824,7 @@ impl Scene2D {
 	/// them to pixels via the transform). Used by both `write_png` and
 	/// `Mesh::write_multiview_png` (which composites 4 of these into a grid).
 	#[cfg(feature = "png")]
-	pub(crate) fn render_to_pixmap(&self, pixmap: &mut tiny_skia::Pixmap, transform: tiny_skia::Transform, stroke_width: f32, hidden_stroke_width: f32, dash_len: f32, dash_gap: f32) {
+	pub(crate) fn render_to_pixmap(&self, pixmap: &mut tiny_skia::Pixmap, transform: tiny_skia::Transform, stroke_width: f32, hidden_stroke_width: f32, dash_len: f32, dash_gap: f32, anti_alias: bool) {
 		use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, StrokeDash};
 
 		// Triangles (back-to-front, already sorted by Scene2D construction).
@@ -821,7 +837,8 @@ impl Scene2D {
 			if let Some(path) = pb.finish() {
 				let mut paint = Paint::default();
 				paint.set_color_rgba8(color[0], color[1], color[2], 255);
-				paint.anti_alias = true;
+				// Fill AA per layout policy; off kills conflation seams (#201).
+				paint.anti_alias = anti_alias;
 				pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
 			}
 		}
@@ -962,7 +979,7 @@ impl Mesh {
 			let s = pps as f32;
 			let transform = Transform::from_row(s, 0.0, 0.0, -s, cx, cy);
 
-			scene.render_to_pixmap(&mut pixmap, transform, scene_stroke, scene_hidden_stroke, scene_dash_len, scene_dash_gap);
+			scene.render_to_pixmap(&mut pixmap, transform, scene_stroke, scene_hidden_stroke, scene_dash_len, scene_dash_gap, scene.layout().anti_alias);
 
 			// Gnomon (bottom-right corner of panel) — also serves as view identifier.
 			let (u_basis, v_basis, _) = bases[i];
