@@ -333,7 +333,7 @@ impl SolidStruct for Solid {
 
 	// ==================== Loft / ThruSections ====================
 
-	fn loft<'a, S, I>(sections: S, ruled: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Edge>, Edge: 'a {
+	fn loft<'a, I: IntoIterator<Item = &'a Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error> where Edge: 'a {
 		let _guard = LOFT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
 		let mut all_edges = ffi::edge_vec_new();

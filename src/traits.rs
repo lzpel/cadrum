@@ -602,7 +602,7 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// spline vs straight lines).
 	///
 	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=ruled)`.
-	fn loft<'a, S, I>(sections: S, ruled: bool) -> Result<Self, Error> where S: IntoIterator<Item = I>, I: IntoIterator<Item = &'a Self::Edge>, Self::Edge: 'a;
+	fn loft<'a, I: IntoIterator<Item = &'a Self::Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error> where Self::Edge: 'a;
 
 	/// Sew (stitch) faces into a closed solid.
 	///
