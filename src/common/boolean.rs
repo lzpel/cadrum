@@ -23,8 +23,12 @@ impl<S: SolidStruct> Boolean<S> {
 	}
 
 	/// 内部表現アクセサ (FFI 用)。
-	pub fn solids(&self) -> &[S] { &self.solids }
-	pub fn clauses(&self) -> &[i64] { &self.clauses }
+	pub fn solids(&self) -> &[S] {
+		&self.solids
+	}
+	pub fn clauses(&self) -> &[i64] {
+		&self.clauses
+	}
 
 	/// FFI を呼んで結果が単一 Solid なら返す。複数または 0 個なら `OneFailed(n)`。
 	pub fn build(self) -> Result<S, Error> {
@@ -60,17 +64,9 @@ impl<S: SolidStruct> Boolean<S> {
 	}
 
 	pub(crate) fn dnf_intersect(a: Self, b: Self) -> Self {
-		let a_clauses: Vec<Vec<i64>> = a.clauses
-			.split(|&l| l == 0)
-			.filter(|c| !c.is_empty())
-			.map(|c| c.to_vec())
-			.collect();
+		let a_clauses: Vec<Vec<i64>> = a.clauses.split(|&l| l == 0).filter(|c| !c.is_empty()).map(|c| c.to_vec()).collect();
 		let shift = a.solids.len() as i64;
-		let b_clauses: Vec<Vec<i64>> = b.clauses
-			.split(|&l| l == 0)
-			.filter(|c| !c.is_empty())
-			.map(|c| c.iter().map(|&l| if l > 0 { l + shift } else { l - shift }).collect())
-			.collect();
+		let b_clauses: Vec<Vec<i64>> = b.clauses.split(|&l| l == 0).filter(|c| !c.is_empty()).map(|c| c.iter().map(|&l| if l > 0 { l + shift } else { l - shift }).collect()).collect();
 		let mut solids = a.solids;
 		solids.extend(b.solids);
 		let mut clauses = Vec::with_capacity(a_clauses.len() * b_clauses.len() * 4);
@@ -86,11 +82,7 @@ impl<S: SolidStruct> Boolean<S> {
 
 	pub(crate) fn dnf_subtract(a: Self, b: Self) -> Self {
 		// a ∩ ¬b。¬b = 各 b_clause から lit を 1 つずつ選び否定した AND の全パターン。
-		let b_clauses: Vec<Vec<i64>> = b.clauses
-			.split(|&l| l == 0)
-			.filter(|c| !c.is_empty())
-			.map(|c| c.to_vec())
-			.collect();
+		let b_clauses: Vec<Vec<i64>> = b.clauses.split(|&l| l == 0).filter(|c| !c.is_empty()).map(|c| c.to_vec()).collect();
 		if b_clauses.is_empty() {
 			return a; // b = ⊥ ⇒ ¬b = ⊤ ⇒ a - b = a
 		}
@@ -161,29 +153,41 @@ macro_rules! boolean_lhs_ops {
 	(& $rhs:ty) => {
 		impl<'a, S: SolidStruct> Add<&'a $rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn add(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_union(self, rhs.into()) }
+			fn add(self, rhs: &'a $rhs) -> Boolean<S> {
+				Boolean::dnf_union(self, rhs.into())
+			}
 		}
 		impl<'a, S: SolidStruct> Sub<&'a $rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn sub(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_subtract(self, rhs.into()) }
+			fn sub(self, rhs: &'a $rhs) -> Boolean<S> {
+				Boolean::dnf_subtract(self, rhs.into())
+			}
 		}
 		impl<'a, S: SolidStruct> Mul<&'a $rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn mul(self, rhs: &'a $rhs) -> Boolean<S> { Boolean::dnf_intersect(self, rhs.into()) }
+			fn mul(self, rhs: &'a $rhs) -> Boolean<S> {
+				Boolean::dnf_intersect(self, rhs.into())
+			}
 		}
 	};
 	($rhs:ty) => {
 		impl<S: SolidStruct> Add<$rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn add(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_union(self, rhs.into()) }
+			fn add(self, rhs: $rhs) -> Boolean<S> {
+				Boolean::dnf_union(self, rhs.into())
+			}
 		}
 		impl<S: SolidStruct> Sub<$rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn sub(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_subtract(self, rhs.into()) }
+			fn sub(self, rhs: $rhs) -> Boolean<S> {
+				Boolean::dnf_subtract(self, rhs.into())
+			}
 		}
 		impl<S: SolidStruct> Mul<$rhs> for Boolean<S> {
 			type Output = Boolean<S>;
-			fn mul(self, rhs: $rhs) -> Boolean<S> { Boolean::dnf_intersect(self, rhs.into()) }
+			fn mul(self, rhs: $rhs) -> Boolean<S> {
+				Boolean::dnf_intersect(self, rhs.into())
+			}
 		}
 	};
 }

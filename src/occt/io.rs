@@ -85,10 +85,7 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 		if inner.is_null() {
 			return Err(Error::StepReadFailed);
 		}
-		let colormap: std::collections::HashMap<u64, Color> = ids.into_iter()
-			.zip(rgb.chunks_exact(3))
-			.map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] }))
-			.collect();
+		let colormap: std::collections::HashMap<u64, Color> = ids.into_iter().zip(rgb.chunks_exact(3)).map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] })).collect();
 		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 	}
 	#[cfg(not(feature = "color"))]

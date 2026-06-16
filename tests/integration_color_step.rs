@@ -125,7 +125,5 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 	cadrum::Solid::mesh(&solids, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).and_then(|m| m.write_stl(&mut stl)).expect("stl write should succeed");
 
 	let mut svg = std::fs::File::create("out/multicolor_solvespace_recovered.svg").expect("svg file");
-	cadrum::Solid::mesh(&solids, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() })
-		.and_then(|m| m.scene(cadrum::SceneOption { shading: true, ..Default::default() }).write_svg(&mut svg))
-		.expect("svg write should succeed");
+	cadrum::Solid::mesh(&solids, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).and_then(|m| m.scene(cadrum::SceneOption { shading: true, ..Default::default() }).write_svg(&mut svg)).expect("svg write should succeed");
 }

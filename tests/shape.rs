@@ -1,4 +1,4 @@
-use cadrum::{Solid, Boolean};
+use cadrum::{Boolean, Solid};
 use glam::DVec3;
 
 fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
@@ -145,18 +145,10 @@ fn test_new_faces_subtract_b_inside_a() {
 	// 新実装（iter_history の post_id 集合）では unchanged 面も history に入る → tool faces = 6
 	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
-	let small_face_ids: std::collections::HashSet<u64> =
-		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
+	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] - &small[0]).build_vec().unwrap();
-	let tool_post_ids: std::collections::HashSet<u64> = solids.iter()
-		.flat_map(|s| s.iter_history())
-		.filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post))
-		.collect();
-	assert_eq!(
-		solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count(),
-		6,
-		"subtract with B fully inside A: tool faces should be all 6 inner walls"
-	);
+	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post)).collect();
+	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count(), 6, "subtract with B fully inside A: tool faces should be all 6 inner walls");
 }
 
 #[test]
@@ -166,13 +158,9 @@ fn test_new_faces_intersect_b_inside_a() {
 	// small の 6 面はすべて unchanged → tool faces = 結果の全フェイス = 6
 	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
-	let small_face_ids: std::collections::HashSet<u64> =
-		small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
+	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] * &small[0]).build_vec().unwrap();
-	let tool_post_ids: std::collections::HashSet<u64> = solids.iter()
-		.flat_map(|s| s.iter_history())
-		.filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post))
-		.collect();
+	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post)).collect();
 	let tool_count = solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count();
 	assert_eq!(tool_count, 6, "intersect with B fully inside A: tool faces should equal all faces of result");
 	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).count(), tool_count, "intersect with B fully inside A: tool faces should cover all result faces");

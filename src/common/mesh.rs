@@ -99,10 +99,14 @@ impl Mesh {
 			// Face normal from cross product / 外積から面法線を計算
 			let n = (v1 - v0).cross(v2 - v0).normalize_or_zero();
 			// Normal (3 x f32 LE)
-			for c in [n.x, n.y, n.z] { writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?; }
+			for c in [n.x, n.y, n.z] {
+				writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+			}
 			// Vertices (3 x 3 x f32 LE)
 			for v in [v0, v1, v2] {
-				for c in [v.x, v.y, v.z] { writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?; }
+				for c in [v.x, v.y, v.z] {
+					writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+				}
 			}
 			// Attribute byte count — RGB555 color (SolidView/MeshLab convention)
 			#[cfg(feature = "color")]
@@ -143,7 +147,9 @@ impl Mesh {
 			let pos_acc = push_accessor_position(&mut buffer_views, &mut accessors, &mut bin, self.vertices.iter().map(|v| [v.x as f32, v.y as f32, v.z as f32]));
 
 			for (indices, material) in tri_groups {
-				if indices.is_empty() { continue; }
+				if indices.is_empty() {
+					continue;
+				}
 				let acc = push_accessor_index(&mut buffer_views, &mut accessors, &mut bin, &indices, self.vertices.len());
 				let mat = material.map_or(String::new(), |m| format!(r#","material":{}"#, m));
 				primitives.push(format!(r#"{{"attributes":{{"POSITION":{}}},"indices":{},"mode":4{}}}"#, pos_acc, acc, mat));
@@ -160,9 +166,15 @@ impl Mesh {
 
 		// ---- Assemble JSON ----
 		let mut members: Vec<String> = vec![r#""asset":{"version":"2.0","generator":"cadrum"}"#.to_string()];
-		if !bin.is_empty() { members.push(format!(r#""buffers":[{{"byteLength":{}}}]"#, bin.len())); }
-		if !buffer_views.is_empty() { members.push(format!(r#""bufferViews":[{}]"#, buffer_views.join(","))); }
-		if !accessors.is_empty() { members.push(format!(r#""accessors":[{}]"#, accessors.join(","))); }
+		if !bin.is_empty() {
+			members.push(format!(r#""buffers":[{{"byteLength":{}}}]"#, bin.len()));
+		}
+		if !buffer_views.is_empty() {
+			members.push(format!(r#""bufferViews":[{}]"#, buffer_views.join(",")));
+		}
+		if !accessors.is_empty() {
+			members.push(format!(r#""accessors":[{}]"#, accessors.join(",")));
+		}
 		if !materials.is_empty() {
 			members.push(format!(r#""materials":[{}]"#, materials.join(",")));
 			members.push(r#""extensionsUsed":["KHR_materials_unlit"]"#.to_string());
@@ -177,15 +189,21 @@ impl Mesh {
 
 		// ---- GLB container (12-byte header + JSON chunk + optional BIN chunk) ----
 		let mut json_bytes = json.into_bytes();
-		while json_bytes.len() % 4 != 0 { json_bytes.push(b' '); }
-		while bin.len() % 4 != 0 { bin.push(0); }
+		while json_bytes.len() % 4 != 0 {
+			json_bytes.push(b' ');
+		}
+		while bin.len() % 4 != 0 {
+			bin.push(0);
+		}
 
 		let mut total = 12 + 8 + json_bytes.len();
-		if !bin.is_empty() { total += 8 + bin.len(); }
+		if !bin.is_empty() {
+			total += 8 + bin.len();
+		}
 
 		let mut w = |b: &[u8]| writer.write_all(b).map_err(|_| Error::GltfWriteFailed);
 		w(&0x46546C67u32.to_le_bytes())?; // magic "glTF"
-		w(&2u32.to_le_bytes())?;          // version 2
+		w(&2u32.to_le_bytes())?; // version 2
 		w(&(total as u32).to_le_bytes())?;
 		w(&(json_bytes.len() as u32).to_le_bytes())?;
 		w(&0x4E4F534Au32.to_le_bytes())?; // chunk type "JSON"
@@ -231,7 +249,11 @@ impl Mesh {
 	#[cfg(not(feature = "color"))]
 	fn gltf_triangle_groups(&self, _materials: &mut Vec<String>) -> Vec<(Vec<u32>, Option<usize>)> {
 		let indices: Vec<u32> = self.indices.iter().map(|&i| i as u32).collect();
-		if indices.is_empty() { Vec::new() } else { vec![(indices, None)] }
+		if indices.is_empty() {
+			Vec::new()
+		} else {
+			vec![(indices, None)]
+		}
 	}
 
 	/// Expand the NaN-separated `edges` into a flat LINES position list plus a
@@ -308,8 +330,13 @@ fn push_accessor_position(views: &mut Vec<String>, accs: &mut Vec<String>, bin: 
 	let mut bytes = Vec::with_capacity(n * 12);
 	let (mut min, mut max) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
 	for p in points {
-		for k in 0..3 { min[k] = min[k].min(p[k]); max[k] = max[k].max(p[k]); }
-		for c in p { bytes.extend_from_slice(&c.to_le_bytes()); }
+		for k in 0..3 {
+			min[k] = min[k].min(p[k]);
+			max[k] = max[k].max(p[k]);
+		}
+		for c in p {
+			bytes.extend_from_slice(&c.to_le_bytes());
+		}
 	}
 	let bv = push_buffer_view(views, bin, &bytes, 34962);
 	let idx = accs.len();
@@ -326,11 +353,15 @@ fn push_accessor_position(views: &mut Vec<String>, accs: &mut Vec<String>, bin: 
 fn push_accessor_index(views: &mut Vec<String>, accs: &mut Vec<String>, bin: &mut Vec<u8>, indices: &[u32], vertex_count: usize) -> usize {
 	let (bytes, component_type) = if vertex_count <= u16::MAX as usize {
 		let mut b = Vec::with_capacity(indices.len() * 2);
-		for &i in indices { b.extend_from_slice(&(i as u16).to_le_bytes()); }
+		for &i in indices {
+			b.extend_from_slice(&(i as u16).to_le_bytes());
+		}
 		(b, 5123)
 	} else {
 		let mut b = Vec::with_capacity(indices.len() * 4);
-		for &i in indices { b.extend_from_slice(&i.to_le_bytes()); }
+		for &i in indices {
+			b.extend_from_slice(&i.to_le_bytes());
+		}
 		(b, 5125)
 	};
 	let bv = push_buffer_view(views, bin, &bytes, 34963);
@@ -374,9 +405,7 @@ struct OcclusionTri {
 /// conditions.
 fn projection_basis(view: DVec3, up: DVec3) -> (DVec3, DVec3, DVec3) {
 	let dir = view.try_normalize().expect("write_svg: view is zero");
-	let v = (up - dir * up.dot(dir))
-		.try_normalize()
-		.expect("write_svg: up is zero or parallel to view");
+	let v = (up - dir * up.dot(dir)).try_normalize().expect("write_svg: up is zero or parallel to view");
 	let u = v.cross(dir);
 	(u, v, dir)
 }
@@ -434,11 +463,7 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 		#[cfg(not(feature = "color"))]
 		let (base_r, base_g, base_b) = (gray, gray, gray);
 
-		let color = [
-			(base_r * shade * 255.0) as u8,
-			(base_g * shade * 255.0) as u8,
-			(base_b * shade * 255.0) as u8,
-		];
+		let color = [(base_r * shade * 255.0) as u8, (base_g * shade * 255.0) as u8, (base_b * shade * 255.0) as u8];
 
 		buf.push(([p0, p1, p2], color, depth));
 	}
@@ -472,10 +497,7 @@ fn build_occlusion_data(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3) -> Vec<Occl
 			continue;
 		}
 
-		tris.push(OcclusionTri {
-			pts: [DVec2::new(v0.dot(u), v0.dot(v)), DVec2::new(v1.dot(u), v1.dot(v)), DVec2::new(v2.dot(u), v2.dot(v))],
-			depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)],
-		});
+		tris.push(OcclusionTri { pts: [DVec2::new(v0.dot(u), v0.dot(v)), DVec2::new(v1.dot(u), v1.dot(v)), DVec2::new(v2.dot(u), v2.dot(v))], depths: [v0.dot(dir), v1.dot(dir), v2.dot(dir)] });
 	}
 	tris
 }
@@ -642,9 +664,12 @@ impl Scene2D {
 	/// so they don't extend the bbox and are not scanned here.
 	pub fn viewbox(&self) -> [DVec2; 2] {
 		let init = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
-		let (min, max) = self.triangles.iter().flatten().copied()
-			.fold(init, |(mn, mx), p| (mn.min(p), mx.max(p)));
-		if min.x > max.x { [DVec2::ZERO, DVec2::ONE] } else { [min, max] }
+		let (min, max) = self.triangles.iter().flatten().copied().fold(init, |(mn, mx), p| (mn.min(p), mx.max(p)));
+		if min.x > max.x {
+			[DVec2::ZERO, DVec2::ONE]
+		} else {
+			[min, max]
+		}
 	}
 
 	fn layout(&self) -> Layout {
@@ -772,14 +797,7 @@ impl Scene2D {
 		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
 
 		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
-		self.render_to_pixmap(
-			&mut pixmap,
-			transform,
-			layout.stroke_width as f32,
-			layout.hidden_stroke_width as f32,
-			layout.dash_len as f32,
-			layout.dash_gap as f32,
-		);
+		self.render_to_pixmap(&mut pixmap, transform, layout.stroke_width as f32, layout.hidden_stroke_width as f32, layout.dash_len as f32, layout.dash_gap as f32);
 
 		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
 		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
@@ -790,15 +808,7 @@ impl Scene2D {
 	/// them to pixels via the transform). Used by both `write_png` and
 	/// `Mesh::write_multiview_png` (which composites 4 of these into a grid).
 	#[cfg(feature = "png")]
-	pub(crate) fn render_to_pixmap(
-		&self,
-		pixmap: &mut tiny_skia::Pixmap,
-		transform: tiny_skia::Transform,
-		stroke_width: f32,
-		hidden_stroke_width: f32,
-		dash_len: f32,
-		dash_gap: f32,
-	) {
+	pub(crate) fn render_to_pixmap(&self, pixmap: &mut tiny_skia::Pixmap, transform: tiny_skia::Transform, stroke_width: f32, hidden_stroke_width: f32, dash_len: f32, dash_gap: f32) {
 		use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, StrokeDash};
 
 		// Triangles (back-to-front, already sorted by Scene2D construction).
@@ -827,22 +837,12 @@ impl Scene2D {
 		let mut hidden_paint = Paint::default();
 		hidden_paint.set_color_rgba8(0xbb, 0xbb, 0xbb, 255);
 		hidden_paint.anti_alias = true;
-		let hidden_stroke = Stroke {
-			width: hidden_stroke_width,
-			dash: StrokeDash::new(vec![dash_len, dash_gap], 0.0),
-			..Stroke::default()
-		};
+		let hidden_stroke = Stroke { width: hidden_stroke_width, dash: StrokeDash::new(vec![dash_len, dash_gap], 0.0), ..Stroke::default() };
 		Self::stroke_polylines(pixmap, &self.edges_hidden, &hidden_paint, &hidden_stroke, transform);
 	}
 
 	#[cfg(feature = "png")]
-	fn stroke_polylines(
-		pixmap: &mut tiny_skia::Pixmap,
-		polylines: &[DVec2],
-		paint: &tiny_skia::Paint,
-		stroke: &tiny_skia::Stroke,
-		transform: tiny_skia::Transform,
-	) {
+	fn stroke_polylines(pixmap: &mut tiny_skia::Pixmap, polylines: &[DVec2], paint: &tiny_skia::Paint, stroke: &tiny_skia::Stroke, transform: tiny_skia::Transform) {
 		let mut start = 0;
 		for i in 0..=polylines.len() {
 			let is_sep = i == polylines.len() || polylines[i].is_nan();
@@ -862,7 +862,6 @@ impl Scene2D {
 			}
 		}
 	}
-
 }
 
 // ==================== Mesh::write_multiview_png — fixed 4-view PNG ====================
@@ -920,10 +919,10 @@ impl Mesh {
 		// up=-Y にして画面上 +Y を下向きにする必要がある。これにより 4 パネルの
 		// part 配置がグリッド中央を中心とした鏡像構造になる。
 		let views: [(DVec3, DVec3); 4] = [
-			(DVec3::new(1.0, 1.0, 1.0), DVec3::Z),  // TL: ISO
-			(DVec3::Z, -DVec3::Y),                   // TR: +Z 視点 (up=-Y で内向き)
-			(DVec3::X, DVec3::Z),                    // BL: +X 視点
-			(DVec3::Y, DVec3::Z),                    // BR: +Y 視点
+			(DVec3::new(1.0, 1.0, 1.0), DVec3::Z), // TL: ISO
+			(DVec3::Z, -DVec3::Y),                 // TR: +Z 視点 (up=-Y で内向き)
+			(DVec3::X, DVec3::Z),                  // BL: +X 視点
+			(DVec3::Y, DVec3::Z),                  // BR: +Y 視点
 		];
 
 		let bases: [(DVec3, DVec3, DVec3); 4] = std::array::from_fn(|i| projection_basis(views[i].0, views[i].1));
@@ -933,12 +932,7 @@ impl Mesh {
 		// 含意: 各パネルは原点中心の `[-h, h]²` を表示し、コンテンツは全パネルで必ず収まる。
 		// 世界 AABB 角投影より tight (球面など曲面で part が panel いっぱいに描かれる)。
 		let scenes: [Scene2D; 4] = std::array::from_fn(|i| self.scene(SceneOption { view: views[i].0, up: views[i].1, ..Default::default() }));
-		let h = scenes.iter()
-			.map(|v| v.viewbox())
-			.flat_map(|[a,b]| [a.x,a.y,b.x,b.y])
-			.map(|x|x.abs()*H_SCALE)
-			.reduce(f64::max)
-			.unwrap_or(1.0);
+		let h = scenes.iter().map(|v| v.viewbox()).flat_map(|[a, b]| [a.x, a.y, b.x, b.y]).map(|x| x.abs() * H_SCALE).reduce(f64::max).unwrap_or(1.0);
 
 		// 各パネルは正方形 512×512、4 パネル交点はちょうど画像中心 (512, 512)。
 		// padding なし: part は panel 端まで使い切る。scale bar は y=512 の水平
@@ -977,10 +971,7 @@ impl Mesh {
 		}
 
 		// 4 パネルを区切る十字線 (light gray)。中央の縦横 2 本だけ、外周は画像端と一致するので描かない。
-		preview_path(&mut pixmap, [
-			[0.0, panel_h, IMG_SIZE as f32, panel_h],
-			[panel_w, 0.0, panel_w, IMG_SIZE as f32],
-		], 0xcccccc, 1.0);
+		preview_path(&mut pixmap, [[0.0, panel_h, IMG_SIZE as f32, panel_h], [panel_w, 0.0, panel_w, IMG_SIZE as f32]], 0xcccccc, 1.0);
 
 		// Scale bars embedded on the y=panel_h horizontal panel boundary.
 		// 左半分にメインスケール、右半分にサブスケールを配置。大小 2 つの reference を
@@ -991,17 +982,13 @@ impl Mesh {
 		// その半分 0.8h でサブ bar (nice_step は round-down なので bar は target 以下)。
 		let step1 = nice_step(h * 1.6);
 		let step2 = nice_step(h * 0.7);
-		let boundary_y = panel_h;  // = 512
+		let boundary_y = panel_h; // = 512
 		for (step, center_x) in [(step1, panel_w / 2.0), (step2, panel_w * 1.5)] {
 			let bar_px = (step * pps) as f32;
 			let x0 = center_x - bar_px / 2.0;
 			let x1 = center_x + bar_px / 2.0;
 			// scale bar: 横棒 + 両端 tick の 3 セグメント
-			preview_path(&mut pixmap, [
-				[x0, boundary_y, x1, boundary_y],
-				[x0, boundary_y - TICK_SIZE / 2.0, x0, boundary_y + TICK_SIZE / 2.0],
-				[x1, boundary_y - TICK_SIZE / 2.0, x1, boundary_y + TICK_SIZE / 2.0],
-			], 0x1f3a8a, 2.0);
+			preview_path(&mut pixmap, [[x0, boundary_y, x1, boundary_y], [x0, boundary_y - TICK_SIZE / 2.0, x0, boundary_y + TICK_SIZE / 2.0], [x1, boundary_y - TICK_SIZE / 2.0, x1, boundary_y + TICK_SIZE / 2.0]], 0x1f3a8a, 2.0);
 			let label = format!("{}", step);
 			let glyph_w = LABEL_SIZE * 0.6;
 			let text_w = (label.chars().count() as f32) * glyph_w * 1.2 - glyph_w * 0.2;
@@ -1026,7 +1013,13 @@ fn nice_step(target: f64) -> f64 {
 	let exp = target.log10().floor() as i32;
 	let pow = 10f64.powi(exp);
 	let m = target / pow;
-	let nice = if m < 2.0 { 1.0 } else if m < 5.0 { 2.0 } else { 5.0 };
+	let nice = if m < 2.0 {
+		1.0
+	} else if m < 5.0 {
+		2.0
+	} else {
+		5.0
+	};
 	nice * pow
 }
 
@@ -1043,14 +1036,14 @@ fn nice_step(target: f64) -> f64 {
 // 視覚的に同一なので問題ない。'1' は base を持たず stem + flag のみで認識可能とした。
 fn glyph_polyline(c: char) -> &'static [[f32; 2]] {
 	match c {
-		'0' => &[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],[0.0,0.0]],
-		'1' => &[[0.2,0.8],[0.5,1.0],[0.5,0.0]],
-		'2' => &[[0.0,1.0],[1.0,1.0],[1.0,0.5],[0.0,0.5],[0.0,0.0],[1.0,0.0]],
-		'5' => &[[1.0,1.0],[0.0,1.0],[0.0,0.5],[1.0,0.5],[1.0,0.0],[0.0,0.0]],
-		'.' => &[[0.4,0.0],[0.6,0.0],[0.6,0.15],[0.4,0.15],[0.4,0.0]],
-		'X' => &[[0.0,0.0],[1.0,1.0],[0.5,0.5],[0.0,1.0],[1.0,0.0]],
-		'Y' => &[[0.0,1.0],[0.5,0.5],[0.5,0.0],[0.5,0.5],[1.0,1.0]],
-		'Z' => &[[0.0,1.0],[1.0,1.0],[0.0,0.0],[1.0,0.0]],
+		'0' => &[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]],
+		'1' => &[[0.2, 0.8], [0.5, 1.0], [0.5, 0.0]],
+		'2' => &[[0.0, 1.0], [1.0, 1.0], [1.0, 0.5], [0.0, 0.5], [0.0, 0.0], [1.0, 0.0]],
+		'5' => &[[1.0, 1.0], [0.0, 1.0], [0.0, 0.5], [1.0, 0.5], [1.0, 0.0], [0.0, 0.0]],
+		'.' => &[[0.4, 0.0], [0.6, 0.0], [0.6, 0.15], [0.4, 0.15], [0.4, 0.0]],
+		'X' => &[[0.0, 0.0], [1.0, 1.0], [0.5, 0.5], [0.0, 1.0], [1.0, 0.0]],
+		'Y' => &[[0.0, 1.0], [0.5, 0.5], [0.5, 0.0], [0.5, 0.5], [1.0, 1.0]],
+		'Z' => &[[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
 		_ => &[],
 	}
 }
@@ -1085,10 +1078,7 @@ fn draw_text(pixmap: &mut tiny_skia::Pixmap, text: &str, x: f32, y: f32, size: f
 	let mut cursor = x;
 	for ch in text.chars() {
 		for w in glyph_polyline(ch).windows(2) {
-			segments.push([
-				cursor + w[0][0] * glyph_w, y + (1.0 - w[0][1]) * size,
-				cursor + w[1][0] * glyph_w, y + (1.0 - w[1][1]) * size,
-			]);
+			segments.push([cursor + w[0][0] * glyph_w, y + (1.0 - w[0][1]) * size, cursor + w[1][0] * glyph_w, y + (1.0 - w[1][1]) * size]);
 		}
 		cursor += advance;
 	}
@@ -1103,11 +1093,7 @@ fn draw_text(pixmap: &mut tiny_skia::Pixmap, text: &str, x: f32, y: f32, size: f
 fn draw_gnomon(pixmap: &mut tiny_skia::Pixmap, origin: (f32, f32), size: f32, text_size: f32, u: DVec3, v: DVec3) {
 	let cx = origin.0 + size / 2.0;
 	let cy = origin.1 + size / 2.0;
-	let axes: [(DVec3, &str, u32); 3] = [
-		(DVec3::X, "X", 0xc0392b),
-		(DVec3::Y, "Y", 0x27ae60),
-		(DVec3::Z, "Z", 0x2980b9),
-	];
+	let axes: [(DVec3, &str, u32); 3] = [(DVec3::X, "X", 0xc0392b), (DVec3::Y, "Y", 0x27ae60), (DVec3::Z, "Z", 0x2980b9)];
 	for (axis, label, color) in axes {
 		let p = DVec2::new(axis.dot(u), axis.dot(v));
 		let len = p.length();

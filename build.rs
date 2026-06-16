@@ -35,7 +35,11 @@ fn main() {
 	let effective_root = env::var("OCCT_ROOT")
 		.map(|r| {
 			let p = PathBuf::from(r);
-			if p.is_relative() { env::current_dir().unwrap().join(p) } else { p }
+			if p.is_relative() {
+				env::current_dir().unwrap().join(p)
+			} else {
+				p
+			}
 		})
 		.unwrap_or(cargo_target_dir(&target).join(cadrum_occt_name(Some(&target))));
 
@@ -73,28 +77,26 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 			#[cfg(feature = "source-build")]
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
-				let dirs = source::build_from_source(effective_root)
-					.expect("Failed to build OCCT from source");
+				let dirs = source::build_from_source(effective_root).expect("Failed to build OCCT from source");
 				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
 				// gate を切らないと source-build user 全員のホスト libstdc++ が静的取り込みされてしまう。
 				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
-				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok()
-					&& (target.ends_with("windows-gnu") || target.contains("linux-gnu"))
-				{
+				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
 					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
 				}
 				return dirs;
 			}
 			#[cfg(not(feature = "source-build"))]
 			{
-				return download_prebuilt(effective_root, target)
-					.unwrap_or_else(|| panic!(
+				return download_prebuilt(effective_root, target).unwrap_or_else(|| {
+					panic!(
 						"\nFailed to download prebuilt OCCT for target `{}`.\n\
 						 See README for the list of supported prebuilt targets, or enable\n\
 						 the `source-build` feature to build OCCT from upstream sources:\n\
 						 \n    cargo build --features source-build\n",
 						target
-					));
+					)
+				});
 			}
 		}
 	}
@@ -111,13 +113,34 @@ fn find_occt_dirs(occt_root: &Path) -> Option<[PathBuf; 2]> {
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
 const OCC_LIBS: &[&str] = &[
-	"TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim", "TKBO", "TKBool",
-	"TKShHealing", "TKMesh", "TKGeomBase", "TKGeomAlgo", "TKG3d", "TKG2d",
-	"TKBin", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKFillet", "TKDESTEP",
-	#[cfg(feature = "color")] "TKLCAF",
-	#[cfg(feature = "color")] "TKXCAF",
-	#[cfg(feature = "color")] "TKCAF",
-	#[cfg(feature = "color")] "TKCDF",
+	"TKernel",
+	"TKMath",
+	"TKBRep",
+	"TKTopAlgo",
+	"TKPrim",
+	"TKBO",
+	"TKBool",
+	"TKShHealing",
+	"TKMesh",
+	"TKGeomBase",
+	"TKGeomAlgo",
+	"TKG3d",
+	"TKG2d",
+	"TKBin",
+	"TKXSBase",
+	"TKDE",
+	"TKDECascade",
+	"TKOffset",
+	"TKFillet",
+	"TKDESTEP",
+	#[cfg(feature = "color")]
+	"TKLCAF",
+	#[cfg(feature = "color")]
+	"TKXCAF",
+	#[cfg(feature = "color")]
+	"TKCAF",
+	#[cfg(feature = "color")]
+	"TKCDF",
 ];
 
 fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
@@ -133,7 +156,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	for entry in walkdir::WalkDir::new(occt_lib_dir).min_depth(1).max_depth(1).into_iter().flatten() {
 		let Some(name) = entry.file_name().to_str() else { continue };
 		if name.contains("cadrum") {
-			let name=name.strip_prefix("lib").unwrap_or(name).strip_suffix(".a").or(name.strip_suffix(".lib")).unwrap_or(name);
+			let name = name.strip_prefix("lib").unwrap_or(name).strip_suffix(".a").or(name.strip_suffix(".lib")).unwrap_or(name);
 			println!("cargo:rustc-link-lib=static={}", name);
 		}
 	}
@@ -208,11 +231,7 @@ fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
 
 fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	if let Some(rest) = url.strip_prefix("file://") {
-		let path: PathBuf = if rest.len() >= 3 && rest.starts_with('/') && rest.as_bytes()[2] == b':' {
-			PathBuf::from(&rest[1..])
-		} else {
-			PathBuf::from(rest)
-		};
+		let path: PathBuf = if rest.len() >= 3 && rest.starts_with('/') && rest.as_bytes()[2] == b':' { PathBuf::from(&rest[1..]) } else { PathBuf::from(rest) };
 		std::fs::read(&path).map_err(|e| format!("read {}: {}", path.display(), e))
 	} else {
 		let resp = minreq::get(url).send().map_err(|e| e.to_string())?;
@@ -228,10 +247,7 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 	let compiler = cc::Build::new().get_compiler();
 	for &lib in libs {
-		let out = std::process::Command::new(compiler.path())
-			.arg(format!("-print-file-name={}", lib))
-			.output()
-			.expect("compiler probe failed");
+		let out = std::process::Command::new(compiler.path()).arg(format!("-print-file-name={}", lib)).output().expect("compiler probe failed");
 		let src = PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim());
 		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
 		if src.is_absolute() && src.exists() {
@@ -249,7 +265,7 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "source-build")]
 mod source {
-	use super::{download_and_extract_tar_gz, find_occt_dirs, OCC_LIBS, OCCT_VERSION};
+	use super::{download_and_extract_tar_gz, find_occt_dirs, OCCT_VERSION, OCC_LIBS};
 	use std::env;
 	use std::path::{Path, PathBuf};
 
@@ -285,12 +301,7 @@ mod source {
 			eprintln!("OCCT source extracted successfully.");
 		}
 
-		let source_dir = std::fs::read_dir(effective_root)
-			.expect("Failed to read effective_root directory")
-			.flatten()
-			.find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir())
-			.map(|e| e.path())
-			.expect("OCCT source directory not found after extraction");
+		let source_dir = std::fs::read_dir(effective_root).expect("Failed to read effective_root directory").flatten().find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir()).map(|e| e.path()).expect("OCCT source directory not found after extraction");
 
 		// Apply patches
 		walk_occt_sources(&source_dir, |path| {
@@ -406,7 +417,7 @@ mod source {
 					}
 				}
 				entry if entry.file_type().is_dir() => f(entry.path()),
-				_ => {},
+				_ => {}
 			}
 		}
 	}
@@ -416,21 +427,11 @@ mod source {
 	/// cadrum の公開 I/O はストリームベースで OSD ファイル層を通らず、テストも std::fs で
 	/// バイト列を読み書きするので、source-build にこのスタブを当てても cargo test で検証できる。
 	/// 性能の要 OSD_ThreadPool / OSD_Parallel(_Threads/_TBB) / OSD_Thread は意図的に非対象。
-	const OSD_POSIX_STUBS: &[&str] = &[
-		"OSD_File.cxx", "OSD_Directory.cxx", "OSD_DirectoryIterator.cxx",
-		"OSD_FileIterator.cxx", "OSD_FileNode.cxx", "OSD_Path.cxx",
-		"OSD_Protection.cxx", "OSD_Process.cxx", "OSD_Host.cxx", "OSD_Disk.cxx",
-		"OSD_Environment.cxx", "OSD_signal.cxx", "OSD_Chronometer.cxx",
-		"OSD_MemInfo.cxx", "OSD_SharedLibrary.cxx",
-		"Message_PrinterSystemLog.cxx", "STEPConstruct_AP203Context.cxx",
-	];
+	const OSD_POSIX_STUBS: &[&str] = &["OSD_File.cxx", "OSD_Directory.cxx", "OSD_DirectoryIterator.cxx", "OSD_FileIterator.cxx", "OSD_FileNode.cxx", "OSD_Path.cxx", "OSD_Protection.cxx", "OSD_Process.cxx", "OSD_Host.cxx", "OSD_Disk.cxx", "OSD_Environment.cxx", "OSD_signal.cxx", "OSD_Chronometer.cxx", "OSD_MemInfo.cxx", "OSD_SharedLibrary.cxx", "Message_PrinterSystemLog.cxx", "STEPConstruct_AP203Context.cxx"];
 
 	/// 上記スタブから外す、環境により不在のヘッダ（wasm に無い等）。
 	/// native では既存ヘッダを消すだけで無害（body-stub 済みなので参照されない）。
-	const STUB_DROP_HEADERS: &[&str] = &[
-		"netdb.h", "sys/socket.h", "arpa/inet.h", "net/if.h", "ifaddrs.h",
-		"pwd.h", "grp.h", "dlfcn.h", "sys/statvfs.h", "sys/mount.h", "syslog.h",
-	];
+	const STUB_DROP_HEADERS: &[&str] = &["netdb.h", "sys/socket.h", "arpa/inet.h", "net/if.h", "ifaddrs.h", "pwd.h", "grp.h", "dlfcn.h", "sys/statvfs.h", "sys/mount.h", "syslog.h"];
 
 	/// Return the patched content for a file if it needs patching, `None` otherwise.
 	/// Pure function — does not write to disk. 全 target 共通（target 分岐なし）。
@@ -479,10 +480,7 @@ mod source {
 
 	/// Generate stubbed content for a C++ source file without writing to disk.
 	fn stub_content(path: &Path, keep_signatures: bool) -> String {
-		let unix = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.map(|d| d.as_secs().to_string())
-			.unwrap_or_else(|_| "unknown".to_string());
+		let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_else(|_| "unknown".to_string());
 		let description = if keep_signatures { "method bodies stubbed" } else { "file emptied" };
 		let header = format!("// Stubbed by cadrum build.rs at unix={unix}: {description}.\n");
 
@@ -697,7 +695,9 @@ mod source {
 			let bytes = sig_norm.as_bytes();
 			let mut cursor = 0;
 			loop {
-				let Some(off) = sig_norm[cursor..].find('(') else { return "{}"; };
+				let Some(off) = sig_norm[cursor..].find('(') else {
+					return "{}";
+				};
 				let pos = cursor + off;
 				let mut depth = 1;
 				let mut j = pos + 1;

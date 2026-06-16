@@ -106,7 +106,6 @@ fn test_bspline_01_two_period_torus_point_symmetry() {
 	write_outputs(&[plasma, Solid::bspline(M, N, false, &point).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
 }
 
-
 // ==================== (2) #120 reproducer: VMEC-like LCFS, U=0 seam dent ====================
 
 /// #120: `Solid::bspline(grid, periodic=true)` produces only C⁰-continuous
@@ -123,20 +122,8 @@ fn test_bspline_02_seam_dent_120() {
 
 	// (m, n, amplitude) — VMEC LCFS top modes + amplified high-frequency
 	// content to make the seam dent visible.
-	const RMNC: &[(f64, f64, f64)] = &[
-		(0.0, 0.0, 11.06), (1.0, 0.0, 1.89), (0.0, 4.0, 1.53),
-		(1.0, -4.0, -1.39), (1.0, 4.0, 0.58), (2.0, -4.0, 0.26),
-		(3.0, -8.0, 0.12), (4.0, -8.0, 0.10), (4.0, -12.0, 0.08),
-		(5.0, -12.0, 0.07), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05),
-		(10.0, -32.0, 0.04), (3.0, 8.0, 0.08), (6.0, 16.0, 0.06),
-	];
-	const ZMNS: &[(f64, f64, f64)] = &[
-		(1.0, 0.0, 1.94), (0.0, 4.0, 1.24), (1.0, -4.0, 0.67),
-		(1.0, 4.0, 0.53), (2.0, -4.0, 0.04),
-		(3.0, -8.0, 0.10), (4.0, -8.0, 0.08), (4.0, -12.0, 0.07),
-		(5.0, -12.0, 0.06), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05),
-		(10.0, -32.0, 0.04), (3.0, 8.0, 0.07), (6.0, 16.0, 0.05),
-	];
+	const RMNC: &[(f64, f64, f64)] = &[(0.0, 0.0, 11.06), (1.0, 0.0, 1.89), (0.0, 4.0, 1.53), (1.0, -4.0, -1.39), (1.0, 4.0, 0.58), (2.0, -4.0, 0.26), (3.0, -8.0, 0.12), (4.0, -8.0, 0.10), (4.0, -12.0, 0.08), (5.0, -12.0, 0.07), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05), (10.0, -32.0, 0.04), (3.0, 8.0, 0.08), (6.0, 16.0, 0.06)];
+	const ZMNS: &[(f64, f64, f64)] = &[(1.0, 0.0, 1.94), (0.0, 4.0, 1.24), (1.0, -4.0, 0.67), (1.0, 4.0, 0.53), (2.0, -4.0, 0.04), (3.0, -8.0, 0.10), (4.0, -8.0, 0.08), (4.0, -12.0, 0.07), (5.0, -12.0, 0.06), (6.0, -16.0, 0.06), (8.0, -24.0, 0.05), (10.0, -32.0, 0.04), (3.0, 8.0, 0.07), (6.0, 16.0, 0.05)];
 
 	let point = |i: usize, j: usize| -> DVec3 {
 		let phi = TAU * (i as f64) / (M as f64) + PHI_OFFSET;
@@ -151,7 +138,6 @@ fn test_bspline_02_seam_dent_120() {
 
 	write_outputs(&[plasma], "test_bspline_02_seam_dent_120");
 }
-
 
 // ==================== (3) #120 simple seam-dent reproducer ====================
 
@@ -218,10 +204,7 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 	let nonperiodic = Solid::bspline(M, N, false, &point).expect("non-periodic bspline should succeed");
 	// periodic を上 (Z=0)、non-periodic を下 (Z=-5) に並べて保存。
 	// 断面の z 範囲は ±1.2 なので 5 離せばクリアに分離する。
-	write_outputs(
-		&[periodic.clone(), nonperiodic.translate(DVec3::Z * -5.0)],
-		"test_bspline_03_seam_dent_alternating_ellipse",
-	);
+	write_outputs(&[periodic.clone(), nonperiodic.translate(DVec3::Z * -5.0)], "test_bspline_03_seam_dent_alternating_ellipse");
 
 	// 4 象限体積対称性は問題なく成立 (体積は global integral で局所 normal の歪みを
 	// 平均化してしまうため、seam dent が見えにくい)。
@@ -238,7 +221,7 @@ fn test_bspline_03_seam_dent_alternating_ellipse() {
 		let target = DVec3::new(R0 + 1.2 * theta.cos(), 0.0, 0.6 * theta.sin());
 		let (_cp, normal) = face.project(target);
 		if normal.length() == 0.0 {
-			continue;  // 法線未定義 (degenerate) → skip
+			continue; // 法線未定義 (degenerate) → skip
 		}
 		max_y_ratio = max_y_ratio.max(normal.y.abs() / normal.length());
 	}

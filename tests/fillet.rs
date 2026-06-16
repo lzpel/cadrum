@@ -22,10 +22,8 @@ fn test_fillet_cube_reduces_volume_and_area() {
 	let edges: Vec<_> = cube.iter_edge().collect();
 	let rounded = cube.fillet_edges(r, edges).expect("fillet should succeed");
 
-	assert!(rounded.volume() < original_volume,
-		"fillet must reduce volume: {} vs {}", rounded.volume(), original_volume);
-	assert!(rounded.area() < original_area,
-		"fillet must reduce area: {} vs {}", rounded.area(), original_area);
+	assert!(rounded.volume() < original_volume, "fillet must reduce volume: {} vs {}", rounded.volume(), original_volume);
+	assert!(rounded.area() < original_area, "fillet must reduce area: {} vs {}", rounded.area(), original_area);
 }
 
 #[test]
@@ -40,20 +38,15 @@ fn test_fillet_cube_matches_analytical_volume() {
 	let removed_corners = 8.0 * (r.powi(3) - PI * r.powi(3) / 6.0);
 	let expected = a.powi(3) - removed_edges - removed_corners;
 	let rel_err = (rounded.volume() - expected).abs() / expected;
-	assert!(rel_err < 1e-3,
-		"rounded cube volume {} vs analytical {} (rel err {})",
-		rounded.volume(), expected, rel_err);
+	assert!(rel_err < 1e-3, "rounded cube volume {} vs analytical {} (rel err {})", rounded.volume(), expected, rel_err);
 }
 
 #[test]
 fn test_fillet_empty_edges_is_noop() {
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(5.0));
 	let original_volume = cube.volume();
-	let unchanged = cube
-		.fillet_edges(0.5, std::iter::empty::<&cadrum::Edge>())
-		.expect("empty fillet is a no-op, not an error");
-	assert!((unchanged.volume() - original_volume).abs() < EPS,
-		"no-op fillet should preserve volume exactly, got {}", unchanged.volume());
+	let unchanged = cube.fillet_edges(0.5, std::iter::empty::<&cadrum::Edge>()).expect("empty fillet is a no-op, not an error");
+	assert!((unchanged.volume() - original_volume).abs() < EPS, "no-op fillet should preserve volume exactly, got {}", unchanged.volume());
 }
 
 #[test]
@@ -62,6 +55,5 @@ fn test_fillet_radius_too_large_returns_err() {
 	let edges: Vec<_> = cube.iter_edge().collect();
 	// r = 5 > a/2 = 1 → geometrically impossible; OCCT reports not-done.
 	let err = cube.fillet_edges(5.0, edges).err().expect("oversized radius must fail");
-	assert!(matches!(err, Error::FilletFailed),
-		"expected FilletFailed, got {:?}", err);
+	assert!(matches!(err, Error::FilletFailed), "expected FilletFailed, got {:?}", err);
 }

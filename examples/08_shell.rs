@@ -28,25 +28,16 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// Filter to those whose src_id is one of the cutter's faces, then collect
 	// their post_ids — these are the planar cut faces in the result that we
 	// want to use as shell openings.
-	let cutter_face_ids: std::collections::HashSet<u64> =
-		cutter.iter_face().map(|f| f.id()).collect();
+	let cutter_face_ids: std::collections::HashSet<u64> = cutter.iter_face().map(|f| f.id()).collect();
 	let half: Solid = (&torus * &cutter).build()?;
-	let from_cutter: std::collections::HashSet<u64> = half
-		.iter_history()
-		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
-		.collect();
+	let from_cutter: std::collections::HashSet<u64> = half.iter_history().filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post)).collect();
 	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.id())))
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let result = [
-		hollow_cube()?.color("#d0a878"),
-		sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0),
-		halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0),
-		halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0),
-	];
+	let result = [hollow_cube()?.color("#d0a878"), sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0), halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0), halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0)];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 

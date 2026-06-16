@@ -25,13 +25,11 @@ impl Edge {
 			Ok(Edge { inner })
 		}
 	}
-
 }
 
 impl Clone for Edge {
 	fn clone(&self) -> Self {
-		Edge::try_from_ffi(ffi::deep_copy_edge(&self.inner), "Edge::clone: deep_copy_edge returned null".into())
-			.expect("Edge::clone: unexpected null from deep_copy_edge (this is a bug)")
+		Edge::try_from_ffi(ffi::deep_copy_edge(&self.inner), "Edge::clone: deep_copy_edge returned null".into()).expect("Edge::clone: unexpected null from deep_copy_edge (this is a bug)")
 	}
 }
 
@@ -75,10 +73,7 @@ impl EdgeStruct for Edge {
 	}
 
 	fn approximation_segments(&self, tessellation: crate::traits::Tessellation) -> Vec<DVec3> {
-		ffi::edge_approximation_segments(&self.inner, tessellation.deflection_linear, tessellation.deflection_angular, tessellation.relative_linear)
-			.chunks_exact(3)
-			.map(|c| DVec3::new(c[0], c[1], c[2]))
-			.collect()
+		ffi::edge_approximation_segments(&self.inner, tessellation.deflection_linear, tessellation.deflection_angular, tessellation.relative_linear).chunks_exact(3).map(|c| DVec3::new(c[0], c[1], c[2])).collect()
 	}
 
 	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
@@ -88,10 +83,7 @@ impl EdgeStruct for Edge {
 		// or OCCT internal exception). All cadrum-constructed edges carry a
 		// Geom_Curve, so this is effectively unreachable — treat as a bug and
 		// fail fast rather than returning silent zero.
-		assert!(
-			ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz),
-			"Edge::project: edge has no 3D curve or OCCT projector threw (this is a bug)"
-		);
+		assert!(ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz), "Edge::project: edge has no 3D curve or OCCT projector threw (this is a bug)");
 		(DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz))
 	}
 
@@ -106,24 +98,13 @@ impl EdgeStruct for Edge {
 		// C++ 側は失敗時に空ベクタを返す (null ではない)。点数不足や
 		// OCCT の MakePolygon 失敗で empty になるので、それを InvalidEdge に変換。
 		if cxx_vec.is_empty() {
-			return Err(Error::InvalidEdge(format!(
-				"polygon: construction failed (point count = {}, need ≥ 3 non-degenerate)",
-				coords.len() / 3
-			)));
+			return Err(Error::InvalidEdge(format!("polygon: construction failed (point count = {}, need ≥ 3 non-degenerate)", coords.len() / 3)));
 		}
 		// CxxVector<TopoDS_Edge> → Vec<Edge>: pull each element out into a
 		// UniquePtr<TopoDS_Edge> via deep_copy_edge so we own the topology.
 		// deep_copy_edge は既に有効な edge の複製なので null にはならない想定、
 		// 万一返った場合は InvalidEdge で failfast する。
-		cxx_vec
-			.iter()
-			.map(|e| {
-				Edge::try_from_ffi(
-					ffi::deep_copy_edge(e),
-					"polygon: deep_copy_edge returned null".into(),
-				)
-			})
-			.collect()
+		cxx_vec.iter().map(|e| Edge::try_from_ffi(ffi::deep_copy_edge(e), "polygon: deep_copy_edge returned null".into())).collect()
 	}
 
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error> {
@@ -150,12 +131,7 @@ impl EdgeStruct for Edge {
 			BSplineEnd::NotAKnot | BSplineEnd::Clamped { .. } => 2,
 		};
 		if pts.len() < min_required {
-			return Err(Error::InvalidEdge(format!(
-				"bspline: need ≥{} points for {:?}, got {}",
-				min_required,
-				end,
-				pts.len()
-			)));
+			return Err(Error::InvalidEdge(format!("bspline: need ≥{} points for {:?}, got {}", min_required, end, pts.len())));
 		}
 
 		// Periodic では先頭と末尾が一致してはならない。OCCT は周期性を基底関数に
@@ -165,9 +141,7 @@ impl EdgeStruct for Edge {
 			let first = pts.first().expect("checked above");
 			let last = pts.last().expect("checked above");
 			if first == last {
-				return Err(Error::InvalidEdge(format!(
-					"bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point"
-				)));
+				return Err(Error::InvalidEdge(format!("bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point")));
 			}
 		}
 
@@ -184,10 +158,7 @@ impl EdgeStruct for Edge {
 		};
 
 		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez);
-		Edge::try_from_ffi(
-			inner,
-			format!("bspline: OCCT GeomAPI_Interpolate failed ({} points, end={end:?})", pts.len()),
-		)
+		Edge::try_from_ffi(inner, format!("bspline: OCCT GeomAPI_Interpolate failed ({} points, end={end:?})", pts.len()))
 	}
 }
 
@@ -200,28 +171,18 @@ impl EdgeStruct for Edge {
 // 返す経路はない) ので、万一 null が返った場合は expect() で failfast する。
 impl Transform for Edge {
 	fn translate(self, t: DVec3) -> Self {
-		Edge::try_from_ffi(ffi::translate_edge(&self.inner, t.x, t.y, t.z), "Edge::translate: null from FFI".into())
-			.expect("Edge::translate: unexpected null from translate_edge (this is a bug)")
+		Edge::try_from_ffi(ffi::translate_edge(&self.inner, t.x, t.y, t.z), "Edge::translate: null from FFI".into()).expect("Edge::translate: unexpected null from translate_edge (this is a bug)")
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		Edge::try_from_ffi(
-			ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle),
-			"Edge::rotate: null from FFI".into(),
-		)
-		.expect("Edge::rotate: unexpected null from rotate_edge (this is a bug)")
+		Edge::try_from_ffi(ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle), "Edge::rotate: null from FFI".into()).expect("Edge::rotate: unexpected null from rotate_edge (this is a bug)")
 	}
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
-		Edge::try_from_ffi(ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor), "Edge::scale: null from FFI".into())
-			.expect("Edge::scale: unexpected null from scale_edge (this is a bug)")
+		Edge::try_from_ffi(ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor), "Edge::scale: null from FFI".into()).expect("Edge::scale: unexpected null from scale_edge (this is a bug)")
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		Edge::try_from_ffi(
-			ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z),
-			"Edge::mirror: null from FFI".into(),
-		)
-		.expect("Edge::mirror: unexpected null from mirror_edge (this is a bug)")
+		Edge::try_from_ffi(ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z), "Edge::mirror: null from FFI".into()).expect("Edge::mirror: unexpected null from mirror_edge (this is a bug)")
 	}
 }

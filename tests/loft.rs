@@ -45,11 +45,7 @@ fn test_loft_01_frustum_volume_matches_analytical() {
 	let actual = frustum.volume();
 	let rel_err = (actual - expected).abs() / expected;
 
-	assert!(
-		rel_err < 0.01,
-		"frustum volume {:.4} vs analytical {:.4} (relative error {:.4})",
-		actual, expected, rel_err
-	);
+	assert!(rel_err < 0.01, "frustum volume {:.4} vs analytical {:.4} (relative error {:.4})", actual, expected, rel_err);
 
 	write_outputs(std::slice::from_ref(&frustum), "test_loft_01_frustum_volume_matches_analytical");
 	println!("frustum loft: volume = {:.4} (expected {:.4})", actual, expected);
@@ -65,11 +61,7 @@ fn test_loft_02_single_section_returns_loft_failed() {
 	let err = result.err().expect("single section must return Err");
 	match err {
 		Error::LoftFailed(msg) => {
-			assert!(
-				msg.contains("≥2") || msg.contains(">=2") || msg.contains("got 1"),
-				"error message should mention min section count, got: {}",
-				msg
-			);
+			assert!(msg.contains("≥2") || msg.contains(">=2") || msg.contains("got 1"), "error message should mention min section count, got: {}", msg);
 		}
 		other => panic!("expected Error::LoftFailed, got {:?}", other),
 	}
@@ -88,11 +80,7 @@ fn test_loft_03_empty_section_returns_loft_failed() {
 	let err = result.err().expect("empty section must return Err");
 	match err {
 		Error::LoftFailed(msg) => {
-			assert!(
-				msg.contains("empty"),
-				"error message should mention empty section, got: {}",
-				msg
-			);
+			assert!(msg.contains("empty"), "error message should mention empty section, got: {}", msg);
 		}
 		other => panic!("expected Error::LoftFailed, got {:?}", other),
 	}
@@ -102,13 +90,7 @@ fn test_loft_03_empty_section_returns_loft_failed() {
 
 #[test]
 fn test_loft_04_closure_iterator_form() {
-	let ribs: Vec<Edge> = (0..3)
-		.map(|i| {
-			Edge::circle(2.0 + i as f64 * 0.5, DVec3::Z)
-				.unwrap()
-				.translate(DVec3::Z * i as f64 * 5.0)
-		})
-		.collect();
+	let ribs: Vec<Edge> = (0..3).map(|i| Edge::circle(2.0 + i as f64 * 0.5, DVec3::Z).unwrap().translate(DVec3::Z * i as f64 * 5.0)).collect();
 
 	let plasma = Solid::loft(ribs.iter().map(|e| [e]), false).expect("closure-form loft should succeed");
 

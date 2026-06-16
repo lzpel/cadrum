@@ -9,12 +9,7 @@ use cadrum::{BSplineEnd, DVec3, Edge, Error, Solid};
 
 /// Square polygon → box (simplest extrude).
 fn build_box() -> Result<Solid, Error> {
-	let profile = Edge::polygon(&[
-		DVec3::new(0.0, 0.0, 0.0),
-		DVec3::new(5.0, 0.0, 0.0),
-		DVec3::new(5.0, 5.0, 0.0),
-		DVec3::new(0.0, 5.0, 0.0),
-	])?;
+	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(5.0, 0.0, 0.0), DVec3::new(5.0, 5.0, 0.0), DVec3::new(0.0, 5.0, 0.0)])?;
 	Solid::extrude(&profile, DVec3::Z * 8.0)
 }
 
@@ -26,14 +21,7 @@ fn build_oblique_cylinder() -> Result<Solid, Error> {
 
 /// L-shaped polygon → L-beam.
 fn build_l_beam() -> Result<Solid, Error> {
-	let profile = Edge::polygon(&[
-		DVec3::new(0.0, 0.0, 0.0),
-		DVec3::new(4.0, 0.0, 0.0),
-		DVec3::new(4.0, 1.0, 0.0),
-		DVec3::new(1.0, 1.0, 0.0),
-		DVec3::new(1.0, 3.0, 0.0),
-		DVec3::new(0.0, 3.0, 0.0),
-	])?;
+	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(4.0, 0.0, 0.0), DVec3::new(4.0, 1.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(1.0, 3.0, 0.0), DVec3::new(0.0, 3.0, 0.0)])?;
 	Solid::extrude(&profile, DVec3::Z * 12.0)
 }
 
@@ -41,12 +29,12 @@ fn build_l_beam() -> Result<Solid, Error> {
 fn build_heart() -> Result<Solid, Error> {
 	let profile = [Edge::bspline(
 		&[
-			DVec3::new(0.0, -4.0, 0.0),   // bottom tip
+			DVec3::new(0.0, -4.0, 0.0), // bottom tip
 			DVec3::new(2.0, -1.5, 0.0),
 			DVec3::new(4.0, 1.5, 0.0),
-			DVec3::new(2.5, 3.5, 0.0),    // right lobe top
-			DVec3::new(0.0, 2.0, 0.0),    // center dip
-			DVec3::new(-2.5, 3.5, 0.0),   // left lobe top
+			DVec3::new(2.5, 3.5, 0.0),  // right lobe top
+			DVec3::new(0.0, 2.0, 0.0),  // center dip
+			DVec3::new(-2.5, 3.5, 0.0), // left lobe top
 			DVec3::new(-4.0, 1.5, 0.0),
 			DVec3::new(-2.0, -1.5, 0.0),
 		],

@@ -16,8 +16,8 @@ use std::process::Command;
 /// A numbered example file with its source content.
 /// 番号付き example ファイルとそのソースコード。
 struct Entry {
-	path: PathBuf,    // absolute path to the .rs file / .rs ファイルの絶対パス
-	content: String,  // source code / ソースコード
+	path: PathBuf,   // absolute path to the .rs file / .rs ファイルの絶対パス
+	content: String, // source code / ソースコード
 }
 
 impl Entry {
@@ -49,10 +49,7 @@ impl Entry {
 
 	/// First `//!` doc comment line as description / 冒頭の `//!` 行から説明文を抽出
 	fn description(&self) -> &str {
-		self.content.lines()
-			.find(|l| l.starts_with("//!"))
-			.map(|l| l.trim_start_matches("//!").trim())
-			.unwrap_or("")
+		self.content.lines().find(|l| l.starts_with("//!")).map(|l| l.trim_start_matches("//!").trim()).unwrap_or("")
 	}
 }
 
@@ -88,11 +85,7 @@ fn collect_outputs(entries: &[Entry]) -> Vec<(PathBuf, Vec<u8>)> {
 	for entry in entries {
 		let stem = entry.stem();
 		eprintln!("running example: {stem}");
-		let status = Command::new("cargo")
-			.args(["run", "--manifest-path", manifest.to_str().unwrap(), "--example", stem])
-			.current_dir(&tmp)
-			.status()
-			.unwrap_or_else(|e| panic!("failed to run example {stem}: {e}"));
+		let status = Command::new("cargo").args(["run", "--manifest-path", manifest.to_str().unwrap(), "--example", stem]).current_dir(&tmp).status().unwrap_or_else(|e| panic!("failed to run example {stem}: {e}"));
 		assert!(status.success(), "example {stem} failed with {status}");
 	}
 
@@ -168,19 +161,10 @@ fn render_example(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	let stem = entry.stem();
 	// Files belonging to this example, e.g. "01_primitives.glb" / この example の生成物
-	let owned = |ext: &str| -> Vec<String> {
-		outputs.iter()
-			.filter_map(|(p, _)| p.to_str().map(str::to_string))
-			.filter(|name| name.starts_with(stem) && name.ends_with(&format!(".{ext}")))
-			.collect()
-	};
+	let owned = |ext: &str| -> Vec<String> { outputs.iter().filter_map(|(p, _)| p.to_str().map(str::to_string)).filter(|name| name.starts_with(stem) && name.ends_with(&format!(".{ext}"))).collect() };
 
 	// One link per present artifact, in a fixed type order / 固定順で存在物のみリンク化
-	let links: Vec<String> = ["png", "step", "glb", "brep", "stl", "svg"]
-		.iter()
-		.flat_map(|ext| owned(ext))
-		.map(|name| format!("[{name}](https://lzpel.github.io/cadrum/{name})"))
-		.collect();
+	let links: Vec<String> = ["png", "step", "glb", "brep", "stl", "svg"].iter().flat_map(|ext| owned(ext)).map(|name| format!("[{name}](https://lzpel.github.io/cadrum/{name})")).collect();
 	if links.is_empty() {
 		return String::new();
 	}
@@ -200,24 +184,32 @@ fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
 	if !entries.is_empty() {
 		let rows = entries.len().div_ceil(COLS);
 		for row in 0..rows {
-			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS).map(|col| {
-				let entry = entries.get(row * COLS + col)?;
-				let img = outputs.iter()
-					.filter_map(|(p, _)| p.to_str())
-					.find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))?;
-				Some((entry, img))
-			}).collect();
-			s.push_str(&format!("<tr>{}</tr>\n",
-				cells.iter().map(|cell| {
-					let v=cell.map(|(e,_)| format!("<a href='#{anchor}'>{title}</a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
-					format!("<th width='25%'>{}</th>", v)
-				}).collect::<String>()
+			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS)
+				.map(|col| {
+					let entry = entries.get(row * COLS + col)?;
+					let img = outputs.iter().filter_map(|(p, _)| p.to_str()).find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))?;
+					Some((entry, img))
+				})
+				.collect();
+			s.push_str(&format!(
+				"<tr>{}</tr>\n",
+				cells
+					.iter()
+					.map(|cell| {
+						let v = cell.map(|(e, _)| format!("<a href='#{anchor}'>{title}</a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+						format!("<th width='25%'>{}</th>", v)
+					})
+					.collect::<String>()
 			));
-			s.push_str(&format!("<tr>{}</tr>\n",
-				cells.iter().map(|cell| {
-					let v=cell.map(|(e, img)| format!("<a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
-					format!("<td width='25%'>{}</td>", v)
-				}).collect::<String>()
+			s.push_str(&format!(
+				"<tr>{}</tr>\n",
+				cells
+					.iter()
+					.map(|cell| {
+						let v = cell.map(|(e, img)| format!("<a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
+						format!("<td width='25%'>{}</td>", v)
+					})
+					.collect::<String>()
 			));
 		}
 	}
@@ -253,9 +245,7 @@ fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &[(PathBuf, Vec<
 
 		let line_start = readme.lines().take(i).map(|l| l.len() + 1).sum::<usize>();
 		let line_end = line_start + line.len() + 1;
-		let section_end = readme[line_end..].find("\n## ")
-			.map(|j| line_end + j + 1)
-			.unwrap_or(readme.len());
+		let section_end = readme[line_end..].find("\n## ").map(|j| line_end + j + 1).unwrap_or(readme.len());
 
 		new_readme.push_str(&readme[last_end..line_start]);
 		new_readme.push_str(&content);

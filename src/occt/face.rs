@@ -34,10 +34,7 @@ impl FaceStruct for Face {
 		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		// FFI returns false only on truly catastrophic OCCT failure; for a
 		// well-formed face this is effectively unreachable.
-		assert!(
-			ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz),
-			"Face::project: BRepExtrema_ExtPF failed (this is a bug)"
-		);
+		assert!(ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz), "Face::project: BRepExtrema_ExtPF failed (this is a bug)");
 		(DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz))
 	}
 

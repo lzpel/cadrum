@@ -19,10 +19,7 @@ fn approx_eq(a: DVec3, b: DVec3, tol: f64) -> bool {
 /// per-edge projection. This is the iterator idiom that replaces the removed
 /// `Wire::project` collection method.
 fn wire_project(wire: &[Edge], p: DVec3) -> (DVec3, DVec3) {
-	wire.iter()
-		.map(|e| e.project(p))
-		.min_by(|(a, _), (b, _)| (*a - p).length_squared().partial_cmp(&(*b - p).length_squared()).unwrap())
-		.unwrap_or((DVec3::ZERO, DVec3::ZERO))
+	wire.iter().map(|e| e.project(p)).min_by(|(a, _), (b, _)| (*a - p).length_squared().partial_cmp(&(*b - p).length_squared()).unwrap()).unwrap_or((DVec3::ZERO, DVec3::ZERO))
 }
 
 #[test]
@@ -51,12 +48,7 @@ fn project_on_circle_returns_radius() {
 #[test]
 fn project_on_polygon_picks_nearest_edge() {
 	// Closed square in XY plane: edges (±1, ±1, 0). Query point near +X edge.
-	let square = Edge::polygon([
-		DVec3::new(1.0, 1.0, 0.0),
-		DVec3::new(-1.0, 1.0, 0.0),
-		DVec3::new(-1.0, -1.0, 0.0),
-		DVec3::new(1.0, -1.0, 0.0),
-	].iter()).unwrap();
+	let square = Edge::polygon([DVec3::new(1.0, 1.0, 0.0), DVec3::new(-1.0, 1.0, 0.0), DVec3::new(-1.0, -1.0, 0.0), DVec3::new(1.0, -1.0, 0.0)].iter()).unwrap();
 	// (2, 0, 0) is closest to the right edge x=1, y∈[-1,1] -> (1, 0, 0).
 	let (cp, _) = wire_project(&square, DVec3::new(2.0, 0.0, 0.0));
 	assert!(approx_eq(cp, DVec3::new(1.0, 0.0, 0.0), TOL), "cp={cp:?}");
@@ -70,12 +62,7 @@ fn project_on_bspline_converges_to_interpolant() {
 	// Periodic cubic B-spline through four XY ring points. Origin should
 	// project somewhere on the ring; its distance is roughly the ring's
 	// mean radius (≈1.0 here since all control points are unit-distant).
-	let pts = [
-		DVec3::new(1.0, 0.0, 0.0),
-		DVec3::new(0.0, 1.0, 0.0),
-		DVec3::new(-1.0, 0.0, 0.0),
-		DVec3::new(0.0, -1.0, 0.0),
-	];
+	let pts = [DVec3::new(1.0, 0.0, 0.0), DVec3::new(0.0, 1.0, 0.0), DVec3::new(-1.0, 0.0, 0.0), DVec3::new(0.0, -1.0, 0.0)];
 	let e = Edge::bspline(pts.iter(), BSplineEnd::Periodic).unwrap();
 	let (cp, tg) = e.project(DVec3::ZERO);
 	// A periodic cubic B-spline interpolating 4 unit-distance points is

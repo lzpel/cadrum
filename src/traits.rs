@@ -101,10 +101,9 @@
 //! - `#[cfg(...)]` は直前1行のみ認識し、続く fn に付与される
 //! - `type Foo;` などの associated type 宣言は無視される（メソッド生成対象外）
 
-
+use crate::common::boolean::Boolean;
 #[cfg(feature = "color")]
 use crate::common::color::Color;
-use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
 use glam::{DMat3, DQuat, DVec3};
@@ -153,9 +152,15 @@ impl Default for Tessellation {
 pub trait Transform: Sized {
 	fn translate(self, translation: DVec3) -> Self;
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
-	fn rotate_x(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::X, angle) }
-	fn rotate_y(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Y, angle) }
-	fn rotate_z(self, angle: f64) -> Self { self.rotate(DVec3::ZERO, DVec3::Z, angle) }
+	fn rotate_x(self, angle: f64) -> Self {
+		self.rotate(DVec3::ZERO, DVec3::X, angle)
+	}
+	fn rotate_y(self, angle: f64) -> Self {
+		self.rotate(DVec3::ZERO, DVec3::Y, angle)
+	}
+	fn rotate_z(self, angle: f64) -> Self {
+		self.rotate(DVec3::ZERO, DVec3::Z, angle)
+	}
 	fn scale(self, center: DVec3, factor: f64) -> Self;
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
 	/// Rotate so that local +X axis aligns with `new_x`, with local +Y projected toward `y_hint`.
@@ -284,10 +289,7 @@ pub enum BSplineEnd {
 	/// of each vector controls how strongly the curve is pulled along
 	/// that direction near the boundary — a unit vector gives a gentle
 	/// hint, a longer vector pulls more aggressively. Requires ≥ 2 points.
-	Clamped {
-		start: DVec3,
-		end: DVec3,
-	},
+	Clamped { start: DVec3, end: DVec3 },
 }
 
 // ==================== EdgeStruct ====================
@@ -458,7 +460,7 @@ pub trait FaceStruct: Sized {
 ///
 /// Associated types `Edge`/`Face` keep this trait backend-independent: each
 /// backend (occt / pure) binds them to its own concrete types in the impl.
-pub trait SolidStruct: Sized + Clone + Transform{
+pub trait SolidStruct: Sized + Clone + Transform {
 	type Edge: EdgeStruct;
 	type Face: FaceStruct;
 
@@ -522,7 +524,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	///
 	/// Internally builds a face from the wire and uses `BRepPrimAPI_MakePrism`.
 	/// Fails if the profile is empty, not closed, or the direction is zero-length.
-	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Self::Edge>, dir: DVec3) -> Result<Self, Error> where Self::Edge: 'a;
+	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Self::Edge>, dir: DVec3) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
 
 	/// Hollow this solid into a thin-walled shell by removing `open_faces`
 	/// (they become openings) and building a wall of signed `thickness` along
@@ -541,7 +545,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// an outer shell and a reversed inner shell into a sealed multi-shell
 	/// solid with an internal void (the void is inaccessible from outside).
 	/// Fails on OCCT rejection (self-intersecting offset at sharp corners, etc).
-	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error> where Self::Face: 'a;
+	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error>
+	where
+		Self::Face: 'a;
 
 	/// Round the given edges of `self` with a uniform radius. Edges are
 	/// typically selected via `self.iter_edge().filter(...)`.
@@ -553,7 +559,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	///
 	/// Empty `edges` is a no-op and returns a clone of `self` — handy when
 	/// a selector chain legitimately yields zero edges.
-	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
+	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
 
 	/// Chamfer (bevel) the given edges of `self` with a uniform distance.
 	/// Edges are typically selected via `self.iter_edge().filter(...)`.
@@ -564,7 +572,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// conditions as `fillet_edges`.
 	///
 	/// Empty `edges` is a no-op and returns a clone of `self`.
-	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error> where Self::Edge: 'a;
+	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
 
 	// --- Sweep ---
 	/// Sweep a closed profile wire (= ordered edge list) along a spine wire
@@ -581,7 +591,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	// 戻り型は単一 `Self` 固定。MakePipeShell が compound を返すことは closed
 	// face 入力に対しては実質起きないため、`Vec<Self>` に拡張する手間を省いた。
 	// 想定外ケースに当たったら `Solid::new` の debug_assert で気付ける。
-	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Self::Edge>, spine: impl IntoIterator<Item = &'b Self::Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> where Self::Edge: 'a + 'b;
+	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Self::Edge>, spine: impl IntoIterator<Item = &'b Self::Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error>
+	where
+		Self::Edge: 'a + 'b;
 
 	/// Loft (skin) a solid through a sequence of cross-section wires.
 	///
@@ -602,7 +614,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// spline vs straight lines).
 	///
 	/// Internally uses `BRepOffsetAPI_ThruSections(isSolid=true, isRuled=ruled)`.
-	fn loft<'a, I: IntoIterator<Item = &'a Self::Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error> where Self::Edge: 'a;
+	fn loft<'a, I: IntoIterator<Item = &'a Self::Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
 
 	/// Sew (stitch) faces into a closed solid.
 	///
@@ -617,7 +631,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	/// Fails with [`Error::SewFailed`] when the faces leave gaps wider than
 	/// `tolerance`, overlap, form multiple disconnected shells, or include
 	/// stray faces that belong to no closed shell.
-	fn sew<'a>(faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error> where Self::Face: 'a;
+	fn sew<'a>(faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error>
+	where
+		Self::Face: 'a;
 
 	/// Offset every face of this solid by a constant signed distance,
 	/// producing a new solid whose boundary is parallel to the original
@@ -667,7 +683,9 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	//   バックエンドは TShape identity を保つ複製 (OCCT なら clone_shape_handle) を行う。
 	//   common::boolean 内のすべての solid 複製はこの経路を通る。
 	// - `boolean_build(&Boolean)` — DIMACS-flat DNF の `clauses` を FFI に渡して評価。
-	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a;
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self>
+	where
+		Self: 'a;
 	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error>;
 
 	// --- I/O ---
@@ -678,10 +696,18 @@ pub trait SolidStruct: Sized + Clone + Transform{
 	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
 	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
 	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
-	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
-	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
-	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a;
-	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, options: Tessellation) -> Result<Mesh, Error> where Self: 'a;
+	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a;
+	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a;
+	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a;
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, options: Tessellation) -> Result<Mesh, Error>
+	where
+		Self: 'a;
 
 	/// Write a fixed 4-view multiview PNG (1024×1024) of this solid to `writer`.
 	///
@@ -708,4 +734,3 @@ pub trait SolidStruct: Sized + Clone + Transform{
 // queries the same way (`solids.iter().map(|s| s.volume()).sum::<f64>()`,
 // `a.inertia() + b.inertia()`). sweep / loft / extrude / boolean / I/O accept
 // any `impl IntoIterator<Item = &Edge>` / `&Solid` directly.
-

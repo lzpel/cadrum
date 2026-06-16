@@ -83,11 +83,7 @@ impl Solid {
 	///
 	/// # Panics
 	/// Panics if `inner` is not `TopAbs_SOLID` (and not null).
-	pub(crate) fn new(
-		inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
-		#[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>,
-		history: Vec<u64>,
-	) -> Self {
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
 		debug_assert!(ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner), "Solid::new called with a non-SOLID shape");
 		Solid {
 			inner,
@@ -133,7 +129,6 @@ impl Solid {
 	pub fn is_null(&self) -> bool {
 		ffi::shape_is_null(&self.inner)
 	}
-
 }
 
 impl SolidStruct for Solid {
@@ -231,14 +226,7 @@ impl SolidStruct for Solid {
 	}
 
 	fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
-		self.faces
-			.get_or_init(|| {
-				ffi::shape_faces(&self.inner)
-					.iter()
-					.map(|f_ref| Face::new(ffi::clone_face_handle(f_ref)))
-					.collect()
-			})
-			.iter()
+		self.faces.get_or_init(|| ffi::shape_faces(&self.inner).iter().map(|f_ref| Face::new(ffi::clone_face_handle(f_ref))).collect()).iter()
 	}
 
 	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
@@ -276,7 +264,12 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::ShellFailed);
 		}
-		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			self.remap_colormap(&history),
+			history,
+		))
 	}
 
 	// ==================== Fillet / Chamfer ====================
@@ -291,7 +284,12 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::FilletFailed);
 		}
-		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			self.remap_colormap(&history),
+			history,
+		))
 	}
 
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
@@ -304,7 +302,12 @@ impl SolidStruct for Solid {
 		if shape.is_null() {
 			return Err(Error::ChamferFailed);
 		}
-		Ok(Solid::new(shape, #[cfg(feature = "color")] self.remap_colormap(&history), history))
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			self.remap_colormap(&history),
+			history,
+		))
 	}
 
 	// ==================== Sweep ====================
@@ -333,7 +336,10 @@ impl SolidStruct for Solid {
 
 	// ==================== Loft / ThruSections ====================
 
-	fn loft<'a, I: IntoIterator<Item = &'a Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error> where Edge: 'a {
+	fn loft<'a, I: IntoIterator<Item = &'a Edge>, S: IntoIterator<Item = I>>(sections: S, ruled: bool) -> Result<Self, Error>
+	where
+		Edge: 'a,
+	{
 		let _guard = LOFT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
 		let mut all_edges = ffi::edge_vec_new();
@@ -349,19 +355,13 @@ impl SolidStruct for Solid {
 				count += 1;
 			}
 			if count == 0 {
-				return Err(Error::LoftFailed(format!(
-					"loft: section {} is empty (each section must contain ≥1 edge)",
-					section_count
-				)));
+				return Err(Error::LoftFailed(format!("loft: section {} is empty (each section must contain ≥1 edge)", section_count)));
 			}
 			section_count += 1;
 		}
 
 		if section_count < 2 {
-			return Err(Error::LoftFailed(format!(
-				"loft: need ≥2 sections, got {} (a single section has no thickness to skin across)",
-				section_count
-			)));
+			return Err(Error::LoftFailed(format!("loft: need ≥2 sections, got {} (a single section has no thickness to skin across)", section_count)));
 		}
 
 		let shape = ffi::make_loft(&all_edges, ruled);
@@ -382,7 +382,10 @@ impl SolidStruct for Solid {
 
 	// ==================== Sew ====================
 
-	fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<Self, Error> where Face: 'a {
+	fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<Self, Error>
+	where
+		Face: 'a,
+	{
 		let mut face_vec = ffi::face_vec_new();
 		let mut count = 0usize;
 		for f in faces {
@@ -464,23 +467,35 @@ impl SolidStruct for Solid {
 		if inner.is_null() {
 			return Err(Error::CleanFailed);
 		}
-		Ok(Solid::new(inner, #[cfg(feature = "color")] self.remap_colormap(&history), history))
+		Ok(Solid::new(
+			inner,
+			#[cfg(feature = "color")]
+			self.remap_colormap(&history),
+			history,
+		))
 	}
 
 	// ==================== Boolean primitive ====================
 
-	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self> where Self: 'a {
+	fn boolean<'a>(solids: impl IntoIterator<Item = &'a Self>, clauses: impl IntoIterator<Item = i64>) -> Boolean<Self>
+	where
+		Self: 'a,
+	{
 		// TShape* を共有する shallow copy で Boolean を組む。Solid::clone() (=
 		// BRepBuilderAPI_Copy) と違い、各 face の id() が元と一致するため
 		// boolean 結果の history (post_id, src_id) を呼び出し側の face id と
 		// 照合できる。
-		let solids: Vec<Solid> = solids.into_iter().map(|s| Solid {
-			inner: ffi::clone_shape_handle(&s.inner),
-			edges: OnceLock::new(),
-			faces: OnceLock::new(),
-			#[cfg(feature = "color")] colormap: s.colormap.clone(),
-			history: s.history.clone(),
-		}).collect();
+		let solids: Vec<Solid> = solids
+			.into_iter()
+			.map(|s| Solid {
+				inner: ffi::clone_shape_handle(&s.inner),
+				edges: OnceLock::new(),
+				faces: OnceLock::new(),
+				#[cfg(feature = "color")]
+				colormap: s.colormap.clone(),
+				history: s.history.clone(),
+			})
+			.collect();
 		Boolean::from_parts(solids, clauses.into_iter().collect())
 	}
 	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error> {
@@ -497,7 +512,9 @@ impl SolidStruct for Solid {
 		}
 		let mut history: Vec<u64> = Default::default();
 		let inner = ffi::builder_cells(&solid_vec, clauses, &mut history);
-		if inner.is_null() { return Err(Error::BooleanOperationFailed); }
+		if inner.is_null() {
+			return Err(Error::BooleanOperationFailed);
+		}
 
 		#[cfg(feature = "color")]
 		let colormap = {
@@ -515,7 +532,8 @@ impl SolidStruct for Solid {
 
 		let compound = CompoundShape::from_raw(
 			inner,
-			#[cfg(feature = "color")] colormap,
+			#[cfg(feature = "color")]
+			colormap,
 			history,
 		);
 		Ok(compound.decompose())
@@ -535,19 +553,31 @@ impl SolidStruct for Solid {
 		super::io::read_brep_text(reader)
 	}
 
-	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a,
+	{
 		super::io::write_step(solids, writer)
 	}
 
-	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a,
+	{
 		super::io::write_brep_binary(solids, writer)
 	}
 
-	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error> where Self: 'a {
+	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	where
+		Self: 'a,
+	{
 		super::io::write_brep_text(solids, writer)
 	}
 
-	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, options: crate::traits::Tessellation) -> Result<crate::common::mesh::Mesh, Error> where Self: 'a {
+	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, options: crate::traits::Tessellation) -> Result<crate::common::mesh::Mesh, Error>
+	where
+		Self: 'a,
+	{
 		super::io::mesh(solids, options)
 	}
 
@@ -571,17 +601,10 @@ impl SolidStruct for Solid {
 		let (mut m00, mut m01, mut m02) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut m10, mut m11, mut m12) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut m20, mut m21, mut m22) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_inertia_tensor(&self.inner,
-			&mut m00, &mut m01, &mut m02,
-			&mut m10, &mut m11, &mut m12,
-			&mut m20, &mut m21, &mut m22);
+		ffi::shape_inertia_tensor(&self.inner, &mut m00, &mut m01, &mut m02, &mut m10, &mut m11, &mut m12, &mut m20, &mut m21, &mut m22);
 		// OCCT fills row-major; DMat3::from_cols_array is column-major so
 		// transpose when handing the components over.
-		glam::DMat3::from_cols_array(&[
-			m00, m10, m20,
-			m01, m11, m21,
-			m02, m12, m22,
-		])
+		glam::DMat3::from_cols_array(&[m00, m10, m20, m01, m11, m21, m02, m12, m22])
 	}
 
 	fn contains(&self, point: DVec3) -> bool {
@@ -690,4 +713,3 @@ impl Clone for Solid {
 		)
 	}
 }
-

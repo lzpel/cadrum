@@ -62,8 +62,7 @@ fn test_union_olympic_rings_out_of_order() {
 	let out_of_order: Solid = [&ring1, &ring3, &ring5, &ring2, &ring4].into_iter().map(Boolean::from).reduce(|a, b| a + b).unwrap().build().unwrap();
 	let in_order: Solid = [&ring1, &ring2, &ring3, &ring4, &ring5].into_iter().map(Boolean::from).reduce(|a, b| a + b).unwrap().build().unwrap();
 
-	assert!((out_of_order.volume() - in_order.volume()).abs() < 1e-6,
-		"order-independent: {} vs {}", out_of_order.volume(), in_order.volume());
+	assert!((out_of_order.volume() - in_order.volume()).abs() < 1e-6, "order-independent: {} vs {}", out_of_order.volume(), in_order.volume());
 }
 
 // ==================== intersect (`*` / reduce) ====================
@@ -183,12 +182,8 @@ fn test_preserves_src_face_identity() {
 	// 照合する用途 (examples/08_shell.rs の halved_shelled_torus 等) が動作するか。
 	let torus = Solid::torus(6.0, 2.0, DVec3::Y);
 	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z);
-	let cutter_ids: std::collections::HashSet<u64> =
-		cutter.iter_face().map(|f| f.id()).collect();
+	let cutter_ids: std::collections::HashSet<u64> = cutter.iter_face().map(|f| f.id()).collect();
 	let half: Solid = (&torus * &cutter).build().unwrap();
-	let matched: Vec<u64> = half.iter_history()
-		.filter_map(|[p, s]| cutter_ids.contains(&s).then_some(p))
-		.collect();
-	assert!(!matched.is_empty(),
-		"history must contain at least one face sourced from cutter");
+	let matched: Vec<u64> = half.iter_history().filter_map(|[p, s]| cutter_ids.contains(&s).then_some(p)).collect();
+	assert!(!matched.is_empty(), "history must contain at least one face sourced from cutter");
 }

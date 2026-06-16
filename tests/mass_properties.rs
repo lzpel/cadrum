@@ -72,20 +72,14 @@ fn test_sphere_mass_properties_match_analytical() {
 fn test_vec_center_is_volume_weighted_average() {
 	let a = 2.0_f64;
 	let offset = 10.0_f64;
-	let cubes = vec![
-		Solid::cube(DVec3::ZERO, DVec3::splat(a)),
-		Solid::cube(DVec3::ZERO, DVec3::splat(a)).translate(DVec3::new(offset, 0.0, 0.0)),
-	];
+	let cubes = vec![Solid::cube(DVec3::ZERO, DVec3::splat(a)), Solid::cube(DVec3::ZERO, DVec3::splat(a)).translate(DVec3::new(offset, 0.0, 0.0))];
 
 	let expected_center = DVec3::new((a / 2.0 + (a / 2.0 + offset)) / 2.0, a / 2.0, a / 2.0);
 	// Aggregate manually with iterator idioms: volume-weighted center plus
 	// summed volume / area (the library no longer provides collection methods).
 	let total_vol: f64 = cubes.iter().map(|c| c.volume()).sum();
 	let center = cubes.iter().map(|c| c.center() * c.volume()).sum::<DVec3>() / total_vol;
-	assert!(
-		(center - expected_center).length() < EPS,
-		"aggregate center = {center:?}, expected {expected_center:?}"
-	);
+	assert!((center - expected_center).length() < EPS, "aggregate center = {center:?}, expected {expected_center:?}");
 	assert!((total_vol - 2.0 * a.powi(3)).abs() < EPS);
 	assert!((cubes.iter().map(|c| c.area()).sum::<f64>() - 2.0 * 6.0 * a.powi(2)).abs() < EPS);
 }
@@ -101,10 +95,7 @@ fn test_inertia_is_additive_over_elements() {
 	let summed = cubes.iter().map(|c| c.inertia()).fold(glam::DMat3::ZERO, |a, b| a + b);
 	for col in 0..3 {
 		for row in 0..3 {
-			assert!(
-				(summed.col(col)[row] - 2.0 * single.col(col)[row]).abs() < 1e-9,
-				"summed inertia[{row}][{col}] = {}, expected {}", summed.col(col)[row], 2.0 * single.col(col)[row]
-			);
+			assert!((summed.col(col)[row] - 2.0 * single.col(col)[row]).abs() < 1e-9, "summed inertia[{row}][{col}] = {}, expected {}", summed.col(col)[row], 2.0 * single.col(col)[row]);
 		}
 	}
 }

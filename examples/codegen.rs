@@ -62,10 +62,7 @@ fn main() {
 
 	// Read every input file once so we can use the same buffer for both
 	// parsing (pooling trait defs) and rewriting (comparing for diff).
-	let sources: Vec<(String, String)> = paths
-		.iter()
-		.map(|p| (p.clone(), std::fs::read_to_string(p).unwrap_or_else(|e| panic!("read {}: {}", p, e))))
-		.collect();
+	let sources: Vec<(String, String)> = paths.iter().map(|p| (p.clone(), std::fs::read_to_string(p).unwrap_or_else(|e| panic!("read {}: {}", p, e)))).collect();
 
 	let mut traits: Vec<TraitDef> = Vec::new();
 	for (_, src) in &sources {
@@ -122,10 +119,7 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 				// のような誤った supertrait 名が混入する。
 				let s = s.as_str();
 				let s = s.split(" where ").next().unwrap_or(s);
-				s.split('+')
-					.map(|p| p.trim().to_string())
-					.filter(|p| !p.is_empty() && !p.starts_with('\''))
-					.collect()
+				s.split('+').map(|p| p.trim().to_string()).filter(|p| !p.is_empty() && !p.starts_with('\'')).collect()
 			});
 
 			let mut methods = Vec::new();
@@ -178,9 +172,7 @@ fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option
 	let rest = &line[fn_idx + 3..];
 	let paren_open = rest.find('(')?;
 	let name_with_generics = rest[..paren_open].trim();
-	let name = name_with_generics
-		.find('<')
-		.map_or_else(|| name_with_generics.to_string(), |a| name_with_generics[..a].trim().to_string());
+	let name = name_with_generics.find('<').map_or_else(|| name_with_generics.to_string(), |a| name_with_generics[..a].trim().to_string());
 	let paren_close = rest.rfind(')')?;
 	let args_str = &rest[paren_open + 1..paren_close];
 
@@ -355,10 +347,7 @@ enum Context {
 
 fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32) -> Context {
 	if marker_depth == 0 {
-		panic!(
-			"marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`",
-			marker_idx + 1
-		);
+		panic!("marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`", marker_idx + 1);
 	}
 	let target = marker_depth - 1;
 	let mut j = marker_idx;
@@ -392,10 +381,7 @@ fn render(context: &Context, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 
 fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
 	let trait_name = format!("{}Struct", ty);
-	let td = traits
-		.iter()
-		.find(|t| t.name == trait_name)
-		.unwrap_or_else(|| panic!("no trait `{}` for impl `{}`", trait_name, ty));
+	let td = traits.iter().find(|t| t.name == trait_name).unwrap_or_else(|| panic!("no trait `{}` for impl `{}`", trait_name, ty));
 	let methods = collect_methods(td, traits);
 	let concrete = format!("crate::{}", ty);
 

@@ -11,13 +11,7 @@ use std::f64::consts::TAU;
 
 /// 一辺 `side` の閉じた正方形プロファイル（extrude 用）。
 fn square(side: f64) -> Vec<Edge> {
-	Edge::polygon(&[
-		DVec3::new(0.0, 0.0, 0.0),
-		DVec3::new(side, 0.0, 0.0),
-		DVec3::new(side, side, 0.0),
-		DVec3::new(0.0, side, 0.0),
-	])
-	.expect("square polygon")
+	Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(side, 0.0, 0.0), DVec3::new(side, side, 0.0), DVec3::new(0.0, side, 0.0)]).expect("square polygon")
 }
 
 /// 入力に face を持たない演算（プリミティブ / edge・grid ソースの builder）は
@@ -80,11 +74,7 @@ fn test_fillet_history_modifies_adjacent_identity_elsewhere() {
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
-	let adjacent: HashSet<u64> = cube
-		.iter_face()
-		.filter(|f| f.iter_edge().any(|e| e.id() == edge_id))
-		.map(|f| f.id())
-		.collect();
+	let adjacent: HashSet<u64> = cube.iter_face().filter(|f| f.iter_edge().any(|e| e.id() == edge_id)).map(|f| f.id()).collect();
 	assert_eq!(adjacent.len(), 2, "a cube edge borders exactly 2 faces");
 
 	let filleted = cube.fillet_edges(0.5, [edge]).expect("fillet");
@@ -109,11 +99,7 @@ fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
-	let adjacent: HashSet<u64> = cube
-		.iter_face()
-		.filter(|f| f.iter_edge().any(|e| e.id() == edge_id))
-		.map(|f| f.id())
-		.collect();
+	let adjacent: HashSet<u64> = cube.iter_face().filter(|f| f.iter_edge().any(|e| e.id() == edge_id)).map(|f| f.id()).collect();
 	assert_eq!(adjacent.len(), 2, "a cube edge borders exactly 2 faces");
 
 	let chamfered = cube.chamfer_edges(0.5, [edge]).expect("chamfer");
