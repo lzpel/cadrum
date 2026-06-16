@@ -34,7 +34,7 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "cadrum"
-version = "0.8.5"
+version = "0.8.11"
 dependencies = [
  "cc",
  "cmake",
