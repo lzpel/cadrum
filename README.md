@@ -483,7 +483,7 @@ use cadrum::{DVec3, Edge, Error, Solid};
 fn build_frustum() -> Result<Solid, Error> {
 	let lower = [Edge::circle(3.0, DVec3::Z)?];
 	let upper = [Edge::circle(1.5, DVec3::Z)?.translate(DVec3::Z * 8.0)];
-	Ok(Solid::loft(&[lower, upper])?.color("#cd853f"))
+	Ok(Solid::loft(&[lower, upper], false)?.color("#cd853f"))
 }
 
 /// Square polygon → circle (2-section morph loft).
@@ -497,7 +497,7 @@ fn build_morph() -> Result<Solid, Error> {
 	])?;
 	let circle = Edge::circle(r, DVec3::Z)?.translate(DVec3::Z * 10.0);
 
-	Ok(Solid::loft([square.as_slice(), std::slice::from_ref(&circle)])?.color("#808000"))
+	Ok(Solid::loft([square.as_slice(), std::slice::from_ref(&circle)], false)?.color("#808000"))
 }
 
 /// Three non-parallel circular sections → twisted loft.
@@ -508,7 +508,7 @@ fn build_tilted() -> Result<Solid, Error> {
 	let top = [Edge::circle(1.5, DVec3::new(-0.2, 0.3, 1.0).normalize())?
 		.translate(DVec3::new(-0.5, 1.0, 10.0))];
 
-	Ok(Solid::loft(&[bottom, mid, top])?.color("#4682b4"))
+	Ok(Solid::loft(&[bottom, mid, top], false)?.color("#4682b4"))
 }
 
 fn main() -> Result<(), Error> {
