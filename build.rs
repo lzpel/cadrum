@@ -34,7 +34,8 @@ fn release_name(target: Option<&str>, has_version: bool) -> String {
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_URL");
-	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_GCC_RUNTIME");
+	println!("cargo:rerun-if-env-changed=CADRUM_FFI_URL");
+	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_RUNTIME");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
@@ -56,7 +57,7 @@ fn main() {
 
 	let [occt_include, occt_lib_dir] = resolve_occt(&effective_root, &target);
 
-	link_occt_libraries(&occt_include, &occt_lib_dir);
+	link_occt_libraries(&occt_include, &occt_lib_dir, &target);
 }
 
 /// Derive the cargo target directory from `OUT_DIR`.
@@ -89,11 +90,17 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
 				let dirs = source::build_from_source(effective_root).expect("Failed to build OCCT from source");
-				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
-				// gate を切らないと source user 全員のホスト libstdc++ が静的取り込みされてしまう。
-				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
-				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
-					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+				// Prebuilt tarball 作成時のみ C++ runtime を OCCT lib dir に同梱 (#89 / #147 / #207 対策)。
+				// gate を切らないと source user 全員のホスト runtime が静的取り込みされてしまう。
+				// - mingw / Linux GNU: host GCC runtime (Windows MSVC は MSVC ランタイム、Mac は別系統)
+				// - wasm32: wasi-sysroot の eh variant libc++/libc++abi/libunwind/libc を同梱し、
+				//   consumer が wasi-sdk 無し (rustc だけ) でリンクできるようにする (#207)。
+				if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() {
+					if target.ends_with("windows-gnu") || target.contains("linux-gnu") {
+						bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"], false);
+					} else if target.starts_with("wasm32") {
+						bundle_runtime_libs(&dirs[1], &["libc++.a", "libc++abi.a", "libunwind.a", "libc.a"], true);
+					}
 				}
 				return dirs;
 			}
@@ -171,7 +178,7 @@ fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
 	}
 }
 
-fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
+fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	println!("cargo:rustc-link-search=native={}", occt_lib_dir.display());
 	for lib in OCC_LIBS {
 		println!("cargo:rustc-link-lib=static={}", lib);
@@ -199,21 +206,46 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	// FFI wrapper (cadrum_cpp): on the prebuilt (non-source) wasm path, link a prebuilt
+	// `libcadrum_cpp.a` when available so the consumer needs no C++ cross-compiler / wasi-sdk
+	// (#207). Otherwise compile `cpp/wrapper.cpp` here via cxx_build (needs a C++ compiler).
+	// The Rust-side `#[cxx::bridge]` bindings come from the proc-macro at crate-compile time
+	// and are independent of build.rs, so skipping the C++ compile is sound as long as the
+	// prebuilt archive was built with the same cxx version + ffi.rs + `color` state.
+	#[cfg(not(feature = "source"))]
+	let linked_prebuilt_ffi = (target == "wasm32-unknown-unknown")
+		.then(|| download_ffi(target))
+		.flatten()
+		.map(|ffi_lib_dir| {
+			println!("cargo:rustc-link-search=native={}", ffi_lib_dir.display());
+			println!("cargo:rustc-link-lib=static=cadrum_cpp");
+		})
+		.is_some();
+	#[cfg(feature = "source")]
+	let linked_prebuilt_ffi = {
+		let _ = target; // only the prebuilt (non-source) path consults the FFI release
+		false
+	};
 
-	apply_compiler_flags(|s| {
-		build.flag(s);
-	});
+	if !linked_prebuilt_ffi {
+		let mut build = cxx_build::bridge("src/occt/ffi.rs");
+		build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
-	#[cfg(feature = "color")]
-	build.define("CADRUM_COLOR", None);
+		apply_compiler_flags(|s| {
+			build.flag(s);
+		});
 
-	build.compile("cadrum_cpp");
+		#[cfg(feature = "color")]
+		build.define("CADRUM_COLOR", None);
+
+		build.compile("cadrum_cpp");
+	}
 
 	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
 	// `wasm_start!`), so no separate C stub / `+whole-archive` link is needed here.
+	// The eh libc++/libc++abi/libunwind/libc come from the OCCT tarball's bundled
+	// `libcadrum_*` archives (above), linked by rust-lld regardless of order.
 
 	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
@@ -254,6 +286,33 @@ fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
 	find_occt_dirs(dest)
 }
 
+/// Download the prebuilt cxx wrapper archive (`libcadrum_cpp.a`) for `target` so a consumer
+/// can link it instead of compiling `cpp/wrapper.cpp` (which needs a C++ cross-compiler).
+/// Returns the lib dir containing the archive, or `None` to fall back to `cxx_build`.
+///
+/// The artifact is per-crate-version (cxx / `ffi.rs` / `color` ABI coupling): the tarball is
+/// `release_name(Some(target), true)` under release tag `release_name(None, true)` (#207).
+/// `CADRUM_FFI_URL` overrides the URL (mirrors `CADRUM_PREBUILT_URL`; `file://` supported).
+#[cfg(not(feature = "source"))]
+fn download_ffi(target: &str) -> Option<PathBuf> {
+	let top_name = release_name(Some(target), true);
+	let tarball_name = format!("{}.tar.gz", top_name);
+	let url = env::var("CADRUM_FFI_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None, true), tarball_name));
+
+	let dest = cargo_target_dir(target).join(&top_name);
+	let archive = dest.join("lib").join("libcadrum_cpp.a");
+	if !archive.exists() {
+		eprintln!("cargo:warning=Downloading prebuilt cadrum FFI from {}", url);
+		let parent = dest.parent()?;
+		std::fs::create_dir_all(parent).ok()?;
+		if let Err(e) = download_and_extract_tar_gz(&url, parent) {
+			eprintln!("cargo:warning=FFI fetch failed (will compile wrapper instead): {}", e);
+			return None;
+		}
+	}
+	archive.exists().then(|| dest.join("lib"))
+}
+
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
 	let bytes = fetch_bytes(url)?;
 	let gz = libflate::gzip::Decoder::new(&bytes[..]).map_err(|e| format!("gzip decode failed: {e}"))?;
@@ -271,15 +330,20 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	}
 }
 
-/// Bundle GCC runtime archives (libstdc++.a / libgcc.a / libgcc_eh.a) into
-/// the OCCT lib dir as `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_GCC_RUNTIME`
-/// only — used by the prebuilt-tarball makefile recipe so end users running
-/// source don't get their host libstdc++ silently bundled.
+/// Bundle C++ runtime archives into the OCCT lib dir as `libcadrum_*.a`. Triggered by
+/// `CADRUM_BUNDLE_RUNTIME` only — used by the prebuilt-tarball makefile recipe so end
+/// users running source don't get their host runtime silently bundled. Native GNU bundles
+/// the host GCC runtime (libstdc++/libgcc/libgcc_eh); wasm bundles the wasi-sysroot eh
+/// libc++/libc++abi/libunwind/libc so a consumer can link without a wasi-sdk (#207).
+///
+/// `cpp` selects the C++ compiler (needed for wasm so the eh libc++ resolves). The probe
+/// forwards the compiler's configured flags (`--target/--sysroot/-fwasm-exceptions`) so
+/// `-print-file-name` returns the correct cross / eh archive rather than a host / noeh one.
 #[cfg(feature = "source")]
-fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
-	let compiler = cc::Build::new().get_compiler();
+fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str], cpp: bool) {
+	let compiler = cc::Build::new().cpp(cpp).get_compiler();
 	for &lib in libs {
-		let out = std::process::Command::new(compiler.path()).arg(format!("-print-file-name={}", lib)).output().expect("compiler probe failed");
+		let out = std::process::Command::new(compiler.path()).args(compiler.args()).arg(format!("-print-file-name={}", lib)).output().expect("compiler probe failed");
 		let src = PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim());
 		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
 		if src.is_absolute() && src.exists() {
