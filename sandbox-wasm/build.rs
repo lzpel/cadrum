@@ -38,12 +38,12 @@ fn main() {
 		println!("cargo:rerun-if-changed=src/ffi.cpp");
 		println!("cargo:rerun-if-changed=src/ffi.h");
 	}
-	// libc++ をリンクする feature(cxx+libcxx / cadrum=OCCT) は、libc++/OCCT の静的初期化
-	// (iostream・getenv 等) が引きずる wasi_snapshot_preview1 import を no-op スタブで潰す。
-	// 正常系では実 I/O しない。スタブシンボルは libc.a 処理時に初めて undefined になるので
-	// whole-archive で確実に取り込む。
-	let links_libcxx = std::env::var("CARGO_FEATURE_LIBCXX").is_ok()
-		|| std::env::var("CARGO_FEATURE_CADRUM").is_ok();
+	// libcxx 単独実験は、libc++ の静的初期化(iostream 等)が引きずる wasi_snapshot_preview1
+	// import を no-op スタブで潰す。正常系では実 I/O しない。スタブシンボルは libc.a 処理時に
+	// 初めて undefined になるので whole-archive で確実に取り込む。
+	// cadrum feature は cadrum 本体(cpp/wasi_stub.c)が同じスタブを自前で +whole-archive リンク
+	// するので、ここでは焼かない（焼くとシンボル二重定義でリンクエラー）。
+	let links_libcxx = std::env::var("CARGO_FEATURE_LIBCXX").is_ok();
 	if links_libcxx {
 		let out_dir = std::env::var("OUT_DIR").unwrap();
 		cc::Build::new()
