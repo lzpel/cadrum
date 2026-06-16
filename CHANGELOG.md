@@ -25,6 +25,26 @@ changes until `1.0`.
 
 - **Renamed the `source-build` feature to `source`.** Update
   `--features source-build` to `--features source`. (#182)
+- **Renamed the `CADRUM_BUNDLE_GCC_RUNTIME` env var to `CADRUM_BUNDLE_RUNTIME`.**
+  It now bundles the C++ runtime for native GNU *and* wasm prebuilt tarballs. (#207)
+
+#### Added
+
+- **Self-contained wasm prebuilt — `wasm32-unknown-unknown` consumers need only
+  `rustc` (no wasi-sdk).** (#207)
+  - The OCCT wasm tarball now bundles the wasi-sysroot eh runtime
+    (`libc++`/`libc++abi`/`libunwind`/`libc` as `libcadrum_*.a`).
+  - A new per-crate-version FFI release ships the prebuilt cxx wrapper archive
+    `libcadrum_cpp.a` (tarball `release_name(Some(t), true)` under tag
+    `release_name(None, true)`, e.g. `occt-8_0_0_rev2-cadrum-<ver>`), built by the
+    new `release_cadrum.yaml` workflow / `make cadrum-ffi-*` target.
+  - `build.rs` downloads the FFI archive and **skips `cxx_build`** on the wasm
+    prebuilt path; if the download fails it falls back to compiling
+    `cpp/wrapper.cpp` (which still needs a C++ cross-compiler). Override the URL
+    with `CADRUM_FFI_URL` (mirrors `CADRUM_PREBUILT_URL`; `file://` supported).
+  - The prebuilt wrapper's ABI is locked to the cxx version + `src/occt/ffi.rs` +
+    the `color` feature, hence the per-crate-version artifact.
+- The OCCT prebuilt workflow `prebuilt.yaml` was renamed to `release_occt.yaml`.
 
 #### Changes
 

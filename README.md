@@ -65,6 +65,16 @@ cadrum = "^0.8"
 | ![img](figure/apple.svg) | `x86_64-apple-darwin` | ✅ |
 | ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅ |
 
+For `wasm32-unknown-unknown` the prebuilt path needs **only `rustc`** (plus
+`rustup target add wasm32-unknown-unknown`) — no wasi-sdk. `cargo build` downloads
+both the OCCT tarball (which bundles the eh `libc++`/`libc++abi`/`libunwind`/`libc`
+runtime) and a prebuilt cxx wrapper archive `libcadrum_cpp.a`, so no C++ compile or
+sysroot is required. This prebuilt wrapper is locked to the crate version + the
+default `color` feature; with a non-default feature set (or if the FFI download is
+unavailable) the build falls back to compiling the wrapper, which needs a wasi-sdk
+clang. Override the wrapper URL with `CADRUM_FFI_URL` (mirrors `CADRUM_PREBUILT_URL`;
+`file://` supported).
+
 For other targets, build OCCT from source:
 
 ```sh
