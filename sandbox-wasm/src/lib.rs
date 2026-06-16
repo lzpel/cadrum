@@ -1,6 +1,5 @@
 use wasm_bindgen::prelude::*;
 
-
 #[cfg(feature = "pure")]
 pub fn volume() -> f64 {
 	1.0
@@ -45,3 +44,7 @@ pub fn volume() -> f64 {
 pub fn print_volume() -> String {
 	format!("Solid volume: {}", volume())
 }
+
+// Run OCCT's C++ global constructors at init (wasm-bindgen start shim). See cadrum::wasm_start!.
+#[cfg(feature = "cadrum")]
+cadrum::wasm_start!();

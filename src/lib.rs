@@ -304,3 +304,32 @@ impl_solid_boolean_ops!(Solid, Solid, Boolean<Solid>);
 impl_solid_boolean_ops!(Solid, &Solid, Solid);
 impl_solid_boolean_ops!(Solid, &Solid, &Solid);
 impl_solid_boolean_ops!(Solid, &Solid, Boolean<Solid>);
+
+/// For wasm32 consumers built with `wasm-bindgen`: emit a `#[wasm_bindgen(start)]` shim that
+/// runs the C++ global constructors (OCCT type registration) once during init.
+///
+/// `wasm32-unknown-unknown` cdylibs link with `--no-entry`, so LLD emits no start section and
+/// `__wasm_call_ctors` is never called automatically — the first OCCT call then hits
+/// uninitialized type tables ("null function or function signature mismatch"). wasm-bindgen
+/// lifts a start function into `__wbindgen_start`, which its generated `init()` calls, so this
+/// shim makes the ctors run with no manual call from JS. Invoke once at the consumer crate root:
+///
+/// ```ignore
+/// cadrum::wasm_start!();
+/// ```
+///
+/// Lives in the consumer (not cadrum) because the start function is a single per-module concern
+/// owned by the final wasm-bindgen binary, and cadrum has no `wasm-bindgen` dependency.
+#[macro_export]
+macro_rules! wasm_start {
+	() => {
+		#[cfg(target_arch = "wasm32")]
+		#[::wasm_bindgen::prelude::wasm_bindgen(start)]
+		fn __cadrum_wasm_start() {
+			unsafe extern "C" {
+				fn __wasm_call_ctors();
+			}
+			unsafe { __wasm_call_ctors() };
+		}
+	};
+}
