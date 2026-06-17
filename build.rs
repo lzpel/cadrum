@@ -62,11 +62,14 @@ fn main() {
 	#[cfg(feature = "source")]
 	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() {
 		if target.ends_with("windows-gnu") || target.contains("linux-gnu") {
-			bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+			bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"], true);
 		} else if target.starts_with("wasm32") {
-			// -fwasm-exceptions ビルドの OCCT/libc++ が要求する eh 版ランタイム。最終リンク(rustc)で
-			// 必要と実測で確定済み（c++abi/unwind/c のいずれを欠いても env import 未解決で失敗）。
-			bundle_runtime_libs(&occt_lib_dir, &["libc++abi.a", "libunwind.a", "libc.a"]);
+			// -fwasm-exceptions ビルドの OCCT/libc++ が要求する eh 版ランタイムを同梱し prebuilt を
+			// 自己完結化する（実測: 4 つ同梱すれば RUSTFLAGS 無しでリンク・実行できる）。
+			// c++abi/unwind/c は外部 -l が出ないので prefix=true で walkdir に明示リンクさせる。
+			// libc++ は link-cplusplus の `-l c++` が実名を要求するので prefix=false で実名のまま置く。
+			bundle_runtime_libs(&occt_lib_dir, &["libc++abi.a", "libunwind.a", "libc.a"], true);
+			bundle_runtime_libs(&occt_lib_dir, &["libc++.a"], false);
 		}
 	}
 
@@ -288,13 +291,22 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	}
 }
 
-/// Bundle host toolchain runtime archives (`libs`) into the OCCT lib dir as
-/// `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_RUNTIME` only — used by the
-/// prebuilt-tarball makefile recipe so end users running source don't get their
-/// host runtime silently bundled. Current policy bundles GCC runtime
-/// (libstdc++.a / libgcc.a / libgcc_eh.a) for GNU targets; see the call site in `main`.
+/// Bundle host toolchain runtime archives (`libs`) into the OCCT lib dir.
+/// Triggered by `CADRUM_BUNDLE_RUNTIME` only — used by the prebuilt-tarball makefile
+/// recipe so end users running source don't get their host runtime silently bundled.
+/// See the call sites in `main`.
+///
+/// `prefix` controls the destination name:
+/// - `true`  → copy as `libcadrum_*.a` so `link_occt_libraries`'s walkdir links it
+///   explicitly (`-l cadrum_*`). This both avoids the linker auto-grabbing the host
+///   runtime (#89) and is the *only* thing that links the archive in a clean
+///   prebuilt-consumer build. Required for anything no external `-l` already requests
+///   (GCC runtime, wasm libc++abi/unwind/c).
+/// - `false` → copy under the real name so an externally-emitted `-l <name>` resolves it
+///   via the occt lib-dir search path. Used for wasm `libc++.a`: cxx's link-cplusplus
+///   unconditionally emits `-l c++`, which needs the real file name (renaming breaks it).
 #[cfg(feature = "source")]
-fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
+fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str], prefix: bool) {
 	let compiler = cc::Build::new().get_compiler();
 	// `to_command()` で target/sysroot 等のフラグごと probe する。wasm は --target/--sysroot 無しだと
 	// -print-file-name が wasi-sysroot を解決できない（GNU は素の probe でも絶対パスが返る）。
@@ -312,7 +324,7 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 		let src = eh_dir.as_ref().map(|d| d.join(lib)).filter(|p| p.exists()).unwrap_or_else(|| probe(lib));
 		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
 		if src.is_absolute() && src.exists() {
-			let dst_name = lib.replace("lib", "libcadrum_");
+			let dst_name = if prefix { lib.replace("lib", "libcadrum_") } else { lib.to_string() };
 			std::fs::copy(&src, occt_lib_dir.join(&dst_name)).unwrap();
 		} else {
 			eprintln!("cargo:warning=runtime lib not found: {}", lib);
