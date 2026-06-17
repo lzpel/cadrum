@@ -499,20 +499,6 @@ mod source {
 			// ため空ファイル化（Windows 以外ではコンパイルされず無害）。
 			"OSD_WNT.cxx" => Some(stub_content(path, false)),
 
-			// OCC_CONVERT_SIGNALS(signal→例外変換) を全 target で無効化。OSD_signal スタブ化と整合。
-			"occt_defs_flags.cmake" => {
-				let content = std::fs::read_to_string(path).ok()?;
-				let needle = "add_definitions(-DOCC_CONVERT_SIGNALS)";
-				let replacement = "# add_definitions(-DOCC_CONVERT_SIGNALS)  # patched out by cadrum build.rs";
-				if content.contains(needle) {
-					Some(content.replace(needle, replacement))
-				} else if content.contains(replacement) {
-					Some(content) // already patched — keep as-is
-				} else {
-					None
-				}
-			}
-
 			_ => None,
 		}
 	}
