@@ -2,7 +2,7 @@
 #
 # Cross-compiles OCCT into static libraries (.a) from a Linux host.
 # The resulting Windows .exe cannot execute inside this container;
-# `cadrum-occt` tolerates the execution failure via `|| true`.
+# the `occt` make target tolerates the execution failure via `|| true`.
 FROM debian:bookworm-slim
 
 # gcc/g++: HOST compiler for build-dependencies (aws-lc-rs, ring, etc.)

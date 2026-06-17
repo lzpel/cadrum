@@ -52,7 +52,7 @@ run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separat
 check-cadrum: download # build the cadrum wasm sample (--target web, like the browser) against ../target's prebuilt OCCT and run it under node; surfaces the WASI-import / EH-mix / __wasm_call_ctors errors
 	cargo clean
 	OCCT="$$(find $(CURDIR)/../target -maxdepth 1 -type d -name 'occt-*-wasm32_unknown_unknown' | head -1)"; \
-	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make cadrum-occt-wasm32-unknown-unknown-check' first"; exit 1; }; \
+	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make check-wasm32-unknown-unknown' first"; exit 1; }; \
 	OCCT_ROOT="$$OCCT" ../out/bin/wasm-pack build . -d ./target --target web --features cadrum
 	node --experimental-wasm-exnref run_node.mjs
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).

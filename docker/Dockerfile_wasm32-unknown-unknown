@@ -6,7 +6,7 @@
 # The wasm output is produced by the wasi-sdk clang, so the host image is
 # irrelevant to the result. HOST build-dependencies use the image's gcc; the
 # wasm TARGET (OCCT cmake + cxx-build) uses the wasi-sdk clang found first on PATH.
-# The example .wasm cannot run here; `cadrum-occt` tolerates that via `... | tee`,
+# The example .wasm cannot run here; the `occt` make target tolerates that via `... | tee`,
 # then tarballs the OCCT static libraries.
 FROM quay.io/pypa/manylinux_2_28_x86_64
 

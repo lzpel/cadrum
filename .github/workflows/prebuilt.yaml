@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  # The following prebuilt tarballs are cross-built via Docker:
-  #   - cadrum-occt-x86_64-unknown-linux-gnu
-  #   - cadrum-occt-aarch64-unknown-linux-gnu
-  #   - cadrum-occt-x86_64-pc-windows-gnu
-  #   - cadrum-occt-wasm32-unknown-unknown
+  # The following prebuilt OCCT tarballs are cross-built via Docker (make cross-<target> GOAL=occt):
+  #   - x86_64-unknown-linux-gnu
+  #   - aarch64-unknown-linux-gnu
+  #   - x86_64-pc-windows-gnu
+  #   - wasm32-unknown-unknown
   # This is because the cross toolchain for these targets is mature on the Linux
   # side (cross-gcc / mingw-w64 / wasi-sdk clang), so Docker gives a reproducible
   # build host.
@@ -32,16 +32,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: build
-        run: make cadrum-occt-${{ matrix.target }}
+        run: make cross-${{ matrix.target }} GOAL=occt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cadrum-occt-${{ matrix.target }}
+          name: occt-${{ matrix.target }}
           path: out/${{ matrix.target }}/occt-*.tar.gz
 
-  # The following prebuilt tarball is built on a native Windows runner with
-  # native cl.exe:
-  #   - cadrum-occt-x86_64-pc-windows-msvc
+  # The following prebuilt OCCT tarball is built on a native Windows runner with
+  # native cl.exe (make occt):
+  #   - x86_64-pc-windows-msvc
   # This is because prebuilding via cargo-xwin/clang-cl makes COMDAT emission
   # decisions for MSVC STL templates that disagree with native cl.exe, producing
   # `std::_Variant_storage_<...>` unresolved symbols at the user's link step
@@ -72,17 +72,17 @@ jobs:
         shell: bash
         env:
           CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
-        run: make cadrum-occt
+        run: make occt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cadrum-occt-x86_64-pc-windows-msvc
+          name: occt-x86_64-pc-windows-msvc
           path: out/occt-*.tar.gz
 
-  # The following prebuilt tarballs are built on native macOS runners with Apple
-  # clang/libc++:
-  #   - cadrum-occt-aarch64-apple-darwin
-  #   - cadrum-occt-x86_64-apple-darwin
+  # The following prebuilt OCCT tarballs are built on native macOS runners with Apple
+  # clang/libc++ (make occt):
+  #   - aarch64-apple-darwin
+  #   - x86_64-apple-darwin
   # This is because this repo has no Docker/osxcross apple-darwin toolchain, and
   # Apple's SDK + clang are simplest (and license-clean) on real Apple hardware,
   # which GitHub provides as free runners. macOS libc++ has a stable ABI, so this
@@ -91,7 +91,7 @@ jobs:
   # NOTE: macos-13 (the old Intel label) was retired on 2025-12-04, so we use its
   #       successor macos-15-intel. https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
   # cmake / make / clang are preinstalled on the GitHub macOS runner.
-  # CADRUM_BUNDLE_RUNTIME=1 inside `make cadrum-occt` is a no-op on Darwin
+  # CADRUM_BUNDLE_RUNTIME=1 inside `make occt` is a no-op on Darwin
   # (build.rs bundles libstdc++/libgcc only for *-windows-gnu / *-linux-gnu).
   build-macos:
     strategy:
@@ -113,11 +113,11 @@ jobs:
       - name: build
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
-        run: make cadrum-occt
+        run: make occt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cadrum-occt-${{ matrix.target }}
+          name: occt-${{ matrix.target }}
           path: out/occt-*.tar.gz
 
   release:
