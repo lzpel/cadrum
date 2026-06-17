@@ -1,0 +1,41 @@
+# emscripten-standalone clang.wasm 検証環境（#220 / #215 approach 2）。
+# ubuntu + emsdk(emcc) + wasmtime + wasm 検査ツール + cmake/ninja。
+# LLVM ソースは巨大なのでイメージに焼かず、build-clang-wasm.sh が /work 配下へ clone する
+# （/work はホストの out/emscripten-clang を mount する想定）。
+#
+# 使い方（リポジトリ root）:
+#   docker build -f docker/Dockerfile_emscripten-clang -t emcc-clang .
+#   docker run --rm -v "$PWD:/src" -v "$PWD/out/emscripten-clang:/work" emcc-clang \
+#       bash /src/docker/emscripten-clang/gate0.sh
+FROM ubuntu:24.04
+
+ARG EMSDK_VERSION=latest
+ARG WASMTIME_VERSION=latest
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 検証ツール: wabt(wasm-objdump で import 検査), libarchive-tools(bsdtar), xxd(C配列焼き込み)。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git python3 python3-pip build-essential cmake ninja-build \
+        curl ca-certificates xz-utils xxd wabt libarchive-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# emsdk（emcc + 同梱 LLVM）。exnref/WasmFS/STANDALONE_WASM 対応の版を入れる。
+# 解決された実バージョンは `emcc --version` で記録する（notes 用）。
+RUN git clone https://github.com/emscripten-core/emsdk.git /opt/emsdk \
+    && cd /opt/emsdk \
+    && ./emsdk install ${EMSDK_VERSION} \
+    && ./emsdk activate ${EMSDK_VERSION}
+ENV EMSDK=/opt/emsdk
+ENV PATH=/opt/emsdk:/opt/emsdk/upstream/emscripten:/opt/emsdk/node/*/bin:$PATH
+
+# wasmtime（exnref を実装した版が要る: -W exceptions=y -W function-references=y -W gc=y）。
+# 公式インストールスクリプトは latest を取得。バージョン pin は WASMTIME_VERSION で。
+RUN curl -fsSL https://wasmtime.dev/install.sh | bash -s -- --version ${WASMTIME_VERSION} \
+    && ln -sf /root/.wasmtime/bin/wasmtime /usr/local/bin/wasmtime || \
+       ( curl -fsSL https://wasmtime.dev/install.sh | bash \
+         && ln -sf /root/.wasmtime/bin/wasmtime /usr/local/bin/wasmtime )
+
+# emsdk の環境変数（EM_CONFIG 等）をログインシェルで有効化。
+RUN echo 'source /opt/emsdk/emsdk_env.sh >/dev/null 2>&1' >> /etc/bash.bashrc
+
+WORKDIR /work
