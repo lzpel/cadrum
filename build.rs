@@ -60,8 +60,14 @@ fn main() {
 	// gate を切らないと source user 全員のホストランタイムが静的取り込みされてしまう。
 	// 現 policy: mingw / Linux GNU で GCC runtime を対象 (Windows MSVC は MSVC ランタイム、Mac は別系統)。
 	#[cfg(feature = "source")]
-	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
-		bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() {
+		if target.ends_with("windows-gnu") || target.contains("linux-gnu") {
+			bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+		} else if target.starts_with("wasm32") {
+			// -fwasm-exceptions ビルドの OCCT/libc++ が要求する eh 版ランタイム。最終リンク(rustc)で
+			// 必要と実測で確定済み（c++abi/unwind/c のいずれを欠いても env import 未解決で失敗）。
+			bundle_runtime_libs(&occt_lib_dir, &["libc++abi.a", "libunwind.a", "libc.a"]);
+		}
 	}
 
 	link_occt_libraries(&occt_include, &occt_lib_dir, &target);
@@ -290,9 +296,20 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 #[cfg(feature = "source")]
 fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 	let compiler = cc::Build::new().get_compiler();
+	// `to_command()` で target/sysroot 等のフラグごと probe する。wasm は --target/--sysroot 無しだと
+	// -print-file-name が wasi-sysroot を解決できない（GNU は素の probe でも絶対パスが返る）。
+	let probe = |lib: &str| -> PathBuf {
+		let out = compiler.to_command().arg(format!("-print-file-name={}", lib)).output().expect("compiler probe failed");
+		PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim())
+	};
+	// wasm の wasi-sysroot は C++ ランタイムを lib/<triple>/{noeh,eh}/ に分け、-print-file-name は
+	// noeh を返す（libunwind は解決すらできない）。OCCT は -fwasm-exceptions ビルドなので eh 版が要る。
+	// triple 直下にあり確実に引ける libc.a から eh ディレクトリを導出し、各 lib は eh を優先する。
+	// GNU 系は eh サブディレクトリが無いので probe 結果（従来通り）にフォールバックする。
+	let libc = probe("libc.a");
+	let eh_dir = libc.parent().map(|d| d.join("eh")).filter(|d| d.is_dir());
 	for &lib in libs {
-		let out = std::process::Command::new(compiler.path()).arg(format!("-print-file-name={}", lib)).output().expect("compiler probe failed");
-		let src = PathBuf::from(std::str::from_utf8(&out.stdout).unwrap().trim());
+		let src = eh_dir.as_ref().map(|d| d.join(lib)).filter(|p| p.exists()).unwrap_or_else(|| probe(lib));
 		// `-print-file-name=` は名前が見つからない時に lib 名そのものを返すので存在チェック必須
 		if src.is_absolute() && src.exists() {
 			let dst_name = lib.replace("lib", "libcadrum_");
