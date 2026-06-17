@@ -52,8 +52,8 @@
   - ミス時: 下流（`occt_from_source` / `occt_from_prebuilt`）経由で `effective_root` に**生成・展開する**。
   - 同梱 (`bundle_runtime_libs`) はここではなく `main` に移動済み（`resolve_occt` は dirs を返すだけ）。
 
-### `link_occt_libraries(occt_include, occt_lib_dir)`
-- **責任**: `rustc-link-search` / `rustc-link-lib` の出力、lib ディレクトリ内の `cadrum` を含む static lib の追加リンク、mingw 向けリンクフラグ、`cxx_build` による `cpp/wrapper.cpp` のコンパイル（`cadrum_cpp`）。
+### `link_occt_libraries(occt_include, occt_lib_dir, target)`
+- **責任**: `rustc-link-search` / `rustc-link-lib` の出力、lib ディレクトリ内の `cadrum` を含む static lib の追加リンク、mingw 向けリンクフラグ、`cxx_build` による `cpp/wrapper.cpp` のコンパイル。成果物アーカイブ名は `release_name(target, true)`（`lib<release_name>.a`）で、makefile の `find_cadrum` が target 内を一意に拾えるようにし、download URL と命名権を共有する。cc が一致する `rustc-link-lib=static=<name>` を自動発行するのでローカルリンクは整合。
 - **OCCT_ROOT への影響**: **なし（読み取りのみ）**。`occt_lib_dir` は `WalkDir` で**走査して読むだけ**。wrapper のコンパイル成果物は `OUT_DIR` 側に出るので OCCT_ROOT は汚さない。
 
 ### `occt_from_prebuilt(effective_root, target)`  〔`not(feature = "source")`〕

@@ -64,7 +64,7 @@ fn main() {
 		bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
 	}
 
-	link_occt_libraries(&occt_include, &occt_lib_dir);
+	link_occt_libraries(&occt_include, &occt_lib_dir, &target);
 }
 
 /// Derive the cargo target directory from `OUT_DIR`.
@@ -176,7 +176,7 @@ fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
 	}
 }
 
-fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
+fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	println!("cargo:rustc-link-search=native={}", occt_lib_dir.display());
 	for lib in OCC_LIBS {
 		println!("cargo:rustc-link-lib=static={}", lib);
@@ -214,7 +214,12 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	#[cfg(feature = "color")]
 	build.define("CADRUM_COLOR", None);
 
-	build.compile("cadrum_cpp");
+	// Name the FFI archive after `release_name(target, true)` so the produced
+	// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
+	// `cadrum` recipe locates it for the GitHub Release upload) and shares one
+	// naming authority with the download URL. cc auto-emits the matching
+	// `rustc-link-lib=static=<name>`, so local linking stays consistent.
+	build.compile(&release_name(Some(target), true));
 
 	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
