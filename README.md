@@ -122,36 +122,21 @@ cargo run --example 01_primitives
 use cadrum::{DVec3, Solid};
 
 fn main() -> Result<(), cadrum::Error> {
-    let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-    let solids = [
-        Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0))
-            .color("#4a90d9"),
-        Solid::cylinder(8.0, DVec3::Z * 30.0)
-            .translate(DVec3::X * 30.0)
-            .color("#e67e22"),
-        Solid::sphere(8.0)
-            .translate(DVec3::X * 60.0 + DVec3::Z * 15.0)
-            .color("#2ecc71"),
-        Solid::cone(8.0, 1.0, DVec3::Z * 30.0)
-            .translate(DVec3::X * 90.0)
-            .color("#e74c3c"),
-        Solid::torus(12.0, 4.0, DVec3::Z)
-            .translate(DVec3::X * 130.0 + DVec3::Z * 15.0)
-            .color("#9b59b6"),
-    ];
+	let solids = [Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).color("#4a90d9"), Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 30.0).color("#e67e22"), Solid::sphere(8.0).translate(DVec3::X * 60.0 + DVec3::Z * 15.0).color("#2ecc71"), Solid::cone(8.0, 1.0, DVec3::Z * 30.0).translate(DVec3::X * 90.0).color("#e74c3c"), Solid::torus(12.0, 4.0, DVec3::Z).translate(DVec3::X * 130.0 + DVec3::Z * 15.0).color("#9b59b6")];
 
-    Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let mesh = Solid::mesh(&solids, Default::default())?;
-    let scene = mesh.scene(Default::default());
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
-    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+	let mesh = Solid::mesh(&solids, Default::default())?;
+	let scene = mesh.scene(Default::default());
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-    println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
-    Ok(())
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
 }
 
 ```
@@ -175,56 +160,51 @@ use cadrum::{DVec3, Solid};
 use std::f64::consts::FRAC_PI_8;
 
 fn main() -> Result<(), cadrum::Error> {
-    let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-    let step_path = format!("{example_name}.step");
-    let text_path = format!("{example_name}_text.brep");
-    let brep_path = format!("{example_name}.brep");
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+	let step_path = format!("{example_name}.step");
+	let text_path = format!("{example_name}_text.brep");
+	let brep_path = format!("{example_name}.brep");
 
-    // 0. Original: read colored_box.step
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let original = Solid::read_step(
-        &mut std::fs::File::open(format!("{manifest_dir}/steps/colored_box.step")).expect("open file"),
-    )?;
+	// 0. Original: read colored_box.step
+	let manifest_dir = env!("CARGO_MANIFEST_DIR");
+	let original = Solid::read_step(&mut std::fs::File::open(format!("{manifest_dir}/steps/colored_box.step")).expect("open file"))?;
 
-    // 1. STEP round-trip: rotate 30° → write → read
-    let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
-    Solid::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
-    let a = Solid::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
+	// 1. STEP round-trip: rotate 30° → write → read
+	let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	Solid::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
+	let a = Solid::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
 
-    // 2. BRep text round-trip: rotate another 30° → write → read
-    let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
-    Solid::write_brep_text(&b_written, &mut std::fs::File::create(&text_path).expect("create file"))?;
-    let b = Solid::read_brep_text(&mut std::fs::File::open(&text_path).expect("open file"))?;
+	// 2. BRep text round-trip: rotate another 30° → write → read
+	let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	Solid::write_brep_text(&b_written, &mut std::fs::File::create(&text_path).expect("create file"))?;
+	let b = Solid::read_brep_text(&mut std::fs::File::open(&text_path).expect("open file"))?;
 
-    // 3. BRep binary round-trip: rotate another 30° → write → read
-    let c_written: Vec<Solid> = b.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
-    Solid::write_brep_binary(&c_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
-    let c = Solid::read_brep_binary(&mut std::fs::File::open(&brep_path).expect("open file"))?;
+	// 3. BRep binary round-trip: rotate another 30° → write → read
+	let c_written: Vec<Solid> = b.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	Solid::write_brep_binary(&c_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
+	let c = Solid::read_brep_binary(&mut std::fs::File::open(&brep_path).expect("open file"))?;
 
-    // 4. Arrange side by side and export SVG + STL
-    let [min, max] = original[0].bounding_box();
-    let spacing = (max - min).length() * 1.5;
-    let all: Vec<Solid> = [original, a, b, c].into_iter()
-        .enumerate()
-        .flat_map(|(i, solids)| solids.into_iter().map(move |s| s.translate(DVec3::X * spacing * i as f64)))
-        .collect();
+	// 4. Arrange side by side and export SVG + STL
+	let [min, max] = original[0].bounding_box();
+	let spacing = (max - min).length() * 1.5;
+	let all: Vec<Solid> = [original, a, b, c].into_iter().enumerate().flat_map(|(i, solids)| solids.into_iter().map(move |s| s.translate(DVec3::X * spacing * i as f64))).collect();
 
-    let mesh = Solid::mesh(&all, Default::default())?;
-    let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	let mesh = Solid::mesh(&all, Default::default())?;
+	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
-    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
-    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-    // 5. Print summary
-    let stl_path = format!("{example_name}.stl");
-    for (label, path) in [("STEP", &step_path), ("BRep text", &text_path), ("BRep binary", &brep_path), ("STL", &stl_path)] {
-        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        println!("{label:12} {path:30} {size:>8} bytes");
-    }
+	// 5. Print summary
+	let stl_path = format!("{example_name}.stl");
+	for (label, path) in [("STEP", &step_path), ("BRep text", &text_path), ("BRep binary", &brep_path), ("STL", &stl_path)] {
+		let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+		println!("{label:12} {path:30} {size:>8} bytes");
+	}
 
-    Ok(())
+	Ok(())
 }
 
 ```
@@ -248,46 +228,34 @@ use cadrum::{DVec3, Solid};
 use std::f64::consts::PI;
 
 fn main() -> Result<(), cadrum::Error> {
-    let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-    let base = Solid::cone(8.0, 0.0, DVec3::Z * 20.0)
-        .color("#888888");
+	let base = Solid::cone(8.0, 0.0, DVec3::Z * 20.0).color("#888888");
 
-    let solids = [
-        // original — reference, no transform
-        base.clone(),
-        // translate — shift +20 along Z
-        base.clone()
-            .color("#4a90d9")
-            .translate(DVec3::X * 40.0 + DVec3::Z * 20.0),
-        // rotate — 90° around X axis so the cone tips toward Y
-        base.clone()
-            .color("#e67e22")
-            .rotate_x(PI / 2.0)
-            .translate(DVec3::X * 80.0),
-        // scaled — 1.5x from its local origin
-        base.clone()
-            .color("#2ecc71")
-            .scale(DVec3::ZERO, 1.5)
-            .translate(DVec3::X * 120.0),
-        // mirror — flip across Z=0 plane so the tip points down
-        base.clone()
-            .color("#e74c3c")
-            .mirror(DVec3::ZERO, DVec3::Z)
-            .translate(DVec3::X * 160.0),
-    ];
+	let solids = [
+		// original — reference, no transform
+		base.clone(),
+		// translate — shift +20 along Z
+		base.clone().color("#4a90d9").translate(DVec3::X * 40.0 + DVec3::Z * 20.0),
+		// rotate — 90° around X axis so the cone tips toward Y
+		base.clone().color("#e67e22").rotate_x(PI / 2.0).translate(DVec3::X * 80.0),
+		// scaled — 1.5x from its local origin
+		base.clone().color("#2ecc71").scale(DVec3::ZERO, 1.5).translate(DVec3::X * 120.0),
+		// mirror — flip across Z=0 plane so the tip points down
+		base.clone().color("#e74c3c").mirror(DVec3::ZERO, DVec3::Z).translate(DVec3::X * 160.0),
+	];
 
-    Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let mesh = Solid::mesh(&solids, Default::default())?;
-    let scene = mesh.scene(Default::default());
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
-    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+	let mesh = Solid::mesh(&solids, Default::default())?;
+	let scene = mesh.scene(Default::default());
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-    println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
-    Ok(())
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
 }
 
 ```
@@ -310,55 +278,44 @@ cargo run --example 04_boolean
 use cadrum::{Boolean, DVec3, Solid};
 
 fn main() -> Result<(), cadrum::Error> {
-    let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-    let make_box = Solid::cube(DVec3::ZERO, DVec3::splat(20.0))
-        .translate(DVec3::X * -10.+ DVec3:: Y*-10.)
-        .color("#4a90d9");
-    let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0)
-        .translate(DVec3::Z*-5.)
-        .color("#e67e22");
+	let make_box = Solid::cube(DVec3::ZERO, DVec3::splat(20.0)).translate(DVec3::X * -10. + DVec3::Y * -10.).color("#4a90d9");
+	let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::Z * -5.).color("#e67e22");
 
-    // union: merge both shapes into one — offset X=0
-    let union: Solid = (&make_box + &make_cyl).build()?;
+	// union: merge both shapes into one — offset X=0
+	let union: Solid = (&make_box + &make_cyl).build()?;
 
-    // subtract: box minus cylinder — offset X=40
-    let subtract: Solid = (&make_box - &make_cyl).build()?;
+	// subtract: box minus cylinder — offset X=40
+	let subtract: Solid = (&make_box - &make_cyl).build()?;
 
-    // intersect: only the overlapping volume — offset X=80
-    let intersect: Solid = (&make_box * &make_cyl).build()?;
+	// intersect: only the overlapping volume — offset X=80
+	let intersect: Solid = (&make_box * &make_cyl).build()?;
 
-    let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0)
-        .translate(DVec3::X*4.);
-    let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU/3.), cylinder.clone().rotate_z(-std::f64::consts::TAU/3.)];
+	let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 4.);
+	let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU / 3.), cylinder.clone().rotate_z(-std::f64::consts::TAU / 3.)];
 
-    // union of all cylinders (fold from Boolean::default() = ⊥)
-    let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, s| a + s).unwrap().build()?;
-    let sum = sum.color("#d875ff");
+	// union of all cylinders (fold from Boolean::default() = ⊥)
+	let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, s| a + s).unwrap().build()?;
+	let sum = sum.color("#d875ff");
 
-    // intersection of all cylinders (reduce — intersect has no fixed init)
-    let product: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, b| a * b).unwrap().build()?;
-    let product = product.color("#00ff22");
+	// intersection of all cylinders (reduce — intersect has no fixed init)
+	let product: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, b| a * b).unwrap().build()?;
+	let product = product.color("#00ff22");
 
-    let shapes = [
-        union.translate(DVec3::X * 0.0), 
-        subtract.translate(DVec3::X * 40.0), 
-        intersect.translate(DVec3::X * 80.0), 
-        sum.translate(DVec3::X * 20.0 + DVec3::Y * 40.0), 
-        product.translate(DVec3::X * 60.0 + DVec3::Y * 40.0)
-    ];
+	let shapes = [union.translate(DVec3::X * 0.0), subtract.translate(DVec3::X * 40.0), intersect.translate(DVec3::X * 80.0), sum.translate(DVec3::X * 20.0 + DVec3::Y * 40.0), product.translate(DVec3::X * 60.0 + DVec3::Y * 40.0)];
 
-    Solid::write_step(&shapes, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+	Solid::write_step(&shapes, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
-    let mesh = Solid::mesh(&shapes, Default::default())?;
-    let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
-    scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-    scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-    mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
-    mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+	let mesh = Solid::mesh(&shapes, Default::default())?;
+	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-    println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
-    Ok(())
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
 }
 
 ```
@@ -387,12 +344,7 @@ use cadrum::{BSplineEnd, DVec3, Edge, Error, Solid};
 
 /// Square polygon → box (simplest extrude).
 fn build_box() -> Result<Solid, Error> {
-	let profile = Edge::polygon(&[
-		DVec3::new(0.0, 0.0, 0.0),
-		DVec3::new(5.0, 0.0, 0.0),
-		DVec3::new(5.0, 5.0, 0.0),
-		DVec3::new(0.0, 5.0, 0.0),
-	])?;
+	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(5.0, 0.0, 0.0), DVec3::new(5.0, 5.0, 0.0), DVec3::new(0.0, 5.0, 0.0)])?;
 	Solid::extrude(&profile, DVec3::Z * 8.0)
 }
 
@@ -404,14 +356,7 @@ fn build_oblique_cylinder() -> Result<Solid, Error> {
 
 /// L-shaped polygon → L-beam.
 fn build_l_beam() -> Result<Solid, Error> {
-	let profile = Edge::polygon(&[
-		DVec3::new(0.0, 0.0, 0.0),
-		DVec3::new(4.0, 0.0, 0.0),
-		DVec3::new(4.0, 1.0, 0.0),
-		DVec3::new(1.0, 1.0, 0.0),
-		DVec3::new(1.0, 3.0, 0.0),
-		DVec3::new(0.0, 3.0, 0.0),
-	])?;
+	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(4.0, 0.0, 0.0), DVec3::new(4.0, 1.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(1.0, 3.0, 0.0), DVec3::new(0.0, 3.0, 0.0)])?;
 	Solid::extrude(&profile, DVec3::Z * 12.0)
 }
 
@@ -419,12 +364,12 @@ fn build_l_beam() -> Result<Solid, Error> {
 fn build_heart() -> Result<Solid, Error> {
 	let profile = [Edge::bspline(
 		&[
-			DVec3::new(0.0, -4.0, 0.0),   // bottom tip
+			DVec3::new(0.0, -4.0, 0.0), // bottom tip
 			DVec3::new(2.0, -1.5, 0.0),
 			DVec3::new(4.0, 1.5, 0.0),
-			DVec3::new(2.5, 3.5, 0.0),    // right lobe top
-			DVec3::new(0.0, 2.0, 0.0),    // center dip
-			DVec3::new(-2.5, 3.5, 0.0),   // left lobe top
+			DVec3::new(2.5, 3.5, 0.0),  // right lobe top
+			DVec3::new(0.0, 2.0, 0.0),  // center dip
+			DVec3::new(-2.5, 3.5, 0.0), // left lobe top
 			DVec3::new(-4.0, 1.5, 0.0),
 			DVec3::new(-2.0, -1.5, 0.0),
 		],
@@ -464,20 +409,21 @@ Output: [05_extrude.png](https://lzpel.github.io/cadrum/05_extrude.png) | [05_ex
 
 #### Loft
 
-Demo of `Solid::loft`: skin a smooth solid through cross-section wires.
+Demo of `Solid::loft`: skin a solid through cross-section wires.
 
 ```sh
 cargo run --example 06_loft
 ```
 
 ```rust,no_run
-//! Demo of `Solid::loft`: skin a smooth solid through cross-section wires.
+//! Demo of `Solid::loft`: skin a solid through cross-section wires.
 //!
 //! - **Frustum**: two circles of different radii → truncated cone (minimal loft)
 //! - **Morph**: square polygon → circle (cross-section shape transition)
 //! - **Tilted**: three non-parallel circular sections → twisted loft
+//! - **Wing**: three NACA0012 sections lofted with `ruled=true` (straight ruled panels between sections — the sheet-metal / developable variant)
 
-use cadrum::{DVec3, Edge, Error, Solid};
+use cadrum::{BSplineEnd, DVec2, DVec3, Edge, Error, Solid};
 
 /// Two circles → frustum (minimal loft example).
 fn build_frustum() -> Result<Solid, Error> {
@@ -489,12 +435,7 @@ fn build_frustum() -> Result<Solid, Error> {
 /// Square polygon → circle (2-section morph loft).
 fn build_morph() -> Result<Solid, Error> {
 	let r = 2.5;
-	let square = Edge::polygon(&[
-		DVec3::new(-r, -r, 0.0),
-		DVec3::new(r, -r, 0.0),
-		DVec3::new(r, r, 0.0),
-		DVec3::new(-r, r, 0.0),
-	])?;
+	let square = Edge::polygon(&[DVec3::new(-r, -r, 0.0), DVec3::new(r, -r, 0.0), DVec3::new(r, r, 0.0), DVec3::new(-r, r, 0.0)])?;
 	let circle = Edge::circle(r, DVec3::Z)?.translate(DVec3::Z * 10.0);
 
 	Ok(Solid::loft([square.as_slice(), std::slice::from_ref(&circle)], false)?.color("#808000"))
@@ -503,12 +444,44 @@ fn build_morph() -> Result<Solid, Error> {
 /// Three non-parallel circular sections → twisted loft.
 fn build_tilted() -> Result<Solid, Error> {
 	let bottom = [Edge::circle(2.5, DVec3::Z)?];
-	let mid = [Edge::circle(2.0, DVec3::new(0.3, 0.0, 1.0).normalize())?
-		.translate(DVec3::X + DVec3::Z * 5.0)];
-	let top = [Edge::circle(1.5, DVec3::new(-0.2, 0.3, 1.0).normalize())?
-		.translate(DVec3::new(-0.5, 1.0, 10.0))];
+	let mid = [Edge::circle(2.0, DVec3::new(0.3, 0.0, 1.0).normalize())?.translate(DVec3::X + DVec3::Z * 5.0)];
+	let top = [Edge::circle(1.5, DVec3::new(-0.2, 0.3, 1.0).normalize())?.translate(DVec3::new(-0.5, 1.0, 10.0))];
 
 	Ok(Solid::loft(&[bottom, mid, top], false)?.color("#4682b4"))
+}
+
+/// NACA0012-like airfoil section points (unit chord, 2D: x = chord, y = thickness).
+/// Cosine spacing walks TE → upper → LE → lower → TE, returning a closed loop
+/// with the TE point duplicated at the end (a closed section with a sharp TE,
+/// interpolated as a NotAKnot open curve).
+fn naca_points(n: usize) -> Vec<DVec2> {
+	let half = |x: f64| 5.0 * 0.12 * (0.2969 * x.sqrt() - 0.1260 * x - 0.3516 * x * x + 0.2843 * x.powi(3) - 0.1036 * x.powi(4));
+	let upper: Vec<DVec2> = (0..=n)
+		.map(|i| {
+			let x = (1.0 + (std::f64::consts::PI * i as f64 / n as f64).cos()) / 2.0;
+			DVec2::new(x, half(x))
+		})
+		.collect();
+	let lower: Vec<DVec2> = (1..=n)
+		.map(|i| {
+			let x = (1.0 - (std::f64::consts::PI * i as f64 / n as f64).cos()) / 2.0;
+			DVec2::new(x, -half(x))
+		})
+		.collect();
+	[upper, lower].concat()
+}
+
+/// Three NACA sections → tapered wing, lofted with `ruled=true` (straight panels).
+fn build_wing(scale: f64) -> Result<Solid, Error> {
+	let stations = [(1.0, 0.0), (0.6, 1.0), (0.5, 2.0)];
+	let sections: Vec<[Edge; 1]> = stations
+		.iter()
+		.map(|&(c, z)| {
+			let points: Vec<DVec3> = naca_points(60).into_iter().map(|p| DVec3::new(c * p.x, c * p.y, z) * scale).collect();
+			[Edge::bspline(&points, BSplineEnd::NotAKnot).expect("NACA bspline section")]
+		})
+		.collect();
+	Ok(Solid::loft(&sections, true)?.color("silver"))
 }
 
 fn main() -> Result<(), Error> {
@@ -517,8 +490,9 @@ fn main() -> Result<(), Error> {
 	let frustum = build_frustum()?;
 	let morph = build_morph()?.translate(DVec3::X * 10.0);
 	let tilted = build_tilted()?.translate(DVec3::X * 20.0);
+	let wing = build_wing(10.0)?.align_z(-DVec3::X, -DVec3::Y).translate(DVec3::X * 20.0 + DVec3::Y * 12.0);
 
-	let result = [frustum, morph, tilted];
+	let result = [frustum, morph, tilted, wing];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
@@ -729,25 +703,16 @@ fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
 	// Filter to those whose src_id is one of the cutter's faces, then collect
 	// their post_ids — these are the planar cut faces in the result that we
 	// want to use as shell openings.
-	let cutter_face_ids: std::collections::HashSet<u64> =
-		cutter.iter_face().map(|f| f.id()).collect();
+	let cutter_face_ids: std::collections::HashSet<u64> = cutter.iter_face().map(|f| f.id()).collect();
 	let half: Solid = (&torus * &cutter).build()?;
-	let from_cutter: std::collections::HashSet<u64> = half
-		.iter_history()
-		.filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post))
-		.collect();
+	let from_cutter: std::collections::HashSet<u64> = half.iter_history().filter_map(|[post, src]| cutter_face_ids.contains(&src).then_some(post)).collect();
 	half.shell(thickness, half.iter_face().filter(|f| from_cutter.contains(&f.id())))
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let result = [
-		hollow_cube()?.color("#d0a878"),
-		sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0),
-		halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0),
-		halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0),
-	];
+	let result = [hollow_cube()?.color("#d0a878"), sealed_cube()?.color("#6fbf73").translate(DVec3::Y * 10.0), halved_shelled_torus(1.0)?.color("#ff5e00").translate(DVec3::X * 18.0), halved_shelled_torus(-1.0)?.color("#0052ff").translate(DVec3::X * 18.0 + DVec3::Y * 10.0)];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
@@ -863,9 +828,7 @@ fn soft_top_cube(size: f64) -> Result<Solid, Error> {
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
 	let radius = size * 0.2;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
-	let top_edges = cube
-		.iter_edge()
-		.filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
+	let top_edges = cube.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
 	cube.fillet_edges(radius, top_edges)
 }
 
@@ -873,20 +836,14 @@ fn coin(radius: f64, height: f64) -> Result<Solid, Error> {
 	let cyl = Solid::cylinder(radius, DVec3::Z * height);
 	let radius = height * 0.3;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
-	let top_circle = cyl
-		.iter_edge()
-		.filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
+	let top_circle = cyl.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
 	cyl.fillet_edges(radius, top_circle)
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let result = [
-		rounded_cube(8.0)?.color("#d0a878"),
-		soft_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0),
-		coin(4.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0),
-	];
+	let result = [rounded_cube(8.0)?.color("#d0a878"), soft_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0), coin(4.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0)];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
@@ -933,9 +890,7 @@ fn beveled_top_cube(size: f64) -> Result<Solid, Error> {
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
 	let distance = size * 0.2;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
-	let top_edges = cube
-		.iter_edge()
-		.filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
+	let top_edges = cube.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
 	cube.chamfer_edges(distance, top_edges)
 }
 
@@ -943,20 +898,14 @@ fn beveled_coin(radius: f64, height: f64) -> Result<Solid, Error> {
 	let cyl = Solid::cylinder(radius, DVec3::Z * height);
 	let distance = height * 0.3;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
-	let top_circle = cyl
-		.iter_edge()
-		.filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
+	let top_circle = cyl.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
 	cyl.chamfer_edges(distance, top_circle)
 }
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let result = [
-		beveled_cube(8.0)?.color("#d0a878"),
-		beveled_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0),
-		beveled_coin(4.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0),
-	];
+	let result = [beveled_cube(8.0)?.color("#d0a878"), beveled_top_cube(8.0)?.color("#6fbf73").translate(DVec3::X * 12.0), beveled_coin(4.0, 2.0)?.color("#0052ff").translate(DVec3::X * 24.0)];
 
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
@@ -998,14 +947,11 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let block = Solid::cube(DVec3::ZERO, DVec3::new(40.0, 30.0, 20.0))
-		.translate(-DVec3::new(20.0, 15.0, 10.0));
-	let hole = Solid::cylinder(5.0, DVec3::Z * 30.0)
-		.translate(-DVec3::Z * 15.0);
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(40.0, 30.0, 20.0)).translate(-DVec3::new(20.0, 15.0, 10.0));
+	let hole = Solid::cylinder(5.0, DVec3::Z * 30.0).translate(-DVec3::Z * 15.0);
 	// Axis-orientation check: carve only the +X+Y+Z corner with a sphere.
 	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.
-	let corner_cut = Solid::sphere(10.0)
-		.translate(DVec3::new(20.0, 15.0, 10.0));
+	let corner_cut = Solid::sphere(10.0).translate(DVec3::new(20.0, 15.0, 10.0));
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
