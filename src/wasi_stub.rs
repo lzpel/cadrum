@@ -1,10 +1,11 @@
 //! No-op import shims for the `wasm32-unknown-unknown` build.
 //!
 //! libc++'s `<iostream>` static initialization, libc's startup environ init, and OCCT
-//! (STEP I/O / timing) drag in imports from `wasi_snapshot_preview1` that have no
-//! runtime on `wasm32-unknown-unknown`. Defining those symbols here as no-ops makes
-//! cadrum's wasm output self-contained (no downstream WASI shim). Signatures match the
-//! WASI ABI (i32/i64/pointers).
+//! (STEP I/O / timing / `Standard_ErrorHandler`'s setjmp) drag in imports from
+//! `wasi_snapshot_preview1` (and `env` for setjmp/longjmp) that have no runtime on
+//! `wasm32-unknown-unknown`. Defining those symbols here as no-ops makes cadrum's wasm
+//! output self-contained (no downstream WASI shim). Signatures match the WASI ABI
+//! (i32/i64/pointers).
 //!
 //! These replace the former `cpp/wasi_stub.c` (compiled via `cc` and linked
 //! `+whole-archive`). In Rust the symbols live in cadrum's rlib, so they would be
@@ -16,13 +17,19 @@
 //!
 //! Why these specific symbols stay (none are eliminable via OCCT-source patching):
 //! - `environ_*` — libc's startup environ init, not OCCT getenv (verified: removing all
-//!   OCCT getenv via build.rs leaves these imports). `setjmp`/`longjmp` are absent
-//!   because `OCC_CONVERT_SIGNALS` is off in OCCT 8.0.0, so they are never referenced.
+//!   OCCT getenv via build.rs leaves these imports).
+//! - `setjmp`/`longjmp` — referenced by OCCT's `Standard_ErrorHandler` and surface as
+//!   the `env.setjmp` import. Many OCCT TUs carry `U setjmp` even with
+//!   `OCC_CONVERT_SIGNALS` off (verified by `llvm-nm` on the wasm OCCT libs and by the
+//!   `env.setjmp` import on the final wasm). cadrum unwinds via C++ exceptions, so
+//!   setjmp falls through (returns 0) and longjmp is never reached (traps if it is).
 //! - `path_*` / `fd_fdstat_set_flags` — file ops referenced (not called) from OCCT TUs
 //!   that cadrum links but does not exercise (`OSD_OpenFile`, `BRepAlgoAPI_*`).
 //! - `clock_time_get` — OCCT timing (`OSD_Timer`/`OSD_Thread`); `OSD_Thread` can't be
 //!   stubbed without breaking native threading. `fd_fdstat_get` — libc++ `<iostream>`.
 #![allow(clippy::missing_safety_doc)]
+
+use core::ffi::c_void;
 
 // --- WASI ABI errno values used by the called-at-runtime stubs ---
 const ERRNO_BADF: i32 = 8; // invalid file descriptor
@@ -104,6 +111,18 @@ pub extern "C" fn __imported_wasi_snapshot_preview1_path_open(_fd: i32, _dirflag
 	ERRNO_NOENT
 }
 
+// OCCT's `Standard_ErrorHandler` references setjmp/longjmp; on wasm these become `env`
+// imports. cadrum uses C++ exceptions (not signal-based unwinding), so setjmp just
+// returns 0 (fall through the protected block) and longjmp is never reached (trap if it is).
+#[no_mangle]
+pub extern "C" fn setjmp(_env: *mut c_void) -> i32 {
+	0
+}
+#[no_mangle]
+pub extern "C" fn longjmp(_env: *mut c_void, _val: i32) {
+	core::arch::wasm32::unreachable()
+}
+
 /// Force every stub above into the final wasm module.
 ///
 /// In Rust the stubs sit in cadrum's rlib; rustc only links that object — and only
@@ -131,5 +150,7 @@ pub fn anchor() {
 		let _ = __imported_wasi_snapshot_preview1_fd_fdstat_set_flags(0, 0);
 		let _ = __imported_wasi_snapshot_preview1_path_filestat_get(0, 0, 0, 0, 0);
 		let _ = __imported_wasi_snapshot_preview1_path_open(0, 0, 0, 0, 0, 0, 0, 0, 0);
+		let _ = setjmp(core::ptr::null_mut());
+		longjmp(core::ptr::null_mut(), 0);
 	}
 }
