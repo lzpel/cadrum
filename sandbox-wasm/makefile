@@ -13,6 +13,14 @@ export MSYS_NO_PATHCONV := 1
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
 SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
+# #215 検証用: consumer が wasi-sdk を install せず、cadrum が再配布する最小成果物だけで
+# wasm 化できるかを実証するための「bundle」。BUNDLE 配下にヘッダ(include/wasm32-wasip1 一式)と
+# eh 版ランタイム .a を harvest し、installed sysroot を一切参照せずにビルドする(check-cadrum-bundle)。
+# RESOURCE は clang の builtin ヘッダ(stddef.h 等)。これはコンパイラ側の所有物で、#215 では
+# clang.wasm に同梱される類なので bundle ではなく compiler 同梱として -isystem 末尾に置く
+# (-nostdinc が builtin 経路を切るため明示が要る。libc++ の #include_next <stddef.h> 解決用)。
+BUNDLE := $(CURDIR)/bundle/sysroot
+RESOURCE := $(firstword $(wildcard $(CURDIR)/../out/$(call stem,$(WASI_SDK))/lib/clang/*/include))
 # OCCT の wasm クロスビルドのツールチェインを env で差す（Dockerfile の CC_<target> と同じ流儀）。
 # build.rs が CC_<target>/CXX_<target> を CMAKE_C/CXX_COMPILER へ転送する。
 # PATH 先頭が wasi-sdk/bin なので `clang`/`clang++` は wasi-sdk のものに解決される。
@@ -58,3 +66,23 @@ check-cadrum: download # build the cadrum wasm sample (--target web, like the br
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
+bundle: download # harvest the minimal redistributable set into ./bundle: the wasm32-wasip1 header tree + the eh-variant runtime .a. This is what cadrum would ship so a consumer needs NO installed wasi-sdk (see #215). The whole-triple header copy keeps include-resolution identical to a real sysroot (a -M minimized subset breaks #include_next ordering).
+	rm -rf bundle/sysroot
+	mkdir -p bundle/sysroot/include bundle/sysroot/lib/wasm32-wasip1/eh
+	cp -r $(SYSROOT)/include/wasm32-wasip1 bundle/sysroot/include/
+	cp $(SYSROOT)/lib/wasm32-wasip1/eh/libc++.a $(SYSROOT)/lib/wasm32-wasip1/eh/libc++abi.a $(SYSROOT)/lib/wasm32-wasip1/eh/libunwind.a bundle/sysroot/lib/wasm32-wasip1/eh/
+	cp $(SYSROOT)/lib/wasm32-wasip1/libc.a bundle/sysroot/lib/wasm32-wasip1/
+	@echo "bundle ready: $$(du -sh bundle/sysroot/include | cut -f1) headers + $$(du -sh bundle/sysroot/lib | cut -f1) runtime .a"
+check-cadrum-bundle: bundle bundle-build # #215 feasibility: harvest ./bundle then build the cadrum wasm sample using ONLY clang.exe + ./bundle (NO installed wasi-sysroot). Replaces --sysroot with -nostdinc + explicit -isystem into the bundle, and links the bundled eh runtime .a via rust-lld. Proves the remaining wasi-sdk dependency is just the compiler binary (which #215 ships as clang.wasm). Verify isolation with: make check-cadrum-bundle-isolated
+bundle-build: # the bundle-only build+run itself (assumes ./bundle and ../target's wasm OCCT already exist). Touches only ./bundle + the compiler resource dir, never share/wasi-sysroot — which is what check-cadrum-bundle-isolated exploits.
+	cargo clean
+	OCCT="$$(find $(CURDIR)/../target -maxdepth 1 -type d -name 'occt-*-wasm32_unknown_unknown' | head -1)"; \
+	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make -C .. check-wasm32-unknown-unknown' first"; exit 1; }; \
+	CXXFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 -fwasm-exceptions -fexceptions $(WASI_EMU) -nostdinc -nostdinc++ -isystem $(BUNDLE)/include/wasm32-wasip1/eh/c++/v1 -isystem $(BUNDLE)/include/wasm32-wasip1 -isystem $(RESOURCE)" \
+	CFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 $(WASI_EMU) -nostdinc -isystem $(BUNDLE)/include/wasm32-wasip1 -isystem $(RESOURCE)" \
+	CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-L native=$(BUNDLE)/lib/wasm32-wasip1/eh -L native=$(BUNDLE)/lib/wasm32-wasip1 -l static=c++abi -l static=unwind -l static=c" \
+	OCCT_ROOT="$$OCCT" ../out/bin/wasm-pack build . -d ./target --target web --features cadrum
+	node --experimental-wasm-exnref run_node.mjs
+check-cadrum-bundle-isolated: bundle # the falsifiable proof: harvest the bundle WHILE the sysroot is present, then temporarily hide the installed wasi-sysroot so any leak (a path still read from it) fails bundle-build, then restore.
+	mv $(SYSROOT) $(SYSROOT).hidden
+	$(MAKE) bundle-build; status=$$?; mv $(SYSROOT).hidden $(SYSROOT); exit $$status

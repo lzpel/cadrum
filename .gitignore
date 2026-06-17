@@ -1,5 +1,6 @@
 target/
 out/
+sandbox-wasm/bundle/
 logs/
 linkedin.md
 .venv/
