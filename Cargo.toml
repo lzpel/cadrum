@@ -41,7 +41,7 @@ tar = "0.4"
 walkdir = "2"
 # source feature only: build OCCT from upstream sources
 cmake = { version = "0.1", optional = true }
-# source feature + CADRUM_BUNDLE_GCC_RUNTIME: query the target compiler for libstdc++.a path
+# source feature + CADRUM_BUNDLE_RUNTIME: query the target compiler for libstdc++.a path
 cc = "1"
 
 [dev-dependencies]

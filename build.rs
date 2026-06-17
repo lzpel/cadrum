@@ -34,7 +34,7 @@ fn release_name(target: Option<&str>, has_version: bool) -> String {
 fn main() {
 	println!("cargo:rerun-if-env-changed=OCCT_ROOT");
 	println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_URL");
-	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_GCC_RUNTIME");
+	println!("cargo:rerun-if-env-changed=CADRUM_BUNDLE_RUNTIME");
 
 	if env::var("DOCS_RS").is_ok() {
 		return;
@@ -55,6 +55,14 @@ fn main() {
 		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target), false)));
 
 	let [occt_include, occt_lib_dir] = resolve_occt(&effective_root, &target);
+
+	// Prebuilt tarball 作成時のみ host toolchain runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
+	// gate を切らないと source user 全員のホストランタイムが静的取り込みされてしまう。
+	// 現 policy: mingw / Linux GNU で GCC runtime を対象 (Windows MSVC は MSVC ランタイム、Mac は別系統)。
+	#[cfg(feature = "source")]
+	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
+		bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
+	}
 
 	link_occt_libraries(&occt_include, &occt_lib_dir);
 }
@@ -88,26 +96,23 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 			#[cfg(feature = "source")]
 			{
 				eprintln!("cargo:warning=OCCT cache miss at {} — building from source (this may take 10-30 minutes)", effective_root.display());
-				let dirs = source::build_from_source(effective_root).expect("Failed to build OCCT from source");
-				// Prebuilt tarball 作成時のみ host GCC runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
-				// gate を切らないと source user 全員のホスト libstdc++ が静的取り込みされてしまう。
-				// mingw と Linux GNU で必要 (Windows MSVC は MSVC ランタイム、Mac は別系統)
-				if env::var("CADRUM_BUNDLE_GCC_RUNTIME").is_ok() && (target.ends_with("windows-gnu") || target.contains("linux-gnu")) {
-					bundle_runtime_libs(&dirs[1], &["libstdc++.a", "libgcc.a", "libgcc_eh.a"]);
-				}
-				return dirs;
+				return source::occt_from_source(effective_root).expect(&format!(
+					"\nFailed to build OCCT from source for target `{}`.\n\
+					 Check that a C/C++ toolchain and CMake are installed and on PATH,\n\
+					 then re-run:\n\
+					 \n    cargo build --features source\n",
+					target
+				));
 			}
 			#[cfg(not(feature = "source"))]
 			{
-				return download_prebuilt(effective_root, target).unwrap_or_else(|| {
-					panic!(
-						"\nFailed to download prebuilt OCCT for target `{}`.\n\
-						 See README for the list of supported prebuilt targets, or enable\n\
-						 the `source` feature to build OCCT from upstream sources:\n\
-						 \n    cargo build --features source\n",
-						target
-					)
-				});
+				return occt_from_prebuilt(effective_root, target).expect(&format!(
+					"\nFailed to download prebuilt OCCT for target `{}`.\n\
+					 See README for the list of supported prebuilt targets, or enable\n\
+					 the `source` feature to build OCCT from upstream sources:\n\
+					 \n    cargo build --features source\n",
+					target
+				));
 			}
 		}
 	}
@@ -220,16 +225,17 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
 }
 
-/// Download a prebuilt OCCT tarball for `target` into `dest`.
+/// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.
+/// Paired with `occt_from_source` (selected by the `source` feature) in `resolve_occt`.
 #[cfg(not(feature = "source"))]
-fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
+fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<[PathBuf; 2]> {
 	let top_name = release_name(Some(target), false);
 	let tarball_name = format!("{}.tar.gz", top_name);
 	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None, false), tarball_name));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
 
-	let parent = dest.parent()?;
+	let parent = effective_root.parent()?;
 	std::fs::create_dir_all(parent).ok()?;
 
 	if let Err(e) = download_and_extract_tar_gz(&url, parent) {
@@ -243,15 +249,15 @@ fn download_prebuilt(dest: &Path, target: &str) -> Option<[PathBuf; 2]> {
 		return None;
 	}
 
-	if extracted != *dest {
-		let _ = std::fs::remove_dir_all(dest);
-		if let Err(e) = std::fs::rename(&extracted, dest) {
-			eprintln!("cargo:warning=failed to move extracted OCCT into {}: {}", dest.display(), e);
+	if extracted != *effective_root {
+		let _ = std::fs::remove_dir_all(effective_root);
+		if let Err(e) = std::fs::rename(&extracted, effective_root) {
+			eprintln!("cargo:warning=failed to move extracted OCCT into {}: {}", effective_root.display(), e);
 			return None;
 		}
 	}
 
-	find_occt_dirs(dest)
+	find_occt_dirs(effective_root)
 }
 
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
@@ -271,10 +277,11 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 	}
 }
 
-/// Bundle GCC runtime archives (libstdc++.a / libgcc.a / libgcc_eh.a) into
-/// the OCCT lib dir as `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_GCC_RUNTIME`
-/// only — used by the prebuilt-tarball makefile recipe so end users running
-/// source don't get their host libstdc++ silently bundled.
+/// Bundle host toolchain runtime archives (`libs`) into the OCCT lib dir as
+/// `libcadrum_*.a`. Triggered by `CADRUM_BUNDLE_RUNTIME` only — used by the
+/// prebuilt-tarball makefile recipe so end users running source don't get their
+/// host runtime silently bundled. Current policy bundles GCC runtime
+/// (libstdc++.a / libgcc.a / libgcc_eh.a) for GNU targets; see the call site in `main`.
 #[cfg(feature = "source")]
 fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str]) {
 	let compiler = cc::Build::new().get_compiler();
@@ -301,9 +308,10 @@ mod source {
 	use std::env;
 	use std::path::{Path, PathBuf};
 
-	/// Download OCCT source, patch, build with CMake, then remove non-patched
-	/// source files (LGPL 2.1 §2: keep only the modified files).
-	pub fn build_from_source(effective_root: &Path) -> Option<[PathBuf; 2]> {
+	/// Provide OCCT into `effective_root`: download source, patch, build with CMake,
+	/// then remove non-patched source files (LGPL 2.1 §2: keep only the modified files).
+	/// Paired with `occt_from_prebuilt` (selected by the `source` feature) in `resolve_occt`.
+	pub fn occt_from_source(effective_root: &Path) -> Option<[PathBuf; 2]> {
 		if let Some(dirs) = find_occt_dirs(effective_root) {
 			return Some(dirs);
 		}
