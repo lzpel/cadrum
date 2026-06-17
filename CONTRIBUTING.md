@@ -49,32 +49,13 @@ The project's build, test, and release commands are driven by `make`:
 
 ```sh
 make test     # cargo test (unit + integration + doc tests)
-make deploy   # regenerate examples/markdown output and build the mdbook site
-make publish  # publish to crates.io
+make update   # regenerate codegen/README/markdown output and build the mdbook site
+make publish  # publish to crates.io (for maintainers), including upload releases.
 ```
-
-### Regenerating derived files
-
-When you change `src/traits.rs`, regenerate the inherent-method delegations
-in `src/lib.rs`:
-
-```sh
-cargo run --example codegen -- src/traits.rs src/lib.rs
-```
-
-When you add or modify a numbered example (`examples/NN_*.rs`), regenerate
-the README's `## Examples` section and the mdbook source:
-
-```sh
-cargo run --example markdown -- out/markdown/SUMMARY.md ./README.md
-```
-
-Both regenerators produce deterministic output. Commit the resulting diffs
-together with the source change that motivated them.
 
 ### Before opening a PR
 
-1. `cargo fmt` — keep formatting consistent (`hard_tabs = true`).
-2. `cargo test` — runs unit, integration, and doc tests.
-3. If you touched `src/traits.rs` or `examples/NN_*.rs`, run the relevant
-   regenerator above and commit the diff.
+1. `make update` — formats, then regenerates derived files (`src/lib.rs`
+   delegations from `src/traits.rs`, the README `## Examples` section from
+   the numbered examples). Output is deterministic; commit the resulting diff.
+2. `make test` — runs unit, integration, and doc tests.
