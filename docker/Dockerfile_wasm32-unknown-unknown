@@ -42,6 +42,5 @@ ENV CXXFLAGS_wasm32_unknown_unknown="--target=wasm32-wasip1 --sysroot=${SYSROOT}
 # Final link (rustc) pulls the eh libc++ / libc++abi / libunwind and libc.
 ENV CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-L native=${SYSROOT}/lib/wasm32-wasip1/eh -L native=${SYSROOT}/lib/wasm32-wasip1 -l static=c++abi -l static=unwind -l static=c"
 
-# copy source and build OCCT prebuilt
-WORKDIR /src
-COPY . /src
+# No COPY: source is bind-mounted at `docker run` time (see makefile `cross-%`),
+# keeping this a project-agnostic toolchain image.

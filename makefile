@@ -32,7 +32,7 @@ occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
 	# CADRUM_BUNDLE_RUNTIME=1 で OCCT lib dir に libstdc++.a / libgcc.a / libgcc_eh.a を libcadrum_* として同梱し、ホスト側 GCC との ABI 不整合を回避する (#89 / #147 対策)。
 	# pipefail is required so tee's exit code does not mask a cargo build failure
 	bash -c "set -o pipefail && CADRUM_BUNDLE_RUNTIME=1 cargo build --example 01_primitives --release --features source 2>&1 | tee out/log.txt"
-	find target -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
+	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
 cadrum: generate # output out/libocct-<rev>-<target>-cadrum-<version>.a (wrapper compiled against the RELEASED prebuilt OCCT)
 	# cargo clean wipes any source-built OCCT cache (from `make occt`) so build.rs is
 	# forced down the prebuilt path: it downloads the RELEASED prebuilt OCCT and compiles
@@ -41,11 +41,11 @@ cadrum: generate # output out/libocct-<rev>-<target>-cadrum-<version>.a (wrapper
 	# so does this recipe -- never silently build/stage an archive against a missing/stale OCCT.
 	cargo clean
 	cargo build --example 01_primitives --release
-	find target -name 'libocct-*-cadrum*.a' -exec cp {} out/ \;
-cross-%: # run `make $(GOAL)` for target % inside its Docker cross env (out/<target>/ is the mount). GOAL is required.
+	find $(or $(CARGO_TARGET_DIR),target) -name 'libocct-*-cadrum*.a' -exec cp {} out/ \;
+cross-%: # run `make $(GOAL)` for target % inside its Docker cross env. GOAL is required. Source is bind-mounted at run time (image is a project-agnostic toolchain); CARGO_TARGET_DIR is redirected into the container (/tmp/target) so the build never touches/pollutes the host target/, and outputs still land in out/<target>/.
 	@test -n "$(GOAL)" || { echo "GOAL is required: make cross-$* GOAL=occt|cadrum"; exit 1; }
 	docker build -f docker/Dockerfile_$(*) -t cross-$(*) .
-	docker run --rm -v $(PWD)/out/$(*):/src/out cross-$(*) make $(GOAL)
+	docker run --rm -v $(PWD):/src -w /src -e CARGO_TARGET_DIR=/tmp/target -v $(PWD)/out/$(*):/src/out cross-$(*) make $(GOAL)
 check-%: # validate the cross-built prebuilt OCCT runs on the host (extract -> run example / wasm check)
 	$(MAKE) cross-$* GOAL=occt
 	mkdir -p target

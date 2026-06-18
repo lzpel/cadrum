@@ -35,6 +35,5 @@ ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
 # add cargo target
 RUN rustup target add ${CARGO_BUILD_TARGET}
 
-# copy source and build OCCT prebuilt
-WORKDIR /src
-COPY . /src
+# No COPY: source is bind-mounted at `docker run` time (see makefile `cross-%`),
+# keeping this a project-agnostic toolchain image.
