@@ -86,7 +86,9 @@ when your crate is a binary or a `crate-type = ["cdylib"]` library (a plain `lib
 produces an `.rlib`). Run the output through `wasm-bindgen` / `wasm-pack` for
 browser glue as usual.
 
-### Other targets — build OCCT from source
+### Building for other targets
+
+For a target without a prebuilt OCCT, build OCCT from source:
 
 ```sh
 OCCT_ROOT=/path/to/occt cargo build --features source
