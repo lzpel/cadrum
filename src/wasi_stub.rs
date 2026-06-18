@@ -10,7 +10,8 @@
 //! These replace the former `cpp/wasi_stub.c` (compiled via `cc` and linked
 //! `+whole-archive`). In Rust the symbols live in cadrum's rlib, so they would be
 //! dropped before libc's late references are resolved unless something reachable
-//! pulls them in — that is what [`anchor`] does, invoked from `cadrum::wasm_start!`.
+//! pulls them in — that is what [`anchor`] does, called from the consumer's wasm init
+//! (re-exported as `cadrum::__anchor_wasi_stub`).
 //! `__cxa_atexit` is intentionally NOT defined: libc owns its real definition and a
 //! second one would be a duplicate symbol (cadrum is a cdylib, so static dtors do
 //! not auto-run anyway).

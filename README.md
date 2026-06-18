@@ -53,9 +53,9 @@ Add this to your `Cargo.toml`:
 cadrum = "^0.8"
 ```
 
-`cargo build` automatically downloads a prebuilt OCCT 8.0.0 binary for the targets below.
+`cargo build` automatically downloads a prebuilt OCCT 8.0.0 binary for these targets:
 
-| | Target | Prebuilt |
+| | Target | Prebuilt OCCT |
 |--|--------|----------|
 | ![img](figure/linux.svg) | `x86_64-unknown-linux-gnu` | ✅ |
 | ![img](figure/linux.svg) | `aarch64-unknown-linux-gnu` | ✅ |
@@ -63,20 +63,56 @@ cadrum = "^0.8"
 | ![img](figure/windows.svg) | `x86_64-pc-windows-gnu` | ✅ |
 | ![img](figure/apple.svg) | `aarch64-apple-darwin` | ✅ |
 | ![img](figure/apple.svg) | `x86_64-apple-darwin` | ✅ |
-| ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅ |
+| ![img](figure/wasm.svg) | `wasm32-unknown-unknown` | ✅ (build in [Docker](#building-for-wasm32-unknown-unknown)) |
 
-For other targets, build OCCT from source:
+Native targets build with a plain `cargo build` — no system OpenCASCADE install,
+no C++ toolchain setup. `wasm32-unknown-unknown` additionally needs a wasi-sdk
+C/C++ toolchain to compile cadrum's OCCT wrapper, so build it in Docker (below).
+
+### Building for `wasm32-unknown-unknown`
+
+We ship the wasi-sdk toolchain as a ready-to-use Docker image,
+`ghcr.io/lzpel/cross-wasm32-unknown-unknown` (built from
+[`docker/Dockerfile_wasm32-unknown-unknown`](docker/Dockerfile_wasm32-unknown-unknown))
+— so you don't install wasi-sdk locally. Mount your project and build as usual:
+
+```sh
+docker run --rm -v "$PWD":/work -w /work ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build --release
+# → target/wasm32-unknown-unknown/release/<your-crate>.wasm
+```
+
+The image cross-compiles to `wasm32-unknown-unknown` by default; you get a `.wasm`
+from a binary or a `crate-type = ["cdylib"]` crate (a plain `lib` produces an `.rlib`).
+
+**Code requirement:** run cadrum's wasm init once at startup, before the first cadrum
+call (e.g. from a `#[wasm_bindgen(start)]` function) — otherwise OCCT's C++ constructors
+never run and the call traps:
+
+```rust,ignore
+cadrum::__anchor_wasi_stub();
+unsafe extern "C" {
+    fn __wasm_call_ctors();
+}
+unsafe { __wasm_call_ctors() };
+```
+
+Then run the output through `wasm-bindgen` / `wasm-pack` for browser glue. See
+[`cadrum-wasm-example`](https://github.com/lzpel/cadrum-wasm-example) for a complete setup.
+
+**Runtime requirement:** the module is built with Wasm exception handling
+(`-fwasm-exceptions`, the newer `exnref` encoding), so it needs a runtime that
+supports it — a current browser, or Node run with `--experimental-wasm-exnref`.
+
+### Building for other targets
+
+For a target without a prebuilt OCCT, build OCCT from source:
 
 ```sh
 OCCT_ROOT=/path/to/occt cargo build --features source
 ```
 
-If `OCCT_ROOT` is not set, built binaries are cached under `target/`.
-
-#### Requirements when building OpenCASCADE from source
-
-- C++17 compiler (GCC, Clang, or MSVC)
-- CMake
+If `OCCT_ROOT` is unset, the source build is cached under `target/`. Requires a
+C++17 compiler (GCC, Clang, or MSVC) and CMake.
 
 ## Capabilities
 
