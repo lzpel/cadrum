@@ -72,12 +72,12 @@ C/C++ toolchain to compile cadrum's OCCT wrapper, so build it in Docker (below).
 ### Building for `wasm32-unknown-unknown`
 
 We ship the wasi-sdk toolchain as a ready-to-use Docker image,
-`ghcr.io/lzpel/cadrum-wasm` (built from
+`ghcr.io/lzpel/cross-wasm32-unknown-unknown` (built from
 [`docker/Dockerfile_wasm32-unknown-unknown`](docker/Dockerfile_wasm32-unknown-unknown))
 — so you don't install wasi-sdk locally. Mount your project and build as usual:
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work ghcr.io/lzpel/cadrum-wasm cargo build --release
+docker run --rm -v "$PWD":/work -w /work ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build --release
 # → target/wasm32-unknown-unknown/release/<your-crate>.wasm
 ```
 

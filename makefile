@@ -26,10 +26,10 @@ publish: publish-ready update # publish to crates.io
 	done
 	# publish the wasm cross-build toolchain image (already built above by the
 	# cross-wasm32-unknown-unknown step) so users can run
-	# `docker run ghcr.io/lzpel/cadrum-wasm cargo build` without installing wasi-sdk.
+	# `docker run ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build` without installing wasi-sdk.
 	# Requires a one-time `docker login ghcr.io -u lzpel` beforehand (token cached).
-	docker tag cross-wasm32-unknown-unknown ghcr.io/lzpel/cadrum-wasm:latest
-	docker push ghcr.io/lzpel/cadrum-wasm:latest
+	docker tag cross-wasm32-unknown-unknown ghcr.io/lzpel/cross-wasm32-unknown-unknown:latest
+	docker push ghcr.io/lzpel/cross-wasm32-unknown-unknown:latest
 	# publish the crate sources to crates.io
 	cargo publish
 occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
