@@ -231,8 +231,8 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	build.compile(&release_name(Some(target), true));
 
 	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
-	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
-	// `wasm_start!`), so no separate C stub / `+whole-archive` link is needed here.
+	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored by the
+	// consumer's wasm init via `__anchor_wasi_stub`), so no separate C stub / `+whole-archive` link is needed here.
 
 	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");

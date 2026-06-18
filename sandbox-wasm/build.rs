@@ -38,7 +38,7 @@ fn main() {
 	// libcxx 単独実験は、libc++ の静的初期化(iostream 等)が引きずる wasi_snapshot_preview1
 	// import を no-op スタブで潰す。正常系では実 I/O しない。スタブシンボルは libc.a 処理時に
 	// 初めて undefined になるので whole-archive で確実に取り込む。
-	// cadrum feature は cadrum 本体(src/wasi_stub.rs、wasm_start! でアンカー)が同じスタブを
+	// cadrum feature は cadrum 本体(src/wasi_stub.rs、__anchor_wasi_stub でアンカー)が同じスタブを
 	// 提供するので、ここでは焼かない（焼くとシンボル二重定義でリンクエラー）。
 	let links_libcxx = std::env::var("CARGO_FEATURE_LIBCXX").is_ok();
 	if links_libcxx {

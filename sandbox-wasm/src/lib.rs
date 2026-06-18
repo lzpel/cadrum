@@ -45,6 +45,16 @@ pub fn print_volume() -> String {
 	format!("Solid volume: {}", volume())
 }
 
-// Run OCCT's C++ global constructors at init (wasm-bindgen start shim). See cadrum::wasm_start!.
-#[cfg(feature = "cadrum")]
-cadrum::wasm_start!();
+// Run OCCT's C++ global constructors + anchor cadrum's WASI shims at init.
+// wasm32-unknown-unknown cdylibs link with --no-entry, so the ctors that
+// initialize OCCT's type tables aren't run automatically; without this the
+// first OCCT call traps.
+#[cfg(all(feature = "cadrum", target_arch = "wasm32"))]
+#[wasm_bindgen(start)]
+fn start() {
+	cadrum::__anchor_wasi_stub();
+	unsafe extern "C" {
+		fn __wasm_call_ctors();
+	}
+	unsafe { __wasm_call_ctors() };
+}
