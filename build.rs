@@ -213,22 +213,29 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	// If a prebuilt FFI archive matching this target + crate version is published on the
+	// release, link it instead of compiling the wrapper. The archive bundles the cxx glue
+	// (`ffi.rs.o`) and `wrapper.o`, so the consumer needs no C++ toolchain — in particular
+	// wasm builds need no wasi-sdk/clang (the final link is rust-lld). Falls back to a local
+	// compile when the asset is absent (e.g. native targets ship no FFI .a) or under `source`.
+	if !link_prebuilt_ffi(target) {
+		let mut build = cxx_build::bridge("src/occt/ffi.rs");
+		build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
-	apply_compiler_flags(|s| {
-		build.flag(s);
-	});
+		apply_compiler_flags(|s| {
+			build.flag(s);
+		});
 
-	#[cfg(feature = "color")]
-	build.define("CADRUM_COLOR", None);
+		#[cfg(feature = "color")]
+		build.define("CADRUM_COLOR", None);
 
-	// Name the FFI archive after `release_name(target, true)` so the produced
-	// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
-	// `cadrum` recipe locates it for the GitHub Release upload) and shares one
-	// naming authority with the download URL. cc auto-emits the matching
-	// `rustc-link-lib=static=<name>`, so local linking stays consistent.
-	build.compile(&release_name(Some(target), true));
+		// Name the FFI archive after `release_name(target, true)` so the produced
+		// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
+		// `cadrum` recipe locates it for the GitHub Release upload) and shares one
+		// naming authority with the download URL. cc auto-emits the matching
+		// `rustc-link-lib=static=<name>`, so local linking stays consistent.
+		build.compile(&release_name(Some(target), true));
+	}
 
 	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
@@ -237,6 +244,54 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
+	println!("cargo:rerun-if-env-changed=CADRUM_FFI_URL");
+}
+
+/// Try to download and link the prebuilt FFI archive `lib<release_name(target,true)>.a`
+/// from the GitHub release. Returns `true` if it was linked (so the caller skips compiling
+/// the wrapper), `false` to fall back to a local cxx-build.
+///
+/// The archive name carries the crate version, so it only matches when the published asset
+/// was built from this exact cadrum version (keeping the cxx-bridge ABI consistent). A 404
+/// returns GitHub's HTML error page, which fails the `ar` magic check below — that is the
+/// "does the release asset exist?" test (no per-target guard needed). The OCCT static libs
+/// are still provided separately by `resolve_occt`; this only replaces the wrapper compile.
+#[cfg(feature = "source")]
+fn link_prebuilt_ffi(_target: &str) -> bool {
+	// `source` means "build everything from upstream sources" — always compile the wrapper.
+	false
+}
+
+#[cfg(not(feature = "source"))]
+fn link_prebuilt_ffi(target: &str) -> bool {
+	let archive = format!("lib{}.a", release_name(Some(target), true));
+	let url = env::var("CADRUM_FFI_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None, false), archive));
+
+	let bytes = match fetch_bytes(&url) {
+		Ok(b) => b,
+		Err(e) => {
+			eprintln!("cargo:warning=prebuilt FFI unavailable ({}); compiling wrapper locally: {}", archive, e);
+			return false;
+		}
+	};
+
+	// GitHub serves an HTML page for a missing asset; a real archive starts with the ar magic.
+	if !bytes.starts_with(b"!<arch>\n") {
+		eprintln!("cargo:warning=prebuilt FFI {} not found on release; compiling wrapper locally", archive);
+		return false;
+	}
+
+	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+	let dest = out_dir.join(&archive);
+	if let Err(e) = std::fs::write(&dest, &bytes) {
+		eprintln!("cargo:warning=failed to write prebuilt FFI to {}: {}; compiling wrapper locally", dest.display(), e);
+		return false;
+	}
+
+	eprintln!("cargo:warning=Using prebuilt FFI archive {}", url);
+	println!("cargo:rustc-link-search=native={}", out_dir.display());
+	println!("cargo:rustc-link-lib=static={}", release_name(Some(target), true));
+	true
 }
 
 /// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.
