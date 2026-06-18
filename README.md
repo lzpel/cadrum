@@ -84,11 +84,13 @@ docker run --rm -v "$PWD":/work -w /work ghcr.io/lzpel/cross-wasm32-unknown-unkn
 The image cross-compiles to `wasm32-unknown-unknown` by default; you get a `.wasm`
 from a binary or a `crate-type = ["cdylib"]` crate (a plain `lib` produces an `.rlib`).
 
-**Required for cadrum on wasm:** call `cadrum::wasm_start!()` once at your crate root
-(your crate must depend on `wasm-bindgen`). It emits a `#[wasm_bindgen(start)]` shim
-that runs OCCT's C++ global constructors and anchors cadrum's WASI import shims —
-without it the module compiles but traps on the first OCCT call, because
-`wasm32-unknown-unknown` cdylibs don't auto-run constructors. Then process the output
+**Required for cadrum on wasm:** initialize OCCT before the first call.
+`wasm32-unknown-unknown` cdylibs link with `--no-entry`, so OCCT's C++ global
+constructors aren't run automatically (the first OCCT call otherwise traps), and
+cadrum's WASI import shims must be anchored. Either call `cadrum::wasm_start!()` once at
+your crate root (convenient — emits a `#[wasm_bindgen(start)]` shim, so your crate needs
+`wasm-bindgen`), or, if you already define your own start, do it manually with
+`cadrum::__anchor_wasi_stub()` followed by `__wasm_call_ctors()`. Then process the output
 with `wasm-bindgen` / `wasm-pack` for browser glue. See
 [`cadrum-wasm-example`](https://github.com/lzpel/cadrum-wasm-example) for a complete setup.
 
