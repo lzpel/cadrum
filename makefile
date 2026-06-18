@@ -1,8 +1,4 @@
 PATH_DOCS=out/markdown
-# Cargo's build dir. Defaults to `target`; the `cross-%` Docker recipe overrides it
-# (via `docker run -e`) to an in-container path so a bind-mounted source tree's build
-# stays isolated from the host `target/`. Recipes that locate build outputs use this var.
-CARGO_TARGET_DIR ?= target
 generate: # prepare for deploy
 	mkdir -p out
 	find . -maxdepth 1 -name .gitignore | xargs -IX sed '/^#\s*EOF_DOCKERIGNORE.*/q' X > .dockerignore
@@ -35,7 +31,7 @@ occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
 	# CADRUM_BUNDLE_RUNTIME=1 で OCCT lib dir に libstdc++.a / libgcc.a / libgcc_eh.a を libcadrum_* として同梱し、ホスト側 GCC との ABI 不整合を回避する (#89 / #147 対策)。
 	# pipefail is required so tee's exit code does not mask a cargo build failure
 	bash -c "set -o pipefail && CADRUM_BUNDLE_RUNTIME=1 cargo build --example 01_primitives --release --features source 2>&1 | tee out/log.txt"
-	find $(CARGO_TARGET_DIR) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
+	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
 cadrum: generate # output out/libocct-<rev>-<target>-cadrum-<version>.a (wrapper compiled against the RELEASED prebuilt OCCT)
 	# cargo clean wipes any source-built OCCT cache (from `make occt`) so build.rs is
 	# forced down the prebuilt path: it downloads the RELEASED prebuilt OCCT and compiles
@@ -44,7 +40,7 @@ cadrum: generate # output out/libocct-<rev>-<target>-cadrum-<version>.a (wrapper
 	# so does this recipe -- never silently build/stage an archive against a missing/stale OCCT.
 	cargo clean
 	cargo build --example 01_primitives --release
-	find $(CARGO_TARGET_DIR) -name 'libocct-*-cadrum*.a' -exec cp {} out/ \;
+	find $(or $(CARGO_TARGET_DIR),target) -name 'libocct-*-cadrum*.a' -exec cp {} out/ \;
 cross-%: # run `make $(GOAL)` for target % inside its Docker cross env. GOAL is required. Source is bind-mounted at run time (image is a project-agnostic toolchain); CARGO_TARGET_DIR is redirected into the container (/tmp/target) so the build never touches/pollutes the host target/, and outputs still land in out/<target>/.
 	@test -n "$(GOAL)" || { echo "GOAL is required: make cross-$* GOAL=occt|cadrum"; exit 1; }
 	docker build -f docker/Dockerfile_$(*) -t cross-$(*) .
