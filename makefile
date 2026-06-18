@@ -17,13 +17,8 @@ publish-ready: # guard: HEAD must be on main and match remote main's tip
 	gh api repos/lzpel/cadrum/commits/main --jq .sha | grep -q $(shell git rev-parse --short HEAD) # latest
 	cargo publish --dry-run # not-durty
 publish: publish-ready update # publish to crates.io
-	# build the wasm prebuilt FFI wrapper .a (consumer-side download code is TBD)
+	# build (and wasm-smoke-test) the cross-wasm32-unknown-unknown image published below
 	$(MAKE) cross-wasm32-unknown-unknown GOAL=cadrum
-	# upload to the EXISTING OCCT release (tag = occt-<rev>, derived from the .a name); fails if the release is absent
-	find out/wasm32-unknown-unknown -maxdepth 1 -name 'libocct-*-cadrum*.a' | while read -r f; do \
-		tag=$$(basename "$$f" .a | sed 's/^lib//' | cut -d- -f1,2); \
-		gh release upload "$$tag" "$$f" --clobber; \
-	done
 	# publish the wasm cross-build toolchain image (already built above by the
 	# cross-wasm32-unknown-unknown step) so users can run
 	# `docker run ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build` without installing wasi-sdk.
