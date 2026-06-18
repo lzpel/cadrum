@@ -1,20 +1,27 @@
 # Prebuild OCCT for wasm32-unknown-unknown via the Linux wasi-sdk (clang + wasi-sysroot).
 #
-# manylinux_2_28 ships gcc (C++17 capable), cmake, make, curl, and git out of the
-# box. Rust is NOT bundled, so we install it via rustup.
-#
 # The wasm output is produced by the wasi-sdk clang, so the host image is
-# irrelevant to the result. HOST build-dependencies use the image's gcc; the
-# wasm TARGET (OCCT cmake + cxx-build) uses the wasi-sdk clang found first on PATH.
+# irrelevant to the result: nothing built against the host glibc is shipped (only
+# the .wasm / OCCT static libraries are), so we use the small debian-slim base
+# rather than manylinux. HOST build-dependencies use the image's gcc; the wasm
+# TARGET (OCCT cmake + cxx-build) uses the wasi-sdk clang found first on PATH.
 # The example .wasm cannot run here; the `occt` make target tolerates that via `... | tee`,
 # then tarballs the OCCT static libraries.
-FROM quay.io/pypa/manylinux_2_28_x86_64
+FROM debian:bookworm-slim
+
+# Tools manylinux used to bundle (gcc/g++ C++17 capable, cmake, make, curl) and
+# that this build needs; find/xargs/tar/sed/bash already ship in the base image.
+# ca-certificates is required for the https downloads below (wasi-sdk, rustup,
+# and the OCCT source tarball fetched by build.rs). git is intentionally omitted:
+# there are no git dependencies and OCCT sources arrive as a tarball.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates make cmake \
+    gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # wasi-sdk (Linux): clang + prebuilt wasi-sysroot (libc / libc++, eh & noeh variants).
 # Rename the tarball's top dir to /wasi-sdk. The S/H flags keep the transform from
 # also rewriting sym/hardlink targets (e.g. bin/clang -> clang-22), which would break them.
-# NOTE: manylinux already ships a non-wasm clang at /opt/clang/bin, so /wasi-sdk/bin must
-# come first on PATH AND resolve correctly.
 RUN curl -L https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz | tar xzv --transform="s,^[^/]+,/wasi-sdk,xSH"
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal

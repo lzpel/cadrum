@@ -8,7 +8,7 @@ FROM debian:bookworm-slim
 # gcc/g++: HOST compiler for build-dependencies (aws-lc-rs, ring, etc.)
 # gcc-mingw-w64-*: TARGET cross-compiler for OCCT and cxx-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git make cmake \
+    curl ca-certificates make cmake \
     gcc g++ \
     gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
     && update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix \
