@@ -1,12 +1,12 @@
 # emscripten-standalone clang.wasm 検証環境（#220 / #215 approach 2）。
 # ubuntu + emsdk(emcc) + wasmtime + wasm 検査ツール + cmake/ninja。
 # LLVM ソースは巨大なのでイメージに焼かず、build-clang-wasm.sh が /work 配下へ clone する
-# （/work はホストの out/emscripten-clang を mount する想定）。
+# （/work はホストの out/wasm-clang を mount する想定）。
 #
 # 使い方（リポジトリ root）:
-#   docker build -f docker/Dockerfile_emscripten-clang -t emcc-clang .
-#   docker run --rm -v "$PWD:/src" -v "$PWD/out/emscripten-clang:/work" emcc-clang \
-#       bash /src/docker/emscripten-clang/gate0.sh
+#   docker build -f docker/Dockerfile_wasm-clang -t wasm-clang .
+#   docker run --rm -v "$PWD:/src" -v "$PWD/out/wasm-clang:/work" wasm-clang \
+#       bash /src/docker/wasm-clang/gate0.sh
 FROM ubuntu:24.04
 
 ARG EMSDK_VERSION=latest

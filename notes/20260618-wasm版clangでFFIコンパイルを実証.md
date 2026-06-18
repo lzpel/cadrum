@@ -76,20 +76,20 @@ PR #210 の native wasi-sdk-33 clang(22.1.0) 実測値と突き合わせた:
 
 ## 成果物（再現用）
 
-`docker/Dockerfile_emscripten-clang` ＋ `docker/emscripten-clang/`:
+`docker/Dockerfile_wasm-clang` ＋ `docker/wasm-clang/`:
 - `gate0.sh` ＋ `gate0_min_fs.c` / `gate0_tar_io.c` — GATE 0
 - `build-clang-wasm.sh` — LLVM/clang を smoke/full でビルド（llvmorg-22.1.0 を /work に clone）
 - `embed_data.c` — #embed blob を WASMFS へ展開する constructor ＋ 出力 hex 化 destructor
 - `pack.py` — 入力を blob 化（`<path>\t<size>\n<data>` 連結）
 - `compile-ffi.sh` — GATE C 一式
 
-再現（リポジトリ root、要 docker。ビルドツリー/巨大成果物は `out/emscripten-clang/`=gitignore）:
+再現（リポジトリ root、要 docker。ビルドツリー/巨大成果物は `out/wasm-clang/`=gitignore）:
 ```sh
-docker build -t emcc-clang - < docker/Dockerfile_emscripten-clang
-R="-v $PWD:/src -v $PWD/out/emscripten-clang:/work"
-docker run --rm $R emcc-clang bash /src/docker/emscripten-clang/gate0.sh            # GATE 0
-docker run --rm $R emcc-clang bash /src/docker/emscripten-clang/build-clang-wasm.sh full   # clang.wasm（数時間）
-docker run --rm $R emcc-clang bash /src/docker/emscripten-clang/compile-ffi.sh      # GATE C: wrapper.o 生成
+docker build -t wasm-clang - < docker/Dockerfile_wasm-clang
+R="-v $PWD:/src -v $PWD/out/wasm-clang:/work"
+docker run --rm $R wasm-clang bash /src/docker/wasm-clang/gate0.sh            # GATE 0
+docker run --rm $R wasm-clang bash /src/docker/wasm-clang/build-clang-wasm.sh full   # clang.wasm（数時間）
+docker run --rm $R wasm-clang bash /src/docker/wasm-clang/compile-ffi.sh      # GATE C: wrapper.o 生成
 ```
 ※ GATE C は OCCT prebuilt を `target/occt-…-wasm32_unknown_unknown` に、sysroot を `sandbox-wasm/bundle` に、
 cxx glue を sandbox-wasm の release ビルドで用意しておくこと（#215 の手順）。

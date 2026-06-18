@@ -13,7 +13,7 @@ source /opt/emsdk/emsdk_env.sh >/dev/null 2>&1 || true
 
 SRC=/src
 EMB=/work/build-emcc
-HERE="$SRC/docker/emscripten-clang"
+HERE="$SRC/docker/wasm-clang"
 LLVMNM=/opt/emsdk/upstream/bin/llvm-nm
 OBJDUMP=/opt/emsdk/upstream/bin/llvm-objdump
 WT="wasmtime run -W exceptions=y -W function-references=y -W gc=y"

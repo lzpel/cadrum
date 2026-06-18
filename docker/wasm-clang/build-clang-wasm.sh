@@ -5,7 +5,7 @@
 #                 emscripten musl で改変なしに通るかの fail-fast ゲート）
 #   stage=full  : 上に加えて clang 本体をリンクし clang.wasm を得る（数時間）
 #
-# 成果物・ビルドツリーは /work（ホスト out/emscripten-clang を mount）配下に置き再開可能にする。
+# 成果物・ビルドツリーは /work（ホスト out/wasm-clang を mount）配下に置き再開可能にする。
 set -euo pipefail
 source /opt/emsdk/emsdk_env.sh >/dev/null 2>&1 || true
 
