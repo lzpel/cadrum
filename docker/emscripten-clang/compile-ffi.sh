@@ -85,6 +85,8 @@ if [ "$rc" -eq 0 ] && [ "$MAGIC" = "0061736d" ]; then
     echo "--- defined text symbols (sample) ---"
     "$LLVMNM" /work/wrapper.o 2>&1 | grep -iE ' [TtWw] ' | head -10 || true
     echo "--- symbol count ---"; "$LLVMNM" /work/wrapper.o 2>&1 | wc -l
+    # 既存 .a を消してから作る（/work 永続なので ar 追記で同一オブジェクトが二重格納されるのを防ぐ）。
+    rm -f /work/libcadrum_ffi_wasmclang.a
     ( cd /work && /opt/emsdk/upstream/bin/llvm-ar rcs libcadrum_ffi_wasmclang.a wrapper.o )
     echo "archived: $(stat -c %s /work/libcadrum_ffi_wasmclang.a) bytes"
     echo "##### GATE C PASS: clang.wasm compiled cadrum FFI wrapper.cpp -> valid wasm32 object under bare wasmtime #####"

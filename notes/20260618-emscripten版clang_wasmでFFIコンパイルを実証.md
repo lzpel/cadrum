@@ -59,6 +59,21 @@ clang.wasm へどう入力を渡すかが鍵。standalone WASMFS の制約を順
   3. **destructor が `/tmp/cadrum_out.o` を hex で stdout に吐く**（hex は 0x00 を含まず安全）→ ホストで `xxd -r -p` 復元。
 - 結果 = 上記「結論」のとおり **valid な exnref wasm32 オブジェクト**。
 
+## 出力サイズの実測（#210 と一致 ＝ native clang とバイト等価）
+
+同じ clang.wasm（ヘッダ焼き込み済み）で最適化レベルだけ変えて `wrapper.cpp` を再コンパイルし、
+PR #210 の native wasi-sdk-33 clang(22.1.0) 実測値と突き合わせた:
+
+| 最適化 | 私の clang.wasm 出力 `wrapper.o` | #210（native clang） | 差 |
+|---|---:|---:|---:|
+| `-O0` | 1,001,976 B | 1,002,358 B（debug + strip-debug） | 382 B |
+| **`-Os`** | **311,398 B** | **311,511 B（release）** | **113 B（0.04%）** |
+| `-O2` | 350,326 B | — | — |
+
+- **`-Os` で #210 release に 113 バイト差（0.04%）で一致** → 「コンパイラがどのホスト(emscripten/native)で動くかは出力に無関係」（#219 の主張）を**実測で確認**。113B 差は producers セクション等の些末差。
+- GATE C は検証目的で `-O` を渡しておらず既定 `-O0` だった（だから素のオブジェクトは #210 debug-strip 相当の ~1MB）。productionization 時は cadrum の release 相当 `-Os`（cc-rs が `opt-level="s"` を翻訳して付与）で ~0.31MB に収束する。
+- 注意（harness の作り込み）: `compile-ffi.sh` は `llvm-ar` を `/work`（永続）上で回すため、**過去スクリプト版の残骸メンバー（`wrapper.o.keep`）が `.a` に二重格納され `.a` が約2倍に水増し**されることがある。実体は単一オブジェクト。ar 前に `rm -f *.a` するのが正。
+
 ## 成果物（再現用）
 
 `docker/Dockerfile_emscripten-clang` ＋ `docker/emscripten-clang/`:
