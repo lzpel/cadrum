@@ -92,6 +92,10 @@ without it the module compiles but traps on the first OCCT call, because
 with `wasm-bindgen` / `wasm-pack` for browser glue. See
 [`cadrum-wasm-example`](https://github.com/lzpel/cadrum-wasm-example) for a complete setup.
 
+**Runtime requirement:** the module is built with Wasm exception handling
+(`-fwasm-exceptions`, the newer `exnref` encoding), so it needs a runtime that
+supports it — a current browser, or Node run with `--experimental-wasm-exnref`.
+
 ### Building for other targets
 
 For a target without a prebuilt OCCT, build OCCT from source:
