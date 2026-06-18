@@ -541,6 +541,26 @@ mod source {
 			// ため空ファイル化（Windows 以外ではコンパイルされず無害）。
 			"OSD_WNT.cxx" => Some(stub_content(path, false)),
 
+			// OCC_CONVERT_SIGNALS(signal→例外変換) を全 target で無効化。OSD_signal スタブ化と整合。
+			//
+			// このアームは「dead」ではなく実際に生きている: occt_defs_flags.cmake は OCCT 8.0.0 に
+			// 存在し `add_definitions(-DOCC_CONVERT_SIGNALS)` を含むため、ここで実際にコメントアウトされる。
+			// #209 はこれを dead と判断して削除したが、検証が wasm のみで、windows-gnu (mingw) ビルドでは
+			// 経路が生きていた。外すと OCCT が setjmp/longjmp ベースの Standard_ErrorHandler を使い、
+			// mingw 新版が廃止した `_setjmp` への未定義参照が出てリンク不能になる (rev3 の windows-gnu 回帰)。
+			"occt_defs_flags.cmake" => {
+				let content = std::fs::read_to_string(path).ok()?;
+				let needle = "add_definitions(-DOCC_CONVERT_SIGNALS)";
+				let replacement = "# add_definitions(-DOCC_CONVERT_SIGNALS)  # patched out by cadrum build.rs";
+				if content.contains(needle) {
+					Some(content.replace(needle, replacement))
+				} else if content.contains(replacement) {
+					Some(content) // already patched — keep as-is
+				} else {
+					None
+				}
+			}
+
 			_ => None,
 		}
 	}
