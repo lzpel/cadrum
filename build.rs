@@ -213,22 +213,35 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	// rustc-only path: if a pre-built FFI archive is supplied — e.g. produced by the
+	// `clang-wasm` crate running a wasm clang in-process via wasmtime — link it and skip
+	// cxx_build's C++ compile entirely. No wasi-sdk / C++ toolchain is invoked. The archive
+	// must be named `lib<release_name(target,true)>.a` in the directory of the given path.
+	if let Ok(prebuilt) = env::var("CADRUM_PREBUILT_FFI") {
+		let dir = std::path::Path::new(&prebuilt)
+			.parent()
+			.expect("CADRUM_PREBUILT_FFI must be a path to lib<release_name>.a");
+		println!("cargo:rustc-link-search=native={}", dir.display());
+		println!("cargo:rustc-link-lib=static={}", release_name(Some(target), true));
+		println!("cargo:rerun-if-env-changed=CADRUM_PREBUILT_FFI");
+	} else {
+		let mut build = cxx_build::bridge("src/occt/ffi.rs");
+		build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
-	apply_compiler_flags(|s| {
-		build.flag(s);
-	});
+		apply_compiler_flags(|s| {
+			build.flag(s);
+		});
 
-	#[cfg(feature = "color")]
-	build.define("CADRUM_COLOR", None);
+		#[cfg(feature = "color")]
+		build.define("CADRUM_COLOR", None);
 
-	// Name the FFI archive after `release_name(target, true)` so the produced
-	// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
-	// `cadrum` recipe locates it for the GitHub Release upload) and shares one
-	// naming authority with the download URL. cc auto-emits the matching
-	// `rustc-link-lib=static=<name>`, so local linking stays consistent.
-	build.compile(&release_name(Some(target), true));
+		// Name the FFI archive after `release_name(target, true)` so the produced
+		// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
+		// `cadrum` recipe locates it for the GitHub Release upload) and shares one
+		// naming authority with the download URL. cc auto-emits the matching
+		// `rustc-link-lib=static=<name>`, so local linking stays consistent.
+		build.compile(&release_name(Some(target), true));
+	}
 
 	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored via
