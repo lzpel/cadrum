@@ -213,8 +213,8 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	let mut build = cc::Build::new();
+	build.cpp(true).file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
 	apply_compiler_flags(|s| {
 		build.flag(s);
@@ -234,7 +234,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored by the
 	// consumer's wasm init via `__anchor_wasi_stub`), so no separate C stub / `+whole-archive` link is needed here.
 
-	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
+	println!("cargo:rerun-if-changed=cpp/ffi.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
 }
