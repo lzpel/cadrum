@@ -43,7 +43,7 @@ fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, us
 #[cfg(feature = "color")]
 fn resolve_color_trailer(inner: &ffi::TopoDS_Shape, index_colormap: &std::collections::HashMap<u64, Color>) -> std::collections::HashMap<u64, Color> {
 	let faces = ffi::shape_faces(inner);
-	let index_to_id: Vec<u64> = faces.iter().map(ffi::face_tshape_id).collect();
+	let index_to_id: Vec<u64> = faces.iter().map(|f| ffi::face_tshape_id(f)).collect();
 	index_colormap.iter().filter_map(|(&idx, &color)| index_to_id.get(idx as usize).map(|&id| (id, color))).collect()
 }
 
@@ -112,7 +112,7 @@ pub(super) fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Erro
 /// Shared body for BRep binary/text reads. The two variants differ only in
 /// which FFI stream parser they call; everything else (color trailer handling,
 /// null check, decompose) is identical.
-fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> cxx::UniquePtr<ffi::TopoDS_Shape>) -> Result<Vec<Solid>, Error> {
+fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> ffi::Owned<ffi::TopoDS_Shape>) -> Result<Vec<Solid>, Error> {
 	#[cfg(feature = "color")]
 	{
 		let mut buf = Vec::new();

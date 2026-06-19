@@ -7,7 +7,7 @@ use crate::common::color::Color;
 ///
 /// Provides type-safe distinction from individual `Solid` handles.
 pub(crate) struct CompoundShape {
-	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
+	inner: ffi::Owned<ffi::TopoDS_Shape>,
 	#[cfg(feature = "color")]
 	colormap: std::collections::HashMap<u64, Color>,
 	history: Vec<u64>,
@@ -24,7 +24,7 @@ impl CompoundShape {
 		#[cfg(feature = "color")]
 		let mut colormap = std::collections::HashMap::new();
 		for s in solids {
-			ffi::compound_add(inner.pin_mut(), s.inner());
+			ffi::compound_add(&mut inner, s.inner());
 			#[cfg(feature = "color")]
 			colormap.extend(s.colormap().iter().map(|(&k, &v)| (k, v)));
 		}
@@ -37,7 +37,7 @@ impl CompoundShape {
 	}
 
 	/// Create a compound from a raw `TopoDS_Shape` (e.g. from I/O or boolean ops).
-	pub fn from_raw(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, Color>, history: Vec<u64>) -> Self {
+	pub fn from_raw(inner: ffi::Owned<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, Color>, history: Vec<u64>) -> Self {
 		CompoundShape {
 			inner,
 			#[cfg(feature = "color")]
@@ -63,12 +63,11 @@ impl CompoundShape {
 	/// is harmless because `iter_history()` consumers filter pairs by checking
 	/// `src_id` against the original input's face IDs.
 	pub fn decompose(self) -> Vec<Solid> {
-		let solid_shapes = ffi::decompose_into_solids(&self.inner);
-		solid_shapes
-			.iter()
-			.map(|s| {
+		ffi::decompose_into_solids(&self.inner)
+			.into_iter()
+			.map(|owned| {
 				Solid::new(
-					ffi::clone_shape_handle(s),
+					owned,
 					#[cfg(feature = "color")]
 					self.colormap.clone(),
 					self.history.clone(),

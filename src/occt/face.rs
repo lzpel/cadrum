@@ -11,13 +11,13 @@ use std::sync::OnceLock;
 /// are constructed fresh each time the parent solid's face cache is built, so
 /// the OnceLock matches the lifetime of the enclosing `Vec<Face>`.
 pub struct Face {
-	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Face>,
+	pub(crate) inner: ffi::Owned<ffi::TopoDS_Face>,
 	edges: OnceLock<Vec<Edge>>,
 }
 
 impl Face {
 	/// Create a Face wrapping a `TopoDS_Face`.
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Face>) -> Self {
+	pub(crate) fn new(inner: ffi::Owned<ffi::TopoDS_Face>) -> Self {
 		Face { inner, edges: OnceLock::new() }
 	}
 }
@@ -39,16 +39,6 @@ impl FaceStruct for Face {
 	}
 
 	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
-		self.edges
-			.get_or_init(|| {
-				ffi::face_edges(&self.inner)
-					.iter()
-					.map(|e_ref| {
-						let owned = ffi::clone_edge_handle(e_ref);
-						Edge::try_from_ffi(owned, "face_edges: null".into()).expect("face_edges: unexpected null (this is a bug)")
-					})
-					.collect()
-			})
-			.iter()
+		self.edges.get_or_init(|| ffi::face_edges(&self.inner).into_iter().map(|owned| Edge::try_from_ffi(owned, "face_edges: null".into()).expect("face_edges: unexpected null (this is a bug)")).collect()).iter()
 	}
 }
