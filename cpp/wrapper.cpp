@@ -1,4 +1,4 @@
-#include "cadrum/src/occt/ffi.rs.h"
+#include "wrapper.h"
 
 // ==================== OCCT headers (impl only — not exposed via wrapper.h) ====================
 //
@@ -109,6 +109,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <cstdlib>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -134,9 +135,7 @@ static const int _silence_occt_default_printer = []() {
 // ==================== RustReadStreambuf ====================
 
 std::streambuf::int_type RustReadStreambuf::underflow() {
-    rust::Slice<uint8_t> slice(
-        reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
-    size_t n = rust_reader_read(reader_, slice);
+    size_t n = reader_.read(reader_.ctx, reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
     if (n == 0) return traits_type::eof();
     setg(buf_, buf_, buf_ + n);
     return traits_type::to_int_type(*gptr());
@@ -179,9 +178,7 @@ int RustWriteStreambuf::sync() {
 
 bool RustWriteStreambuf::flush_buf() {
     if (pos_ == 0) return true;
-    rust::Slice<const uint8_t> slice(
-        reinterpret_cast<const uint8_t*>(buf_), pos_);
-    size_t n = rust_writer_write(writer_, slice);
+    size_t n = writer_.write(writer_.ctx, reinterpret_cast<const uint8_t*>(buf_), pos_);
     if (n < pos_) return false;
     pos_ = 0;
     return true;
@@ -198,7 +195,7 @@ std::streambuf::pos_type RustWriteStreambuf::seekpos(pos_type, std::ios_base::op
 // With color, STEP routes through XCAF (`read_step_color_stream` /
 // `write_step_color_stream`) instead.
 
-std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader) {
+std::unique_ptr<TopoDS_Shape> read_step_stream(const CReader& reader) {
     RustReadStreambuf sbuf(reader);
     std::istream is(&sbuf);
 
@@ -220,7 +217,7 @@ std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader) {
         try_sew_orphan_faces(step_reader->OneShape(), nullptr));
 }
 
-bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+bool write_step_stream(const TopoDS_Shape& shape, const CWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
     STEPControl_Writer step_writer;
@@ -231,7 +228,7 @@ bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
 }
 #endif // !CADRUM_COLOR
 
-std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader) {
+std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(const CReader& reader) {
     // BinTools::Read requires a seekable stream: the binary format stores
     // backward references (offsets) for shared sub-shapes and seeks to them.
     // Our RustReadStreambuf is sequential only, so buffer everything in
@@ -239,8 +236,7 @@ std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader) {
     std::string data;
     char buf[8192];
     for (;;) {
-        rust::Slice<uint8_t> slice(reinterpret_cast<uint8_t*>(buf), sizeof(buf));
-        size_t n = rust_reader_read(reader, slice);
+        size_t n = reader.read(reader.ctx, reinterpret_cast<uint8_t*>(buf), sizeof(buf));
         if (n == 0) break;
         data.append(buf, n);
     }
@@ -259,7 +255,7 @@ std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader) {
     return shape;
 }
 
-bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+bool write_brep_bin_stream(const TopoDS_Shape& shape, const CWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
     try {
@@ -270,7 +266,7 @@ bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer) {
     return os.good();
 }
 
-std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader) {
+std::unique_ptr<TopoDS_Shape> read_brep_text_stream(const CReader& reader) {
     RustReadStreambuf sbuf(reader);
     std::istream is(&sbuf);
 
@@ -288,7 +284,7 @@ std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader) {
     return shape;
 }
 
-bool write_brep_text_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+bool write_brep_text_stream(const TopoDS_Shape& shape, const CWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
     try {
@@ -566,7 +562,7 @@ static void relay_from_pair(
 static void relay_into_history(
     const std::unordered_map<uint64_t, uint64_t>* relay1,
     const std::unordered_map<uint64_t, uint64_t>* relay2,
-    rust::Vec<uint64_t>& out)
+    std::vector<uint64_t>& out)
 {
     if (relay2 == nullptr) {
         for (const auto& kv : *relay1) {
@@ -587,8 +583,8 @@ static void relay_into_history(
 // 1 回の Perform() で全交差を計算し、clause ごとに AddToResult を呼ぶ。
 std::unique_ptr<TopoDS_Shape> builder_cells(
     const std::vector<TopoDS_Shape>& solids,
-    rust::Slice<const int64_t> clauses,
-    rust::Vec<uint64_t>& out_history)
+    const std::vector<int64_t>& clauses,
+    std::vector<uint64_t>& out_history)
 {
     try {
         if (solids.empty() || clauses.size() == 0) return nullptr;
@@ -652,7 +648,7 @@ std::unique_ptr<TopoDS_Shape> builder_cells(
 // `builder_boolean`'s history.
 std::unique_ptr<TopoDS_Shape> builder_clean(
     const TopoDS_Shape& shape,
-    rust::Vec<uint64_t>& out_history)
+    std::vector<uint64_t>& out_history)
 {
     try {
         ShapeUpgrade_UnifySameDomain unifier(shape, true, true, true);
@@ -945,14 +941,6 @@ std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape) {
     return std::make_unique<TopoDS_Shape>(shape);
 }
 
-std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge) {
-    return std::make_unique<TopoDS_Edge>(edge);
-}
-
-std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face) {
-    return std::make_unique<TopoDS_Face>(face);
-}
-
 // ==================== Face Methods ====================
 
 uint64_t face_tshape_id(const TopoDS_Face& face) {
@@ -1024,10 +1012,10 @@ bool face_project_point(const TopoDS_Face& face,
 
 // ==================== Edge Methods ====================
 
-rust::Vec<double> edge_approximation_segments(
+std::vector<double> edge_approximation_segments(
     const TopoDS_Edge& edge, double linear, double angular, bool relative)
 {
-    rust::Vec<double> out;
+    std::vector<double> out;
     try {
         // Mirror mesh_shape's relative semantics: when relative, scale the chord
         // by the edge's bounding-box max dimension (OCCT BRepMesh convention).
@@ -1096,7 +1084,7 @@ std::unique_ptr<TopoDS_Edge> make_helix_edge(
     }
 }
 
-std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(rust::Slice<const double> coords) {
+std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(const std::vector<double>& coords) {
     auto out = std::make_unique<std::vector<TopoDS_Edge>>();
     if (coords.size() < 9 || coords.size() % 3 != 0) return out;
     try {
@@ -1196,7 +1184,7 @@ std::unique_ptr<TopoDS_Edge> make_arc_edge(
 // Returns null on any failure (out-of-range end_kind, OCCT internal
 // failure, degenerate point distribution).
 std::unique_ptr<TopoDS_Edge> make_bspline_edge(
-    rust::Slice<const double> coords,
+    const std::vector<double>& coords,
     uint32_t end_kind,
     double sx, double sy, double sz,
     double ex, double ey, double ez)
@@ -1399,39 +1387,11 @@ std::unique_ptr<TopoDS_Edge> mirror_edge(
     }
 }
 
-std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new() {
-    return std::make_unique<std::vector<TopoDS_Edge>>();
-}
-
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
-    v.push_back(e);
-}
-
-void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
-    v.push_back(TopoDS_Edge());
-}
-
-std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {
-    return std::make_unique<std::vector<TopoDS_Face>>();
-}
-
-void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f) {
-    v.push_back(f);
-}
-
-std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new() {
-    return std::make_unique<std::vector<TopoDS_Shape>>();
-}
-
-void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s) {
-    v.push_back(s);
-}
-
 std::unique_ptr<TopoDS_Shape> builder_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
     double thickness,
-    rust::Vec<uint64_t>& out_history)
+    std::vector<uint64_t>& out_history)
 {
     try {
         // Empty open_faces: MakeThickSolidByJoin degenerates to a plain offset
@@ -1515,7 +1475,7 @@ std::unique_ptr<TopoDS_Shape> builder_fillet(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double radius,
-    rust::Vec<uint64_t>& out_history)
+    std::vector<uint64_t>& out_history)
 {
     try {
         if (edges.empty()) {
@@ -1555,7 +1515,7 @@ std::unique_ptr<TopoDS_Shape> builder_chamfer(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double distance,
-    rust::Vec<uint64_t>& out_history)
+    std::vector<uint64_t>& out_history)
 {
     try {
         if (edges.empty()) {
@@ -1862,7 +1822,7 @@ std::unique_ptr<TopoDS_Shape> make_offset_shape(
 }
 
 std::unique_ptr<TopoDS_Shape> make_bspline_solid(
-    rust::Slice<const double> coords,
+    const std::vector<double>& coords,
     uint32_t nu, uint32_t nv,
     bool u_periodic)
 {
@@ -2086,9 +2046,9 @@ static void collect_face_colors(
 }
 
 std::unique_ptr<TopoDS_Shape> read_step_color_stream(
-    RustReader&          reader,
-    rust::Vec<uint64_t>& out_ids,
-    rust::Vec<float>&    out_rgb)
+    const CReader&        reader,
+    std::vector<uint64_t>& out_ids,
+    std::vector<float>&    out_rgb)
 {
     try {
         // Create XDE document directly — avoids XCAFApp_Application which
@@ -2151,10 +2111,10 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
 }
 
 bool write_step_color_stream(
-    const TopoDS_Shape&         shape,
-    rust::Slice<const uint64_t> ids,
-    rust::Slice<const float>    rgb,
-    RustWriter&                 writer)
+    const TopoDS_Shape&          shape,
+    const std::vector<uint64_t>& ids,
+    const std::vector<float>&    rgb,
+    const CWriter&               writer)
 {
     try {
         Handle(TDocStd_Document) doc = new TDocStd_Document("XmlXCAF");
@@ -2208,3 +2168,204 @@ bool write_step_color_stream(
 } // namespace cadrum
 
 #endif // CADRUM_COLOR
+
+// ==================== extern "C" shim layer ====================
+//
+// Thin marshaling between the raw C ABI (cpp/ffi.h, consumed by Rust) and the
+// `cadrum::` C++ functions above. Ownership: TopoDS_* returned by value are
+// `release()`d for Rust to own (freed via cadrum_*_free = delete); POD and
+// pointer arrays are malloc'd for Rust to copy out then free via cadrum_free.
+
+namespace {
+
+// Build a std::vector<T> from a pointer array; a null entry becomes a
+// default-constructed (null) element — the section separator for loft/pipe.
+template <class T>
+std::vector<T> ffi_vec_in(const T* const* p, size_t n) {
+	std::vector<T> v;
+	v.reserve(n);
+	for (size_t i = 0; i < n; ++i) v.push_back(p[i] ? *p[i] : T());
+	return v;
+}
+
+// malloc a T*[] where each element is an owned clone of v[i].
+template <class T>
+T** ffi_owned_array(const std::vector<T>& v, size_t* out_len) {
+	*out_len = v.size();
+	if (v.empty()) return nullptr;
+	T** arr = static_cast<T**>(std::malloc(sizeof(T*) * v.size()));
+	for (size_t i = 0; i < v.size(); ++i) arr[i] = new T(v[i]);
+	return arr;
+}
+
+// malloc a flat POD buffer copied from v.
+template <class T>
+T* ffi_pod_array(const std::vector<T>& v, size_t* out_len) {
+	*out_len = v.size();
+	if (v.empty()) return nullptr;
+	T* arr = static_cast<T*>(std::malloc(sizeof(T) * v.size()));
+	std::memcpy(arr, v.data(), sizeof(T) * v.size());
+	return arr;
+}
+
+} // anonymous namespace
+
+extern "C" {
+
+// ---- Deallocators ----
+void cadrum_free(void* p) { std::free(p); }
+void cadrum_shape_free(TopoDS_Shape* p) { delete p; }
+void cadrum_face_free(TopoDS_Face* p) { delete p; }
+void cadrum_edge_free(TopoDS_Edge* p) { delete p; }
+
+// ---- Shape I/O ----
+#ifndef CADRUM_COLOR
+TopoDS_Shape* read_step_stream(const CReader* reader) { return cadrum::read_step_stream(*reader).release(); }
+bool write_step_stream(const TopoDS_Shape* shape, const CWriter* writer) { return cadrum::write_step_stream(*shape, *writer); }
+#endif
+TopoDS_Shape* read_brep_bin_stream(const CReader* reader) { return cadrum::read_brep_bin_stream(*reader).release(); }
+bool write_brep_bin_stream(const TopoDS_Shape* shape, const CWriter* writer) { return cadrum::write_brep_bin_stream(*shape, *writer); }
+TopoDS_Shape* read_brep_text_stream(const CReader* reader) { return cadrum::read_brep_text_stream(*reader).release(); }
+bool write_brep_text_stream(const TopoDS_Shape* shape, const CWriter* writer) { return cadrum::write_brep_text_stream(*shape, *writer); }
+
+// ---- Constructors ----
+TopoDS_Shape* make_half_space(double ox, double oy, double oz, double nx, double ny, double nz) { return cadrum::make_half_space(ox, oy, oz, nx, ny, nz).release(); }
+TopoDS_Shape* make_box(double x1, double y1, double z1, double x2, double y2, double z2) { return cadrum::make_box(x1, y1, z1, x2, y2, z2).release(); }
+TopoDS_Shape* make_cylinder(double px, double py, double pz, double dx, double dy, double dz, double radius, double height) { return cadrum::make_cylinder(px, py, pz, dx, dy, dz, radius, height).release(); }
+TopoDS_Shape* make_sphere(double cx, double cy, double cz, double radius) { return cadrum::make_sphere(cx, cy, cz, radius).release(); }
+TopoDS_Shape* make_cone(double px, double py, double pz, double dx, double dy, double dz, double r1, double r2, double height) { return cadrum::make_cone(px, py, pz, dx, dy, dz, r1, r2, height).release(); }
+TopoDS_Shape* make_torus(double px, double py, double pz, double dx, double dy, double dz, double r1, double r2) { return cadrum::make_torus(px, py, pz, dx, dy, dz, r1, r2).release(); }
+TopoDS_Shape* make_empty() { return cadrum::make_empty().release(); }
+TopoDS_Shape* deep_copy(const TopoDS_Shape* shape) { return cadrum::deep_copy(*shape).release(); }
+
+// ---- Builders ----
+TopoDS_Shape* builder_cells(const TopoDS_Shape* const* solids, size_t n_solids, const int64_t* clauses, size_t n_clauses, uint64_t** out_history, size_t* out_history_len) {
+	std::vector<uint64_t> hist;
+	auto r = cadrum::builder_cells(ffi_vec_in(solids, n_solids), std::vector<int64_t>(clauses, clauses + n_clauses), hist);
+	*out_history = ffi_pod_array(hist, out_history_len);
+	return r.release();
+}
+TopoDS_Shape* builder_clean(const TopoDS_Shape* shape, uint64_t** out_history, size_t* out_history_len) {
+	std::vector<uint64_t> hist;
+	auto r = cadrum::builder_clean(*shape, hist);
+	*out_history = ffi_pod_array(hist, out_history_len);
+	return r.release();
+}
+TopoDS_Shape* builder_thick_solid(const TopoDS_Shape* solid, const TopoDS_Face* const* open_faces, size_t n_faces, double thickness, uint64_t** out_history, size_t* out_history_len) {
+	std::vector<uint64_t> hist;
+	auto r = cadrum::builder_thick_solid(*solid, ffi_vec_in(open_faces, n_faces), thickness, hist);
+	*out_history = ffi_pod_array(hist, out_history_len);
+	return r.release();
+}
+TopoDS_Shape* builder_fillet(const TopoDS_Shape* solid, const TopoDS_Edge* const* edges, size_t n_edges, double radius, uint64_t** out_history, size_t* out_history_len) {
+	std::vector<uint64_t> hist;
+	auto r = cadrum::builder_fillet(*solid, ffi_vec_in(edges, n_edges), radius, hist);
+	*out_history = ffi_pod_array(hist, out_history_len);
+	return r.release();
+}
+TopoDS_Shape* builder_chamfer(const TopoDS_Shape* solid, const TopoDS_Edge* const* edges, size_t n_edges, double distance, uint64_t** out_history, size_t* out_history_len) {
+	std::vector<uint64_t> hist;
+	auto r = cadrum::builder_chamfer(*solid, ffi_vec_in(edges, n_edges), distance, hist);
+	*out_history = ffi_pod_array(hist, out_history_len);
+	return r.release();
+}
+
+// ---- Transforms ----
+TopoDS_Shape* transform_translate(const TopoDS_Shape* shape, double tx, double ty, double tz) { return cadrum::transform_translate(*shape, tx, ty, tz).release(); }
+TopoDS_Shape* transform_rotate(const TopoDS_Shape* shape, double ox, double oy, double oz, double dx, double dy, double dz, double angle) { return cadrum::transform_rotate(*shape, ox, oy, oz, dx, dy, dz, angle).release(); }
+TopoDS_Shape* transform_scale(const TopoDS_Shape* shape, double cx, double cy, double cz, double factor) { return cadrum::transform_scale(*shape, cx, cy, cz, factor).release(); }
+TopoDS_Shape* transform_mirror(const TopoDS_Shape* shape, double ox, double oy, double oz, double nx, double ny, double nz) { return cadrum::transform_mirror(*shape, ox, oy, oz, nx, ny, nz).release(); }
+
+// ---- Queries ----
+bool shape_is_null(const TopoDS_Shape* shape) { return cadrum::shape_is_null(*shape); }
+bool shape_is_solid(const TopoDS_Shape* shape) { return cadrum::shape_is_solid(*shape); }
+double shape_volume(const TopoDS_Shape* shape) { return cadrum::shape_volume(*shape); }
+double shape_surface_area(const TopoDS_Shape* shape) { return cadrum::shape_surface_area(*shape); }
+void shape_center_of_mass(const TopoDS_Shape* shape, double* x, double* y, double* z) { cadrum::shape_center_of_mass(*shape, *x, *y, *z); }
+void shape_inertia_tensor(const TopoDS_Shape* shape, double* m00, double* m01, double* m02, double* m10, double* m11, double* m12, double* m20, double* m21, double* m22) { cadrum::shape_inertia_tensor(*shape, *m00, *m01, *m02, *m10, *m11, *m12, *m20, *m21, *m22); }
+bool shape_contains_point(const TopoDS_Shape* shape, double x, double y, double z) { return cadrum::shape_contains_point(*shape, x, y, z); }
+void shape_bounding_box(const TopoDS_Shape* shape, double* xmin, double* ymin, double* zmin, double* xmax, double* ymax, double* zmax) { cadrum::shape_bounding_box(*shape, *xmin, *ymin, *zmin, *xmax, *ymax, *zmax); }
+
+// ---- Compound ----
+TopoDS_Shape** decompose_into_solids(const TopoDS_Shape* shape, size_t* out_len) {
+	auto v = cadrum::decompose_into_solids(*shape);
+	return ffi_owned_array(*v, out_len);
+}
+void compound_add(TopoDS_Shape* compound, const TopoDS_Shape* child) { cadrum::compound_add(*compound, *child); }
+
+// ---- Meshing ----
+CMeshData mesh_shape(const TopoDS_Shape* shape, double linear, double angular, bool relative) {
+	cadrum::MeshData m = cadrum::mesh_shape(*shape, linear, angular, relative);
+	CMeshData out;
+	out.vertices = ffi_pod_array(m.vertices, &out.vertices_len);
+	out.uvs = ffi_pod_array(m.uvs, &out.uvs_len);
+	out.indices = ffi_pod_array(m.indices, &out.indices_len);
+	out.face_ids = ffi_pod_array(m.face_tshape_ids, &out.face_ids_len);
+	out.success = m.success;
+	return out;
+}
+
+// ---- Topology enumeration ----
+TopoDS_Edge** shape_edges(const TopoDS_Shape* shape, size_t* out_len) { auto v = cadrum::shape_edges(*shape); return ffi_owned_array(*v, out_len); }
+TopoDS_Face** shape_faces(const TopoDS_Shape* shape, size_t* out_len) { auto v = cadrum::shape_faces(*shape); return ffi_owned_array(*v, out_len); }
+TopoDS_Edge** face_edges(const TopoDS_Face* face, size_t* out_len) { auto v = cadrum::face_edges(*face); return ffi_owned_array(*v, out_len); }
+TopoDS_Shape* clone_shape_handle(const TopoDS_Shape* shape) { return cadrum::clone_shape_handle(*shape).release(); }
+
+// ---- Face / Edge ids ----
+uint64_t face_tshape_id(const TopoDS_Face* face) { return cadrum::face_tshape_id(*face); }
+uint64_t shape_tshape_id(const TopoDS_Shape* shape) { return cadrum::shape_tshape_id(*shape); }
+uint64_t edge_tshape_id(const TopoDS_Edge* edge) { return cadrum::edge_tshape_id(*edge); }
+bool face_project_point(const TopoDS_Face* face, double px, double py, double pz, double* cpx, double* cpy, double* cpz, double* nx, double* ny, double* nz) { return cadrum::face_project_point(*face, px, py, pz, *cpx, *cpy, *cpz, *nx, *ny, *nz); }
+
+// ---- Edge methods ----
+double* edge_approximation_segments(const TopoDS_Edge* edge, double linear, double angular, bool relative, size_t* out_len) {
+	std::vector<double> v = cadrum::edge_approximation_segments(*edge, linear, angular, relative);
+	return ffi_pod_array(v, out_len);
+}
+TopoDS_Edge* make_helix_edge(double ax, double ay, double az, double xrx, double xry, double xrz, double radius, double pitch, double height) { return cadrum::make_helix_edge(ax, ay, az, xrx, xry, xrz, radius, pitch, height).release(); }
+TopoDS_Edge** make_polygon_edges(const double* coords, size_t n_coords, size_t* out_len) {
+	auto v = cadrum::make_polygon_edges(std::vector<double>(coords, coords + n_coords));
+	return ffi_owned_array(*v, out_len);
+}
+TopoDS_Edge* make_circle_edge(double ax, double ay, double az, double radius) { return cadrum::make_circle_edge(ax, ay, az, radius).release(); }
+TopoDS_Edge* make_line_edge(double ax, double ay, double az, double bx, double by, double bz) { return cadrum::make_line_edge(ax, ay, az, bx, by, bz).release(); }
+TopoDS_Edge* make_arc_edge(double sx, double sy, double sz, double mx, double my, double mz, double ex, double ey, double ez) { return cadrum::make_arc_edge(sx, sy, sz, mx, my, mz, ex, ey, ez).release(); }
+TopoDS_Edge* make_bspline_edge(const double* coords, size_t n_coords, uint32_t end_kind, double sx, double sy, double sz, double ex, double ey, double ez) {
+	return cadrum::make_bspline_edge(std::vector<double>(coords, coords + n_coords), end_kind, sx, sy, sz, ex, ey, ez).release();
+}
+void edge_endpoints(const TopoDS_Edge* edge, double* sx, double* sy, double* sz, double* ex, double* ey, double* ez) { cadrum::edge_endpoints(*edge, *sx, *sy, *sz, *ex, *ey, *ez); }
+void edge_tangents(const TopoDS_Edge* edge, double* sx, double* sy, double* sz, double* ex, double* ey, double* ez) { cadrum::edge_tangents(*edge, *sx, *sy, *sz, *ex, *ey, *ez); }
+bool edge_is_closed(const TopoDS_Edge* edge) { return cadrum::edge_is_closed(*edge); }
+bool edge_project_point(const TopoDS_Edge* edge, double px, double py, double pz, double* cpx, double* cpy, double* cpz, double* tx, double* ty, double* tz) { return cadrum::edge_project_point(*edge, px, py, pz, *cpx, *cpy, *cpz, *tx, *ty, *tz); }
+TopoDS_Edge* deep_copy_edge(const TopoDS_Edge* edge) { return cadrum::deep_copy_edge(*edge).release(); }
+TopoDS_Edge* translate_edge(const TopoDS_Edge* edge, double tx, double ty, double tz) { return cadrum::translate_edge(*edge, tx, ty, tz).release(); }
+TopoDS_Edge* rotate_edge(const TopoDS_Edge* edge, double ox, double oy, double oz, double dx, double dy, double dz, double angle) { return cadrum::rotate_edge(*edge, ox, oy, oz, dx, dy, dz, angle).release(); }
+TopoDS_Edge* scale_edge(const TopoDS_Edge* edge, double cx, double cy, double cz, double factor) { return cadrum::scale_edge(*edge, cx, cy, cz, factor).release(); }
+TopoDS_Edge* mirror_edge(const TopoDS_Edge* edge, double ox, double oy, double oz, double nx, double ny, double nz) { return cadrum::mirror_edge(*edge, ox, oy, oz, nx, ny, nz).release(); }
+TopoDS_Shape* make_extrude(const TopoDS_Edge* const* profile_edges, size_t n_profile, double dx, double dy, double dz) { return cadrum::make_extrude(ffi_vec_in(profile_edges, n_profile), dx, dy, dz).release(); }
+TopoDS_Shape* make_pipe_shell(const TopoDS_Edge* const* all_edges, size_t n_all, const TopoDS_Edge* const* spine_edges, size_t n_spine, uint32_t orient, double ux, double uy, double uz, const TopoDS_Edge* const* aux_spine_edges, size_t n_aux) {
+	return cadrum::make_pipe_shell(ffi_vec_in(all_edges, n_all), ffi_vec_in(spine_edges, n_spine), orient, ux, uy, uz, ffi_vec_in(aux_spine_edges, n_aux)).release();
+}
+TopoDS_Shape* make_loft(const TopoDS_Edge* const* all_edges, size_t n_all, bool ruled) { return cadrum::make_loft(ffi_vec_in(all_edges, n_all), ruled).release(); }
+TopoDS_Shape* make_sewn_solid(const TopoDS_Face* const* faces, size_t n_faces, double tolerance) { return cadrum::make_sewn_solid(ffi_vec_in(faces, n_faces), tolerance).release(); }
+TopoDS_Shape* make_offset_shape(const TopoDS_Shape* shape, double offset, double tolerance) { return cadrum::make_offset_shape(*shape, offset, tolerance).release(); }
+TopoDS_Shape* make_bspline_solid(const double* coords, size_t n_coords, uint32_t nu, uint32_t nv, bool u_periodic) {
+	return cadrum::make_bspline_solid(std::vector<double>(coords, coords + n_coords), nu, nv, u_periodic).release();
+}
+
+// ---- Colored STEP I/O ----
+#ifdef CADRUM_COLOR
+TopoDS_Shape* read_step_color_stream(const CReader* reader, uint64_t** out_ids, size_t* out_ids_len, float** out_rgb, size_t* out_rgb_len) {
+	std::vector<uint64_t> ids;
+	std::vector<float> rgb;
+	auto r = cadrum::read_step_color_stream(*reader, ids, rgb);
+	*out_ids = ffi_pod_array(ids, out_ids_len);
+	*out_rgb = ffi_pod_array(rgb, out_rgb_len);
+	return r.release();
+}
+bool write_step_color_stream(const TopoDS_Shape* shape, const uint64_t* ids, size_t n_ids, const float* rgb, size_t n_rgb, const CWriter* writer) {
+	return cadrum::write_step_color_stream(*shape, std::vector<uint64_t>(ids, ids + n_ids), std::vector<float>(rgb, rgb + n_rgb), *writer);
+}
+#endif
+
+} // extern "C"

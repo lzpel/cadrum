@@ -1,9 +1,10 @@
 #pragma once
 
-#include "rust/cxx.h"
+// Hand-written C ABI (CReader / CWriter / CMeshData / extern "C" prototypes).
+#include "ffi.h"
 
-// Types used directly in function signatures — keep minimal so that
-// the cxx-generated bridge objects do not compile heavy OCCT headers.
+// Types used directly in function signatures — keep minimal so that the wrapper
+// objects do not compile heavy OCCT headers.
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
@@ -16,23 +17,27 @@
 namespace cadrum {
 
 // Type aliases to bring OCCT global types into cadrum namespace.
-// Required because the cxx bridge uses namespace = "cadrum".
 using TopoDS_Shape = ::TopoDS_Shape;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
 
-// Forward-declare the Rust opaque types (defined by cxx in ffi.rs.h)
-struct RustReader;
-struct RustWriter;
+// Mesh data assembled by `mesh_shape`. The extern "C" shim flattens this into
+// the POD `CMeshData` for Rust.
+struct MeshData {
+    std::vector<double> vertices;   // flat xyz
+    std::vector<double> uvs;        // flat uv
+    std::vector<uint32_t> indices;
+    std::vector<uint64_t> face_tshape_ids; // per-triangle TShape* address
+    bool success;
+};
 
-// Forward-declare shared structs (defined by cxx in ffi.rs.h)
-struct MeshData;
 // ==================== Streambuf bridges ====================
 
-// std::streambuf subclass that reads from a Rust `dyn Read` via FFI callback
+// std::streambuf subclass that reads from a Rust `dyn Read` via the CReader
+// callback (function pointer + opaque ctx).
 class RustReadStreambuf : public std::streambuf {
 public:
-    explicit RustReadStreambuf(RustReader& reader) : reader_(reader) {}
+    explicit RustReadStreambuf(const CReader& reader) : reader_(reader) {}
 
 protected:
     int_type underflow() override;
@@ -45,14 +50,15 @@ protected:
     pos_type seekpos(pos_type sp, std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override;
 
 private:
-    RustReader& reader_;
+    const CReader& reader_;
     char buf_[8192];
 };
 
-// std::streambuf subclass that writes to a Rust `dyn Write` via FFI callback
+// std::streambuf subclass that writes to a Rust `dyn Write` via the CWriter
+// callback (function pointer + opaque ctx).
 class RustWriteStreambuf : public std::streambuf {
 public:
-    explicit RustWriteStreambuf(RustWriter& writer) : writer_(writer) {}
+    explicit RustWriteStreambuf(const CWriter& writer) : writer_(writer) {}
 
     ~RustWriteStreambuf() override {
         sync();
@@ -68,7 +74,7 @@ protected:
 private:
     bool flush_buf();
 
-    RustWriter& writer_;
+    const CWriter& writer_;
     char buf_[8192];
     size_t pos_ = 0;
 };
@@ -78,13 +84,13 @@ private:
 // Plain STEP I/O — only built without CADRUM_COLOR; with color, STEP goes
 // through XCAF (`read_step_color_stream` etc.) instead.
 #ifndef CADRUM_COLOR
-std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader);
-bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer);
+std::unique_ptr<TopoDS_Shape> read_step_stream(const CReader& reader);
+bool write_step_stream(const TopoDS_Shape& shape, const CWriter& writer);
 #endif
-std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader);
-bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer);
-std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader);
-bool write_brep_text_stream(const TopoDS_Shape& shape, RustWriter& writer);
+std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(const CReader& reader);
+bool write_brep_bin_stream(const TopoDS_Shape& shape, const CWriter& writer);
+std::unique_ptr<TopoDS_Shape> read_brep_text_stream(const CReader& reader);
+bool write_brep_text_stream(const TopoDS_Shape& shape, const CWriter& writer);
 
 // ==================== Shape Constructors ====================
 
@@ -134,15 +140,15 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
 // `out_history` の形式は builder_boolean と同じ。
 std::unique_ptr<TopoDS_Shape> builder_cells(
     const std::vector<TopoDS_Shape>& solids,
-    rust::Slice<const int64_t> clauses,
-    rust::Vec<uint64_t>& out_history);
+    const std::vector<int64_t>& clauses,
+    std::vector<uint64_t>& out_history);
 
 // Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
 // `out_history` encodes how each old face maps onto the unified result.
 // Rust uses it to remap the colormap when the `color` feature is enabled.
 std::unique_ptr<TopoDS_Shape> builder_clean(
     const TopoDS_Shape& shape,
-    rust::Vec<uint64_t>& out_history);
+    std::vector<uint64_t>& out_history);
 
 // Shell (hollow) the solid by removing `open_faces` and offsetting the
 // remaining faces by `thickness` via BRepOffsetAPI_MakeThickSolid. Negative
@@ -155,7 +161,7 @@ std::unique_ptr<TopoDS_Shape> builder_thick_solid(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Face>& open_faces,
     double thickness,
-    rust::Vec<uint64_t>& out_history);
+    std::vector<uint64_t>& out_history);
 
 // Fillet the given edges of `solid` with a uniform radius using
 // BRepFilletAPI_MakeFillet. Empty `edges` is a no-op (returns a shallow
@@ -168,7 +174,7 @@ std::unique_ptr<TopoDS_Shape> builder_fillet(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double radius,
-    rust::Vec<uint64_t>& out_history);
+    std::vector<uint64_t>& out_history);
 
 // Chamfer (symmetric bevel) the given edges of `solid` with a uniform
 // distance using BRepFilletAPI_MakeChamfer. Empty `edges` is a no-op
@@ -182,7 +188,7 @@ std::unique_ptr<TopoDS_Shape> builder_chamfer(
     const TopoDS_Shape& solid,
     const std::vector<TopoDS_Edge>& edges,
     double distance,
-    rust::Vec<uint64_t>& out_history);
+    std::vector<uint64_t>& out_history);
 
 // ==================== Transforms (solid → solid, no history) ====================
 //
@@ -252,14 +258,12 @@ std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face);
 // `CxxVector::iter()`. Distinct from `deep_copy` / `deep_copy_edge` which
 // create new TShapes.
 std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape);
-std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
-std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);
 
 // ==================== Edge Methods ====================
 
 // Approximate an edge as a polyline. Takes independent angular/chord
 // deflection bounds. Returns a flat xyz `Vec<f64>` (length = 3 * point count).
-rust::Vec<double> edge_approximation_segments(
+std::vector<double> edge_approximation_segments(
     const TopoDS_Edge& edge, double linear, double angular, bool relative);
 
 // Construct a single helical edge on a cylindrical surface centered at the
@@ -277,7 +281,7 @@ std::unique_ptr<TopoDS_Edge> make_helix_edge(
 // return its constituent edges in order. The closing edge from the last
 // point back to the first is included.
 std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(
-    rust::Slice<const double> coords);
+    const std::vector<double>& coords);
 
 // Construct a closed circular edge of `radius` centered at the world origin,
 // lying in the plane normal to `axis`. The local +X axis of the circle's
@@ -310,7 +314,7 @@ std::unique_ptr<TopoDS_Edge> make_arc_edge(
 //   2 = Clamped  (open, explicit start/end tangents in (sx,sy,sz)/(ex,ey,ez))
 // Returns nullptr on any failure.
 std::unique_ptr<TopoDS_Edge> make_bspline_edge(
-    rust::Slice<const double> coords,
+    const std::vector<double>& coords,
     uint32_t end_kind,
     double sx, double sy, double sz,
     double ex, double ey, double ez);
@@ -378,20 +382,6 @@ std::unique_ptr<TopoDS_Shape> make_pipe_shell(
     double ux, double uy, double uz,
     const std::vector<TopoDS_Edge>& aux_spine_edges);
 
-// Helpers for the Rust side to construct a std::vector<TopoDS_Edge>.
-std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
-void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
-
-// Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
-std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
-void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
-
-// Helpers for the Rust side to construct a std::vector<TopoDS_Shape>.
-// builder_cells に渡すための入力 solids ベクタを Rust 側から組み立てる。
-std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new();
-void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s);
-
 // Loft (skin) a solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
 // `ruled=false` interpolates a smooth B-spline surface through all sections;
@@ -429,7 +419,7 @@ std::unique_ptr<TopoDS_Shape> make_offset_shape(
 // (producing a torus); otherwise the U-ends are capped with planar faces
 // (producing a pipe). Returns nullptr on any OCCT failure.
 std::unique_ptr<TopoDS_Shape> make_bspline_solid(
-    rust::Slice<const double> coords,
+    const std::vector<double>& coords,
     uint32_t nu, uint32_t nv,
     bool u_periodic);
 
@@ -465,17 +455,17 @@ namespace cadrum {
 // [r0,g0,b0, r1,g1,b1, ...] sequence (length = 3 * out_ids.size()).
 // Returns nullptr on failure.
 std::unique_ptr<TopoDS_Shape> read_step_color_stream(
-    RustReader&          reader,
-    rust::Vec<uint64_t>& out_ids,
-    rust::Vec<float>&    out_rgb);
+    const CReader&        reader,
+    std::vector<uint64_t>& out_ids,
+    std::vector<float>&    out_rgb);
 
 // Write a colored STEP stream. `ids` lists TShape* of colored faces; `rgb`
 // is the matching flat [r,g,b,...] sequence (length = 3 * ids.size()).
 bool write_step_color_stream(
-    const TopoDS_Shape&         shape,
-    rust::Slice<const uint64_t> ids,
-    rust::Slice<const float>    rgb,
-    RustWriter&                 writer);
+    const TopoDS_Shape&          shape,
+    const std::vector<uint64_t>& ids,
+    const std::vector<float>&    rgb,
+    const CWriter&               writer);
 
 } // namespace cadrum
 
