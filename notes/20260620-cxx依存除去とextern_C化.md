@@ -96,3 +96,52 @@ wasm ビルドは wasi-sdk 下での C++ コンパイル成立を確認するも
   発生し、かつ「consumer ビルドで C++ をコンパイルし続ける」点は変わらない。
 - 本 PR の extern "C" 化なら **consumer ビルドの C++ を将来 prebuilt `.a` 化して
   toolchain ゼロにする**道まで開ける（cxx fork ではそこに届かない）。
+
+## フォローアップ案: ffi.h / ffi.rs の片側自動生成
+
+手書き化で失ったのは「1 定義から両側を生成する単一の真実の源」と「ABI 不一致のコンパイル時検証」。
+これを取り戻す（=ミニ cxx を自前で持つ）案。
+
+### 前提: proc-macro 単体では不可
+
+`cpp/ffi.h` は **build.rs が wrapper.cpp をコンパイルする時点**で必要だが、proc-macro の展開は
+build.rs より後（クレート本体コンパイル時）。間に合わない。生成するなら **build.rs 時点**で行う。
+これは cxx が `cxx-build`（build.rs から `.rs` を再パースする別クレート）を持つ理由と同じ。
+
+### 案A: build.rs で ffi.rs を解析して ffi.h を生成（自前ミニ cxx-build）
+
+`syn` 等で `mod raw { extern "C" {…} }` を読み、Rust 型→C 型（`*mut TopoDS_Shape`→`TopoDS_Shape*`、
+`usize`→`size_t`、`*mut *mut u64`→`uint64_t**` 等）に写して `ffi.h` を出力。
+
+- 利点: 真実の源を `ffi.rs` に一本化。
+- 欠点: `syn` を build-dep に復活（cxx-build を消した意義と一部相殺）。`#[cfg(feature=color)]` の
+  選別や、extern ブロック外の `CReader/CWriter/CMeshData` を別途扱う必要。
+  → 「自前 cxx-build」になりがちで、cxx を外した意義と一番ぶつかる。
+
+### 案B: bindgen で ffi.h から Rust の raw ブロックを生成
+
+`ffi.h`（手書き）を真実の源にし、build.rs で `bindgen` を回して `mod raw` と
+`CReader/CWriter/CMeshData` を生成。手書きの raw ブロックは削除。
+
+- 利点: C ABI の自然な源は C ヘッダ。bindgen は枯れている。**clang は wrapper.cpp ビルドで
+  既に必須**なので追加ツール要求は実質ゼロ。最小実装で堅牢。
+- 欠点: `bindgen`(+`clang-sys`) という重めの build-dep。color の `#ifdef` は bindgen 実行時の
+  define で揃える必要。
+
+### 案C: build.rs 内の「関数テーブル」から両方を生成（依存ゼロ）
+
+関数定義を build.rs 内の Rust データ（`(name, ret, [args])` のリスト）として 1 か所に書き、
+build.rs が **ffi.h（C 文字列）と raw.rs（`include!` する Rust extern）の両方**を文字列整形で出力。
+
+- 利点: 真実の源が 1 つ、**新規依存なし**（「依存を減らす」方針に最も合致）。
+- 欠点: テーブル DSL と 2 つのエミッタを自作・保守。
+
+### 共通効果と見立て
+
+- どの案でも「片側を生成」すれば、**ffi.h と wrapper.cpp の shim 定義の不一致を C++ コンパイラが
+  弾く**（宣言 vs 定義）。生成側が ffi.rs/ffi.h 由来なので **Rust↔C++ の食い違いがコンパイル時に
+  検出され**、cxx の安全性の大半が戻る（残る穴は型マッピング表自体の正しさのみ）。生成されるのは
+  宣言だけで、shim の中身と Rust 安全ラッパは引き続き手書き。
+- 今回の規模（FFI 面 1 つ・~75 関数・変更頻度低）なら手書き二面のままでも十分。ドリフトが
+  保守の痛みになったら **案C（依存ゼロのテーブル生成）**が方針に最も合う。clang 前提を許容できるなら
+  **案B（bindgen）**が最小実装で堅牢。**案A は非推奨**（自前 cxx-build 化）。
