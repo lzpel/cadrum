@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_0";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev3";
+const BUILD_REVISION: &str = "rev4";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -171,17 +171,18 @@ const OCC_LIBS: &[&str] = &[
 /// Apply target-conditional C++ compiler flags through `apply`, which forwards each flag
 /// to the concrete builder (`cc::Build::flag` for the wrapper, `cmake::Config::cxxflag` for
 /// the OCCT source build). Shared so the wrapper and OCCT get identical flags — in particular
-/// the same wasm EH encoding, which must match the exnref-built wasi-sdk eh sysroot (#199).
+/// the same wasm EH encoding, which must match the legacy-built wasi-sdk eh sysroot (#199, #233).
 fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
 	// MSVC: compile sources as UTF-8.
 	if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
 		apply("/utf-8");
 	}
-	// wasm: force the new (exnref) EH encoding so it matches the exnref wasi-sdk eh sysroot.
+	// wasm: force the legacy EH encoding so it matches the legacy wasi-sdk eh sysroot we
+	// self-build (the exnref encoding needs runtime opt-in, e.g. --experimental-wasm-exnref; #233).
 	// No-op without -fwasm-exceptions, so it is safe even when exceptions are off.
 	if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
 		apply("-mllvm");
-		apply("-wasm-use-legacy-eh=false");
+		apply("-wasm-use-legacy-eh=true");
 	}
 }
 
