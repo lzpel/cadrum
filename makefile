@@ -47,11 +47,22 @@ cross-%: # run `make $(GOAL)` for target % inside its Docker cross env. GOAL is 
 	docker build -f docker/Dockerfile_$(*) -t cross-$(*) .
 	docker run --rm -v $(PWD):/src -w /src -e CARGO_TARGET_DIR=/tmp/target -v $(PWD)/out/$(*):/src/out cross-$(*) make $(GOAL)
 check-%: # validate the cross-built prebuilt OCCT runs on the host (extract -> run example / wasm check)
+	# drop stale prebuilt tarballs/extracts of older revisions so the check exercises ONLY
+	# this build's output (a lingering older-rev OCCT would otherwise be picked up below).
+	rm -f out/$*/occt-*.tar.gz
+	rm -rf target/occt-*
 	$(MAKE) cross-$* GOAL=occt
 	mkdir -p target
 	find out -maxdepth 2 -type f -name '*.tar.gz' | xargs -IX tar -xzf X -C target
 	if [ "$*" = "wasm32-unknown-unknown" ]; then \
-		$(MAKE) -C sandbox-wasm check-cadrum; \
+		: "extract the legacy-EH wasi-sysroot the image self-built (#233) so the host link"; \
+		: "uses the SAME legacy libc++/libc++abi the prebuilt was built against, not the"; \
+		: "exnref one shipped by the released wasi-sdk."; \
+		rm -rf out/legacy-sysroot; \
+		docker create --name cadrum-legacy-sysroot cross-$* >/dev/null; \
+		docker cp cadrum-legacy-sysroot:/legacy-sysroot out/legacy-sysroot; \
+		docker rm cadrum-legacy-sysroot >/dev/null; \
+		$(MAKE) -C sandbox-wasm check-cadrum SYSROOT="$(CURDIR)/out/legacy-sysroot/share/wasi-sysroot"; \
 	else \
 		timeout 300 cargo run --example 01_primitives; \
 	fi
