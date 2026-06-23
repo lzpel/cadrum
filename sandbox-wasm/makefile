@@ -12,6 +12,10 @@ export MSYS_NO_PATHCONV := 1
 # cxx が依存する link-cplusplus は wasm では既定で libstdc++ をリンクしようとする。
 # 我々は libc++ を使うので CXXSTDLIB=c++ に上書きする。
 export CXXSTDLIB := c++
+# Default: the released wasi-sdk sysroot (exnref eh libs) — used by the standalone run-*
+# experiments. `check-cadrum` is invoked from the root `check-wasm32-unknown-unknown` with
+# SYSROOT overridden to the legacy-EH sysroot extracted from the cross image, so the host
+# link matches the legacy libc++/libc++abi the prebuilt OCCT was built against (#233).
 SYSROOT := $(CURDIR)/../out/$(call stem,$(WASI_SDK))/share/wasi-sysroot
 # OCCT の wasm クロスビルドのツールチェインを env で差す（Dockerfile の CC_<target> と同じ流儀）。
 # build.rs が CC_<target>/CXX_<target> を CMAKE_C/CXX_COMPILER へ転送する。
@@ -54,7 +58,9 @@ check-cadrum: download # build the cadrum wasm sample (--target web, like the br
 	OCCT="$$(find $(CURDIR)/../target -maxdepth 1 -type d -name 'occt-*-wasm32_unknown_unknown' | head -1)"; \
 	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make check-wasm32-unknown-unknown' first"; exit 1; }; \
 	OCCT_ROOT="$$OCCT" ../out/bin/wasm-pack build . -d ./target --target web --features cadrum
-	node --experimental-wasm-exnref run_node.mjs
+	# legacy wasm-EH is enabled by default in node/V8 — exnref needed --experimental-wasm-exnref,
+	# legacy does not. Dropping the flag is the user-visible payoff of #233.
+	node run_node.mjs
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )
