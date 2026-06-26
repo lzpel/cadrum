@@ -36,8 +36,8 @@ cadrum has several goals:
 - **Runs in the browser.** <br/> cadrum also ships a static OpenCASCADE build for
   the `wasm32-unknown-unknown` target, making it well suited to running what
   you build directly in the browser via WebAssembly.
-  <br> [**Live demo**](https://lzpel.github.io/cadrum-wasm-example/) — STEP → glTF converted entirely in-browser ([source](https://github.com/lzpel/cadrum-wasm-example)).
-  <br/> <img src="https://github.com/lzpel/cadrum-wasm-example/raw/main/screenshot.png" alt="cadrum compiled to WebAssembly converting a STEP file to glTF in the browser" height="200"/>
+  <br> [**Live demo**](https://lzpel.github.io/opencascade-wasm32-unknown-unknown-example/) — STEP → glTF converted entirely in-browser ([source](https://github.com/lzpel/opencascade-wasm32-unknown-unknown-example)).
+  <br/> <img src="https://github.com/lzpel/opencascade-wasm32-unknown-unknown-example/raw/main/screenshot.png" alt="cadrum compiled to WebAssembly converting a STEP file to glTF in the browser" height="200"/>
 - **Fully headless.** <br/> No GUI, no windowing, no OS-specific dependencies —
   cadrum is pure geometry and I/O, suitable for servers, CI, and wasm.
 - **Major formats in and out.** <br/> Reads and writes **STEP** and **BRep**,
@@ -97,7 +97,7 @@ unsafe { __wasm_call_ctors() };
 ```
 
 Then run the output through `wasm-bindgen` / `wasm-pack` for browser glue. See
-[`cadrum-wasm-example`](https://github.com/lzpel/cadrum-wasm-example) for a complete setup.
+[`opencascade-wasm32-unknown-unknown-example`](https://github.com/lzpel/opencascade-wasm32-unknown-unknown-example) for a complete setup.
 
 **Runtime requirement:** the module is built with Wasm exception handling
 (`-fwasm-exceptions`, the newer `exnref` encoding), so it needs a runtime that

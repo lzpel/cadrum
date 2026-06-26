@@ -1,4 +1,4 @@
-// CLI validation of the --target web path the browser (cadrum-wasm-example) uses.
+// CLI validation of the --target web path the browser (opencascade-wasm32-unknown-unknown-example) uses.
 // node cannot fetch file: URLs, so we hand the raw .wasm bytes to the wasm-bindgen init.
 import { readFile } from "node:fs/promises";
 import init, { print_volume } from "./target/wasm_experiment.js";
