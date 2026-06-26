@@ -9,15 +9,24 @@
 # then tarballs the OCCT static libraries.
 FROM debian:bookworm-slim
 
-# Tools manylinux used to bundle (gcc/g++ C++17 capable, cmake, make, curl) and
-# that this build needs; find/xargs/tar/sed/bash already ship in the base image.
-# ca-certificates is required for the https downloads below (wasi-sdk, rustup,
-# and the OCCT source tarball fetched by build.rs). git is intentionally omitted:
-# there are no git dependencies and OCCT sources arrive as a tarball.
+# Tools manylinux used to bundle (gcc/g++ C++17 capable, make, curl) and that this
+# build needs; find/xargs/tar/sed/bash already ship in the base image.
+# ca-certificates is required for the https downloads below (wasi-sdk, rustup, cmake,
+# and the OCCT source tarball fetched by build.rs). git (+ submodules), python3 and
+# ninja are needed to self-build a *legacy* wasm-EH wasi-sysroot from source (the
+# sysroot rebuild step below; #233): the released wasi-sdk eh sysroot is exnref-only,
+# so we rebuild it with -wasm-use-legacy-eh=true. cmake is NOT installed from apt
+# (bookworm ships 3.25, but wasi-sdk-33's sysroot build needs >= 3.26) — see below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates make cmake \
+    curl ca-certificates make ninja-build python3 git \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Official CMake binary (self-contained) into /usr/local, which precedes /usr/bin on
+# PATH. Needed because wasi-sdk-33's sysroot CMakeLists requires CMake >= 3.26 while
+# debian bookworm only packages 3.25.1. Also used by the OCCT cmake build.
+RUN curl -L https://github.com/Kitware/CMake/releases/download/v3.30.0/cmake-3.30.0-linux-x86_64.tar.gz \
+    | tar xz --strip-components=1 -C /usr/local
 
 # wasi-sdk (Linux): clang + prebuilt wasi-sysroot (libc / libc++, eh & noeh variants).
 # Rename the tarball's top dir to /wasi-sdk. The S/H flags keep the transform from
@@ -32,8 +41,32 @@ ENV CARGO_BUILD_TARGET=wasm32-unknown-unknown
 # add cargo target
 RUN rustup target add ${CARGO_BUILD_TARGET}
 
+# Self-build a *legacy* wasm-EH wasi-sysroot (#233). The released wasi-sdk eh sysroot
+# (/wasi-sdk/share/wasi-sysroot) is built exnref-only (-wasm-use-legacy-eh=false hard-coded
+# in cmake/wasi-sdk-sysroot.cmake), and exnref needs a runtime opt-in. No released wasi-sdk
+# ships a legacy eh sysroot, so we rebuild only the sysroot — reusing the already-downloaded
+# clang via its installed toolchain file, NOT rebuilding LLVM (WASI_SDK_BUILD_TOOLCHAIN=OFF
+# is the default). The one-line patch flips the EH model to legacy; DUAL builds eh + noeh.
+# Shallow + shallow-submodules keeps the (otherwise huge) llvm-project checkout small.
+# WASI_SDK_TARGETS=wasm32-wasip1 builds only the triple cadrum compiles/links against
+# (skipping wasip2 / wasi / *-threads), cutting build time to a fraction.
+# We discard /wasi-sdk/share/wasi-sysroot and point SYSROOT at this build's install prefix.
+RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
+      --branch wasi-sdk-33 https://github.com/WebAssembly/wasi-sdk /tmp/wasi-sdk-src \
+ && sed -i 's/-wasm-use-legacy-eh=false/-wasm-use-legacy-eh=true/' /tmp/wasi-sdk-src/cmake/wasi-sdk-sysroot.cmake \
+ && cmake -G Ninja -B /tmp/sysroot-build -S /tmp/wasi-sdk-src \
+      -DCMAKE_TOOLCHAIN_FILE=/wasi-sdk/share/cmake/wasi-sdk.cmake \
+      -DCMAKE_C_COMPILER_WORKS=ON -DCMAKE_CXX_COMPILER_WORKS=ON \
+      -DWASI_SDK_INCLUDE_TESTS=OFF -DWASI_SDK_EXCEPTIONS=DUAL \
+      -DWASI_SDK_TARGETS=wasm32-wasip1 \
+      -DCMAKE_INSTALL_PREFIX=/legacy-sysroot \
+ && cmake --build /tmp/sysroot-build \
+ && cmake --install /tmp/sysroot-build \
+ && rm -rf /tmp/wasi-sdk-src /tmp/sysroot-build /wasi-sdk/share/wasi-sysroot
+
 # === wasm toolchain env (mirrors sandbox-wasm/makefile) ===
-ENV SYSROOT=/wasi-sdk/share/wasi-sysroot
+# SYSROOT points at the self-built legacy eh sysroot, not the discarded exnref prebuilt.
+ENV SYSROOT=/legacy-sysroot/share/wasi-sysroot
 # build.rs forwards CC_<target>/CXX_<target> to CMAKE_C/CXX_COMPILER; host build-deps
 # keep using the image's gcc because these are target-specific.
 ENV CC_wasm32_unknown_unknown=clang
