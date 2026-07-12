@@ -1,0 +1,17 @@
+[package]
+name = "clang-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Run a generic clang.wasm in-process via wasmtime to compile C/C++ to wasm, with host files bridged through WASI preopens. No wasi-sdk / node / external wasmtime required."
+
+# 独立 crate（cadrum の workspace には属さない）。後で cadrum の build-dep に path 依存で繋げる。
+[workspace]
+
+[dependencies]
+wasmtime = "39"
+wasmtime-wasi = "39"
+anyhow = "1"
+
+[[bin]]
+name = "clangw"
+path = "src/main.rs"

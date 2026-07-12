@@ -68,6 +68,8 @@ EM_LINK="-sSTANDALONE_WASM -sWASMFS -sSUPPORT_LONGJMP=wasm -fwasm-exceptions -sW
 # GATE C: stdin-tar 展開 constructor の .o を clang にリンクし、起動時に WASMFS へ
 # プロジェクト/ヘッダを展開できる clang.wasm を作る（EMBED_OBJ 指定時のみ）。
 [ -n "${EMBED_OBJ:-}" ] && EM_LINK="$EM_LINK ${EMBED_OBJ}"
+# bridge が叩く raw WASI import(path_open/fd_readdir 等)を許すための追加リンクフラグ等。
+[ -n "${EM_LINK_EXTRA:-}" ] && EM_LINK="$EM_LINK ${EM_LINK_EXTRA}"
 # 再configure は安価かつ冪等（compile/link フラグを反映させるため毎回流す）。
 echo "--- emcmake configure (emscripten target) ---"
 emcmake cmake -S "$SRC/llvm" -B "$EMB" "${COMMON_CMAKE[@]}" \
