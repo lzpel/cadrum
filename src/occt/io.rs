@@ -47,9 +47,29 @@ fn resolve_color_trailer(inner: &ffi::TopoDS_Shape, index_colormap: &std::collec
 	index_colormap.iter().filter_map(|(&idx, &color)| index_to_id.get(idx as usize).map(|&id| (id, color))).collect()
 }
 
+/// Effective colour of every face: its own if it has one, else the colour of the
+/// solid it belongs to.
+///
+/// Solid-level colour has no face key of its own, so consumers that speak only
+/// face colours — the BRep trailer and `Mesh` — get it expanded here. STEP does
+/// not go through this: it keeps the two levels apart, which is the whole point.
 #[cfg(feature = "color")]
-fn write_color_trailer<W: Write>(compound: &CompoundShape, writer: &mut W) -> Result<(), Error> {
-	let colormap = compound.colormap();
+fn resolve_face_colors<'a>(solids: impl IntoIterator<Item = &'a Solid>) -> std::collections::HashMap<u64, Color> {
+	let mut map = std::collections::HashMap::new();
+	for s in solids {
+		if let Some(c) = s.color_solid() {
+			for f in ffi::shape_faces(s.inner()).iter() {
+				map.insert(ffi::face_tshape_id(f), c);
+			}
+		}
+		// Face colours are the more specific style and win over the solid's.
+		map.extend(s.colormap().iter().map(|(&k, &v)| (k, v)));
+	}
+	map
+}
+
+#[cfg(feature = "color")]
+fn write_color_trailer<W: Write>(compound: &CompoundShape, colormap: &std::collections::HashMap<u64, Color>, writer: &mut W) -> Result<(), Error> {
 	if colormap.is_empty() {
 		return Ok(());
 	}
@@ -81,12 +101,22 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 		let mut rust_reader = RustReader::from_ref(reader);
 		let mut ids: Vec<u64> = Default::default();
 		let mut rgb: Vec<f32> = Default::default();
-		let inner = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb);
+		let mut solid_ids: Vec<u64> = Default::default();
+		let mut solid_rgb: Vec<f32> = Default::default();
+		let inner = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb, &mut solid_ids, &mut solid_rgb);
 		if inner.is_null() {
 			return Err(Error::StepReadFailed);
 		}
 		let colormap: std::collections::HashMap<u64, Color> = ids.into_iter().zip(rgb.chunks_exact(3)).map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] })).collect();
-		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
+		let solid_colors: std::collections::HashMap<u64, Color> = solid_ids.into_iter().zip(solid_rgb.chunks_exact(3)).map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] })).collect();
+
+		let mut solids = CompoundShape::from_raw(inner, colormap, Default::default()).decompose();
+		// `decompose` cannot know which solid is which; match by TShape id, which
+		// survives the compound → solid split (the handle is cloned, not rebuilt).
+		for s in &mut solids {
+			s.set_color_solid(solid_colors.get(&ffi::shape_tshape_id(s.inner())).copied());
+		}
+		Ok(solids)
 	}
 	#[cfg(not(feature = "color"))]
 	{
@@ -143,6 +173,24 @@ fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> cxx:
 /// With the `color` feature enabled, face colors are automatically embedded
 /// in the STEP file (XDE / AP214 styled items).
 pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
+	#[cfg(feature = "color")]
+	let solids: Vec<&Solid> = solids.into_iter().collect();
+	#[cfg(feature = "color")]
+	// Solid-level colours, read off the inputs before they are merged into the
+	// compound (which flattens their identities away). TShape ids are shared with
+	// the compound, so these keys still resolve on the C++ side.
+	let (solid_ids, solid_rgb) = {
+		let mut ids: Vec<u64> = Vec::new();
+		let mut rgb: Vec<f32> = Vec::new();
+		for s in &solids {
+			if let Some(c) = s.color_solid() {
+				ids.push(ffi::shape_tshape_id(s.inner()));
+				rgb.extend_from_slice(&[c.r, c.g, c.b]);
+			}
+		}
+		(ids, rgb)
+	};
+
 	let compound = CompoundShape::new(solids);
 	#[cfg(feature = "color")]
 	{
@@ -154,7 +202,7 @@ pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 			rgb.extend_from_slice(&[c.r, c.g, c.b]);
 		}
 		let mut rust_writer = RustWriter::from_ref(writer);
-		if ffi::write_step_color_stream(compound.inner(), &ids, &rgb, &mut rust_writer) {
+		if ffi::write_step_color_stream(compound.inner(), &ids, &rgb, &solid_ids, &solid_rgb, &mut rust_writer) {
 			Ok(())
 		} else {
 			Err(Error::StepWriteFailed)
@@ -185,19 +233,34 @@ pub(super) fn write_brep_text<'a, W: Write>(solids: impl IntoIterator<Item = &'a
 
 /// Shared body for BRep binary/text writes — see `read_brep_with` for context.
 fn write_brep_with<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W, ffi_write: fn(&ffi::TopoDS_Shape, &mut RustWriter) -> bool) -> Result<(), Error> {
+	#[cfg(feature = "color")]
+	let solids: Vec<&Solid> = solids.into_iter().collect();
+	// The trailer is keyed by face index and has nowhere to say "this solid",
+	// so a solid-level colour is flattened onto its faces. Appearance survives;
+	// the solid/face distinction does not. Only STEP keeps the two apart.
+	#[cfg(feature = "color")]
+	let colormap = resolve_face_colors(solids.iter().copied());
+
 	let compound = CompoundShape::new(solids);
 	let mut rust_writer = RustWriter::from_ref(writer);
 	if !ffi_write(compound.inner(), &mut rust_writer) {
 		return Err(Error::BrepWriteFailed);
 	}
 	#[cfg(feature = "color")]
-	write_color_trailer(&compound, writer)?;
+	write_color_trailer(&compound, &colormap, writer)?;
 	Ok(())
 }
 
 pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: crate::traits::Tessellation) -> Result<crate::common::mesh::Mesh, Error> {
 	use crate::common::mesh::Mesh;
 	use glam::DVec3;
+
+	#[cfg(feature = "color")]
+	let solids: Vec<&Solid> = solids.into_iter().collect();
+	// `Mesh` speaks only face colours, so resolve the solid's onto its faces here.
+	// That keeps every renderer (glTF / STL / Scene2D) unchanged.
+	#[cfg(feature = "color")]
+	let face_colors = resolve_face_colors(solids.iter().copied());
 
 	let compound = CompoundShape::new(solids);
 	let data = ffi::mesh_shape(compound.inner(), options.deflection_linear, options.deflection_angular, options.relative_linear);
@@ -232,7 +295,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	let colormap = {
 		let mut map = std::collections::HashMap::new();
 		for &fid in &face_ids {
-			if let Some(&color) = compound.colormap().get(&fid) {
+			if let Some(&color) = face_colors.get(&fid) {
 				map.insert(fid, color);
 			}
 		}

@@ -463,18 +463,29 @@ namespace cadrum {
 // `out_ids` the TShape* address of each colored face, and to `out_rgb` its
 // RGB components in OCC native space (0.0–1.0) as a flat
 // [r0,g0,b0, r1,g1,b1, ...] sequence (length = 3 * out_ids.size()).
+//
+// STEP also styles whole solids (`styled_item` → `manifold_solid_brep`), which
+// commercial CAD emits routinely. Those come back separately in
+// `out_solid_ids` / `out_solid_rgb`, keyed by the SOLID's TShape*, and are NOT
+// expanded onto faces — keeping the two levels apart is what lets a write-back
+// reproduce one STYLED_ITEM instead of N.
 // Returns nullptr on failure.
 std::unique_ptr<TopoDS_Shape> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,
-    rust::Vec<float>&    out_rgb);
+    rust::Vec<float>&    out_rgb,
+    rust::Vec<uint64_t>& out_solid_ids,
+    rust::Vec<float>&    out_solid_rgb);
 
 // Write a colored STEP stream. `ids` lists TShape* of colored faces; `rgb`
 // is the matching flat [r,g,b,...] sequence (length = 3 * ids.size()).
+// `solid_ids` / `solid_rgb` do the same at solid level.
 bool write_step_color_stream(
     const TopoDS_Shape&         shape,
     rust::Slice<const uint64_t> ids,
     rust::Slice<const float>    rgb,
+    rust::Slice<const uint64_t> solid_ids,
+    rust::Slice<const float>    solid_rgb,
     RustWriter&                 writer);
 
 } // namespace cadrum

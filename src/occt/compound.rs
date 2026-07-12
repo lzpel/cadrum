@@ -62,6 +62,10 @@ impl CompoundShape {
 	/// Each result solid receives a clone of the full `history` — over-inclusion
 	/// is harmless because `iter_history()` consumers filter pairs by checking
 	/// `src_id` against the original input's face IDs.
+	///
+	/// The solid-level colour is left `None`: unlike the face colormap it cannot be
+	/// over-included, so whoever knows which solid is which sets it afterwards
+	/// (`io::read_step` by TShape id, `Solid::boolean_build` by operand agreement).
 	pub fn decompose(self) -> Vec<Solid> {
 		let solid_shapes = ffi::decompose_into_solids(&self.inner);
 		solid_shapes
@@ -71,6 +75,8 @@ impl CompoundShape {
 					ffi::clone_shape_handle(s),
 					#[cfg(feature = "color")]
 					self.colormap.clone(),
+					#[cfg(feature = "color")]
+					None,
 					self.history.clone(),
 				)
 			})

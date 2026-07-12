@@ -62,6 +62,16 @@ pub struct Solid {
 	faces: OnceLock<Vec<Face>>,
 	#[cfg(feature = "color")]
 	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
+	/// Colour of the solid as a whole, independent of `colormap`.
+	///
+	/// STEP styles a `styled_item` onto either an `advanced_face` or a whole
+	/// `manifold_solid_brep`; commercial CAD routinely emits the latter. The two
+	/// levels are kept apart so a read → write round-trip reproduces the file's
+	/// structure instead of exploding one style into N face styles.
+	///
+	/// Resolution order for rendering is face colour → solid colour → default grey.
+	#[cfg(feature = "color")]
+	color: Option<crate::common::color::Color>,
 	/// Face-derivation history from the most recent boolean operation.
 	///
 	/// Flat `[post_id, src_id, post_id, src_id, ...]` pairs:
@@ -83,7 +93,7 @@ impl Solid {
 	///
 	/// # Panics
 	/// Panics if `inner` is not `TopAbs_SOLID` (and not null).
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, #[cfg(feature = "color")] color: Option<crate::common::color::Color>, history: Vec<u64>) -> Self {
 		debug_assert!(ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner), "Solid::new called with a non-SOLID shape");
 		Solid {
 			inner,
@@ -91,6 +101,8 @@ impl Solid {
 			faces: OnceLock::new(),
 			#[cfg(feature = "color")]
 			colormap,
+			#[cfg(feature = "color")]
+			color,
 			history,
 		}
 	}
@@ -114,6 +126,42 @@ impl Solid {
 	#[cfg(feature = "color")]
 	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<u64, crate::common::color::Color> {
 		&mut self.colormap
+	}
+
+	/// The solid-level colour, if any. Named apart from the `color` builder,
+	/// which consumes `self`.
+	#[cfg(feature = "color")]
+	pub fn color_solid(&self) -> Option<crate::common::color::Color> {
+		self.color
+	}
+
+	/// Set the solid-level colour in place. Used by `io::read_step`, which only
+	/// learns which solid got which colour after the compound is decomposed.
+	#[cfg(feature = "color")]
+	pub(crate) fn set_color_solid(&mut self, color: Option<crate::common::color::Color>) {
+		self.color = color;
+	}
+
+	/// Solid-level colour of a boolean result: carried over when every operand
+	/// that *has* one agrees, `None` when they disagree.
+	///
+	/// Face colours ride the `[post_id, src_id]` history, which is a function —
+	/// every result face descends from exactly one source face. A solid colour has
+	/// no such function: the volume of `a ∪ b` is not derived from one operand but
+	/// is a mixture, so there is nothing to carry. Agreeing operands are the only
+	/// case with an answer that is not a guess. Operands with no colour (a cutting
+	/// tool, say) are ignored rather than forcing the result to `None`.
+	#[cfg(feature = "color")]
+	fn merge_solid_color<'a>(solids: impl IntoIterator<Item = &'a Solid>) -> Option<crate::common::color::Color> {
+		let mut agreed = None;
+		for c in solids.into_iter().filter_map(|s| s.color) {
+			match agreed {
+				None => agreed = Some(c),
+				Some(prev) if prev == c => {}
+				Some(_) => return None,
+			}
+		}
+		agreed
 	}
 
 	/// Carry each source face's color onto its derived result faces via
@@ -149,6 +197,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -159,6 +209,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -169,6 +221,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -179,6 +233,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -189,6 +245,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -199,6 +257,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		)
 	}
@@ -248,6 +308,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -268,6 +330,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			self.remap_colormap(&history),
+			#[cfg(feature = "color")]
+			self.color,
 			history,
 		))
 	}
@@ -288,6 +352,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			self.remap_colormap(&history),
+			#[cfg(feature = "color")]
+			self.color,
 			history,
 		))
 	}
@@ -306,6 +372,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			self.remap_colormap(&history),
+			#[cfg(feature = "color")]
+			self.color,
 			history,
 		))
 	}
@@ -330,6 +398,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -376,6 +446,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -407,6 +479,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -426,6 +500,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -455,6 +531,8 @@ impl SolidStruct for Solid {
 			shape,
 			#[cfg(feature = "color")]
 			std::collections::HashMap::new(),
+			#[cfg(feature = "color")]
+			None,
 			Default::default(),
 		))
 	}
@@ -471,6 +549,8 @@ impl SolidStruct for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			self.remap_colormap(&history),
+			#[cfg(feature = "color")]
+			self.color,
 			history,
 		))
 	}
@@ -493,6 +573,8 @@ impl SolidStruct for Solid {
 				faces: OnceLock::new(),
 				#[cfg(feature = "color")]
 				colormap: s.colormap.clone(),
+				#[cfg(feature = "color")]
+				color: s.color,
 				history: s.history.clone(),
 			})
 			.collect();
@@ -530,13 +612,23 @@ impl SolidStruct for Solid {
 			m
 		};
 
+		// A boolean invents new solids, so the solid-level colour cannot be looked
+		// up per result — it is the operands' agreed colour or nothing.
+		#[cfg(feature = "color")]
+		let solid_color = Self::merge_solid_color(solids.iter());
+
 		let compound = CompoundShape::from_raw(
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
 			history,
 		);
-		Ok(compound.decompose())
+		let mut out = compound.decompose();
+		#[cfg(feature = "color")]
+		for s in &mut out {
+			s.color = solid_color;
+		}
+		Ok(out)
 	}
 
 	// --- I/O (delegates to super::io helpers) ---
@@ -622,14 +714,15 @@ impl SolidStruct for Solid {
 
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
-		let c = color.into();
-		let colormap = ffi::shape_faces(&self.inner).iter().map(|f| (ffi::face_tshape_id(f), c)).collect();
-		Self::new(self.inner, colormap, self.history)
+		// Paint the solid, not each of its faces: one STYLED_ITEM on the
+		// manifold_solid_brep instead of N on the advanced_faces. Face overrides are
+		// dropped, since "colour the whole solid" means exactly that.
+		Self::new(self.inner, std::collections::HashMap::new(), Some(color.into()), self.history)
 	}
 
 	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self {
-		Self::new(self.inner, std::collections::HashMap::new(), self.history)
+		Self::new(self.inner, std::collections::HashMap::new(), None, self.history)
 	}
 }
 
@@ -646,6 +739,8 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			self.colormap,
+			#[cfg(feature = "color")]
+			self.color,
 			self.history,
 		)
 	}
@@ -656,6 +751,8 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			self.colormap,
+			#[cfg(feature = "color")]
+			self.color,
 			self.history,
 		)
 	}
@@ -681,6 +778,8 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			#[cfg(feature = "color")]
+			self.color,
 			Default::default(),
 		)
 	}
@@ -693,6 +792,8 @@ impl Transform for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			#[cfg(feature = "color")]
+			self.color,
 			Default::default(),
 		)
 	}
@@ -709,6 +810,8 @@ impl Clone for Solid {
 			inner,
 			#[cfg(feature = "color")]
 			colormap,
+			#[cfg(feature = "color")]
+			self.color,
 			Default::default(),
 		)
 	}

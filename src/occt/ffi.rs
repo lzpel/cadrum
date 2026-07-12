@@ -63,10 +63,10 @@ mod ffi_bridge {
 		// ==================== Colored STEP I/O (color feature only) ====================
 
 		#[cfg(feature = "color")]
-		fn read_step_color_stream(reader: &mut RustReader, out_ids: &mut Vec<u64>, out_rgb: &mut Vec<f32>) -> UniquePtr<TopoDS_Shape>;
+		fn read_step_color_stream(reader: &mut RustReader, out_ids: &mut Vec<u64>, out_rgb: &mut Vec<f32>, out_solid_ids: &mut Vec<u64>, out_solid_rgb: &mut Vec<f32>) -> UniquePtr<TopoDS_Shape>;
 
 		#[cfg(feature = "color")]
-		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], rgb: &[f32], writer: &mut RustWriter) -> bool;
+		fn write_step_color_stream(shape: &TopoDS_Shape, ids: &[u64], rgb: &[f32], solid_ids: &[u64], solid_rgb: &[f32], writer: &mut RustWriter) -> bool;
 
 		// ==================== Builders (solid → solid with history) ====================
 

@@ -833,18 +833,7 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double linear, double angular, bo
         TopLoc_Location location;
         Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation(face, location);
 
-        // Nodal normals, taken from the underlying surface (GeomLib::NormEstim at
-        // each UV node) rather than averaged from the triangles, so curved faces
-        // carry their exact normal. OCCT falls back to averaging adjacent triangle
-        // normals at singular nodes (cone apex, sphere pole) and on faces without
-        // UV nodes. NOT Poly_Triangulation::ComputeNormals, which only averages
-        // triangle normals and would throw the surface away.
-        //
-        // Safe on a null handle, and every other path allocates the array, so the
-        // guard below rejects exactly the faces with nothing to emit: no
-        // triangulation at all, or a triangulation with no nodes.
-        BRepLib_ToolTriangulatedShape::ComputeNormals(face, triangulation);
-        if (triangulation.IsNull() || !triangulation->HasNormals()) {
+        if (triangulation.IsNull()) {
             continue;
         }
 
@@ -854,7 +843,17 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double linear, double angular, bo
         // Shared by the nodal normals and the index winding below.
         bool reversed = (face.Orientation() == TopAbs_REVERSED);
 
-        // Position and normal of every node in one pass.
+        // Nodal normals, taken from the underlying surface (GeomLib::NormEstim at
+        // each UV node) rather than averaged from the triangles, so curved faces
+        // carry their exact normal. OCCT falls back to averaging adjacent triangle
+        // normals at singular nodes (cone apex, sphere pole) and on faces without
+        // UV nodes. NOT Poly_Triangulation::ComputeNormals, which only averages
+        // triangle normals and would throw the surface away.
+        BRepLib_ToolTriangulatedShape::ComputeNormals(face, triangulation);
+        bool has_normals = triangulation->HasNormals();
+
+        // Position and normal of every node in one pass. Absent normals are
+        // emitted as zero so both arrays stay one entry per vertex.
         for (int i = 1; i <= nb_nodes; i++) {
             gp_Pnt p = triangulation->Node(i);
             p.Transform(location.Transformation());
@@ -865,12 +864,18 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double linear, double angular, bo
             // ComputeNormals ignores face orientation and works in the
             // triangulation's local frame, so apply the location and the REVERSED
             // flip here — the same rule the index winding below uses.
-            gp_Dir n = triangulation->Normal(i);
-            n.Transform(location.Transformation());
-            if (reversed) n.Reverse();
-            result.normals.push_back(n.X());
-            result.normals.push_back(n.Y());
-            result.normals.push_back(n.Z());
+            double nx = 0.0, ny = 0.0, nz = 0.0;
+            if (has_normals) {
+                gp_Dir n = triangulation->Normal(i);
+                n.Transform(location.Transformation());
+                if (reversed) n.Reverse();
+                nx = n.X();
+                ny = n.Y();
+                nz = n.Z();
+            }
+            result.normals.push_back(nx);
+            result.normals.push_back(ny);
+            result.normals.push_back(nz);
         }
 
         // Indices
@@ -2058,34 +2063,53 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 
 namespace cadrum {
 
-// Traverse every label in the XDE document and record face-level colors.
+// Traverse every label in the XDE document and record colors at both levels.
 // Uses TDF_ChildIterator with allLevels=true for a flat, efficient walk.
-static void collect_face_colors(
+//
+// STEP styles a `styled_item` onto either an `advanced_face` (per-face) or a
+// `manifold_solid_brep` (whole solid); both occur in the wild, and a file may
+// carry both (the face style then overrides). Faces land in `faceMap`, anything
+// else has its color assigned to every SOLID it contains, keyed by that solid's
+// TShape*. Solid-level color is deliberately NOT expanded onto faces here —
+// doing so would turn one STYLED_ITEM into N on write-back.
+static void collect_colors(
     const Handle(TDocStd_Document)& doc,
     const Handle(XCAFDoc_ColorTool)& colorTool,
-    std::unordered_map<uint64_t, std::array<float, 3>>& colorMap)
+    std::unordered_map<uint64_t, std::array<float, 3>>& faceMap,
+    std::unordered_map<uint64_t, std::array<float, 3>>& solidMap)
 {
     for (TDF_ChildIterator it(doc->Main(), true); it.More(); it.Next()) {
         const TDF_Label& label = it.Value();
         if (!XCAFDoc_ShapeTool::IsShape(label)) continue;
 
         TopoDS_Shape s = XCAFDoc_ShapeTool::GetShape(label);
-        if (s.IsNull() || s.ShapeType() != TopAbs_FACE) continue;
+        if (s.IsNull()) continue;
 
         Quantity_Color color;
         bool ok = colorTool->GetColor(label, XCAFDoc_ColorSurf, color);
         if (!ok) ok = colorTool->GetColor(label, XCAFDoc_ColorGen, color);
         if (!ok) continue;
 
-        uint64_t id = reinterpret_cast<uint64_t>(s.TShape().get());
-        colorMap[id] = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
+        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
+
+        if (s.ShapeType() == TopAbs_FACE) {
+            faceMap[reinterpret_cast<uint64_t>(s.TShape().get())] = rgb;
+            continue;
+        }
+        // A SOLID explores to itself; a COMPOUND/COMPSOLID spreads its color to
+        // every solid it holds. Shapes with no solid (loose shells/faces) drop out.
+        for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
+            solidMap[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = rgb;
+        }
     }
 }
 
 std::unique_ptr<TopoDS_Shape> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,
-    rust::Vec<float>&    out_rgb)
+    rust::Vec<float>&    out_rgb,
+    rust::Vec<uint64_t>& out_solid_ids,
+    rust::Vec<float>&    out_solid_rgb)
 {
     try {
         // Create XDE document directly — avoids XCAFApp_Application which
@@ -2121,12 +2145,15 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
             builder.Add(compound, shapeTool->GetShape(roots.Value(i)));
         }
 
-        // Build TShape* → color map from the XDE document labels.
+        // Build TShape* → color maps from the XDE document labels.
         std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
-        collect_face_colors(doc, colorTool, colorMap);
+        std::unordered_map<uint64_t, std::array<float, 3>> solidColorMap;
+        collect_colors(doc, colorTool, colorMap, solidColorMap);
 
         // Recover Solids from disjoint shells / loose faces (#129); also
         // remaps colorMap keys for faces whose TShape* changed during sewing.
+        // Solids that already existed pass through with their TShape* intact, so
+        // solidColorMap needs no remap; solids invented by sewing simply miss.
         TopoDS_Shape post = try_sew_orphan_faces(compound, &colorMap);
 
         // Emit colors — walk POST-processed shape so new TShape* are picked up.
@@ -2141,6 +2168,17 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
             out_rgb.push_back(it->second[2]);
         }
 
+        for (TopExp_Explorer ex(post, TopAbs_SOLID); ex.More(); ex.Next()) {
+            uint64_t id =
+                reinterpret_cast<uint64_t>(ex.Current().TShape().get());
+            auto it = solidColorMap.find(id);
+            if (it == solidColorMap.end()) continue;
+            out_solid_ids.push_back(id);
+            out_solid_rgb.push_back(it->second[0]);
+            out_solid_rgb.push_back(it->second[1]);
+            out_solid_rgb.push_back(it->second[2]);
+        }
+
         return std::make_unique<TopoDS_Shape>(post);
     } catch (const Standard_Failure&) {
         return nullptr;
@@ -2151,6 +2189,8 @@ bool write_step_color_stream(
     const TopoDS_Shape&         shape,
     rust::Slice<const uint64_t> ids,
     rust::Slice<const float>    rgb,
+    rust::Slice<const uint64_t> solid_ids,
+    rust::Slice<const float>    solid_rgb,
     RustWriter&                 writer)
 {
     try {
@@ -2164,6 +2204,30 @@ bool write_step_color_stream(
         // Register the root shape.
         TDF_Label rootLabel = shapeTool->AddShape(shape, false);
 
+        // Attach `color` at `level` to the sub-shape label of `sub`, creating the
+        // label if XCAF does not have one yet. Shared by the solid and face passes.
+        auto set_color = [&](const TopoDS_Shape& sub, const std::array<float, 3>& c) {
+            TDF_Label label;
+            if (!shapeTool->FindSubShape(rootLabel, sub, label)) {
+                label = shapeTool->AddSubShape(rootLabel, sub);
+            }
+            Quantity_Color color(c[0], c[1], c[2], Quantity_TOC_RGB);
+            colorTool->SetColor(label, color, XCAFDoc_ColorSurf);
+        };
+
+        // Solid-level colors first, so a face-level color set below wins in
+        // viewers that honour the more specific style.
+        std::unordered_map<uint64_t, std::array<float, 3>> solidLookup;
+        for (size_t i = 0; i < solid_ids.size(); i++) {
+            solidLookup[solid_ids[i]] = {solid_rgb[3*i], solid_rgb[3*i+1], solid_rgb[3*i+2]};
+        }
+        for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
+            const TopoDS_Shape& solid = ex.Current();
+            auto it = solidLookup.find(reinterpret_cast<uint64_t>(solid.TShape().get()));
+            if (it == solidLookup.end()) continue;
+            set_color(solid, it->second);
+        }
+
         // Build TShape* → color lookup from the Rust-supplied arrays.
         std::unordered_map<uint64_t, std::array<float, 3>> colorLookup;
         for (size_t i = 0; i < ids.size(); i++) {
@@ -2173,18 +2237,9 @@ bool write_step_color_stream(
         // For each colored face, find/create its sub-shape label and set color.
         for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
             const TopoDS_Shape& face = ex.Current();
-            uint64_t id = reinterpret_cast<uint64_t>(face.TShape().get());
-            auto it = colorLookup.find(id);
+            auto it = colorLookup.find(reinterpret_cast<uint64_t>(face.TShape().get()));
             if (it == colorLookup.end()) continue;
-
-            TDF_Label faceLabel;
-            if (!shapeTool->FindSubShape(rootLabel, face, faceLabel)) {
-                faceLabel = shapeTool->AddSubShape(rootLabel, face);
-            }
-
-            const auto& c = it->second;
-            Quantity_Color color(c[0], c[1], c[2], Quantity_TOC_RGB);
-            colorTool->SetColor(faceLabel, color, XCAFDoc_ColorSurf);
+            set_color(face, it->second);
         }
 
         // Transfer XDE doc to STEP model and write to stream.
