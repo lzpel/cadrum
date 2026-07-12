@@ -14,9 +14,9 @@ const BUILD_REVISION: &str = "rev4";
 /// target's hyphens are underscored too). `has_version` appends the cadrum crate
 /// version for the per-crate FFI artifact.
 ///
-/// - `release_name(None, false)`    → `occt-8_0_0_rev3`                              (GitHub Release タグ)
-/// - `release_name(Some(t), false)` → `occt-8_0_0_rev3-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
-/// - `release_name(Some(t), true)`  → `occt-8_0_0_rev3-wasm32_unknown_unknown-cadrum-0_8_11` (FFI tarball)
+/// - `release_name(None, false)`    → `occt-8_0_0_rev4`                              (GitHub Release タグ)
+/// - `release_name(Some(t), false)` → `occt-8_0_0_rev4-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
+/// - `release_name(Some(t), true)`  → `occt-8_0_0_rev4-wasm32_unknown_unknown-cadrum-0_8_13` (FFI tarball)
 fn release_name(target: Option<&str>, has_version: bool) -> String {
 	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
 	let mut name = format!("occt-{}_{}", occt, BUILD_REVISION);
