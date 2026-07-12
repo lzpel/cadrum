@@ -32,11 +32,14 @@ changes until `1.0`.
   `occt-<version>_<rev>-<target>` (single sorted list, `-` between fields and
   `_` within a field, target hyphens underscored), e.g.
   `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`. (#203)
-- **wasm exception-handling unified on exnref.** OCCT and the cxx wrapper are
-  now compiled with `-mllvm -wasm-use-legacy-eh=false` so their EH encoding
-  matches the exnref-built wasi-sdk eh sysroot, fixing the `module uses a mix of
-  legacy and new exception handling instructions` error. (#199)
-- Prebuilt `BUILD_REVISION` bumped to `rev2` (naming + EH encoding change).
+- **wasm exception-handling uses the legacy encoding.** OCCT and the cxx wrapper
+  are compiled with `-mllvm -wasm-use-legacy-eh=true`, matching a self-built
+  *legacy* wasi-sdk eh sysroot (the released wasi-sdk eh sysroot is exnref-only, so
+  the cross image rebuilds just the sysroot from source). This keeps both sides on
+  one EH encoding — avoiding the `module uses a mix of legacy and new exception
+  handling instructions` error — while dropping the exnref runtime opt-in (no
+  `--experimental-wasm-exnref` needed). (#199, #233)
+- Prebuilt `BUILD_REVISION` bumped to `rev4` (naming + EH encoding change).
 
 ### 0.8.10
 

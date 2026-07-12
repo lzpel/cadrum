@@ -100,8 +100,9 @@ Then run the output through `wasm-bindgen` / `wasm-pack` for browser glue. See
 [`cadrum-wasm-example`](https://github.com/lzpel/cadrum-wasm-example) for a complete setup.
 
 **Runtime requirement:** the module is built with Wasm exception handling
-(`-fwasm-exceptions`, the newer `exnref` encoding), so it needs a runtime that
-supports it — a current browser, or Node run with `--experimental-wasm-exnref`.
+(`-fwasm-exceptions`, the legacy encoding), so it needs a runtime that supports the
+Wasm exception-handling proposal — any current browser, or Node (no
+`--experimental-wasm-exnref` flag required).
 
 ### Building for other targets
 
