@@ -285,7 +285,7 @@ impl Mesh {
 	/// (`hidden_edges` / `shading`) parameters. `SceneOption::default()` is the
 	/// standard Z-up isometric CAD view.
 	///
-	/// Render via `Scene2D::to_svg` / `Scene2D::write_svg`.
+	/// Render via `Scene2D::write_svg`.
 	pub fn scene(&self, option: SceneOption) -> Scene2D {
 		let SceneOption { view, up, hidden_edges, shading } = option;
 		let (u, v, dir) = projection_basis(view, up);

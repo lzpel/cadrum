@@ -125,14 +125,11 @@ impl<S: SolidStruct> TryFrom<Boolean<S>> for Vec<S> {
 	}
 }
 
-// 汎用 `impl<S: SolidStruct> TryFrom<Boolean<S>> for S` は orphan rule 違反のため、
-// 「Boolean<Self> → Self」の TryFrom は具象側 (src/occt/solid.rs) に置く。
-
 // ==================== From / 演算子 ====================
 //
 // `From` が `Solid`/`&Solid` → `Boolean<S>` の入口。演算子は `Boolean<S>` 左辺に集約
 // (dnf 呼び出しはこのファイルのみ)。裸の Solid/&Solid 左辺の糖衣は orphan rule で
-// generic 化できず traits::impl_solid_boolean_ops! が src/occt/solid.rs で生成する。
+// generic 化できず、src/lib.rs の impl_solid_boolean_ops! が生成する。
 
 impl<S: SolidStruct> From<S> for Boolean<S> {
 	// owned でも借用渡し。metadata move 最適化はしない (generic 契約の軽微なコスト)。
