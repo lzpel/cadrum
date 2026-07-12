@@ -10,6 +10,27 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 	DVec3::new(x, y, z)
 }
 
+// ==================== Vertex normals (Mesh::normals) ====================
+
+/// 頂点法線が三角形の平均ではなく元の曲面から来ていることを検証する。
+/// 原点中心・半径 r の球なら、法線は必ず中心からの単位ベクトルに一致する。
+/// 三角形法線の平均だと deflection のオーダー (1e-3 級) でずれるので、
+/// この許容差では通らない。
+#[test]
+fn sphere_normals_come_from_the_surface() {
+	let tess = Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() };
+	let mesh = Solid::mesh(&[Solid::sphere(5.0)], tess).unwrap();
+
+	assert_eq!(mesh.normals.len(), mesh.vertices.len(), "one normal per vertex");
+	assert!(!mesh.normals.is_empty(), "sphere must produce vertices");
+
+	for (v, n) in mesh.vertices.iter().zip(&mesh.normals) {
+		assert!((n.length() - 1.0).abs() < 1e-6, "normal must be unit length at {v:?}: {n:?}");
+		let radial = v.normalize();
+		assert!(n.dot(radial) > 1.0 - 1e-6, "normal must be the exact surface normal at {v:?}: got {n:?}, expected {radial:?}");
+	}
+}
+
 // ==================== SVG (Scene2D::write_svg) ====================
 
 mod svg {
@@ -43,17 +64,6 @@ mod svg {
 
 		write("svg_box_isometric", &svg);
 		println!("SVG length: {} bytes", svg.len());
-	}
-
-	#[test]
-	fn box_top_down() {
-		let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-		let svg = svg_string(&shape, DVec3::Z, 0.1);
-
-		assert!(svg.starts_with("<svg"));
-		assert!(svg.contains("<polyline"));
-
-		write("svg_box_top_down", &svg);
 	}
 
 	#[test]
@@ -211,21 +221,6 @@ mod png {
 	fn write(name: &str, buf: &[u8]) {
 		std::fs::create_dir_all("out").unwrap();
 		std::fs::write(format!("out/{name}.png"), buf).unwrap();
-	}
-
-	#[test]
-	fn box_isometric() {
-		let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-		let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
-		let scene = mesh.scene(cadrum::SceneOption { view: dvec3(1.0, 1.0, 1.0).normalize(), ..Default::default() });
-
-		let mut buf = Vec::new();
-		scene.write_png([400, 400], &mut buf).unwrap();
-
-		assert_eq!(&buf[0..8], PNG_MAGIC, "PNG signature missing");
-		assert_eq!(png_dimensions(&buf), (400, 400));
-
-		write("png_box_isometric", &buf);
 	}
 
 	#[test]

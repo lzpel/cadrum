@@ -33,6 +33,7 @@
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <BRepLib.hxx>
+#include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -832,51 +833,47 @@ MeshData mesh_shape(const TopoDS_Shape& shape, double linear, double angular, bo
         TopLoc_Location location;
         Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation(face, location);
 
-        if (triangulation.IsNull()) {
+        // Nodal normals, taken from the underlying surface (GeomLib::NormEstim at
+        // each UV node) rather than averaged from the triangles, so curved faces
+        // carry their exact normal. OCCT falls back to averaging adjacent triangle
+        // normals at singular nodes (cone apex, sphere pole) and on faces without
+        // UV nodes. NOT Poly_Triangulation::ComputeNormals, which only averages
+        // triangle normals and would throw the surface away.
+        //
+        // Safe on a null handle, and every other path allocates the array, so the
+        // guard below rejects exactly the faces with nothing to emit: no
+        // triangulation at all, or a triangulation with no nodes.
+        BRepLib_ToolTriangulatedShape::ComputeNormals(face, triangulation);
+        if (triangulation.IsNull() || !triangulation->HasNormals()) {
             continue;
         }
 
         int nb_nodes = triangulation->NbNodes();
         int nb_triangles = triangulation->NbTriangles();
 
-        // Vertices
+        // Shared by the nodal normals and the index winding below.
+        bool reversed = (face.Orientation() == TopAbs_REVERSED);
+
+        // Position and normal of every node in one pass.
         for (int i = 1; i <= nb_nodes; i++) {
             gp_Pnt p = triangulation->Node(i);
             p.Transform(location.Transformation());
             result.vertices.push_back(p.X());
             result.vertices.push_back(p.Y());
             result.vertices.push_back(p.Z());
-        }
 
-        // UVs - normalize per face
-        if (triangulation->HasUVNodes()) {
-            double u_min = 1e30, u_max = -1e30, v_min = 1e30, v_max = -1e30;
-            for (int i = 1; i <= nb_nodes; i++) {
-                gp_Pnt2d uv = triangulation->UVNode(i);
-                u_min = std::min(u_min, uv.X());
-                u_max = std::max(u_max, uv.X());
-                v_min = std::min(v_min, uv.Y());
-                v_max = std::max(v_max, uv.Y());
-            }
-            double u_range = u_max - u_min;
-            double v_range = v_max - v_min;
-            if (u_range < 1e-10) u_range = 1.0;
-            if (v_range < 1e-10) v_range = 1.0;
-
-            for (int i = 1; i <= nb_nodes; i++) {
-                gp_Pnt2d uv = triangulation->UVNode(i);
-                result.uvs.push_back((uv.X() - u_min) / u_range);
-                result.uvs.push_back((uv.Y() - v_min) / v_range);
-            }
-        } else {
-            for (int i = 1; i <= nb_nodes; i++) {
-                result.uvs.push_back(0.0);
-                result.uvs.push_back(0.0);
-            }
+            // ComputeNormals ignores face orientation and works in the
+            // triangulation's local frame, so apply the location and the REVERSED
+            // flip here — the same rule the index winding below uses.
+            gp_Dir n = triangulation->Normal(i);
+            n.Transform(location.Transformation());
+            if (reversed) n.Reverse();
+            result.normals.push_back(n.X());
+            result.normals.push_back(n.Y());
+            result.normals.push_back(n.Z());
         }
 
         // Indices
-        bool reversed = (face.Orientation() == TopAbs_REVERSED);
         uint64_t face_id = reinterpret_cast<uint64_t>(face.TShape().get());
         for (int i = 1; i <= nb_triangles; i++) {
             const Poly_Triangle& tri = triangulation->Triangle(i);

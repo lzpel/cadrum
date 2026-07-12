@@ -5,14 +5,16 @@ use std::collections::HashMap;
 
 /// A triangle mesh produced by meshing a solid shape.
 ///
-/// All vectors have the same length: one entry per vertex.
 /// `indices` contains triangle indices (groups of 3).
 #[derive(Debug, Clone)]
 pub struct Mesh {
 	/// Vertex positions in 3D space.
 	pub vertices: Vec<DVec3>,
-	/// UV coordinates, normalized to [0, 1] per face.
-	pub uvs: Vec<DVec2>,
+	/// Unit outward normal per vertex, evaluated on the underlying B-rep surface
+	/// (not averaged from the triangles). Vertices are not shared between B-rep
+	/// faces, so each face acts as its own smoothing group: a cylinder's side is
+	/// smooth and its sharp edges stay sharp.
+	pub normals: Vec<DVec3>,
 	/// Triangle indices (groups of 3, referencing into `vertices`).
 	pub indices: Vec<usize>,
 	/// Per-triangle face ID. Length equals `indices.len() / 3`.
@@ -96,8 +98,9 @@ impl Mesh {
 			let v0 = self.vertices[i0];
 			let v1 = self.vertices[i1];
 			let v2 = self.vertices[i2];
-			// Face normal from cross product / 外積から面法線を計算
-			let n = (v1 - v0).cross(v2 - v0).normalize_or_zero();
+			// STL stores the facet normal, so this is the triangle's geometric
+			// normal — not the per-vertex surface normal in `self.normals`.
+			let n = tri_normal(self, ti).normalize_or_zero();
 			// Normal (3 x f32 LE)
 			for c in [n.x, n.y, n.z] {
 				writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
