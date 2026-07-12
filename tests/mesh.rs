@@ -169,18 +169,7 @@ mod glb {
 		assert!(json.contains(r#""mode":4"#), "triangle primitive present");
 		assert!(json.contains(r#""mode":1"#), "edge LINES primitive present");
 		assert!(json.contains(r#""cadrum":"edges""#), "edge extras marker present");
-	}
-
-	/// With the `color` feature, faces get unlit materials.
-	#[cfg(feature = "color")]
-	#[test]
-	fn has_unlit_material() {
-		let mut buf = Vec::new();
-		Solid::mesh(&[Solid::cube(DVec3::ZERO, DVec3::splat(10.0))], Default::default()).unwrap().write_gltf_binary(&mut buf).expect("glb write");
-		let json = glb_json(&buf);
-		assert!(json.contains(r#""materials""#), "materials array present");
-		assert!(json.contains("KHR_materials_unlit"), "unlit extension declared");
-		assert!(json.contains(r#""extensionsUsed":["KHR_materials_unlit"]"#), "extensionsUsed lists the unlit ext");
+		assert!(json.contains(r#""NORMAL":"#), "triangles must carry vertex normals");
 	}
 
 	/// A small mesh (≤ 65535 vertices) stores indices as UNSIGNED_SHORT (5123);

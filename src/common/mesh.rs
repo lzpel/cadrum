@@ -125,13 +125,13 @@ impl Mesh {
 	/// このメッシュをバイナリ glTF (GLB) 形式で書き出す。
 	///
 	/// Emits a single mesh whose primitives are:
-	/// - triangles (`mode` TRIANGLES) — with the `color` feature, one primitive
-	///   per distinct face color, each backed by a `KHR_materials_unlit`
-	///   material (same-color faces share one material); otherwise a single
-	///   uncolored primitive.
+	/// - triangles (`mode` TRIANGLES) carrying POSITION and NORMAL — with the
+	///   `color` feature, one primitive per distinct face color, each backed by a
+	///   lit metallic-roughness material (same-color faces share one material);
+	///   otherwise a single uncolored primitive on the glTF default material.
 	/// - edges (`mode` LINES, `extras: {"cadrum":"edges"}`) built from
 	///   `self.edges`, so viewers render the wireframe and `cadrum` readers can
-	///   identify it.
+	///   identify it. POSITION only — a normal means nothing on a line.
 	///
 	/// Geometry lives in the GLB BIN chunk; JSON is hand-written (no serde
 	/// dependency). `RWGltf_CafWriter` is intentionally not used.
@@ -144,10 +144,14 @@ impl Mesh {
 		#[allow(unused_mut)]
 		let mut materials: Vec<String> = Vec::new();
 
-		// ---- Triangle primitives (shared POSITION accessor) ----
+		// ---- Triangle primitives (shared POSITION + NORMAL accessors) ----
+		// Vertices are never shared across B-rep faces, so `normals` is index-parallel
+		// with `vertices` and one NORMAL accessor is valid for every group — the same
+		// reason POSITION can be shared.
 		let tri_groups = self.gltf_triangle_groups(&mut materials);
-		if !tri_groups.is_empty() && !self.vertices.is_empty() {
-			let pos_acc = push_accessor_position(&mut buffer_views, &mut accessors, &mut bin, self.vertices.iter().map(|v| [v.x as f32, v.y as f32, v.z as f32]));
+		if !tri_groups.is_empty() && !self.vertices.is_empty() && !self.normals.is_empty() {
+			let pos_acc = push_accessor_vec3(&mut buffer_views, &mut accessors, &mut bin, self.vertices.iter().map(|v| [v.x as f32, v.y as f32, v.z as f32]));
+			let nrm_acc = push_accessor_vec3(&mut buffer_views, &mut accessors, &mut bin, self.normals.iter().map(|n| [n.x as f32, n.y as f32, n.z as f32]));
 
 			for (indices, material) in tri_groups {
 				if indices.is_empty() {
@@ -155,14 +159,14 @@ impl Mesh {
 				}
 				let acc = push_accessor_index(&mut buffer_views, &mut accessors, &mut bin, &indices, self.vertices.len());
 				let mat = material.map_or(String::new(), |m| format!(r#","material":{}"#, m));
-				primitives.push(format!(r#"{{"attributes":{{"POSITION":{}}},"indices":{},"mode":4{}}}"#, pos_acc, acc, mat));
+				primitives.push(format!(r#"{{"attributes":{{"POSITION":{},"NORMAL":{}}},"indices":{},"mode":4{}}}"#, pos_acc, nrm_acc, acc, mat));
 			}
 		}
 
 		// ---- Edge LINES primitive ----
 		let (epos, eidx) = self.gltf_edge_buffers();
 		if !eidx.is_empty() {
-			let pos_acc = push_accessor_position(&mut buffer_views, &mut accessors, &mut bin, epos.iter().copied());
+			let pos_acc = push_accessor_vec3(&mut buffer_views, &mut accessors, &mut bin, epos.iter().copied());
 			let idx_acc = push_accessor_index(&mut buffer_views, &mut accessors, &mut bin, &eidx, epos.len());
 			primitives.push(format!(r#"{{"attributes":{{"POSITION":{}}},"indices":{},"mode":1,"extras":{{"cadrum":"edges"}}}}"#, pos_acc, idx_acc));
 		}
@@ -180,7 +184,6 @@ impl Mesh {
 		}
 		if !materials.is_empty() {
 			members.push(format!(r#""materials":[{}]"#, materials.join(",")));
-			members.push(r#""extensionsUsed":["KHR_materials_unlit"]"#.to_string());
 		}
 		if !primitives.is_empty() {
 			members.push(format!(r#""meshes":[{{"primitives":[{}]}}]"#, primitives.join(",")));
@@ -219,10 +222,13 @@ impl Mesh {
 		Ok(())
 	}
 
-	/// Group triangle indices by face color, appending one `KHR_materials_unlit`
+	/// Group triangle indices by face color, appending one lit metallic-roughness
 	/// material per distinct color to `materials`. Returns `(index_buffer,
 	/// Some(material_index))` per group. Faces without a color use a default
 	/// gray material.
+	///
+	/// `metallicFactor: 0` + `roughnessFactor: 1` is pure Lambertian diffuse, the
+	/// same shading model `Scene2D` uses for SVG / PNG.
 	#[cfg(feature = "color")]
 	fn gltf_triangle_groups(&self, materials: &mut Vec<String>) -> Vec<(Vec<u32>, Option<usize>)> {
 		const DEFAULT: [f32; 3] = [0.8667, 0.8667, 0.8667]; // 0xdd, matches scene fallback
@@ -242,7 +248,7 @@ impl Mesh {
 			.into_iter()
 			.map(|(indices, col)| {
 				let mat = materials.len();
-				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true,"extensions":{{"KHR_materials_unlit":{{}}}}}}"#, col[0], col[1], col[2]));
+				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true}}"#, col[0], col[1], col[2]));
 				(indices, Some(mat))
 			})
 			.collect()
@@ -326,9 +332,10 @@ fn push_buffer_view(views: &mut Vec<String>, bin: &mut Vec<u8>, data: &[u8], tar
 	idx
 }
 
-/// Append a POSITION buffer to BIN and register the VEC3 float accessor over it,
-/// computing the glTF-required min/max in the same pass. Returns the accessor index.
-fn push_accessor_position(views: &mut Vec<String>, accs: &mut Vec<String>, bin: &mut Vec<u8>, points: impl ExactSizeIterator<Item = [f32; 3]>) -> usize {
+/// Append a VEC3 float buffer (POSITION or NORMAL) to BIN and register the accessor
+/// over it, computing min/max in the same pass. Returns the accessor index.
+/// glTF requires min/max on POSITION and permits it elsewhere, so one emitter serves both.
+fn push_accessor_vec3(views: &mut Vec<String>, accs: &mut Vec<String>, bin: &mut Vec<u8>, points: impl ExactSizeIterator<Item = [f32; 3]>) -> usize {
 	let n = points.len();
 	let mut bytes = Vec::with_capacity(n * 12);
 	let (mut min, mut max) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
