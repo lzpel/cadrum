@@ -49,12 +49,10 @@ run-raw-%: # build wasm, and run it with node. hyphens in % become comma-separat
 	cargo build --target wasm32-unknown-unknown --features "$(subst -, ,$*)"
 	../out/bin/wasm-pack build . -d ./target --features "$(subst -, ,$*)"
 	node -e "import('./target/wasm_experiment.js').then(m=>console.log(m.print_volume()))"
-check-cadrum: download # build the cadrum wasm sample (--target web, like the browser) against ../target's prebuilt OCCT and run it under node; surfaces the WASI-import / EH-mix / __wasm_call_ctors errors
-	cargo clean
-	OCCT="$$(find $(CURDIR)/../target -maxdepth 1 -type d -name 'occt-*-wasm32_unknown_unknown' | head -1)"; \
-	test -n "$$OCCT" || { echo "no extracted wasm OCCT under ../target — run 'make check-wasm32-unknown-unknown' first"; exit 1; }; \
-	OCCT_ROOT="$$OCCT" ../out/bin/wasm-pack build . -d ./target --target web --features cadrum
-	node --experimental-wasm-exnref run_node.mjs
+# The cadrum check lives in the root makefile (`make check-wasm32-unknown-unknown`): it must
+# link inside the cross image, which is the only place with the legacy-EH wasi-sysroot the
+# prebuilt OCCT was built against. The released sysroot downloaded below is exnref-only (#233),
+# so it can only serve the exception-free run-* experiments here.
 download: # download wasi-sdk (clang + prebuilt sysroot with libc / libc++).
 	cargo install --root ../out wasm-pack
 	cd ../out && ( ls $(call stem,$(WASI_SDK))/bin/clang.exe || ( curl -L -O $(WASI_SDK) && tar xf $(notdir $(WASI_SDK)) --transform="s,^[^/]+,$(call stem,$(WASI_SDK)),x" ) )

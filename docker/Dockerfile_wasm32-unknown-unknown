@@ -1,45 +1,57 @@
-# Prebuild OCCT for wasm32-unknown-unknown via the Linux wasi-sdk (clang + wasi-sysroot).
+# Prebuild OCCT for wasm32-unknown-unknown on the official wasi-sdk image
+# (ubuntu:24.04 + /opt/wasi-sdk + cmake/ninja/make, multi-arch), so neither the
+# wasi-sdk nor a new-enough CMake has to be fetched by hand here.
 #
-# The wasm output is produced by the wasi-sdk clang, so the host image is
-# irrelevant to the result: nothing built against the host glibc is shipped (only
-# the .wasm / OCCT static libraries are), so we use the small debian-slim base
-# rather than manylinux. HOST build-dependencies use the image's gcc; the wasm
-# TARGET (OCCT cmake + cxx-build) uses the wasi-sdk clang found first on PATH.
-# The example .wasm cannot run here; the `occt` make target tolerates that via `... | tee`,
-# then tarballs the OCCT static libraries.
-FROM debian:bookworm-slim
+# The wasm output is produced by the wasi-sdk clang, so the host image is irrelevant
+# to the result: nothing built against the host glibc is shipped (only the .wasm /
+# OCCT static libraries are). The example .wasm cannot run here; the `occt` make
+# target tolerates that via `... | tee`, then tarballs the OCCT static libraries.
+FROM ghcr.io/webassembly/wasi-sdk:wasi-sdk-33
 
-# Tools manylinux used to bundle (gcc/g++ C++17 capable, cmake, make, curl) and
-# that this build needs; find/xargs/tar/sed/bash already ship in the base image.
-# ca-certificates is required for the https downloads below (wasi-sdk, rustup,
-# and the OCCT source tarball fetched by build.rs). git is intentionally omitted:
-# there are no git dependencies and OCCT sources arrive as a tarball.
+# curl/ca-certificates: rustup and the OCCT source tarball fetched by build.rs.
+# git/python3: required by the wasi-sysroot rebuild below.
+# gcc/g++: HOST toolchain — rustc links build scripts with `cc`, and the `ring`
+# build-dependency (minreq -> rustls) compiles C for the host.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates make cmake \
-    gcc g++ \
+    curl ca-certificates git python3 gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# wasi-sdk (Linux): clang + prebuilt wasi-sysroot (libc / libc++, eh & noeh variants).
-# Rename the tarball's top dir to /wasi-sdk. The S/H flags keep the transform from
-# also rewriting sym/hardlink targets (e.g. bin/clang -> clang-22), which would break them.
-RUN curl -L https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz | tar xzv --transform="s,^[^/]+,/wasi-sdk,xSH"
+# The base image points these at the wasm cross tools, which would break the host
+# build scripts above. The wasm TARGET is driven by CC_<target> further down.
+ENV CC=gcc CXX=g++ AR=ar RANLIB=ranlib LD=ld
+
+# Rebuild the sysroot with the legacy wasm-EH encoding (#233): every released wasi-sdk
+# hard-codes -wasm-use-legacy-eh=false, and exnref needs a runtime opt-in
+# (--experimental-wasm-exnref). Only the sysroot is rebuilt — the image's clang is reused
+# through its toolchain file, so LLVM is NOT rebuilt. DUAL keeps the eh/noeh layout clang
+# resolves under -fwasm-exceptions; wasm32-wasip1 is the only triple cadrum links against.
+RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
+      --branch wasi-sdk-33 https://github.com/WebAssembly/wasi-sdk /tmp/src \
+ && sed -i 's/-wasm-use-legacy-eh=false/-wasm-use-legacy-eh=true/' /tmp/src/cmake/wasi-sdk-sysroot.cmake \
+ && rm -rf /opt/wasi-sdk/share/wasi-sysroot \
+ && cmake -G Ninja -B /tmp/build -S /tmp/src \
+      -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake \
+      -DCMAKE_C_COMPILER_WORKS=ON -DCMAKE_CXX_COMPILER_WORKS=ON \
+      -DCMAKE_INSTALL_PREFIX=/opt/wasi-sdk \
+      -DWASI_SDK_TARGETS=wasm32-wasip1 -DWASI_SDK_EXCEPTIONS=DUAL \
+      -DWASI_SDK_INCLUDE_TESTS=OFF \
+ && cmake --build /tmp/build --target install \
+ && rm -rf /tmp/src /tmp/build
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 # wasi-sdk bin first so `clang`/`clang++` resolve to the wasi-sdk cross-compiler.
-ENV PATH=/wasi-sdk/bin:/root/.cargo/bin:$PATH
+ENV PATH=/opt/wasi-sdk/bin:/root/.cargo/bin:$PATH
 
 ENV CARGO_BUILD_TARGET=wasm32-unknown-unknown
 # add cargo target
 RUN rustup target add ${CARGO_BUILD_TARGET}
 
 # === wasm toolchain env (mirrors sandbox-wasm/makefile) ===
-ENV SYSROOT=/wasi-sdk/share/wasi-sysroot
-# build.rs forwards CC_<target>/CXX_<target> to CMAKE_C/CXX_COMPILER; host build-deps
-# keep using the image's gcc because these are target-specific.
+ENV SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
+# build.rs forwards CC_<target>/CXX_<target> to CMAKE_C/CXX_COMPILER; the host keeps
+# using gcc because these are target-specific.
 ENV CC_wasm32_unknown_unknown=clang
 ENV CXX_wasm32_unknown_unknown=clang++
-# Avoid the host default generator; cmake honors CMAKE_GENERATOR.
-ENV CMAKE_GENERATOR="Unix Makefiles"
 # link-cplusplus defaults to libstdc++ on wasm; we use libc++.
 ENV CXXSTDLIB=c++
 # Compile C/C++ as wasm32-wasip1 so --sysroot auto-resolves include/lib (and eh/c++/v1

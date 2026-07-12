@@ -375,7 +375,7 @@ make -C sandbox-wasm run-cxx     # => Solid volume: 5
 
 **OCCT を載せる段階では例外が要る**（`Standard_Failure` 等）。その時は wasi-sdk の `define_libcxx`（このファイル上部）が示すとおり、
 
-- libc++/libc++abi/**libunwind** を `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false` で**作り直し**、
+- libc++/libc++abi/**libunwind** を `-fwasm-exceptions -mllvm -wasm-use-legacy-eh=true`（legacy EH, #233）で**作り直し**、
 - cadrum/cxx 側も同じ `-fwasm-exceptions` でコンパイルし（ABI 一致）、
 - 実行する node が wasm EH 対応（最近の Node は既定で可）、
 
