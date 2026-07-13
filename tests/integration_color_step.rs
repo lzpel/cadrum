@@ -152,22 +152,22 @@ fn solid_level_color_round_trips() {
 }
 
 /// Unlike a face colour, no history carries a solid's — the result volume descends
-/// from no single operand.
+/// from no single operand. The left operand decides it, as in Fusion 360.
 #[test]
-fn boolean_carries_solid_color_only_when_operands_agree() {
+fn boolean_carries_the_left_operand_solid_color() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
 	let blue = cadrum::Color::from_str("#0000ff").expect("valid hex");
 	let at = |x: f64| Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(DVec3::X * x);
 
-	let same: Vec<Solid> = (&at(0.0).color(red) + &at(5.0).color(red)).build_vec().expect("union should succeed");
-	assert_eq!(same[0].colormap().get(&same[0].id()).copied(), Some(red), "agreeing operands carry their colour");
-
 	let mixed: Vec<Solid> = (&at(0.0).color(red) + &at(5.0).color(blue)).build_vec().expect("union should succeed");
-	assert_eq!(mixed[0].colormap().get(&mixed[0].id()).copied(), None, "a mixture of two colours has no single answer");
+	assert_eq!(mixed[0].colormap().get(&mixed[0].id()).copied(), Some(red), "the left operand's colour wins");
 
 	// A cutting tool usually has no colour of its own; it must not erase the part's.
 	let cut: Vec<Solid> = (&at(0.0).color(red) - &at(5.0)).build_vec().expect("cut should succeed");
-	assert_eq!(cut[0].colormap().get(&cut[0].id()).copied(), Some(red), "an uncoloured operand is ignored");
+	assert_eq!(cut[0].colormap().get(&cut[0].id()).copied(), Some(red), "an uncoloured right operand is ignored");
+
+	let promoted: Vec<Solid> = (&at(0.0) + &at(5.0).color(red)).build_vec().expect("union should succeed");
+	assert_eq!(promoted[0].colormap().get(&promoted[0].id()).copied(), None, "and an uncoloured left operand is not painted by the right");
 }
 
 /// Every topology-rebuilding op changes the solid's TShape id, and nothing in the type

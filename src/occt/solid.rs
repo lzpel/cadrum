@@ -552,12 +552,9 @@ impl SolidStruct for Solid {
 		};
 
 		// No history carries a solid colour — the result volume descends from no single
-		// operand — so it survives only when the operands that have one agree.
+		// operand. Take the left operand's, as Fusion 360 does.
 		#[cfg(feature = "color")]
-		let agreed = {
-			let mut colors = solids.iter().filter_map(|s| s.colormap.get(&s.id()).copied());
-			colors.next().filter(|first| colors.all(|c| c == *first))
-		};
+		let solid_color = solids[0].colormap.get(&solids[0].id()).copied();
 
 		let compound = CompoundShape::from_raw(
 			inner,
@@ -569,7 +566,7 @@ impl SolidStruct for Solid {
 		let mut out = compound.decompose();
 		// Only now do the result solids exist, so only now can their ids be keyed.
 		#[cfg(feature = "color")]
-		if let Some(c) = agreed {
+		if let Some(c) = solid_color {
 			for s in &mut out {
 				let id = s.id();
 				s.colormap_mut().insert(id, c);
