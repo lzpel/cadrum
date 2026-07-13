@@ -23,9 +23,11 @@ changes until `1.0`.
 
 #### Removed
 
-- **BRep text (ASCII `BRepTools`) I/O.** BRep now means OCCT's `BinTools` binary
-  format alone; an ASCII `.brep` returns `Error::BrepReadFailed`. Why:
-  [notes](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)
+- **BRep text (ASCII `BRepTools`) I/O.** Only `BinTools` binary remains; an ASCII
+  `.brep` returns `Error::BrepReadFailed`. [Why](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)
+- **`Mesh.uvs`.** Nothing ever read it. (#243)
+- **glTF `KHR_materials_unlit`.** The material is plain metallic-roughness now —
+  metallic 0 / roughness 1, the Lambertian shading SVG and PNG already use. (#244)
 
 #### Breaking
 
@@ -33,25 +35,22 @@ changes until `1.0`.
   `write_brep`.** With text gone there is only one BRep. (#247)
 - **The BRep colour trailer is now `[payload][b"CDCL"][u32 count][entries]`**,
   found where the payload ended instead of by scanning the last four bytes, and
-  it keys solids as well as faces — a solid colour is no longer flattened onto
-  its faces. Files from an earlier cadrum load with their colours dropped. (#247)
-- **Renamed the `source-build` feature to `source`.** Update
-  `--features source-build` to `--features source`. (#182)
+  keyed by solid as well as by face. Older files load with their colours dropped. (#247)
+- **Renamed the `source-build` feature to `source`.** (#182)
 
 #### Changes
 
-- **New prebuilt artifact naming scheme.** Tarballs / release tag move to
-  `occt-<version>_<rev>-<target>` (single sorted list, `-` between fields and
-  `_` within a field, target hyphens underscored), e.g.
-  `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`. (#203)
+- **`Mesh.normals`.** One unit outward normal per vertex, evaluated on the B-rep
+  surface rather than averaged from the triangles, and emitted as glTF `NORMAL`.
+  Faces never share vertices, so each is its own smoothing group. (#243, #244)
+- **STEP reads and writes a solid's own colour**, keyed by the solid's id rather
+  than flattened onto its faces. (#247)
+- **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
+  `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
+  `BUILD_REVISION` is now `rev4`. (#203)
 - **wasm exception-handling uses the legacy encoding.** OCCT and the cxx wrapper
-  are compiled with `-mllvm -wasm-use-legacy-eh=true`, matching a self-built
-  *legacy* wasi-sdk eh sysroot (the released wasi-sdk eh sysroot is exnref-only, so
-  the cross image rebuilds just the sysroot from source). This keeps both sides on
-  one EH encoding — avoiding the `module uses a mix of legacy and new exception
-  handling instructions` error — while dropping the exnref runtime opt-in (no
-  `--experimental-wasm-exnref` needed). (#199, #233)
-- Prebuilt `BUILD_REVISION` bumped to `rev4` (naming + EH encoding change).
+  build with `-mllvm -wasm-use-legacy-eh=true` against a self-built *legacy* eh
+  sysroot (the released wasi-sdk one is exnref-only), dropping `--experimental-wasm-exnref`. (#199, #233)
 
 ### 0.8.10
 
