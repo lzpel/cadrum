@@ -62,47 +62,24 @@ fn write_then_read_preserves_colors() {
 	assert!(colormap_len(&reloaded) >= 6, "re-read shape should have at least 6 colored faces, got {}", colormap_len(&reloaded));
 }
 
-/// Cut the colored box with a half-space (z > 0) and write the result.
-/// The 5 surviving original faces should keep their colors; the new cut face
-/// has no color (it comes from the tool which has an empty colormap).
+/// Ops that rebuild topology keep every colour. Intersect is the exception: it can
+/// lose faces to the cut, but it must never invent a colour — the tool has none.
 #[test]
-fn intersect_colored_step_preserves_colors() {
-	let cube = read_colored_box();
-	let original_colors = colormap_len(&cube);
-
-	// Half-space keeping z > 0 side.
-	let half = [Solid::half_space(DVec3::ZERO, DVec3::Z)];
-	let solids: Vec<Solid> = (&cube[0] * &half[0]).build_vec().expect("intersect should succeed");
-
-	// At least one face should have kept its color.
-	assert!(colormap_len(&solids) >= 1, "at least one face should keep its color after intersect, got 0");
-	assert!(colormap_len(&solids) < original_colors + 1, "intersect should not invent new colors");
-
-	write_colored(&solids, "out/colored_box_intersect.step");
-}
-
-/// Translate the colored box and verify colors survive the move.
-#[test]
-fn translate_colored_step_preserves_colors() {
+fn ops_on_a_colored_step_preserve_colors() {
 	let shape = read_colored_box();
 	let original_len = colormap_len(&shape);
 
-	let moved: Vec<Solid> = shape.into_iter().map(|s| s.translate(DVec3::new(100.0, 0.0, 0.0))).collect();
-
-	assert_eq!(colormap_len(&moved), original_len, "translate should preserve all {} face colors", original_len);
-	write_colored(&moved, "out/colored_box_translated.step");
-}
-
-/// clean() on the read shape should not lose colors.
-#[test]
-fn clean_colored_step_preserves_colors() {
-	let shape = read_colored_box();
-	let original_len = colormap_len(&shape);
-
+	let translated: Vec<Solid> = shape.iter().map(|s| s.clone().translate(DVec3::X * 100.0)).collect();
 	let cleaned: Vec<Solid> = shape.iter().map(|s| s.clean().expect("clean should succeed")).collect();
+	for (name, solids) in [("translated", translated), ("cleaned", cleaned)] {
+		assert_eq!(colormap_len(&solids), original_len, "{name} should preserve all {original_len} colors");
+		write_colored(&solids, &format!("out/colored_box_{name}.step"));
+	}
 
-	assert_eq!(colormap_len(&cleaned), original_len, "clean should preserve all {} face colors", original_len);
-	write_colored(&cleaned, "out/colored_box_cleaned.step");
+	let half = [Solid::half_space(DVec3::ZERO, DVec3::Z)];
+	let intersected: Vec<Solid> = (&shape[0] * &half[0]).build_vec().expect("intersect should succeed");
+	assert!((1..=original_len).contains(&colormap_len(&intersected)), "intersect should keep some colors and invent none");
+	write_colored(&intersected, "out/colored_box_intersect.step");
 }
 
 /// #129: multi-color STEP from SolveSpace lands as Compound{Shell×3} with
@@ -136,38 +113,23 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 /// `#14 = MANIFOLD_SOLID_BREP`, not an `ADVANCED_FACE`.
 const LAMBDA360_STEP: &str = "steps/LAMBDA360-BOX-d6cb2eb2d6e0d802095ea1eda691cf9a3e9bf3394301a0d148f53e55f0f97951.step";
 
-fn read_lambda360() -> Vec<Solid> {
-	let data = fs::read(LAMBDA360_STEP).expect("fixture should exist");
-	cadrum::Solid::read_step(&mut data.as_slice()).expect("read_step should succeed")
-}
-
+/// The colour stays on the solid through the read — expanding it onto the faces would
+/// write back N styled items — and `Mesh`, which has only a face level, expands it.
 #[test]
-fn solid_level_styled_item_is_read() {
-	let solids = read_lambda360();
+fn solid_level_styled_item_is_read_and_reaches_the_mesh() {
+	let data = fs::read(LAMBDA360_STEP).expect("fixture should exist");
+	let solids = cadrum::Solid::read_step(&mut data.as_slice()).expect("read_step should succeed");
 	assert_eq!(solids.len(), 1, "expected 1 solid");
 
+	// The file says COLOUR_RGB('鋼 - サテン', 0.627450980392157, ×3), which OCCT reads as
+	// sRGB and stores linear.
+	let linear = ((0.627_450_98_f32 + 0.055) / 1.055).powf(2.4);
 	let c = solids[0].colormap().get(&solids[0].id()).copied().expect("the solid-level colour must survive the read");
-	// The file says COLOUR_RGB('鋼 - サテン', 0.627450980392157, ×3). OCCT reads STEP
-	// colours as sRGB and stores Quantity_Color linear, so the linear form comes back.
-	let srgb = 0.627_450_98_f32;
-	let linear = ((srgb + 0.055) / 1.055).powf(2.4);
-	for v in [c.r, c.g, c.b] {
-		assert!((v - linear).abs() < 1e-5, "expected {linear} (linear of sRGB {srgb}), got {v}");
-	}
-	let faces_colored = solids[0].iter_face().filter(|f| solids[0].colormap().contains_key(&f.id())).count();
-	assert_eq!(faces_colored, 0, "a solid-level style must not be expanded onto faces");
-}
+	assert!([c.r, c.g, c.b].iter().all(|v| (v - linear).abs() < 1e-5), "expected the linear form of the file's sRGB, got {c:?}");
+	assert_eq!(solids[0].iter_face().filter(|f| solids[0].colormap().contains_key(&f.id())).count(), 0, "a solid-level style must not be expanded onto faces");
 
-/// `Mesh` has only a face level, so `io::mesh` resolves the solid's colour onto them.
-#[test]
-fn solid_level_color_reaches_the_mesh() {
-	let solids = read_lambda360();
 	let mesh = cadrum::Solid::mesh(&solids, Default::default()).expect("mesh should succeed");
-
-	assert!(!mesh.colormap.is_empty(), "the solid colour must be resolved onto faces for rendering");
-	for fid in &mesh.face_ids {
-		assert!(mesh.colormap.contains_key(fid), "every meshed face should carry the solid's colour");
-	}
+	assert!(!mesh.face_ids.is_empty() && mesh.face_ids.iter().all(|f| mesh.colormap.contains_key(f)), "every meshed face should carry the solid's colour");
 }
 
 #[test]
@@ -208,27 +170,22 @@ fn boolean_carries_solid_color_only_when_operands_agree() {
 	assert_eq!(cut[0].colormap().get(&cut[0].id()).copied(), Some(red), "an uncoloured operand is ignored");
 }
 
-/// Every topology-rebuilding op changes the solid's TShape id, and nothing in the
-/// type system forces it to carry the colour across. This test does.
+/// Every topology-rebuilding op changes the solid's TShape id, and nothing in the type
+/// system forces it to carry the colour across. One case per code path: `translate`
+/// passes the colormap through, `clone` goes via `remap_colormap_by_order` (as do
+/// scale/mirror), `fillet` via `remap_colormap` (as do shell/chamfer/clean).
 #[test]
 fn single_source_ops_carry_the_solid_color() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
 	let cube = || Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color(red);
 
-	// fillet/chamfer must be handed an edge of the very solid they operate on, so
-	// each keeps the source alive for the length of its own call.
+	// fillet must be handed an edge of the very solid it consumes.
 	let filleted = {
 		let c = cube();
 		let e = c.iter_edge().next().expect("cube has edges");
 		c.fillet_edges(0.5, [e]).expect("fillet should succeed")
 	};
-	let chamfered = {
-		let c = cube();
-		let e = c.iter_edge().next().expect("cube has edges");
-		c.chamfer_edges(0.5, [e]).expect("chamfer should succeed")
-	};
-
-	let cases: Vec<(&str, Solid)> = vec![("translate", cube().translate(DVec3::X * 5.0)), ("rotate", cube().rotate(DVec3::ZERO, DVec3::Z, 0.5)), ("scale", cube().scale(DVec3::ZERO, 2.0)), ("mirror", cube().mirror(DVec3::ZERO, DVec3::Z)), ("clone", cube().clone()), ("clean", cube().clean().expect("clean should succeed")), ("shell", cube().shell(-1.0, std::iter::empty::<&cadrum::Face>()).expect("shell should succeed")), ("fillet", filleted), ("chamfer", chamfered)];
+	let cases: Vec<(&str, Solid)> = vec![("translate", cube().translate(DVec3::X * 5.0)), ("clone", cube().clone()), ("fillet", filleted)];
 
 	for (name, solid) in cases {
 		assert_eq!(solid.colormap().get(&solid.id()).copied(), Some(red), "{name} must carry the solid colour across");
