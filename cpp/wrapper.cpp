@@ -2063,15 +2063,14 @@ namespace cadrum {
 //
 // A STEP `styled_item` targets either an `advanced_face` or a whole
 // `manifold_solid_brep`; commercial CAD emits both, and one file may carry both
-// (the face style then wins). Faces land in `faceMap`, anything else has its
-// color assigned to every SOLID it contains, keyed by that solid's TShape*.
-// Solid-level color is NOT expanded onto faces here — doing so would turn one
-// STYLED_ITEM into N on write-back.
+// (the face style then wins). Both levels share one map: a TShape* address is
+// unique across shape types, so which explorer finds an entry is what decides
+// the level it came from. Solid-level color is NOT expanded onto faces here —
+// doing so would turn one STYLED_ITEM into N on write-back.
 static void collect_colors(
     const Handle(TDocStd_Document)& doc,
     const Handle(XCAFDoc_ColorTool)& colorTool,
-    std::unordered_map<uint64_t, std::array<float, 3>>& faceMap,
-    std::unordered_map<uint64_t, std::array<float, 3>>& solidMap)
+    std::unordered_map<uint64_t, std::array<float, 3>>& colorMap)
 {
     for (TDF_ChildIterator it(doc->Main(), true); it.More(); it.Next()) {
         const TDF_Label& label = it.Value();
@@ -2080,22 +2079,25 @@ static void collect_colors(
         TopoDS_Shape s = XCAFDoc_ShapeTool::GetShape(label);
         if (s.IsNull()) continue;
 
+        // Surface style first, generic style as the fallback.
         Quantity_Color color;
-        bool ok = colorTool->GetColor(label, XCAFDoc_ColorSurf, color);
-        if (!ok) ok = colorTool->GetColor(label, XCAFDoc_ColorGen, color);
-        if (!ok) continue;
-
-        std::array<float, 3> rgb = {
-            (float)color.Red(), (float)color.Green(), (float)color.Blue()};
-
-        if (s.ShapeType() == TopAbs_FACE) {
-            faceMap[reinterpret_cast<uint64_t>(s.TShape().get())] = rgb;
-            continue;
-        }
-        // A SOLID explores to itself; a COMPOUND/COMPSOLID spreads its color to
-        // every solid it holds. Shapes with no solid (loose shells/faces) drop out.
-        for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
-            solidMap[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = rgb;
+        if (colorTool->GetColor(label, XCAFDoc_ColorSurf, color) ||
+            colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
+            if (s.ShapeType() == TopAbs_FACE) {
+                // A face styles itself, and holds no other face.
+                colorMap[reinterpret_cast<uint64_t>(s.TShape().get())] = {
+                    (float)color.Red(), (float)color.Green(), (float)color.Blue()};
+            } else {
+                // Anything else styles every SOLID it holds. A SOLID explores to
+                // itself; a COMPOUND/COMPSOLID — an assembly, or a product of
+                // several bodies, the level STEP often attaches the style to —
+                // spreads to each solid under it. A shape with no solid at all (a
+                // loose shell) drops out with zero iterations.
+                for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
+                    colorMap[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = {
+                        (float)color.Red(), (float)color.Green(), (float)color.Blue()};
+                }
+            }
         }
     }
 }
@@ -2139,41 +2141,35 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
             builder.Add(compound, shapeTool->GetShape(roots.Value(i)));
         }
 
-        // Build TShape* → color maps from the XDE document labels.
+        // Build the TShape* → color map from the XDE document labels.
         std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
-        std::unordered_map<uint64_t, std::array<float, 3>> solidColorMap;
-        collect_colors(doc, colorTool, colorMap, solidColorMap);
+        collect_colors(doc, colorTool, colorMap);
 
         // Recover Solids from disjoint shells / loose faces (#129); also
         // remaps colorMap keys for faces whose TShape* changed during sewing.
-        // Solids that already existed keep their TShape*, so solidColorMap needs
-        // no remap; solids invented by sewing simply have no color to find.
+        // Solids that already existed keep their TShape*, so they need no remap;
+        // solids invented by sewing simply have no color to find.
         TopoDS_Shape post = try_sew_orphan_faces(compound, &colorMap);
 
         // Emit colors — walk POST-processed shape so new TShape* are picked up.
-        // Face and solid entries share one id/rgb sequence: a TShape* address is
-        // unique across shape types, so Rust keys both into the one colormap and
-        // tells them apart by comparing against the solid's own id.
-        for (TopExp_Explorer ex(post, TopAbs_FACE); ex.More(); ex.Next()) {
-            uint64_t id =
-                reinterpret_cast<uint64_t>(ex.Current().TShape().get());
+        // Face and solid entries share one id/rgb sequence, and Rust keys both
+        // into the one colormap, telling them apart by comparing against the
+        // solid's own id. Entries the shape no longer holds (pre-sew face ids,
+        // loose shells) are dropped by not being reached by either explorer.
+        auto emit = [&](const TopoDS_Shape& sub) {
+            uint64_t id = reinterpret_cast<uint64_t>(sub.TShape().get());
             auto it = colorMap.find(id);
-            if (it == colorMap.end()) continue;
+            if (it == colorMap.end()) return;
             out_ids.push_back(id);
             out_rgb.push_back(it->second[0]);
             out_rgb.push_back(it->second[1]);
             out_rgb.push_back(it->second[2]);
+        };
+        for (TopExp_Explorer ex(post, TopAbs_FACE); ex.More(); ex.Next()) {
+            emit(ex.Current());
         }
-
         for (TopExp_Explorer ex(post, TopAbs_SOLID); ex.More(); ex.Next()) {
-            uint64_t id =
-                reinterpret_cast<uint64_t>(ex.Current().TShape().get());
-            auto it = solidColorMap.find(id);
-            if (it == solidColorMap.end()) continue;
-            out_ids.push_back(id);
-            out_rgb.push_back(it->second[0]);
-            out_rgb.push_back(it->second[1]);
-            out_rgb.push_back(it->second[2]);
+            emit(ex.Current());
         }
 
         return std::make_unique<TopoDS_Shape>(post);
