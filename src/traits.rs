@@ -508,11 +508,20 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	fn bounding_box(&self) -> [DVec3; 2];
 
 	// --- Color ---
-	/// Paint every face of the solid with `color` (stored in the colormap and
-	/// propagated through STEP / BRep / STL / SVG I/O).
+	/// Colour the solid as a whole, dropping any per-face colours it carried.
+	///
+	/// The colormap gains one entry keyed by the solid's own id rather than one
+	/// per face, so STEP stores this as a single `styled_item` on the
+	/// `manifold_solid_brep` — what commercial CAD emits, and what a read → write
+	/// round-trip then reproduces. BRep and the renderers speak only face colours,
+	/// so they see it expanded onto every face: the appearance is identical, but
+	/// the solid/face distinction survives in STEP alone.
+	///
+	/// Per-face colours (from `read_step`, or set through `Solid::colormap_mut`)
+	/// override it. Read it back with `Solid::color_solid`.
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self;
-	/// Drop all per-face color from this solid.
+	/// Drop this solid's colour and all of its per-face colours.
 	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self;
 

@@ -460,17 +460,26 @@ namespace cadrum {
 // ==================== Colored STEP I/O ====================
 
 // Read a colored STEP stream. Returns the geometry shape; appends to
-// `out_ids` the TShape* address of each colored face, and to `out_rgb` its
+// `out_ids` the TShape* address of each colored sub-shape, and to `out_rgb` its
 // RGB components in OCC native space (0.0–1.0) as a flat
 // [r0,g0,b0, r1,g1,b1, ...] sequence (length = 3 * out_ids.size()).
+//
+// A STEP styled_item targets either an advanced_face or a whole
+// manifold_solid_brep, so an id may be a FACE's or a SOLID's. Both levels are
+// emitted in the one sequence — a TShape* address is unique across shape types,
+// so the caller tells them apart by comparing against the solid's own id. Solid
+// colors are NOT expanded onto faces: keeping the levels apart is what lets a
+// write-back reproduce one STYLED_ITEM instead of N.
 // Returns nullptr on failure.
 std::unique_ptr<TopoDS_Shape> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,
     rust::Vec<float>&    out_rgb);
 
-// Write a colored STEP stream. `ids` lists TShape* of colored faces; `rgb`
-// is the matching flat [r,g,b,...] sequence (length = 3 * ids.size()).
+// Write a colored STEP stream. `ids` lists TShape* of colored faces and solids;
+// `rgb` is the matching flat [r,g,b,...] sequence (length = 3 * ids.size()).
+// An id matching a solid is written as one styled_item on that solid; a face
+// style, being the more specific one, overrides it.
 bool write_step_color_stream(
     const TopoDS_Shape&         shape,
     rust::Slice<const uint64_t> ids,
