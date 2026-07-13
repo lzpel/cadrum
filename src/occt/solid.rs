@@ -603,12 +603,8 @@ impl SolidStruct for Solid {
 		super::io::read_step(reader)
 	}
 
-	fn read_brep_binary<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
-		super::io::read_brep_binary(reader)
-	}
-
-	fn read_brep_text<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
-		super::io::read_brep_text(reader)
+	fn read_brep<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error> {
+		super::io::read_brep(reader)
 	}
 
 	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
@@ -618,18 +614,11 @@ impl SolidStruct for Solid {
 		super::io::write_step(solids, writer)
 	}
 
-	fn write_brep_binary<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
+	fn write_brep<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
 	where
 		Self: 'a,
 	{
-		super::io::write_brep_binary(solids, writer)
-	}
-
-	fn write_brep_text<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
-	where
-		Self: 'a,
-	{
-		super::io::write_brep_text(solids, writer)
+		super::io::write_brep(solids, writer)
 	}
 
 	fn mesh<'a>(solids: impl IntoIterator<Item = &'a Self>, options: crate::traits::Tessellation) -> Result<crate::common::mesh::Mesh, Error>

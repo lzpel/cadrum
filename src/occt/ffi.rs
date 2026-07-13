@@ -37,10 +37,12 @@ mod ffi_bridge {
 		fn read_step_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;
 		#[cfg(not(feature = "color"))]
 		fn write_step_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
-		fn read_brep_bin_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;
-		fn write_brep_bin_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
-		fn read_brep_text_stream(reader: &mut RustReader) -> UniquePtr<TopoDS_Shape>;
-		fn write_brep_text_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
+		// BRep I/O (BinTools binary only). The reader takes the whole file — BinTools
+		// seeks backwards over its own payload — and reports in `out_consumed` how many
+		// bytes that payload took, which is where the color trailer begins. Written
+		// only when the returned pointer is non-null.
+		fn read_brep_stream(data: &[u8], out_consumed: &mut usize) -> UniquePtr<TopoDS_Shape>;
+		fn write_brep_stream(shape: &TopoDS_Shape, writer: &mut RustWriter) -> bool;
 
 		// ==================== Shape Constructors ====================
 

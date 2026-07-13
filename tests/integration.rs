@@ -35,7 +35,7 @@ fn test_box_3() -> Solid {
 /// Helper: write shape to BRep binary bytes
 fn shape_to_brep_bytes<'a>(shape: impl IntoIterator<Item = &'a Solid>) -> Vec<u8> {
 	let mut buf = Vec::new();
-	cadrum::Solid::write_brep_binary(shape, &mut buf).unwrap();
+	cadrum::Solid::write_brep(shape, &mut buf).unwrap();
 	buf
 }
 
@@ -109,7 +109,7 @@ fn test_t02_multiple_reads_no_crash() {
 	let original = test_box();
 	let brep_data = shape_to_brep_bytes(&[original]);
 	for _ in 0..5 {
-		let _shape = cadrum::Solid::read_brep_binary(&mut brep_data.as_slice()).unwrap();
+		let _shape = cadrum::Solid::read_brep(&mut brep_data.as_slice()).unwrap();
 	}
 }
 
@@ -162,7 +162,7 @@ fn test_t06_brep_roundtrip() {
 	let orig_mesh = cadrum::Solid::mesh([&original], cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 
 	let brep_data = shape_to_brep_bytes([&original]);
-	let restored = cadrum::Solid::read_brep_binary(&mut brep_data.as_slice()).unwrap();
+	let restored = cadrum::Solid::read_brep(&mut brep_data.as_slice()).unwrap();
 	let rest_mesh = cadrum::Solid::mesh(&restored, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 
 	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
@@ -214,19 +214,4 @@ fn test_cylinder() {
 	let cyl = [Solid::cylinder(5.0, dvec3(0.0, 0.0, 1.0) * 10.0)];
 	let expected = std::f64::consts::PI * 5.0f64.powi(2) * 10.0;
 	assert!((cyl.iter().map(|s| s.volume()).sum::<f64>() - expected).abs() < 1e-6);
-}
-
-// T-06 のテキスト版。BRep テキストの write→read ラウンドトリップ。
-#[test]
-fn test_brep_text_roundtrip() {
-	let original = test_box();
-
-	let mut text_data = Vec::new();
-	cadrum::Solid::write_brep_text([&original], &mut text_data).unwrap();
-	assert!(!text_data.is_empty());
-
-	let restored = cadrum::Solid::read_brep_text(&mut text_data.as_slice()).unwrap();
-	let orig_mesh = cadrum::Solid::mesh([&original], cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
-	let rest_mesh = cadrum::Solid::mesh(&restored, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
-	assert_eq!(orig_mesh.vertices.len(), rest_mesh.vertices.len());
 }

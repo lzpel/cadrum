@@ -27,77 +27,78 @@ fn effective_colors(shape: &[Solid]) -> Vec<Option<Color>> {
 	shape.iter().flat_map(|s| s.iter_face().map(move |f| s.colormap().get(&f.id()).or(s.colormap().get(&s.id())).copied())).collect()
 }
 
-fn roundtrip_bin(shape: &[Solid]) -> Vec<Solid> {
+fn roundtrip(shape: &[Solid]) -> Vec<Solid> {
 	let mut buf = Vec::new();
-	cadrum::Solid::write_brep_binary(shape, &mut buf).expect("write_brep_binary should succeed");
-	cadrum::Solid::read_brep_binary(&mut buf.as_slice()).expect("read_brep_binary should succeed")
+	cadrum::Solid::write_brep(shape, &mut buf).expect("write_brep should succeed");
+	cadrum::Solid::read_brep(&mut buf.as_slice()).expect("read_brep should succeed")
 }
 
-fn roundtrip_text(shape: &[Solid]) -> Vec<Solid> {
-	let mut buf = Vec::new();
-	cadrum::Solid::write_brep_text(shape, &mut buf).expect("write_brep_text should succeed");
-	cadrum::Solid::read_brep_text(&mut buf.as_slice()).expect("read_brep_text should succeed")
-}
-
-// ── binary tests ─────────────────────────────────────────────────────────────
-
-/// Round-trip (binary) preserves how every face looks, and the RGB values.
+/// Round-trip preserves how every face looks, and the RGB values.
 #[test]
-fn bin_write_then_read_preserves_colors() {
+fn write_then_read_preserves_colors() {
 	let original = read_colored_box();
-	let reloaded = roundtrip_bin(&original);
+	let reloaded = roundtrip(&original);
 
-	assert_eq!(effective_colors(&reloaded), effective_colors(&original), "every face should keep its effective colour (binary)");
+	assert_eq!(effective_colors(&reloaded), effective_colors(&original), "every face should keep its effective colour");
 
 	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.iter_face()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
 	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.iter_face()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
 
-	assert_eq!(original_colors, reloaded_colors, "RGB values should be identical (binary)");
+	assert_eq!(original_colors, reloaded_colors, "RGB values should be identical");
 }
 
-/// A shape with an empty colormap round-trips without error (binary).
+/// A shape with an empty colormap round-trips without error.
 #[test]
-fn bin_colorless_shape_roundtrip() {
+fn colorless_shape_roundtrip() {
 	let shape = [Solid::cube(DVec3::ZERO, DVec3::ONE)];
-	let reloaded = roundtrip_bin(&shape);
+	let reloaded = roundtrip(&shape);
 	assert_eq!(colormap_len(&reloaded), 0);
 }
 
-/// Round-trip (binary) after a boolean operation preserves surviving colors.
+/// Round-trip after a boolean operation preserves surviving colors. Doubles as the
+/// regression test for `BinTools`' backward references: a boolean result has shared
+/// sub-shapes, so reading it back exercises the seeking the reader relies on.
 #[test]
-fn bin_roundtrip_after_boolean() {
+fn roundtrip_after_boolean() {
 	let cube = read_colored_box();
 	let half = [Solid::half_space(DVec3::ZERO, DVec3::NEG_Z)];
 	let solids: Vec<Solid> = (&cube[0] * &half[0]).build_vec().expect("intersect should succeed");
 
 	assert!(colormap_len(&solids) >= 1, "at least one color should survive intersect");
 
-	let reloaded = roundtrip_bin(&solids);
-	assert_eq!(effective_colors(&reloaded), effective_colors(&solids), "every face should keep its effective colour after boolean + round-trip (binary)");
+	let reloaded = roundtrip(&solids);
+	assert_eq!(effective_colors(&reloaded), effective_colors(&solids), "every face should keep its effective colour after boolean + round-trip");
 }
 
-// ── text tests ───────────────────────────────────────────────────────────────
+// ── trailer placement ────────────────────────────────────────────────────────
 
-/// Round-trip (text) preserves how every face looks, and the RGB values.
+/// The trailer begins exactly where the BRep payload ends.
+///
+/// The whole prefix-magic design rests on `read_brep_stream` reporting that offset
+/// to the byte: the reader looks for the magic there and nowhere else. Writing the
+/// same geometry with and without a colour pins it from the writer's side — the
+/// coloured file must be the plain one plus a trailer, with nothing inserted or
+/// dropped in between. If OCCT ever consumed a byte past its own payload, this is
+/// what would catch it.
 #[test]
-fn text_write_then_read_preserves_colors() {
-	let original = read_colored_box();
-	let reloaded = roundtrip_text(&original);
+fn trailer_begins_where_the_payload_ends() {
+	let red = Color::from_str("#ff0000").expect("valid hex");
+	let cube = Solid::cube(DVec3::ZERO, DVec3::ONE);
 
-	assert_eq!(effective_colors(&reloaded), effective_colors(&original), "every face should keep its effective colour (text)");
+	let mut plain = Vec::new();
+	cadrum::Solid::write_brep(&[cube.clone()], &mut plain).expect("write_brep should succeed");
+	let mut tinted = Vec::new();
+	cadrum::Solid::write_brep(&[cube.color(red)], &mut tinted).expect("write_brep should succeed");
 
-	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.iter_face()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
-	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.iter_face()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
-
-	assert_eq!(original_colors, reloaded_colors, "RGB values should be identical (text)");
+	assert_eq!(&tinted[..plain.len()], &plain[..], "same geometry should give the same payload bytes");
+	assert_eq!(&tinted[plain.len()..plain.len() + 4], b"CDCL", "the magic should sit at the payload's end");
+	assert_eq!(tinted.len(), plain.len() + 8 + 16, "magic + count + one entry");
 }
 
-/// A shape with an empty colormap round-trips without error (text).
+/// An empty reader is a read failure, not a panic.
 #[test]
-fn text_colorless_shape_roundtrip() {
-	let shape = [Solid::cube(DVec3::ZERO, DVec3::ONE)];
-	let reloaded = roundtrip_text(&shape);
-	assert_eq!(colormap_len(&reloaded), 0);
+fn empty_input_fails() {
+	assert!(cadrum::Solid::read_brep(&mut [].as_slice()).is_err(), "empty input should fail to parse");
 }
 
 // ── solid-level colour ───────────────────────────────────────────────────────
@@ -112,12 +113,11 @@ fn solid_level_color_round_trips() {
 	let src = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color(red)];
 	assert_eq!(src[0].colormap().len(), 1, "color() paints the solid, not each of its faces");
 
-	for (label, reloaded) in [("binary", roundtrip_bin(&src)), ("text", roundtrip_text(&src))] {
-		assert_eq!(reloaded.len(), 1);
-		assert_eq!(reloaded[0].colormap().get(&reloaded[0].id()), Some(&red), "the solid colour must round-trip ({label})");
-		assert_eq!(reloaded[0].colormap().len(), 1, "one entry, not one per face ({label})");
-		assert_eq!(reloaded[0].iter_face().filter(|f| reloaded[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces ({label})");
-	}
+	let reloaded = roundtrip(&src);
+	assert_eq!(reloaded.len(), 1);
+	assert_eq!(reloaded[0].colormap().get(&reloaded[0].id()), Some(&red), "the solid colour must round-trip");
+	assert_eq!(reloaded[0].colormap().len(), 1, "one entry, not one per face");
+	assert_eq!(reloaded[0].iter_face().filter(|f| reloaded[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces");
 }
 
 /// Solid-keyed and face-keyed entries share one index space — solids first, then
@@ -130,12 +130,11 @@ fn solid_and_face_colors_share_the_trailer() {
 	let mut src = read_colored_box();
 	src.push(Solid::cube(DVec3::splat(100.0), DVec3::splat(110.0)).color(blue));
 
-	for (label, reloaded) in [("binary", roundtrip_bin(&src)), ("text", roundtrip_text(&src))] {
-		assert_eq!(reloaded.len(), src.len(), "solid count ({label})");
-		assert_eq!(effective_colors(&reloaded), effective_colors(&src), "every face keeps its effective colour ({label})");
-		let solid_colors = |shape: &[Solid]| -> Vec<Option<Color>> { shape.iter().map(|s| s.colormap().get(&s.id()).copied()).collect() };
-		assert_eq!(solid_colors(&reloaded), solid_colors(&src), "every solid keeps its own colour ({label})");
-		let cube = reloaded.last().expect("cube");
-		assert_eq!(cube.colormap().get(&cube.id()), Some(&blue), "the cube's solid colour survives alongside the face colours ({label})");
-	}
+	let reloaded = roundtrip(&src);
+	assert_eq!(reloaded.len(), src.len(), "solid count");
+	assert_eq!(effective_colors(&reloaded), effective_colors(&src), "every face keeps its effective colour");
+	let solid_colors = |shape: &[Solid]| -> Vec<Option<Color>> { shape.iter().map(|s| s.colormap().get(&s.id()).copied()).collect() };
+	assert_eq!(solid_colors(&reloaded), solid_colors(&src), "every solid keeps its own colour");
+	let cube = reloaded.last().expect("cube");
+	assert_eq!(cube.colormap().get(&cube.id()), Some(&blue), "the cube's solid colour survives alongside the face colours");
 }

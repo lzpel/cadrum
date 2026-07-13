@@ -94,7 +94,6 @@
 // STEP-specific headers are only needed by the non-color STEP path
 // (`read_step_stream` / `write_step_stream`); with color, STEP routes
 // through XCAF in the CADRUM_COLOR section below.
-#include <BRepTools.hxx>
 #include <BinTools.hxx>
 #ifndef CADRUM_COLOR
 #include <STEPControl_Reader.hxx>
@@ -232,68 +231,41 @@ bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
 }
 #endif // !CADRUM_COLOR
 
-std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader) {
-    // BinTools::Read requires a seekable stream: the binary format stores
-    // backward references (offsets) for shared sub-shapes and seeks to them.
-    // Our RustReadStreambuf is sequential only, so buffer everything in
-    // memory first and use std::istringstream which is seekable.
-    std::string data;
-    char buf[8192];
-    for (;;) {
-        rust::Slice<uint8_t> slice(reinterpret_cast<uint8_t*>(buf), sizeof(buf));
-        size_t n = rust_reader_read(reader, slice);
-        if (n == 0) break;
-        data.append(buf, n);
-    }
+std::unique_ptr<TopoDS_Shape> read_brep_stream(
+    rust::Slice<const uint8_t> data, size_t& out_consumed)
+{
+    // BinTools::Read requires a seekable stream: the binary format stores backward
+    // references (offsets) for shared sub-shapes and seeks to them. RustReadStreambuf
+    // is sequential only, so the caller hands us the whole file — it has to buffer it
+    // anyway, since the color trailer is located relative to the payload's end — and
+    // std::istringstream gives us the seeking.
+    std::istringstream iss(
+        std::string(reinterpret_cast<const char*>(data.data()), data.size()));
 
-    std::istringstream iss(std::move(data));
     auto shape = std::make_unique<TopoDS_Shape>();
     try {
         BinTools::Read(*shape, iss);
     } catch (const Standard_Failure&) {
-        return nullptr;
+        return nullptr;  // out_consumed deliberately untouched
+    }
+    if (shape->IsNull()) {
+        return nullptr;  // ditto
     }
 
-    if (shape->IsNull()) {
-        return nullptr;
-    }
+    // Where the payload ended — i.e. where a color trailer would begin. Reading the
+    // payload to the last byte leaves eofbit set, and tellg()'s sentry turns that
+    // into failbit and returns -1; clear() resets the state without moving the get
+    // pointer, so the position that follows is the real one.
+    iss.clear();
+    out_consumed = static_cast<size_t>(iss.tellg());
     return shape;
 }
 
-bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+bool write_brep_stream(const TopoDS_Shape& shape, RustWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
     try {
         BinTools::Write(shape, os);
-    } catch (const Standard_Failure&) {
-        return false;
-    }
-    return os.good();
-}
-
-std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader) {
-    RustReadStreambuf sbuf(reader);
-    std::istream is(&sbuf);
-
-    auto shape = std::make_unique<TopoDS_Shape>();
-    BRep_Builder builder;
-    try {
-        BRepTools::Read(*shape, is, builder);
-    } catch (const Standard_Failure&) {
-        return nullptr;
-    }
-
-    if (shape->IsNull()) {
-        return nullptr;
-    }
-    return shape;
-}
-
-bool write_brep_text_stream(const TopoDS_Shape& shape, RustWriter& writer) {
-    RustWriteStreambuf sbuf(writer);
-    std::ostream os(&sbuf);
-    try {
-        BRepTools::Write(shape, os);
     } catch (const Standard_Failure&) {
         return false;
     }

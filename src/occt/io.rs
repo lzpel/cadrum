@@ -12,32 +12,58 @@ use std::io::{Read, Write};
 use crate::common::color::Color;
 
 // ==================== Color trailer ====================
+//
+// A BRep file cadrum writes is a plain BinTools payload followed — when anything is
+// actually coloured — by
+//
+//     [b"CDCL"][u32 count][count x (u32 index, f32 r, f32 g, f32 b)]   little-endian
+//
+// BinTools::Read stops at the end of its own self-delimiting payload and ignores
+// what follows, so the file stays a valid `.brep` for any other OCCT tool, and a
+// cadrum built without `color` reads it too (dropping the colours). The reader gets
+// the payload's length back from `ffi::read_brep_stream` and looks for the magic at
+// exactly that offset — it never *searches*, so a payload whose own last bytes
+// happen to spell the magic cannot be mistaken for a trailer.
+//
+// `index` is a position in `trailer_ids`, not a TShape id: ids are addresses, and a
+// re-read invents fresh ones.
 
 #[cfg(feature = "color")]
 const COLOR_TRAILER_MAGIC: &[u8; 4] = b"CDCL";
 
+/// Decode the trailer at `tail` — `&buf[consumed..]`, the bytes the BRep parser did
+/// not take. Anything that is not our trailer (nothing at all, a truncated tail,
+/// another tool's appended section) yields an empty map rather than an error: the
+/// geometry is already parsed and valid, so losing the colours is the graceful
+/// failure, and the only one available.
+///
+/// Keys are `trailer_ids` indices; the caller resolves them against the shape it
+/// just read.
 #[cfg(feature = "color")]
-fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, usize) {
-	if buf.len() < 8 || &buf[buf.len() - 4..] != COLOR_TRAILER_MAGIC {
-		return (std::collections::HashMap::new(), buf.len());
-	}
-	let entry_count = u32::from_le_bytes(buf[buf.len() - 8..buf.len() - 4].try_into().unwrap()) as usize;
-	let trailer_size = 8 + entry_count * 16;
-	if buf.len() < trailer_size {
-		return (std::collections::HashMap::new(), buf.len());
-	}
-	let brep_len = buf.len() - trailer_size;
-	let entries_start = brep_len;
+fn read_color_trailer(tail: &[u8]) -> std::collections::HashMap<u32, Color> {
 	let mut colormap = std::collections::HashMap::new();
-	for i in 0..entry_count {
-		let off = entries_start + i * 16;
-		let idx = u32::from_le_bytes(buf[off..off + 4].try_into().unwrap());
-		let r = f32::from_le_bytes(buf[off + 4..off + 8].try_into().unwrap());
-		let g = f32::from_le_bytes(buf[off + 8..off + 12].try_into().unwrap());
-		let b = f32::from_le_bytes(buf[off + 12..off + 16].try_into().unwrap());
-		colormap.insert(idx as u64, Color { r, g, b });
+	if tail.len() < 8 || &tail[..4] != COLOR_TRAILER_MAGIC {
+		return colormap;
 	}
-	(colormap, brep_len)
+	let count = u32::from_le_bytes(tail[4..8].try_into().unwrap()) as usize;
+	// Checked: `count` comes from the file, and `usize` is 32-bit on wasm32.
+	let Some(end) = count.checked_mul(16).and_then(|n| n.checked_add(8)) else {
+		return colormap;
+	};
+	// `<`, not `!=`: the count makes the section self-delimiting, so bytes appended
+	// after it — by another tool, exactly as we append after BinTools' — are not an
+	// error.
+	if tail.len() < end {
+		return colormap;
+	}
+	for e in tail[8..end].chunks_exact(16) {
+		let idx = u32::from_le_bytes(e[0..4].try_into().unwrap());
+		let r = f32::from_le_bytes(e[4..8].try_into().unwrap());
+		let g = f32::from_le_bytes(e[8..12].try_into().unwrap());
+		let b = f32::from_le_bytes(e[12..16].try_into().unwrap());
+		colormap.insert(idx, Color { r, g, b });
+	}
+	colormap
 }
 
 /// The index space the trailer's `u32` keys live in: every solid of the shape,
@@ -51,9 +77,9 @@ fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, us
 /// written before this layout decodes to garbage, deliberately.
 ///
 /// The order is not re-derived anywhere: a BRep read goes straight through
-/// `BinTools::Read` / `BRepTools::Read`, which rebuild the TShape graph exactly as
-/// written. (The STEP path heals via `try_sew_orphan_faces` and so cannot use
-/// indices at all — it carries explicit ids instead.)
+/// `BinTools::Read`, which rebuilds the TShape graph exactly as written. (The STEP
+/// path heals via `try_sew_orphan_faces` and so cannot use indices at all — it
+/// carries explicit ids instead.)
 #[cfg(feature = "color")]
 fn trailer_ids(shape: &ffi::TopoDS_Shape) -> Vec<u64> {
 	// Bound to locals: both are `UniquePtr<CxxVector<..>>` that the iterators borrow.
@@ -62,28 +88,31 @@ fn trailer_ids(shape: &ffi::TopoDS_Shape) -> Vec<u64> {
 	solids.iter().map(ffi::shape_tshape_id).chain(faces.iter().map(ffi::face_tshape_id)).collect()
 }
 
+/// The byte-for-byte inverse of `read_color_trailer`. Writes nothing when no key
+/// survives the index lookup, so a colourless shape's file is identical to one a
+/// build without `color` would have written.
 #[cfg(feature = "color")]
 fn write_color_trailer<W: Write>(compound: &CompoundShape, writer: &mut W) -> Result<(), Error> {
-	let colormap = compound.colormap();
-	if colormap.is_empty() {
-		return Ok(());
-	}
 	let id_to_index: std::collections::HashMap<u64, u32> = trailer_ids(compound.inner()).into_iter().enumerate().map(|(i, id)| (id, i as u32)).collect();
 	// Keys the written shape does not hold have no index and drop out here:
 	// `CompoundShape::decompose` gives every solid a clone of the merged colormap,
 	// so a solid carries its siblings' keys too, and `colormap_mut` is public.
-	let mut entries: Vec<(u32, f32, f32, f32)> = colormap.iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
+	let mut entries: Vec<(u32, f32, f32, f32)> = compound.colormap().iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
+	if entries.is_empty() {
+		return Ok(());
+	}
 	entries.sort_by_key(|e| e.0);
 
+	let mut out = Vec::with_capacity(8 + entries.len() * 16);
+	out.extend_from_slice(COLOR_TRAILER_MAGIC);
+	out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
 	for (idx, r, g, b) in &entries {
-		writer.write_all(&idx.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
-		writer.write_all(&r.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
-		writer.write_all(&g.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
-		writer.write_all(&b.to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
+		out.extend_from_slice(&idx.to_le_bytes());
+		out.extend_from_slice(&r.to_le_bytes());
+		out.extend_from_slice(&g.to_le_bytes());
+		out.extend_from_slice(&b.to_le_bytes());
 	}
-	writer.write_all(&(entries.len() as u32).to_le_bytes()).map_err(|_| Error::BrepWriteFailed)?;
-	writer.write_all(COLOR_TRAILER_MAGIC).map_err(|_| Error::BrepWriteFailed)?;
-	Ok(())
+	writer.write_all(&out).map_err(|_| Error::BrepWriteFailed)
 }
 
 // ==================== Reader / writer / mesh helpers ====================
@@ -116,42 +145,38 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 	}
 }
 
-/// Read solids from a BRep binary stream. Color trailer is parsed if present.
-pub(super) fn read_brep_binary<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-	read_brep_with(reader, ffi::read_brep_bin_stream)
-}
+/// Read solids from a BRep (BinTools binary) stream, plus the colour trailer when
+/// the payload is followed by one.
+pub(super) fn read_brep<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
+	// Buffered whole, in both cfgs: `BinTools::Read` seeks backwards to resolve shared
+	// sub-shape references, so it cannot run off a sequential stream. C++ used to do
+	// this buffering itself; doing it here lets the same bytes back the colour trailer
+	// and hands C++ a borrowed slice instead of a second copy.
+	let mut buf = Vec::new();
+	reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
 
-/// Read solids from a BRep text stream. Color trailer is parsed if present.
-pub(super) fn read_brep_text<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
-	read_brep_with(reader, ffi::read_brep_text_stream)
-}
+	// Payload length — i.e. where a trailer would begin. Left untouched, and unread,
+	// when the shape comes back null.
+	let mut consumed = 0usize;
+	let inner = ffi::read_brep_stream(&buf, &mut consumed);
+	if inner.is_null() {
+		return Err(Error::BrepReadFailed);
+	}
 
-/// Shared body for BRep binary/text reads. The two variants differ only in
-/// which FFI stream parser they call; everything else (color trailer handling,
-/// null check, decompose) is identical.
-fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> cxx::UniquePtr<ffi::TopoDS_Shape>) -> Result<Vec<Solid>, Error> {
 	#[cfg(feature = "color")]
 	{
-		let mut buf = Vec::new();
-		reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
-		let (index_colormap, brep_len) = strip_color_trailer(&buf);
-		let mut cursor = std::io::Cursor::new(&buf[..brep_len]);
-		let mut rust_reader = RustReader::from_ref(&mut cursor);
-		let inner = ffi_read(&mut rust_reader);
-		if inner.is_null() {
-			return Err(Error::BrepReadFailed);
-		}
 		let ids = trailer_ids(&inner);
-		let colormap = index_colormap.iter().filter_map(|(&idx, &color)| ids.get(idx as usize).map(|&id| (id, color))).collect();
+		let colormap = read_color_trailer(buf.get(consumed..).unwrap_or_default())
+			.into_iter()
+			// An index this shape has no id for — a trailer written under an older
+			// index layout, a corrupt tail — drops out rather than colouring some
+			// unrelated face.
+			.filter_map(|(idx, color)| ids.get(idx as usize).map(|&id| (id, color)))
+			.collect();
 		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 	}
 	#[cfg(not(feature = "color"))]
 	{
-		let mut rust_reader = RustReader::from_ref(reader);
-		let inner = ffi_read(&mut rust_reader);
-		if inner.is_null() {
-			return Err(Error::BrepReadFailed);
-		}
 		Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
 	}
 }
@@ -189,24 +214,17 @@ pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 	}
 }
 
-/// Write solids to a BRep binary stream. Color trailer is appended if `color`
-/// feature is enabled.
-pub(super) fn write_brep_binary<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
-	write_brep_with(solids, writer, ffi::write_brep_bin_stream)
-}
-
-/// Write solids to a BRep text stream. Color trailer is appended if `color`
-/// feature is enabled.
-pub(super) fn write_brep_text<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
-	write_brep_with(solids, writer, ffi::write_brep_text_stream)
-}
-
-/// Shared body for BRep binary/text writes — see `read_brep_with` for context.
-fn write_brep_with<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W, ffi_write: fn(&ffi::TopoDS_Shape, &mut RustWriter) -> bool) -> Result<(), Error> {
+/// Write solids to a BRep (BinTools binary) stream, followed by the colour trailer
+/// when the `color` feature is on and anything is actually coloured.
+pub(super) fn write_brep<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
 	let compound = CompoundShape::new(solids);
-	let mut rust_writer = RustWriter::from_ref(writer);
-	if !ffi_write(compound.inner(), &mut rust_writer) {
-		return Err(Error::BrepWriteFailed);
+	{
+		// Scoped: `RustWriteStreambuf`'s destructor flushes inside the FFI call, so the
+		// payload lands on the sink before the trailer does.
+		let mut rust_writer = RustWriter::from_ref(writer);
+		if !ffi::write_brep_stream(compound.inner(), &mut rust_writer) {
+			return Err(Error::BrepWriteFailed);
+		}
 	}
 	// The trailer keys solids and faces alike, so a solid-level colour goes out as
 	// the one entry it is — no expansion onto its faces.

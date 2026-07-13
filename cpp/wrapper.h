@@ -81,10 +81,20 @@ private:
 std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader);
 bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer);
 #endif
-std::unique_ptr<TopoDS_Shape> read_brep_bin_stream(RustReader& reader);
-bool write_brep_bin_stream(const TopoDS_Shape& shape, RustWriter& writer);
-std::unique_ptr<TopoDS_Shape> read_brep_text_stream(RustReader& reader);
-bool write_brep_text_stream(const TopoDS_Shape& shape, RustWriter& writer);
+// BRep I/O (BinTools binary — the ASCII BRepTools format is not supported).
+//
+// `read_brep_stream` parses `data` as a BinTools payload and reports in
+// `out_consumed` how many leading bytes that payload took. BinTools stops at the
+// end of its own self-delimiting payload and ignores what follows, so the Rust
+// side puts its color trailer there and looks for it at exactly that offset —
+// never searching, so a payload can never be mistaken for a trailer.
+//
+// `out_consumed` is written ONLY on success. On failure nullptr comes back and it
+// is left alone: it references an initialized Rust local that the caller ignores
+// when the returned pointer is null.
+std::unique_ptr<TopoDS_Shape> read_brep_stream(
+    rust::Slice<const uint8_t> data, size_t& out_consumed);
+bool write_brep_stream(const TopoDS_Shape& shape, RustWriter& writer);
 
 // ==================== Shape Constructors ====================
 
