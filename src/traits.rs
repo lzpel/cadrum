@@ -510,6 +510,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	// --- Color ---
 	/// Colour the solid as a whole, dropping any per-face colours it carried: one entry
 	/// keyed by `self.id()`, which STEP and BRep keep and `Mesh` expands onto the faces.
+	/// A boolean result inherits it from the left operand alone.
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self;
 	/// Drop this solid's colour and all of its per-face colours.
