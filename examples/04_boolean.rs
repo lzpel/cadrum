@@ -6,7 +6,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
 	let make_box = Solid::cube(DVec3::ZERO, DVec3::splat(20.0)).translate(DVec3::X * -10. + DVec3::Y * -10.).color("#4a90d9");
-	let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::Z * -5.).color("#e67e22");
+	let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::Z * -5.);
 
 	// union: merge both shapes into one — offset X=0
 	let union: Solid = (&make_box + &make_cyl).build()?;
