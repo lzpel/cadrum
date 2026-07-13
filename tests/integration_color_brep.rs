@@ -17,6 +17,17 @@ fn colormap_len(shape: &[Solid]) -> usize {
 	shape.iter().map(|s| s.colormap().len()).sum()
 }
 
+/// The colour each face actually renders in: its own, else its solid's.
+///
+/// The trailer is keyed by face index and has nowhere to record "this is the
+/// solid's colour", so a solid-level colour is flattened onto its faces on write.
+/// Appearance is preserved exactly; the number of colormap entries is not — the
+/// solid's one entry becomes N face entries — which is why these round-trips
+/// compare effective colours rather than counts.
+fn effective_colors(shape: &[Solid]) -> Vec<Option<Color>> {
+	shape.iter().flat_map(|s| s.iter_face().map(move |f| s.colormap().get(&f.id()).copied().or(s.color_solid()))).collect()
+}
+
 fn roundtrip_bin(shape: &[Solid]) -> Vec<Solid> {
 	let mut buf = Vec::new();
 	cadrum::Solid::write_brep_binary(shape, &mut buf).expect("write_brep_binary should succeed");
@@ -31,13 +42,13 @@ fn roundtrip_text(shape: &[Solid]) -> Vec<Solid> {
 
 // ── binary tests ─────────────────────────────────────────────────────────────
 
-/// Round-trip (binary) preserves the number of colors and the RGB values.
+/// Round-trip (binary) preserves how every face looks, and the RGB values.
 #[test]
 fn bin_write_then_read_preserves_colors() {
 	let original = read_colored_box();
 	let reloaded = roundtrip_bin(&original);
 
-	assert_eq!(colormap_len(&reloaded), colormap_len(&original), "color count should be preserved (binary)");
+	assert_eq!(effective_colors(&reloaded), effective_colors(&original), "every face should keep its effective colour (binary)");
 
 	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.iter_face()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
 	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.iter_face()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
@@ -63,18 +74,18 @@ fn bin_roundtrip_after_boolean() {
 	assert!(colormap_len(&solids) >= 1, "at least one color should survive intersect");
 
 	let reloaded = roundtrip_bin(&solids);
-	assert_eq!(colormap_len(&reloaded), colormap_len(&solids), "color count should survive round-trip (binary)");
+	assert_eq!(effective_colors(&reloaded), effective_colors(&solids), "every face should keep its effective colour after boolean + round-trip (binary)");
 }
 
 // ── text tests ───────────────────────────────────────────────────────────────
 
-/// Round-trip (text) preserves the number of colors and the RGB values.
+/// Round-trip (text) preserves how every face looks, and the RGB values.
 #[test]
 fn text_write_then_read_preserves_colors() {
 	let original = read_colored_box();
 	let reloaded = roundtrip_text(&original);
 
-	assert_eq!(colormap_len(&reloaded), colormap_len(&original), "color count should be preserved (text)");
+	assert_eq!(effective_colors(&reloaded), effective_colors(&original), "every face should keep its effective colour (text)");
 
 	let original_colors: Vec<Color> = original.iter().flat_map(|s| s.iter_face()).filter_map(|f| original.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();
 	let reloaded_colors: Vec<Color> = reloaded.iter().flat_map(|s| s.iter_face()).filter_map(|f| reloaded.iter().find_map(|s| s.colormap().get(&f.id()).copied())).collect();

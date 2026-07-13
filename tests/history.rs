@@ -119,10 +119,19 @@ fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
 
 /// color: fillet 後も Modified/identity 面が src 面の色を history 経由で引き継ぐ
 /// （colormap remap が history を流路にしている）。
+///
+/// 面色は `colormap_mut` で直接置く。`Solid::color` はソリッド単位の色を塗るので
+/// face の history を通らない（そちらは integration_color_step.rs で検査する）。
 #[cfg(feature = "color")]
 #[test]
 fn test_fillet_carries_face_color_via_history() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color("#ff0000");
+	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
+	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let face_ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
+	for id in face_ids {
+		cube.colormap_mut().insert(id, red);
+	}
+
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let filleted = cube.fillet_edges(0.5, [edge]).expect("fillet");
 
