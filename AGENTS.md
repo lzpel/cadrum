@@ -8,3 +8,4 @@
 
 - For implementation instructions, run tests to verify after implementation
 - run "cargo fmt" to all new changes.
+- Remove comments that the code already says and keep a comment within two lines.

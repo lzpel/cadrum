@@ -508,19 +508,8 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	fn bounding_box(&self) -> [DVec3; 2];
 
 	// --- Color ---
-	/// Colour the solid as a whole, dropping any per-face colours it carried.
-	///
-	/// The colormap gains one entry keyed by the solid's own id rather than one
-	/// per face, so STEP stores this as a single `styled_item` on the
-	/// `manifold_solid_brep` — what commercial CAD emits, and what a read → write
-	/// round-trip then reproduces. BRep keys its colour trailer by solid as well as
-	/// by face, so it keeps the distinction too. The renderers are where it
-	/// collapses: `Mesh` has only a face level, so it sees the colour expanded onto
-	/// every face — the appearance is identical, the one-entry/N-entries difference
-	/// is not.
-	///
-	/// Per-face colours (from `read_step`, or set through `Solid::colormap_mut`)
-	/// override it. Read it back with `colormap().get(&self.id())`.
+	/// Colour the solid as a whole, dropping any per-face colours it carried: one entry
+	/// keyed by `self.id()`, which STEP and BRep keep and `Mesh` expands onto the faces.
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self;
 	/// Drop this solid's colour and all of its per-face colours.
@@ -706,8 +695,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	// the crate root free of generic names like `mesh` / `write_step`.
 	fn read_step<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
 	/// BRep is OCCT's `BinTools` binary format. The ASCII `BRepTools` flavour is not
-	/// supported: its parser cannot say where a shape ends, which the colour trailer
-	/// needs, and it faults outright on a truncated file.
+	/// supported — see `notes/20260714-BRep_textを捨てて前置マジックに移行.md`.
 	fn read_brep<R: std::io::Read>(reader: &mut R) -> Result<Vec<Self>, Error>;
 	fn write_step<'a, W: std::io::Write>(solids: impl IntoIterator<Item = &'a Self>, writer: &mut W) -> Result<(), Error>
 	where

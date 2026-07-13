@@ -1,8 +1,5 @@
-//! Test: can the OCCT BRep reader tolerate extra trailing bytes?
-//!
-//! We write a valid BRep, append 1 KB of garbage, then read it back. The reader
-//! must consume only what it needs (count-driven parsing) and ignore the rest —
-//! which is also what lets the color trailer live past the payload's end.
+//! The BRep reader must ignore bytes past its own payload — that is what lets the
+//! color trailer live there.
 
 use cadrum::{DVec3, Solid};
 
@@ -10,7 +7,6 @@ fn test_box() -> Vec<Solid> {
 	vec![Solid::cube(DVec3::ZERO, DVec3::ONE)]
 }
 
-/// Write BRep binary, append 1 KB of 0xAB, read back.
 #[test]
 fn read_brep_with_trailing_garbage() {
 	let shape = test_box();

@@ -65,20 +65,8 @@ pub struct Solid {
 	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 	edges: OnceLock<Vec<Edge>>,
 	faces: OnceLock<Vec<Face>>,
-	/// Colours, keyed by TShape id.
-	///
-	/// A key is either a **face** of this solid — that face's own colour — or the
-	/// **solid's own id** (`Solid::id()`), which colours the solid as a whole.
-	/// STEP has exactly these two levels (`styled_item` → `advanced_face` or
-	/// → `manifold_solid_brep`) and both occur in the wild, sometimes in the same
-	/// file.
-	///
-	/// Resolution for rendering: **face colour → solid colour → default grey**.
-	///
-	/// Keys of faces (or solids) that are not part of this solid may be present —
-	/// `CompoundShape::decompose` hands every result a clone of the merged map.
-	/// Over-inclusion is harmless because every consumer looks up by an id it
-	/// already holds.
+	/// Keyed by a face's TShape id, or by `Solid::id()` for the solid as a whole; a face
+	/// colour wins over the solid's. Other solids' keys may be present (`decompose`).
 	#[cfg(feature = "color")]
 	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 	/// Face-derivation history from the most recent boolean operation.
@@ -135,9 +123,8 @@ impl Solid {
 		&mut self.colormap
 	}
 
-	/// Carry each source face's color onto its derived result faces via
-	/// `history` `[post_id, src_id]` pairs, and the solid's own colour onto the
-	/// new solid (shell/fillet/chamfer/clean).
+	/// Carry face colours across `history` `[post_id, src_id]` pairs, and the solid's
+	/// own colour onto the new solid (shell/fillet/chamfer/clean).
 	#[cfg(feature = "color")]
 	fn remap_colormap(&self, new_inner: &ffi::TopoDS_Shape, history: &[u64]) -> std::collections::HashMap<u64, crate::common::color::Color> {
 		let mut colormap: std::collections::HashMap<u64, crate::common::color::Color> = history.chunks_exact(2).filter_map(|p| Some((p[0], *self.colormap.get(&p[1])?))).collect();
@@ -564,14 +551,8 @@ impl SolidStruct for Solid {
 			m
 		};
 
-		// The solid colour rides no history: the volume of `a ∪ b` is a mixture,
-		// not a descendant of one operand, so there is no face-style `[post_id,
-		// src_id]` function to carry it. The result takes a colour only when the
-		// operands that have one agree. An uncoloured operand (a cutting tool)
-		// is ignored rather than erasing the part's colour.
-		//   cut(red, uncoloured tool) → red
-		//   union(red, red)           → red
-		//   union(red, blue)          → None
+		// No history carries a solid colour — the result volume descends from no single
+		// operand — so it survives only when the operands that have one agree.
 		#[cfg(feature = "color")]
 		let agreed = {
 			let mut colors = solids.iter().filter_map(|s| s.colormap.get(&s.id()).copied());
@@ -670,10 +651,8 @@ impl SolidStruct for Solid {
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
 		let c = color.into();
-		// One entry keyed by the solid itself, not one per face — that is what
-		// makes the STEP writer emit a single styled_item on the
-		// manifold_solid_brep. Face colours, being more specific, are dropped:
-		// painting the whole solid is a statement about the whole solid.
+		// Existing face colours are dropped: painting the whole solid is a statement
+		// about the whole solid.
 		let colormap = std::collections::HashMap::from([(ffi::shape_tshape_id(&self.inner), c)]);
 		Self::new(self.inner, colormap, self.history)
 	}

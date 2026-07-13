@@ -133,10 +133,8 @@ C++17 compiler (GCC, Clang, or MSVC) and CMake.
 ## Features
 
 - **`color`** *(default)*: Enables `Solid::color` and colormap propagation
-  through STEP / BRep / STL / glTF / SVG I/O via OCCT's XDE document model. A
-  colour set on a whole solid stays one entry through STEP and BRep; only the
-  renderers, which speak faces alone, see it expanded. Disable for a smaller
-  binary if shape color is irrelevant.
+  through STEP / BRep / STL / glTF / SVG I/O via OCCT's XDE document model.
+  Disable for a smaller binary if shape color is irrelevant.
 - **`png`** *(default)*: PNG raster output — `Scene2D::write_png` and
   `Solid::write_multiview_png` — via the pure-Rust `tiny-skia` rasterizer.
   Disable to drop the `tiny-skia` dependency when SVG / STL / glTF output is

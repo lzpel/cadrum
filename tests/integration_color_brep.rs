@@ -17,12 +17,8 @@ fn colormap_len(shape: &[Solid]) -> usize {
 	shape.iter().map(|s| s.colormap().len()).sum()
 }
 
-/// The colour each face actually renders in: its own, else its solid's.
-///
-/// Colormap keys are TShape addresses, which a re-read invents afresh, so a
-/// round-trip cannot be checked by comparing keys. Walking the faces in explorer
-/// order and resolving each one's effective colour compares what survived without
-/// depending on those addresses.
+/// Colormap keys are TShape addresses, which a re-read invents afresh, so a round-trip
+/// is compared by each face's effective colour (its own, else its solid's) in order.
 fn effective_colors(shape: &[Solid]) -> Vec<Option<Color>> {
 	shape.iter().flat_map(|s| s.iter_face().map(move |f| s.colormap().get(&f.id()).or(s.colormap().get(&s.id())).copied())).collect()
 }
@@ -55,9 +51,8 @@ fn colorless_shape_roundtrip() {
 	assert_eq!(colormap_len(&reloaded), 0);
 }
 
-/// Round-trip after a boolean operation preserves surviving colors. Doubles as the
-/// regression test for `BinTools`' backward references: a boolean result has shared
-/// sub-shapes, so reading it back exercises the seeking the reader relies on.
+/// Doubles as the regression test for `BinTools`' backward references: a boolean
+/// result has shared sub-shapes, so reading it back exercises the reader's seeking.
 #[test]
 fn roundtrip_after_boolean() {
 	let cube = read_colored_box();
@@ -72,14 +67,8 @@ fn roundtrip_after_boolean() {
 
 // ── trailer placement ────────────────────────────────────────────────────────
 
-/// The trailer begins exactly where the BRep payload ends.
-///
-/// The whole prefix-magic design rests on `read_brep_stream` reporting that offset
-/// to the byte: the reader looks for the magic there and nowhere else. Writing the
-/// same geometry with and without a colour pins it from the writer's side — the
-/// coloured file must be the plain one plus a trailer, with nothing inserted or
-/// dropped in between. If OCCT ever consumed a byte past its own payload, this is
-/// what would catch it.
+/// The design rests on `read_brep_stream` reporting the payload's end to the byte —
+/// the reader looks for the magic there and nowhere else. This is what pins it.
 #[test]
 fn trailer_begins_where_the_payload_ends() {
 	let red = Color::from_str("#ff0000").expect("valid hex");
@@ -103,10 +92,6 @@ fn empty_input_fails() {
 
 // ── solid-level colour ───────────────────────────────────────────────────────
 
-/// A solid colour goes into the trailer as the one entry it is, and comes back a
-/// solid colour — the trailer keys solids as well as faces, so nothing is
-/// flattened onto the faces on the way. The STEP twin of this is
-/// `integration_color_step::solid_level_color_round_trips`.
 #[test]
 fn solid_level_color_round_trips() {
 	let red = Color::from_str("#ff0000").expect("valid hex");
@@ -120,10 +105,8 @@ fn solid_level_color_round_trips() {
 	assert_eq!(reloaded[0].iter_face().filter(|f| reloaded[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces");
 }
 
-/// Solid-keyed and face-keyed entries share one index space — solids first, then
-/// faces — so a file carrying both is what proves the boundary between them is not
-/// off by one. `colored_box.step` supplies the face colours; the cube supplies a
-/// solid colour, and sits second so the solid count shifts every face index.
+/// The cube sits second so the solid count shifts every face index — an off-by-one
+/// at the solid/face boundary of the index space shows up here.
 #[test]
 fn solid_and_face_colors_share_the_trailer() {
 	let blue = Color::from_str("#0000ff").expect("valid hex");

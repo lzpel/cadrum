@@ -23,27 +23,18 @@ changes until `1.0`.
 
 #### Removed
 
-- **BRep text (ASCII `BRepTools`) I/O.** `Solid::read_brep_text` /
-  `Solid::write_brep_text` are gone; BRep now means OCCT's `BinTools` binary
-  format alone. This is a capability loss, not just a rename: ASCII `.brep` is
-  what OCCT's own `DRAWEXE save` emits, and feeding one to cadrum now returns
-  `Error::BrepReadFailed`. The ASCII parser cannot report where a shape ends —
-  which the colour trailer needs — and it faults outright on a truncated file.
+- **BRep text (ASCII `BRepTools`) I/O.** BRep now means OCCT's `BinTools` binary
+  format alone; an ASCII `.brep` returns `Error::BrepReadFailed`. Why:
+  [notes](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)
 
 #### Breaking
 
 - **`Solid::read_brep_binary` / `write_brep_binary` are now `read_brep` /
-  `write_brep`.** With text gone there is only one BRep.
-- **The BRep colour trailer moved its magic to the front.** It is now
-  `[BinTools payload][b"CDCL"][u32 count][entries]`, found at the offset where
-  the payload ended rather than by scanning the file's last four bytes. Files
-  written by an earlier cadrum still load, with their colours silently dropped.
-  Searching for the magic could also mistake a payload that happened to end in
-  those four bytes for a trailer and truncate a valid file into an unreadable
-  one; anchoring it to the payload's end removes that failure entirely.
-- **The BRep colour trailer keys solids as well as faces.** A colour set on a
-  whole solid used to be flattened onto its faces on write, so it came back as
-  N face colours. It now round-trips as the one entry it is.
+  `write_brep`.** With text gone there is only one BRep. (#247)
+- **The BRep colour trailer is now `[payload][b"CDCL"][u32 count][entries]`**,
+  found where the payload ended instead of by scanning the last four bytes, and
+  it keys solids as well as faces — a solid colour is no longer flattened onto
+  its faces. Files from an earlier cadrum load with their colours dropped. (#247)
 - **Renamed the `source-build` feature to `source`.** Update
   `--features source-build` to `--features source`. (#182)
 

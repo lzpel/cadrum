@@ -37,9 +37,8 @@ fn write_colored(shape: &[Solid], path: &str) {
 fn read_colored_step_populates_colormap() {
 	let shape = read_colored_box();
 	assert!(colormap_len(&shape) >= 6, "expected at least 6 colored faces, got {}", colormap_len(&shape));
-	// Every colormap key is either a face of the shape or a solid's own id — the
-	// two levels STEP itself has. colored_box.step exercises both: 11 styled_items
-	// target advanced_faces and a 12th targets the manifold_solid_brep.
+	// colored_box.step has both levels: 11 styled_items on advanced_faces, a 12th on
+	// the manifold_solid_brep.
 	let ids: std::collections::HashSet<u64> = shape.iter().flat_map(|s| s.iter_face().map(|f| f.id()).chain(std::iter::once(s.id()))).collect();
 	for solid in &shape {
 		for id in solid.colormap().keys() {
@@ -133,12 +132,8 @@ fn multicolor_solvespace_step_recovers_solid_with_colors() {
 
 // ── solid-level colour (STYLED_ITEM → MANIFOLD_SOLID_BREP) ────────────────────
 
-/// A real commercial-CAD export (Autodesk ATF / ST-DEVELOPER) whose single
-/// `STYLED_ITEM` targets `#14 = MANIFOLD_SOLID_BREP`, not an `ADVANCED_FACE`.
-/// cadrum used to skip every non-FACE label and drop the colour, so this box
-/// rendered in the default grey. The bug hid because the file's own colour is
-/// `#a0a0a0` ("鋼 - サテン") — grey, like the fallback — and because the fixture
-/// had never been wired into a test.
+/// A commercial-CAD export (Autodesk ATF) whose single `STYLED_ITEM` targets
+/// `#14 = MANIFOLD_SOLID_BREP`, not an `ADVANCED_FACE`.
 const LAMBDA360_STEP: &str = "steps/LAMBDA360-BOX-d6cb2eb2d6e0d802095ea1eda691cf9a3e9bf3394301a0d148f53e55f0f97951.step";
 
 fn read_lambda360() -> Vec<Solid> {
@@ -153,21 +148,17 @@ fn solid_level_styled_item_is_read() {
 
 	let c = solids[0].colormap().get(&solids[0].id()).copied().expect("the solid-level colour must survive the read");
 	// The file says COLOUR_RGB('鋼 - サテン', 0.627450980392157, ×3). OCCT reads STEP
-	// colours as sRGB and stores Quantity_Color linear, so what comes back is the
-	// linear form. Not new here — face colours have always gone through it.
+	// colours as sRGB and stores Quantity_Color linear, so the linear form comes back.
 	let srgb = 0.627_450_98_f32;
 	let linear = ((srgb + 0.055) / 1.055).powf(2.4);
 	for v in [c.r, c.g, c.b] {
 		assert!((v - linear).abs() < 1e-5, "expected {linear} (linear of sRGB {srgb}), got {v}");
 	}
-	// The colour belongs to the solid, and only to the solid: expanding it onto the
-	// faces at read time would write back N styled items instead of the one.
 	let faces_colored = solids[0].iter_face().filter(|f| solids[0].colormap().contains_key(&f.id())).count();
 	assert_eq!(faces_colored, 0, "a solid-level style must not be expanded onto faces");
 }
 
-/// The renderers speak only face colours, so `io::mesh` resolves the solid's onto
-/// every face. This is what makes the box stop rendering grey.
+/// `Mesh` has only a face level, so `io::mesh` resolves the solid's colour onto them.
 #[test]
 fn solid_level_color_reaches_the_mesh() {
 	let solids = read_lambda360();
@@ -179,8 +170,6 @@ fn solid_level_color_reaches_the_mesh() {
 	}
 }
 
-/// A solid colour goes out as ONE styled item on the solid, not N on its faces,
-/// and comes back as a solid colour.
 #[test]
 fn solid_level_color_round_trips() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
@@ -200,9 +189,8 @@ fn solid_level_color_round_trips() {
 	assert_eq!(back[0].iter_face().filter(|f| back[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces");
 }
 
-/// A boolean result takes the operands' colour only when the ones that have a
-/// colour agree: the volume of `a ∪ b` is a mixture, not a descendant of one
-/// operand, so unlike a face colour there is no history to carry it.
+/// Unlike a face colour, no history carries a solid's — the result volume descends
+/// from no single operand.
 #[test]
 fn boolean_carries_solid_color_only_when_operands_agree() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
@@ -220,9 +208,8 @@ fn boolean_carries_solid_color_only_when_operands_agree() {
 	assert_eq!(cut[0].colormap().get(&cut[0].id()).copied(), Some(red), "an uncoloured operand is ignored");
 }
 
-/// The solid colour is keyed by the solid's TShape id, which every topology-
-/// rebuilding op changes. Nothing in the type system forces those ops to carry it
-/// across — this test does.
+/// Every topology-rebuilding op changes the solid's TShape id, and nothing in the
+/// type system forces it to carry the colour across. This test does.
 #[test]
 fn single_source_ops_carry_the_solid_color() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
