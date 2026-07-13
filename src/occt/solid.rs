@@ -71,8 +71,7 @@ pub struct Solid {
 	/// **solid's own id** (`Solid::id()`), which colours the solid as a whole.
 	/// STEP has exactly these two levels (`styled_item` → `advanced_face` or
 	/// → `manifold_solid_brep`) and both occur in the wild, sometimes in the same
-	/// file. A TShape address is unique across shape types, so the two levels
-	/// share this map without colliding; `Solid::color_solid` reads the second.
+	/// file.
 	///
 	/// Resolution for rendering: **face colour → solid colour → default grey**.
 	///
@@ -134,15 +133,6 @@ impl Solid {
 	#[cfg(feature = "color")]
 	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<u64, crate::common::color::Color> {
 		&mut self.colormap
-	}
-
-	/// The colour of the solid as a whole, if it has one — the entry the colormap
-	/// keys by the solid's own id. Set it with [`SolidStruct::color`].
-	///
-	/// Individual faces may override it; see the `colormap` field docs.
-	#[cfg(feature = "color")]
-	pub fn color_solid(&self) -> Option<crate::common::color::Color> {
-		self.colormap.get(&ffi::shape_tshape_id(&self.inner)).copied()
 	}
 
 	/// Carry each source face's color onto its derived result faces via
@@ -584,7 +574,7 @@ impl SolidStruct for Solid {
 		//   union(red, blue)          → None
 		#[cfg(feature = "color")]
 		let agreed = {
-			let mut colors = solids.iter().filter_map(|s| s.color_solid());
+			let mut colors = solids.iter().filter_map(|s| s.colormap.get(&s.id()).copied());
 			colors.next().filter(|first| colors.all(|c| c == *first))
 		};
 

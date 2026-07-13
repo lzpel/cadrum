@@ -46,7 +46,7 @@ fn read_colored_step_populates_colormap() {
 			assert!(ids.contains(id), "colormap key {:?} is neither a face nor a solid of the shape", id);
 		}
 	}
-	assert!(shape.iter().any(|s| s.color_solid().is_some()), "colored_box.step styles its manifold_solid_brep too; that colour must not be dropped");
+	assert!(shape.iter().any(|s| s.colormap().contains_key(&s.id())), "colored_box.step styles its manifold_solid_brep too; that colour must not be dropped");
 }
 
 /// Write the colored shape to STEP and read it back — colormap should be
@@ -151,7 +151,7 @@ fn solid_level_styled_item_is_read() {
 	let solids = read_lambda360();
 	assert_eq!(solids.len(), 1, "expected 1 solid");
 
-	let c = solids[0].color_solid().expect("the solid-level colour must survive the read");
+	let c = solids[0].colormap().get(&solids[0].id()).copied().expect("the solid-level colour must survive the read");
 	// The file says COLOUR_RGB('鋼 - サテン', 0.627450980392157, ×3). OCCT reads STEP
 	// colours as sRGB and stores Quantity_Color linear, so what comes back is the
 	// linear form. Not new here — face colours have always gone through it.
@@ -185,7 +185,7 @@ fn solid_level_color_reaches_the_mesh() {
 fn solid_level_color_round_trips() {
 	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
 	let src = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color(red);
-	assert_eq!(src.color_solid(), Some(red));
+	assert_eq!(src.colormap().get(&src.id()).copied(), Some(red));
 	assert_eq!(src.colormap().len(), 1, "color() paints the solid, not each of its faces");
 
 	let mut buf = Vec::new();
@@ -196,7 +196,7 @@ fn solid_level_color_round_trips() {
 
 	let back = cadrum::Solid::read_step(&mut buf.as_slice()).expect("read_step should succeed");
 	assert_eq!(back.len(), 1);
-	assert_eq!(back[0].color_solid(), Some(red), "the solid colour must round-trip");
+	assert_eq!(back[0].colormap().get(&back[0].id()).copied(), Some(red), "the solid colour must round-trip");
 	assert_eq!(back[0].iter_face().filter(|f| back[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces");
 }
 
@@ -210,14 +210,14 @@ fn boolean_carries_solid_color_only_when_operands_agree() {
 	let at = |x: f64| Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(DVec3::X * x);
 
 	let same: Vec<Solid> = (&at(0.0).color(red) + &at(5.0).color(red)).build_vec().expect("union should succeed");
-	assert_eq!(same[0].color_solid(), Some(red), "agreeing operands carry their colour");
+	assert_eq!(same[0].colormap().get(&same[0].id()).copied(), Some(red), "agreeing operands carry their colour");
 
 	let mixed: Vec<Solid> = (&at(0.0).color(red) + &at(5.0).color(blue)).build_vec().expect("union should succeed");
-	assert_eq!(mixed[0].color_solid(), None, "a mixture of two colours has no single answer");
+	assert_eq!(mixed[0].colormap().get(&mixed[0].id()).copied(), None, "a mixture of two colours has no single answer");
 
 	// A cutting tool usually has no colour of its own; it must not erase the part's.
 	let cut: Vec<Solid> = (&at(0.0).color(red) - &at(5.0)).build_vec().expect("cut should succeed");
-	assert_eq!(cut[0].color_solid(), Some(red), "an uncoloured operand is ignored");
+	assert_eq!(cut[0].colormap().get(&cut[0].id()).copied(), Some(red), "an uncoloured operand is ignored");
 }
 
 /// The solid colour is keyed by the solid's TShape id, which every topology-
@@ -244,6 +244,6 @@ fn single_source_ops_carry_the_solid_color() {
 	let cases: Vec<(&str, Solid)> = vec![("translate", cube().translate(DVec3::X * 5.0)), ("rotate", cube().rotate(DVec3::ZERO, DVec3::Z, 0.5)), ("scale", cube().scale(DVec3::ZERO, 2.0)), ("mirror", cube().mirror(DVec3::ZERO, DVec3::Z)), ("clone", cube().clone()), ("clean", cube().clean().expect("clean should succeed")), ("shell", cube().shell(-1.0, std::iter::empty::<&cadrum::Face>()).expect("shell should succeed")), ("fillet", filleted), ("chamfer", chamfered)];
 
 	for (name, solid) in cases {
-		assert_eq!(solid.color_solid(), Some(red), "{name} must carry the solid colour across");
+		assert_eq!(solid.colormap().get(&solid.id()).copied(), Some(red), "{name} must carry the solid colour across");
 	}
 }

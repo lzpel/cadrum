@@ -513,12 +513,14 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	/// The colormap gains one entry keyed by the solid's own id rather than one
 	/// per face, so STEP stores this as a single `styled_item` on the
 	/// `manifold_solid_brep` — what commercial CAD emits, and what a read → write
-	/// round-trip then reproduces. BRep and the renderers speak only face colours,
-	/// so they see it expanded onto every face: the appearance is identical, but
-	/// the solid/face distinction survives in STEP alone.
+	/// round-trip then reproduces. BRep keys its colour trailer by solid as well as
+	/// by face, so it keeps the distinction too. The renderers are where it
+	/// collapses: `Mesh` has only a face level, so it sees the colour expanded onto
+	/// every face — the appearance is identical, the one-entry/N-entries difference
+	/// is not.
 	///
 	/// Per-face colours (from `read_step`, or set through `Solid::colormap_mut`)
-	/// override it. Read it back with `Solid::color_solid`.
+	/// override it. Read it back with `colormap().get(&self.id())`.
 	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self;
 	/// Drop this solid's colour and all of its per-face colours.

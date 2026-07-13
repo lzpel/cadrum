@@ -40,44 +40,38 @@ fn strip_color_trailer(buf: &[u8]) -> (std::collections::HashMap<u64, Color>, us
 	(colormap, brep_len)
 }
 
-#[cfg(feature = "color")]
-fn resolve_color_trailer(inner: &ffi::TopoDS_Shape, index_colormap: &std::collections::HashMap<u64, Color>) -> std::collections::HashMap<u64, Color> {
-	let faces = ffi::shape_faces(inner);
-	let index_to_id: Vec<u64> = faces.iter().map(ffi::face_tshape_id).collect();
-	index_colormap.iter().filter_map(|(&idx, &color)| index_to_id.get(idx as usize).map(|&id| (id, color))).collect()
-}
-
-/// Effective colour of every face: its own if it has one, else the colour of the
-/// solid it belongs to.
+/// The index space the trailer's `u32` keys live in: every solid of the shape,
+/// then every face. The writer inverts it to id → index, the reader indexes it,
+/// so the two directions cannot drift apart.
 ///
-/// A solid-level colour is keyed by the solid's id and so has no face key of its
-/// own. Consumers that speak only face colours — the BRep trailer, which is keyed
-/// by face index and has nowhere to say "this is the solid", and `Mesh`, which is
-/// what every renderer reads — get it expanded here. Appearance survives exactly;
-/// the solid/face distinction lives on in STEP alone, which is the one format that
-/// can express it.
+/// Both levels fit one space because a solid-level colour is keyed by the solid's
+/// own id and has no face key of its own — the trailer records it as-is rather
+/// than expanding it onto the faces, which would turn one entry into N. Faces sit
+/// *after* the solids, so their indices shift with the solid count: a trailer
+/// written before this layout decodes to garbage, deliberately.
+///
+/// The order is not re-derived anywhere: a BRep read goes straight through
+/// `BinTools::Read` / `BRepTools::Read`, which rebuild the TShape graph exactly as
+/// written. (The STEP path heals via `try_sew_orphan_faces` and so cannot use
+/// indices at all — it carries explicit ids instead.)
 #[cfg(feature = "color")]
-fn resolve_face_colors<'a>(solids: impl IntoIterator<Item = &'a Solid>) -> std::collections::HashMap<u64, Color> {
-	let mut map = std::collections::HashMap::new();
-	for s in solids {
-		if let Some(c) = s.color_solid() {
-			for f in ffi::shape_faces(s.inner()).iter() {
-				map.insert(ffi::face_tshape_id(f), c);
-			}
-		}
-		// Face colours are the more specific style and win over the solid's.
-		map.extend(s.colormap().iter().map(|(&k, &v)| (k, v)));
-	}
-	map
+fn trailer_ids(shape: &ffi::TopoDS_Shape) -> Vec<u64> {
+	// Bound to locals: both are `UniquePtr<CxxVector<..>>` that the iterators borrow.
+	let solids = ffi::decompose_into_solids(shape);
+	let faces = ffi::shape_faces(shape);
+	solids.iter().map(ffi::shape_tshape_id).chain(faces.iter().map(ffi::face_tshape_id)).collect()
 }
 
 #[cfg(feature = "color")]
-fn write_color_trailer<W: Write>(compound: &CompoundShape, colormap: &std::collections::HashMap<u64, Color>, writer: &mut W) -> Result<(), Error> {
+fn write_color_trailer<W: Write>(compound: &CompoundShape, writer: &mut W) -> Result<(), Error> {
+	let colormap = compound.colormap();
 	if colormap.is_empty() {
 		return Ok(());
 	}
-	let faces = ffi::shape_faces(compound.inner());
-	let id_to_index: std::collections::HashMap<u64, u32> = faces.iter().enumerate().map(|(i, f)| (ffi::face_tshape_id(f), i as u32)).collect();
+	let id_to_index: std::collections::HashMap<u64, u32> = trailer_ids(compound.inner()).into_iter().enumerate().map(|(i, id)| (id, i as u32)).collect();
+	// Keys the written shape does not hold have no index and drop out here:
+	// `CompoundShape::decompose` gives every solid a clone of the merged colormap,
+	// so a solid carries its siblings' keys too, and `colormap_mut` is public.
 	let mut entries: Vec<(u32, f32, f32, f32)> = colormap.iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
 	entries.sort_by_key(|e| e.0);
 
@@ -147,7 +141,8 @@ fn read_brep_with<R: Read>(reader: &mut R, ffi_read: fn(&mut RustReader) -> cxx:
 		if inner.is_null() {
 			return Err(Error::BrepReadFailed);
 		}
-		let colormap = resolve_color_trailer(&inner, &index_colormap);
+		let ids = trailer_ids(&inner);
+		let colormap = index_colormap.iter().filter_map(|(&idx, &color)| ids.get(idx as usize).map(|&id| (id, color))).collect();
 		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
 	}
 	#[cfg(not(feature = "color"))]
@@ -208,18 +203,15 @@ pub(super) fn write_brep_text<'a, W: Write>(solids: impl IntoIterator<Item = &'a
 
 /// Shared body for BRep binary/text writes — see `read_brep_with` for context.
 fn write_brep_with<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W, ffi_write: fn(&ffi::TopoDS_Shape, &mut RustWriter) -> bool) -> Result<(), Error> {
-	#[cfg(feature = "color")]
-	let solids: Vec<&Solid> = solids.into_iter().collect();
-	#[cfg(feature = "color")]
-	let colormap = resolve_face_colors(solids.iter().copied());
-
 	let compound = CompoundShape::new(solids);
 	let mut rust_writer = RustWriter::from_ref(writer);
 	if !ffi_write(compound.inner(), &mut rust_writer) {
 		return Err(Error::BrepWriteFailed);
 	}
+	// The trailer keys solids and faces alike, so a solid-level colour goes out as
+	// the one entry it is — no expansion onto its faces.
 	#[cfg(feature = "color")]
-	write_color_trailer(&compound, &colormap, writer)?;
+	write_color_trailer(&compound, writer)?;
 	Ok(())
 }
 
@@ -229,10 +221,24 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 
 	#[cfg(feature = "color")]
 	let solids: Vec<&Solid> = solids.into_iter().collect();
-	// `Mesh` speaks only face colours, so a solid's is resolved onto its faces
-	// here. That keeps every renderer (glTF / STL / Scene2D) unchanged.
+	// `Mesh` has only a face level — it is what every renderer (glTF / STL / Scene2D)
+	// reads — so a solid-level colour, which is keyed by the solid's own id and has
+	// no face key, is expanded onto its faces here. STEP and the BRep trailer both
+	// record the distinction; this is the one consumer that cannot.
 	#[cfg(feature = "color")]
-	let face_colors = resolve_face_colors(solids.iter().copied());
+	let face_colors = {
+		let mut map = std::collections::HashMap::new();
+		for s in solids.iter().copied() {
+			if let Some(&c) = s.colormap().get(&s.id()) {
+				for f in ffi::shape_faces(s.inner()).iter() {
+					map.insert(ffi::face_tshape_id(f), c);
+				}
+			}
+			// Face colours are the more specific style and win over the solid's.
+			map.extend(s.colormap().iter().map(|(&k, &v)| (k, v)));
+		}
+		map
+	};
 
 	let compound = CompoundShape::new(solids);
 	let data = ffi::mesh_shape(compound.inner(), options.deflection_linear, options.deflection_angular, options.relative_linear);

@@ -19,13 +19,12 @@ fn colormap_len(shape: &[Solid]) -> usize {
 
 /// The colour each face actually renders in: its own, else its solid's.
 ///
-/// The trailer is keyed by face index and has nowhere to record "this is the
-/// solid's colour", so a solid-level colour is flattened onto its faces on write.
-/// Appearance is preserved exactly; the number of colormap entries is not — the
-/// solid's one entry becomes N face entries — which is why these round-trips
-/// compare effective colours rather than counts.
+/// Colormap keys are TShape addresses, which a re-read invents afresh, so a
+/// round-trip cannot be checked by comparing keys. Walking the faces in explorer
+/// order and resolving each one's effective colour compares what survived without
+/// depending on those addresses.
 fn effective_colors(shape: &[Solid]) -> Vec<Option<Color>> {
-	shape.iter().flat_map(|s| s.iter_face().map(move |f| s.colormap().get(&f.id()).copied().or(s.color_solid()))).collect()
+	shape.iter().flat_map(|s| s.iter_face().map(move |f| s.colormap().get(&f.id()).or(s.colormap().get(&s.id())).copied())).collect()
 }
 
 fn roundtrip_bin(shape: &[Solid]) -> Vec<Solid> {
@@ -99,4 +98,44 @@ fn text_colorless_shape_roundtrip() {
 	let shape = [Solid::cube(DVec3::ZERO, DVec3::ONE)];
 	let reloaded = roundtrip_text(&shape);
 	assert_eq!(colormap_len(&reloaded), 0);
+}
+
+// ── solid-level colour ───────────────────────────────────────────────────────
+
+/// A solid colour goes into the trailer as the one entry it is, and comes back a
+/// solid colour — the trailer keys solids as well as faces, so nothing is
+/// flattened onto the faces on the way. The STEP twin of this is
+/// `integration_color_step::solid_level_color_round_trips`.
+#[test]
+fn solid_level_color_round_trips() {
+	let red = Color::from_str("#ff0000").expect("valid hex");
+	let src = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).color(red)];
+	assert_eq!(src[0].colormap().len(), 1, "color() paints the solid, not each of its faces");
+
+	for (label, reloaded) in [("binary", roundtrip_bin(&src)), ("text", roundtrip_text(&src))] {
+		assert_eq!(reloaded.len(), 1);
+		assert_eq!(reloaded[0].colormap().get(&reloaded[0].id()), Some(&red), "the solid colour must round-trip ({label})");
+		assert_eq!(reloaded[0].colormap().len(), 1, "one entry, not one per face ({label})");
+		assert_eq!(reloaded[0].iter_face().filter(|f| reloaded[0].colormap().contains_key(&f.id())).count(), 0, "and must not have leaked onto the faces ({label})");
+	}
+}
+
+/// Solid-keyed and face-keyed entries share one index space — solids first, then
+/// faces — so a file carrying both is what proves the boundary between them is not
+/// off by one. `colored_box.step` supplies the face colours; the cube supplies a
+/// solid colour, and sits second so the solid count shifts every face index.
+#[test]
+fn solid_and_face_colors_share_the_trailer() {
+	let blue = Color::from_str("#0000ff").expect("valid hex");
+	let mut src = read_colored_box();
+	src.push(Solid::cube(DVec3::splat(100.0), DVec3::splat(110.0)).color(blue));
+
+	for (label, reloaded) in [("binary", roundtrip_bin(&src)), ("text", roundtrip_text(&src))] {
+		assert_eq!(reloaded.len(), src.len(), "solid count ({label})");
+		assert_eq!(effective_colors(&reloaded), effective_colors(&src), "every face keeps its effective colour ({label})");
+		let solid_colors = |shape: &[Solid]| -> Vec<Option<Color>> { shape.iter().map(|s| s.colormap().get(&s.id()).copied()).collect() };
+		assert_eq!(solid_colors(&reloaded), solid_colors(&src), "every solid keeps its own colour ({label})");
+		let cube = reloaded.last().expect("cube");
+		assert_eq!(cube.colormap().get(&cube.id()), Some(&blue), "the cube's solid colour survives alongside the face colours ({label})");
+	}
 }
