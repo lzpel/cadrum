@@ -33,6 +33,7 @@ pub use common::{
 	boolean::Boolean,
 	error::Error,
 	mesh::{Mesh, Scene2D, SceneOption},
+	sketch::Sketch,
 };
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
