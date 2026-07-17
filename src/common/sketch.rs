@@ -39,6 +39,30 @@ impl Sketch {
 	pub fn contains(&self, p: DVec2) -> bool {
 		clauses(&self.0).any(|clause| clause.iter().all(|d| eval(*d, p) <= 0.0))
 	}
+
+	/// 領域が有界か。和集合なので全節が有界なときだけ有界。`boundary` に渡せるかの事前判定で、
+	/// 半平面など非有界な中間結果は式の途中では自由に使える (OCCT に降ろす直前だけ有界を要求)。
+	///
+	/// `x = x₀ + R·u` を代入すると `eval = a·R² + R·(2a(x₀·u) + b·u) + 定数` なので、R→∞ の符号は
+	/// `a` だけで決まる: `a>0` (真の円板) は全方向の無限遠を排除、`a<0` (円の外側) は全方向を許すので
+	/// 有界化に寄与せず、`a=0` (半平面) は `b·u ≤ 0` の向きだけを残す。よって節が有界 ⇔ 生き残る u が
+	/// 無い。後退錐 `{u : b_i·u ≤ 0}` の端 ray は 2D では必ずどれかの `b` に直交するので、
+	/// `±perp(b_j)` を候補に総当たりすれば厳密判定できる (三角関数も許容誤差も不要)。
+	///
+	/// 既知の穴: 後退錐が非自明な**空**の節 (`y≥0 ∧ y≤-1`) は空ではなく非有界と報告する。
+	pub fn bounded(&self) -> bool {
+		clauses(&self.0).all(|clause| {
+			if clause.iter().any(|d| d.x > 0.0) {
+				return true; // 真の円板が 1 つあれば、節はその内部に収まる
+			}
+			let bs: Vec<DVec2> = clause.iter().filter(|d| d.x == 0.0).map(|d| DVec2::new(d.y, d.z)).collect();
+			if bs.is_empty() {
+				return false; // 円の外側だけ = 全方向が無限遠へ抜ける
+			}
+			let escapes = |u: DVec2| u != DVec2::ZERO && bs.iter().all(|b| b.dot(u) <= 0.0);
+			!bs.iter().flat_map(|b| [DVec2::new(-b.y, b.x), DVec2::new(b.y, -b.x)]).any(escapes)
+		})
+	}
 }
 
 /// 一般化円板 `a|x|² + b·x + c` を点 `p` で評価。
@@ -65,68 +89,71 @@ fn flatten<'a>(clauses: impl IntoIterator<Item = &'a [DVec4]>) -> Vec<DVec4> {
 
 // ==================== DNF 合成 (boolean.rs の dnf_* を移植) ====================
 
-/// `a ∪ b`。空は union の単位元 (⊥)。
-fn union(a: Sketch, b: Sketch) -> Sketch {
-	if a.0.is_empty() {
-		return b;
-	}
-	if b.0.is_empty() {
-		return a;
-	}
-	let mut v = a.0;
-	v.push(DVec4::ZERO);
-	v.extend(b.0);
-	Sketch(v)
-}
-
-/// `a ∩ b`。節の直積。どちらか空 (⊥) なら空 (annihilator)。
-fn intersect(a: Sketch, b: Sketch) -> Sketch {
-	let ca: Vec<&[DVec4]> = clauses(&a.0).collect();
-	let cb: Vec<&[DVec4]> = clauses(&b.0).collect();
-	if ca.is_empty() || cb.is_empty() {
-		return Sketch(Vec::new());
-	}
-	let mut out: Vec<DVec4> = Vec::new();
-	for x in &ca {
-		for y in &cb {
-			if !out.is_empty() {
-				out.push(DVec4::ZERO);
-			}
-			out.extend_from_slice(x);
-			out.extend_from_slice(y);
+// 演算子 (`+` `*` `-` 単項 `-`) の実体。公開面は演算子だけなので pub にはしない。
+impl Sketch {
+	/// `self ∪ b`。空は union の単位元 (⊥)。
+	fn union(self, b: Sketch) -> Sketch {
+		if self.0.is_empty() {
+			return b;
 		}
+		if b.0.is_empty() {
+			return self;
+		}
+		let mut v = self.0;
+		v.push(DVec4::ZERO);
+		v.extend(b.0);
+		Sketch(v)
 	}
-	Sketch(out)
-}
 
-/// `¬s`。ド・モルガンで各節から `-lit` を 1 つずつ選ぶ全組み合わせ (DNF へ再分配)。
-/// `¬⊥ = ⊤` は表現不可 (モジュール doc 参照) なので空入力は空 (⊥) を返す。
-fn complement(s: Sketch) -> Sketch {
-	let cs: Vec<&[DVec4]> = clauses(&s.0).collect();
-	if cs.is_empty() {
-		return Sketch(Vec::new());
-	}
-	let mut accum: Vec<Vec<DVec4>> = vec![Vec::new()];
-	for clause in &cs {
-		let mut next = Vec::with_capacity(accum.len() * clause.len());
-		for partial in &accum {
-			for lit in clause.iter() {
-				let mut combined = partial.clone();
-				combined.push(-*lit);
-				next.push(combined);
+	/// `self ∩ b`。節の直積。どちらか空 (⊥) なら空 (annihilator)。
+	fn intersect(self, b: Sketch) -> Sketch {
+		let ca: Vec<&[DVec4]> = clauses(&self.0).collect();
+		let cb: Vec<&[DVec4]> = clauses(&b.0).collect();
+		if ca.is_empty() || cb.is_empty() {
+			return Sketch(Vec::new());
+		}
+		let mut out: Vec<DVec4> = Vec::new();
+		for x in &ca {
+			for y in &cb {
+				if !out.is_empty() {
+					out.push(DVec4::ZERO);
+				}
+				out.extend_from_slice(x);
+				out.extend_from_slice(y);
 			}
 		}
-		accum = next;
+		Sketch(out)
 	}
-	Sketch(flatten(accum.iter().map(|c| c.as_slice())))
-}
 
-/// `a - b = a ∩ ¬b`。`b = ⊥` なら `¬b = ⊤` で `a` を返す。
-fn subtract(a: Sketch, b: Sketch) -> Sketch {
-	if b.0.is_empty() {
-		return a;
+	/// `¬self`。ド・モルガンで各節から `-lit` を 1 つずつ選ぶ全組み合わせ (DNF へ再分配)。
+	/// `¬⊥ = ⊤` は表現不可 (モジュール doc 参照) なので空入力は空 (⊥) を返す。
+	fn complement(self) -> Sketch {
+		let cs: Vec<&[DVec4]> = clauses(&self.0).collect();
+		if cs.is_empty() {
+			return Sketch(Vec::new());
+		}
+		let mut accum: Vec<Vec<DVec4>> = vec![Vec::new()];
+		for clause in &cs {
+			let mut next = Vec::with_capacity(accum.len() * clause.len());
+			for partial in &accum {
+				for lit in clause.iter() {
+					let mut combined = partial.clone();
+					combined.push(-*lit);
+					next.push(combined);
+				}
+			}
+			accum = next;
+		}
+		Sketch(flatten(accum.iter().map(|c| c.as_slice())))
 	}
-	intersect(a, complement(b))
+
+	/// `self - b = self ∩ ¬b`。`b = ⊥` なら `¬b = ⊤` で `self` を返す。
+	fn subtract(self, b: Sketch) -> Sketch {
+		if b.0.is_empty() {
+			return self;
+		}
+		self.intersect(b.complement())
+	}
 }
 
 // ==================== 演算子 ====================
@@ -134,28 +161,28 @@ fn subtract(a: Sketch, b: Sketch) -> Sketch {
 impl Add for Sketch {
 	type Output = Sketch;
 	fn add(self, rhs: Sketch) -> Sketch {
-		union(self, rhs)
+		self.union(rhs)
 	}
 }
 
 impl Mul for Sketch {
 	type Output = Sketch;
 	fn mul(self, rhs: Sketch) -> Sketch {
-		intersect(self, rhs)
+		self.intersect(rhs)
 	}
 }
 
 impl Sub for Sketch {
 	type Output = Sketch;
 	fn sub(self, rhs: Sketch) -> Sketch {
-		subtract(self, rhs)
+		self.subtract(rhs)
 	}
 }
 
 impl Neg for Sketch {
 	type Output = Sketch;
 	fn neg(self) -> Sketch {
-		complement(self)
+		self.complement()
 	}
 }
 
@@ -252,29 +279,11 @@ fn on_boundary(s: &Sketch, k: DVec4, pm: DVec2) -> bool {
 	side(s, k, pm, true) != side(s, k, pm, false)
 }
 
-/// 節 (円板の AND) が有界か。`x = x₀ + R·u` を代入すると `eval = a·R² + R·(2a(x₀·u) + b·u) + 定数`
-/// で、R→∞ の符号は `a` だけで決まる: `a>0` (真の円板) は全方向の無限遠を排除、`a<0` (円の外側) は
-/// 全方向を許すので有界化に寄与せず、`a=0` (半平面) は `b·u ≤ 0` の向きだけを残す。
-/// よって「生き残る u が無い」⇔ 有界。後退錐 `{u : b_i·u ≤ 0}` の端 ray は 2D では必ずどれかの
-/// `b` に直交するので、`±perp(b_j)` を候補に総当たりすれば厳密判定できる (三角関数も許容誤差も不要)。
-fn clause_bounded(clause: &[DVec4]) -> bool {
-	if clause.iter().any(|d| d.x > 0.0) {
-		return true; // 真の円板が 1 つあれば、節はその内部に収まる
-	}
-	let bs: Vec<DVec2> = clause.iter().filter(|d| d.x == 0.0).map(|d| DVec2::new(d.y, d.z)).collect();
-	if bs.is_empty() {
-		return false; // 円の外側だけ = 全方向が無限遠へ抜ける
-	}
-	let escapes = |u: DVec2| u != DVec2::ZERO && bs.iter().all(|b| b.dot(u) <= 0.0);
-	!bs.iter().flat_map(|b| [DVec2::new(-b.y, b.x), DVec2::new(b.y, -b.x)]).any(escapes)
-}
-
 /// `Sketch` (DNF) の境界を、生成側でループにトレースしたセグメント列に降ろす。
 /// 円・直線のみ対応。非有界領域・退化は `Err(InvalidEdge)`。第一版は各頂点 degree 2 前提。
 pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
-	// 有界性は境界を追う前に式から決まる。union は全節が有界なときだけ有界。
-	// 境界が有界でも領域が非有界な形 (有界形状の補集合) もここで捕まる。
-	if clauses(&s.0).any(|c| !clause_bounded(c)) {
+	// 有界性は境界を追う前に式から決まる (境界が有界でも領域が非有界な形もここで捕まる)。
+	if !s.bounded() {
 		return Err(Error::InvalidEdge("unbounded sketch region".into()));
 	}
 	// arrangement は「相異なる曲線」の上に組む。同じ曲線が複数のリテラルとして現れても
