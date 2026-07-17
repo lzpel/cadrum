@@ -1,6 +1,6 @@
 # cadrum
 
-Rust CAD library powered by statically linked, headless [OpenCASCADE][occt] (OCCT 8.0.0) — runs natively and in the browser via WebAssembly.
+cadrum is a Rust CAD crate using statically-linked, headless [OpenCASCADE][occt]. Runs natively and in WebAssembly.
 
 [![GitHub License][license_img]][license_link]
 [![Crates.io][crate_img]][crate_link]

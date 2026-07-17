@@ -2,7 +2,7 @@
 name = "cadrum"
 version = "0.8.15"
 edition = "2021"
-description = "Rust CAD library powered by statically linked, headless OpenCASCADE (OCCT 8.0.0) — runs natively and in the browser via WebAssembly"
+description = "cadrum is a Rust CAD crate using statically-linked, headless OpenCASCADE. Runs natively and in WebAssembly"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lzpel/cadrum"
