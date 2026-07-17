@@ -171,10 +171,10 @@ pub(crate) enum Segment {
 	None,                                  // EdgeLoop 区切り
 }
 
-/// 退化・平行判定の許容値。
+/// 交差の退化ガード (near-parallel 直線・near-tangent/near-concentric 円・半径0) の許容値。
+/// 円板の種別 (直線 `a=0` か円 `a≠0`) 判定には使わない — `Sketch` は係数をスケールしない
+/// ので `a ∈ {0, ±1}` が厳密に成り立ち、`k.x == 0.0` で判別できる。
 const TOL: f64 = 1e-9;
-/// 境界判定で法線方向にずらす微小量。
-const NUDGE: f64 = 1e-6;
 
 /// 有向境界ピース (頂点 index 参照)。全円は別扱い。
 struct Piece {
@@ -186,11 +186,11 @@ struct Piece {
 /// 2 つの一般化円板の交点 (0/1/2 点)。
 fn intersect_disks(k: DVec4, j: DVec4) -> Vec<DVec2> {
 	let (ka, ja) = (k.x, j.x);
-	if ka.abs() < TOL && ja.abs() < TOL {
+	if ka == 0.0 && ja == 0.0 {
 		line_line(k, j)
-	} else if ka.abs() < TOL {
+	} else if ka == 0.0 {
 		line_circle(k, j)
-	} else if ja.abs() < TOL {
+	} else if ja == 0.0 {
 		line_circle(j, k)
 	} else {
 		// 根軸 (|x|² 項を消去した直線) と円 k の交点
@@ -235,10 +235,25 @@ fn line_circle(l: DVec4, c: DVec4) -> Vec<DVec2> {
 	}
 }
 
-/// 点 `pm` (円板 `k` 上) が領域境界か: 法線方向の両側で membership が異なるか。
+/// `pm` での membership を、リテラル `k` を満たす (inside) / 満たさない に固定して評価。
+/// `k` と同一曲線の補元リテラル `-k` は逆側で満たす。他リテラルは非ゼロなので `pm` で厳密評価。
+fn side(s: &Sketch, k: DVec4, pm: DVec2, inside: bool) -> bool {
+	clauses(&s.0).any(|clause| {
+		clause.iter().all(|l| {
+			if *l == k {
+				inside
+			} else if *l == -k {
+				!inside
+			} else {
+				eval(*l, pm) <= 0.0
+			}
+		})
+	})
+}
+
+/// 点 `pm` (円板 `k` 上) が領域境界か: 曲線 `k` を挟んで membership が変わるか (厳密・ずらし不要)。
 fn on_boundary(s: &Sketch, k: DVec4, pm: DVec2) -> bool {
-	let n = (2.0 * k.x * pm + DVec2::new(k.y, k.z)).normalize();
-	s.contains(pm - n * NUDGE) != s.contains(pm + n * NUDGE)
+	side(s, k, pm, true) != side(s, k, pm, false)
 }
 
 /// `Sketch` (DNF) の境界を、生成側でループにトレースしたセグメント列に降ろす。
@@ -263,7 +278,7 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 	let mut full_circles: Vec<(DVec2, f64)> = Vec::new();
 
 	for (ki, &k) in disks.iter().enumerate() {
-		if k.x.abs() < TOL {
+		if k.x == 0.0 {
 			// 直線 (半平面)
 			let lb = DVec2::new(k.y, k.z);
 			let bl = lb.length();
