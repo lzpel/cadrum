@@ -15,12 +15,13 @@
 //! 表現できない (恒真リテラルが `ZERO` 区切りと衝突するため) ので `Neg` は ⊥ を返す。
 //! `boolean.rs` の「単位元 ⊤ は表現不可」と同じ既知の制限。
 
+use crate::common::error::Error;
 use glam::{DVec2, DVec4};
 use std::ops::{Add, Mul, Neg, Sub};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Sketch(Vec<DVec4>);
+pub struct Sketch(pub Vec<DVec4>);
 
 impl Sketch {
 	/// 内側 = 半径 `r` の円板内部 (`a=+1` の正準符号)。外側は `-Sketch::circle(..)`。
@@ -158,14 +159,280 @@ impl Neg for Sketch {
 	}
 }
 
+// ==================== 境界抽出 (arrangement) ====================
+
+/// 生成側でループにトレースした境界セグメント列。`None` がループ区切り番兵。
+/// `end` は持たず「次セグメントの `start`」(ループ末尾は先頭の `start`)。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Segment {
+	Line { start: DVec2 },                 // end = 次の start
+	Arc { start: DVec2, mid: DVec2 },      // end = 次の start; mid で曲率・向き
+	Circle { center: DVec2, radius: f64 }, // 自己閉ループ; radius<0 = 穴(CW), >0 = 外周(CCW)
+	None,                                  // EdgeLoop 区切り
+}
+
+/// 退化・平行判定の許容値。
+const TOL: f64 = 1e-9;
+/// 境界判定で法線方向にずらす微小量。
+const NUDGE: f64 = 1e-6;
+
+/// 有向境界ピース (頂点 index 参照)。全円は別扱い。
+struct Piece {
+	start: usize,
+	end: usize,
+	mid: Option<DVec2>, // Some=弧の中点、None=線分
+}
+
+/// 2 つの一般化円板の交点 (0/1/2 点)。
+fn intersect_disks(k: DVec4, j: DVec4) -> Vec<DVec2> {
+	let (ka, ja) = (k.x, j.x);
+	if ka.abs() < TOL && ja.abs() < TOL {
+		line_line(k, j)
+	} else if ka.abs() < TOL {
+		line_circle(k, j)
+	} else if ja.abs() < TOL {
+		line_circle(j, k)
+	} else {
+		// 根軸 (|x|² 項を消去した直線) と円 k の交点
+		let l = DVec4::new(0.0, ja * k.y - ka * j.y, ja * k.z - ka * j.z, ja * k.w - ka * j.w);
+		line_circle(l, k)
+	}
+}
+
+/// 2 直線 (`a=0`) の交点。
+fn line_line(l1: DVec4, l2: DVec4) -> Vec<DVec2> {
+	let (b1, b2) = (DVec2::new(l1.y, l1.z), DVec2::new(l2.y, l2.z));
+	let det = b1.x * b2.y - b1.y * b2.x;
+	if det.abs() < TOL {
+		return Vec::new();
+	}
+	let x = (-l1.w * b2.y + b1.y * l2.w) / det;
+	let y = (-b1.x * l2.w + l1.w * b2.x) / det;
+	vec![DVec2::new(x, y)]
+}
+
+/// 直線 `l` (`a=0`) と円 `c` (`a≠0`) の交点。
+fn line_circle(l: DVec4, c: DVec4) -> Vec<DVec2> {
+	let lb = DVec2::new(l.y, l.z);
+	let bl = lb.length();
+	if bl < TOL {
+		return Vec::new();
+	}
+	let p0 = lb * (-l.w / (bl * bl)); // 原点最近点
+	let dir = DVec2::new(-l.z, l.y) / bl; // 直線方向 (単位)
+	let cb = DVec2::new(c.y, c.z);
+	// c.x t² + qb t + qc = 0
+	let qb = 2.0 * c.x * p0.dot(dir) + cb.dot(dir);
+	let qc = c.x * p0.length_squared() + cb.dot(p0) + c.w;
+	let disc = qb * qb - 4.0 * c.x * qc;
+	if disc < -TOL {
+		Vec::new()
+	} else if disc < TOL {
+		vec![p0 + dir * (-qb / (2.0 * c.x))]
+	} else {
+		let s = disc.sqrt();
+		vec![p0 + dir * ((-qb - s) / (2.0 * c.x)), p0 + dir * ((-qb + s) / (2.0 * c.x))]
+	}
+}
+
+/// 点 `pm` (円板 `k` 上) が領域境界か: 法線方向の両側で membership が異なるか。
+fn on_boundary(s: &Sketch, k: DVec4, pm: DVec2) -> bool {
+	let n = (2.0 * k.x * pm + DVec2::new(k.y, k.z)).normalize();
+	s.contains(pm - n * NUDGE) != s.contains(pm + n * NUDGE)
+}
+
+/// `Sketch` (DNF) の境界を、生成側でループにトレースしたセグメント列に降ろす。
+/// 円・直線のみ対応。非有界領域・退化は `Err(InvalidEdge)`。第一版は各頂点 degree 2 前提。
+pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
+	let disks: Vec<DVec4> = s.0.iter().copied().filter(|d| *d != DVec4::ZERO).collect();
+	// 全ペア交点を一度だけ計算し、頂点 index を両円板で共有 (連結を index 一致で判定)。
+	let mut verts: Vec<DVec2> = Vec::new();
+	let mut on_disk: Vec<Vec<usize>> = vec![Vec::new(); disks.len()];
+	for i in 0..disks.len() {
+		for jj in (i + 1)..disks.len() {
+			for pt in intersect_disks(disks[i], disks[jj]) {
+				let idx = verts.len();
+				verts.push(pt);
+				on_disk[i].push(idx);
+				on_disk[jj].push(idx);
+			}
+		}
+	}
+
+	let mut pieces: Vec<Piece> = Vec::new();
+	let mut full_circles: Vec<(DVec2, f64)> = Vec::new();
+
+	for (ki, &k) in disks.iter().enumerate() {
+		if k.x.abs() < TOL {
+			// 直線 (半平面)
+			let lb = DVec2::new(k.y, k.z);
+			let bl = lb.length();
+			if bl < TOL {
+				continue;
+			}
+			let p0 = lb * (-k.w / (bl * bl));
+			let dir = DVec2::new(-k.z, k.y) / bl;
+			let mut ts: Vec<(f64, usize)> = on_disk[ki].iter().map(|&vi| ((verts[vi] - p0).dot(dir), vi)).collect();
+			ts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+			if ts.len() < 2 {
+				// 境界に触れるなら半無限レイ = 非有界
+				let tt = ts.first().map(|v| v.0 + 1.0).unwrap_or(0.0);
+				if on_boundary(s, k, p0 + dir * tt) {
+					return Err(Error::InvalidEdge("unbounded sketch region".into()));
+				}
+				continue;
+			}
+			// 両端の半無限レイが境界なら非有界
+			if on_boundary(s, k, p0 + dir * (ts[0].0 - 1.0)) || on_boundary(s, k, p0 + dir * (ts[ts.len() - 1].0 + 1.0)) {
+				return Err(Error::InvalidEdge("unbounded sketch region".into()));
+			}
+			let n = lb / bl;
+			for w in 0..ts.len() - 1 {
+				let (t0, i0) = ts[w];
+				let (t1, i1) = ts[w + 1];
+				let pm = p0 + dir * (0.5 * (t0 + t1));
+				if on_boundary(s, k, pm) {
+					// 材料 (−n 側) が進行方向左に来る向き
+					let left = DVec2::new(-dir.y, dir.x);
+					if left.dot(-n) > 0.0 {
+						pieces.push(Piece { start: i0, end: i1, mid: None });
+					} else {
+						pieces.push(Piece { start: i1, end: i0, mid: None });
+					}
+				}
+			}
+		} else {
+			// 円
+			let center = DVec2::new(-k.y / (2.0 * k.x), -k.z / (2.0 * k.x));
+			let r2 = (k.y * k.y + k.z * k.z - 4.0 * k.x * k.w) / (4.0 * k.x * k.x);
+			if r2 <= TOL * TOL {
+				return Err(Error::InvalidEdge("degenerate circle in sketch".into()));
+			}
+			let r = r2.sqrt();
+			let mut vs: Vec<(f64, usize)> = on_disk[ki].iter().map(|&vi| ((verts[vi].y - center.y).atan2(verts[vi].x - center.x), vi)).collect();
+			if vs.is_empty() {
+				let pm = center + DVec2::new(r, 0.0);
+				if on_boundary(s, k, pm) {
+					full_circles.push((center, r.copysign(k.x)));
+				}
+				continue;
+			}
+			vs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+			let m = vs.len();
+			for w in 0..m {
+				let (a0, i0) = vs[w];
+				let (a1, i1) = vs[(w + 1) % m];
+				// a0→a1 を CCW (角度増加) に辿る弧の中点角
+				let am = if a1 > a0 { 0.5 * (a0 + a1) } else { 0.5 * (a0 + a1 + std::f64::consts::TAU) };
+				let pm = center + DVec2::new(r * am.cos(), r * am.sin());
+				if on_boundary(s, k, pm) {
+					// a>0: 内側が材料 → CCW (角度増加方向), a<0: 穴 → CW (反転)
+					if k.x > 0.0 {
+						pieces.push(Piece { start: i0, end: i1, mid: Some(pm) });
+					} else {
+						pieces.push(Piece { start: i1, end: i0, mid: Some(pm) });
+					}
+				}
+			}
+		}
+	}
+
+	// 有向ピースを共有頂点 index でループにトレース (degree 2 前提)。
+	let mut used = vec![false; pieces.len()];
+	let mut loop_segs: Vec<Vec<Segment>> = Vec::new();
+	for seed in 0..pieces.len() {
+		if used[seed] {
+			continue;
+		}
+		let mut seg_loop: Vec<Segment> = Vec::new();
+		let mut cur = seed;
+		loop {
+			used[cur] = true;
+			let pc = &pieces[cur];
+			seg_loop.push(match pc.mid {
+				Some(mid) => Segment::Arc { start: verts[pc.start], mid },
+				None => Segment::Line { start: verts[pc.start] },
+			});
+			let end_v = pc.end;
+			match (0..pieces.len()).find(|&p| !used[p] && pieces[p].start == end_v) {
+				Some(nx) => cur = nx,
+				None => break,
+			}
+		}
+		loop_segs.push(seg_loop);
+	}
+	for (center, radius) in full_circles {
+		loop_segs.push(vec![Segment::Circle { center, radius }]);
+	}
+
+	// ループを `None` 区切りで連結。
+	let mut out: Vec<Segment> = Vec::new();
+	for (i, ls) in loop_segs.into_iter().enumerate() {
+		if i > 0 {
+			out.push(Segment::None);
+		}
+		out.extend(ls);
+	}
+	Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
-	//! 向き・演算子・membership を `contains` の内外という不変量で黒箱検証する。
+	//! 向き・演算子・membership を `contains` の内外という不変量で、
+	//! 境界抽出を `boundary()` のループ列 (種別数・`None` 区切り・向き) で検証する。
 
 	use super::*;
 
 	fn p(x: f64, y: f64) -> DVec2 {
 		DVec2::new(x, y)
+	}
+
+	/// [-2,2] x [-1,1] の矩形 (4 半平面の積)。
+	fn rect() -> Sketch {
+		Sketch::line(p(-2.0, -1.0), p(2.0, -1.0)) * Sketch::line(p(2.0, -1.0), p(2.0, 1.0)) * Sketch::line(p(2.0, 1.0), p(-2.0, 1.0)) * Sketch::line(p(-2.0, 1.0), p(-2.0, -1.0))
+	}
+
+	fn count(segs: &[Segment], f: impl Fn(&Segment) -> bool) -> usize {
+		segs.iter().filter(|s| f(s)).count()
+	}
+
+	#[test]
+	fn boundary_single_circle() {
+		let segs = boundary(&Sketch::circle(p(0.0, 0.0), 1.0)).unwrap();
+		assert_eq!(segs.len(), 1);
+		match segs[0] {
+			Segment::Circle { radius, .. } => assert!(radius > 0.0), // 外周 = CCW = radius>0
+			_ => panic!("expected a full circle"),
+		}
+	}
+
+	#[test]
+	fn boundary_rect_four_lines() {
+		let segs = boundary(&rect()).unwrap();
+		assert_eq!(count(&segs, |s| matches!(s, Segment::Line { .. })), 4);
+		assert_eq!(count(&segs, |s| matches!(s, Segment::None)), 0); // 単一ループ
+	}
+
+	#[test]
+	fn boundary_rect_minus_circle_hole() {
+		let segs = boundary(&(rect() - Sketch::circle(p(0.0, 0.0), 0.5))).unwrap();
+		assert_eq!(count(&segs, |s| matches!(s, Segment::Line { .. })), 4);
+		assert_eq!(count(&segs, |s| matches!(s, Segment::None)), 1); // 2 ループ (外周 + 穴)
+		let radii: Vec<f64> = segs.iter().filter_map(|s| if let Segment::Circle { radius, .. } = s { Some(*radius) } else { None }).collect();
+		assert_eq!(radii.len(), 1);
+		assert!(radii[0] < 0.0); // 穴 = CW = radius<0
+	}
+
+	#[test]
+	fn boundary_two_circle_lens() {
+		let segs = boundary(&(Sketch::circle(p(0.0, 0.0), 1.0) * Sketch::circle(p(1.0, 0.0), 1.0))).unwrap();
+		assert_eq!(count(&segs, |s| matches!(s, Segment::Arc { .. })), 2);
+		assert_eq!(count(&segs, |s| matches!(s, Segment::None)), 0); // 単一ループ
+	}
+
+	#[test]
+	fn boundary_halfplane_is_unbounded() {
+		assert!(boundary(&Sketch::line(p(0.0, 0.0), p(1.0, 0.0))).is_err());
 	}
 
 	#[test]
