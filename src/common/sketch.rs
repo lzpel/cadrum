@@ -188,7 +188,8 @@ fn intersect_disks(k: DVec4, j: DVec4) -> Vec<DVec2> {
 	} else if ja == 0.0 {
 		line_circle(j, k)
 	} else {
-		// 根軸 (|x|² 項を消去した直線) と円 k の交点
+		// circle∩circle: 根軸 (radical line, |x|² 項を消去した直線 ja·k − ka·j) と円 k の交点。
+		// 交点は両円上にあり l=0 も満たす。逆に l=0 ∧ k=0 なら −ka·j=0 (ka≠0) で j=0 となり両円上。
 		let l = DVec4::new(0.0, ja * k.y - ka * j.y, ja * k.z - ka * j.z, ja * k.w - ka * j.w);
 		line_circle(l, k)
 	}
