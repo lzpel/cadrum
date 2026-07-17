@@ -171,11 +171,6 @@ pub(crate) enum Segment {
 	None,                                  // EdgeLoop 区切り
 }
 
-/// 交差の退化ガード (near-parallel 直線・near-tangent/near-concentric 円・半径0) の許容値。
-/// 円板の種別 (直線 `a=0` か円 `a≠0`) 判定には使わない — `Sketch` は係数をスケールしない
-/// ので `a ∈ {0, ±1}` が厳密に成り立ち、`k.x == 0.0` で判別できる。
-const TOL: f64 = 1e-9;
-
 /// 有向境界ピース (頂点 index 参照)。全円は別扱い。
 struct Piece {
 	start: usize,
@@ -203,8 +198,8 @@ fn intersect_disks(k: DVec4, j: DVec4) -> Vec<DVec2> {
 fn line_line(l1: DVec4, l2: DVec4) -> Vec<DVec2> {
 	let (b1, b2) = (DVec2::new(l1.y, l1.z), DVec2::new(l2.y, l2.z));
 	let det = b1.x * b2.y - b1.y * b2.x;
-	if det.abs() < TOL {
-		return Vec::new();
+	if det == 0.0 {
+		return Vec::new(); // 平行 (交点なし)
 	}
 	let x = (-l1.w * b2.y + b1.y * l2.w) / det;
 	let y = (-b1.x * l2.w + l1.w * b2.x) / det;
@@ -215,8 +210,8 @@ fn line_line(l1: DVec4, l2: DVec4) -> Vec<DVec2> {
 fn line_circle(l: DVec4, c: DVec4) -> Vec<DVec2> {
 	let lb = DVec2::new(l.y, l.z);
 	let bl = lb.length();
-	if bl < TOL {
-		return Vec::new();
+	if bl == 0.0 {
+		return Vec::new(); // 退化した直線 (法線ゼロ) — 同心円の根軸など
 	}
 	let p0 = lb * (-l.w / (bl * bl)); // 原点最近点
 	let dir = DVec2::new(-l.z, l.y) / bl; // 直線方向 (単位)
@@ -225,10 +220,10 @@ fn line_circle(l: DVec4, c: DVec4) -> Vec<DVec2> {
 	let qb = 2.0 * c.x * p0.dot(dir) + cb.dot(dir);
 	let qc = c.x * p0.length_squared() + cb.dot(p0) + c.w;
 	let disc = qb * qb - 4.0 * c.x * qc;
-	if disc < -TOL {
+	if disc < 0.0 {
 		Vec::new()
-	} else if disc < TOL {
-		vec![p0 + dir * (-qb / (2.0 * c.x))]
+	} else if disc == 0.0 {
+		vec![p0 + dir * (-qb / (2.0 * c.x))] // 接する (1 点)
 	} else {
 		let s = disc.sqrt();
 		vec![p0 + dir * ((-qb - s) / (2.0 * c.x)), p0 + dir * ((-qb + s) / (2.0 * c.x))]
@@ -282,8 +277,8 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 			// 直線 (半平面)
 			let lb = DVec2::new(k.y, k.z);
 			let bl = lb.length();
-			if bl < TOL {
-				continue;
+			if bl == 0.0 {
+				continue; // 退化した直線 (法線ゼロ)
 			}
 			let p0 = lb * (-k.w / (bl * bl));
 			let dir = DVec2::new(-k.z, k.y) / bl;
@@ -320,7 +315,7 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 			// 円
 			let center = DVec2::new(-k.y / (2.0 * k.x), -k.z / (2.0 * k.x));
 			let r2 = (k.y * k.y + k.z * k.z - 4.0 * k.x * k.w) / (4.0 * k.x * k.x);
-			if r2 <= TOL * TOL {
+			if r2 <= 0.0 {
 				return Err(Error::InvalidEdge("degenerate circle in sketch".into()));
 			}
 			let r = r2.sqrt();
