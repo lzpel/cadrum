@@ -255,7 +255,14 @@ fn on_boundary(s: &Sketch, k: DVec4, pm: DVec2) -> bool {
 /// `Sketch` (DNF) の境界を、生成側でループにトレースしたセグメント列に降ろす。
 /// 円・直線のみ対応。非有界領域・退化は `Err(InvalidEdge)`。第一版は各頂点 degree 2 前提。
 pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
-	let disks: Vec<DVec4> = s.0.iter().copied().filter(|d| *d != DVec4::ZERO).collect();
+	// arrangement は「相異なる曲線」の上に組む。同じ曲線が複数のリテラルとして現れても
+	// (共線辺・(a+b)*c の展開) 1 本として扱わないと、同一点が別 index の頂点に化けて連結が切れる。
+	let mut disks: Vec<DVec4> = Vec::new();
+	for d in s.0.iter().copied().filter(|d| *d != DVec4::ZERO) {
+		if !disks.contains(&d) {
+			disks.push(d);
+		}
+	}
 	// 全ペア交点を一度だけ計算し、頂点 index を両円板で共有 (連結を index 一致で判定)。
 	let mut verts: Vec<DVec2> = Vec::new();
 	let mut on_disk: Vec<Vec<usize>> = vec![Vec::new(); disks.len()];
@@ -444,6 +451,32 @@ mod tests {
 	#[test]
 	fn boundary_halfplane_is_unbounded() {
 		assert!(boundary(&Sketch::line(p(0.0, 0.0), p(1.0, 0.0))).is_err());
+	}
+
+	#[test]
+	fn boundary_collinear_edge_is_one_curve() {
+		// 辺上の共線頂点 (0,0) は 2 辺を同一リテラルに畳む。曲線 1 本として扱わないと
+		// 同じ点が別 index の頂点に化けてループが割れる。
+		let pts = [p(0.0, 1.0), p(0.0, 0.0), p(0.0, -1.0), p(1.0, 0.0)];
+		let mut s = Sketch::line(pts[3], pts[0]);
+		for w in pts.windows(2) {
+			s = s * Sketch::line(w[0], w[1]);
+		}
+		let segs = boundary(&s).unwrap();
+		assert_eq!(count(&segs, |x| matches!(x, Segment::Line { .. })), 3);
+		assert_eq!(count(&segs, |x| matches!(x, Segment::None)), 0); // 単一ループ
+	}
+
+	#[test]
+	fn boundary_shared_literal_across_clauses() {
+		// (a+b)*c は節 [a,c] [b,c] に展開され c が 2 度現れる。退化は無い。
+		let a = Sketch::circle(p(-0.5, 0.0), 1.0);
+		let b = Sketch::circle(p(0.5, 0.0), 1.0);
+		let c = Sketch::circle(p(0.0, 0.0), 1.2);
+		let segs = boundary(&((a + b) * c)).unwrap();
+		// 右 ∂c / 上 ∂b / 上 ∂a / 左 ∂c / 下 ∂a / 下 ∂b
+		assert_eq!(count(&segs, |x| matches!(x, Segment::Arc { .. })), 6);
+		assert_eq!(count(&segs, |x| matches!(x, Segment::None)), 0); // 単一ループ
 	}
 
 	#[test]
