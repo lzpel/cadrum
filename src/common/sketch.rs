@@ -30,8 +30,12 @@ impl Sketch {
 	}
 
 	/// 内側 = 有向線分 `a→b` の左側 (半径∞の退化円板)。`line(b, a)` は補元。
+	///
+	/// 一般化円板は正の定数倍で不変なので、`circle` の `a=+1` と対にして `|b|=1` に正準化する。
+	/// 揃えないと同じ直線が線分長ぶんスケールの違うリテラルになり (L 字の 2 腕が共有する辺など)、
+	/// `boundary` の重複除去も `side` の同一曲線判定もビット等価なので素通りしてしまう。
 	pub fn line(a: DVec2, b: DVec2) -> Sketch {
-		let d = b - a;
+		let d = (b - a).normalize();
 		Sketch(vec![DVec4::new(0.0, d.y, -d.x, d.x * a.y - d.y * a.x)])
 	}
 
@@ -288,9 +292,10 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 	}
 	// arrangement は「相異なる曲線」の上に組む。同じ曲線が複数のリテラルとして現れても
 	// (共線辺・(a+b)*c の展開) 1 本として扱わないと、同一点が別 index の頂点に化けて連結が切れる。
+	// `d` と `-d` は同じ曲線の裏表なので 1 本に畳む (凸ピースの union が接する辺がこれ)。
 	let mut disks: Vec<DVec4> = Vec::new();
 	for d in s.0.iter().copied().filter(|d| *d != DVec4::ZERO) {
-		if !disks.contains(&d) {
+		if !disks.iter().any(|&e| e == d || e == -d) {
 			disks.push(d);
 		}
 	}
@@ -332,9 +337,12 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 				let (t1, i1) = ts[w + 1];
 				let pm = p0 + dir * (0.5 * (t0 + t1));
 				if on_boundary(s, k, pm) {
-					// 材料 (−n 側) が進行方向左に来る向き
+					// 材料が k の内側 (−n 側) か外側かは区間ごとに違う — 同じ曲線が k と ¬k の
+					// 両方のリテラルとして現れる union があるので、決め打ちできない。
+					let mat = if side(s, k, pm, true) { -n } else { n };
+					// 材料が進行方向左に来る向き
 					let left = DVec2::new(-dir.y, dir.x);
-					if left.dot(-n) > 0.0 {
+					if left.dot(mat) > 0.0 {
 						pieces.push(Piece { start: i0, end: i1, mid: None });
 					} else {
 						pieces.push(Piece { start: i1, end: i0, mid: None });
@@ -353,7 +361,9 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 			if vs.is_empty() {
 				let pm = center + DVec2::new(r, 0.0);
 				if on_boundary(s, k, pm) {
-					full_circles.push((center, r.copysign(k.x)));
+					// 材料が円板の内側なら外周 (CCW, radius>0)、外側なら穴 (CW, radius<0)。
+					let in_disk = side(s, k, pm, true) == (k.x > 0.0);
+					full_circles.push((center, if in_disk { r } else { -r }));
 				}
 				continue;
 			}
@@ -366,8 +376,10 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 				let am = if a1 > a0 { 0.5 * (a0 + a1) } else { 0.5 * (a0 + a1 + std::f64::consts::TAU) };
 				let pm = center + DVec2::new(r * am.cos(), r * am.sin());
 				if on_boundary(s, k, pm) {
-					// a>0: 内側が材料 → CCW (角度増加方向), a<0: 穴 → CW (反転)
-					if k.x > 0.0 {
+					// 材料が円板の内側なら CCW (角度増加方向)、外側なら穴で CW。直線と同じく
+					// 区間ごとに決める (k と ¬k が同居しうるので a の符号だけでは決まらない)。
+					let in_disk = side(s, k, pm, true) == (k.x > 0.0);
+					if in_disk {
 						pieces.push(Piece { start: i0, end: i1, mid: Some(pm) });
 					} else {
 						pieces.push(Piece { start: i1, end: i0, mid: Some(pm) });
@@ -430,6 +442,15 @@ mod tests {
 	/// [-2,2] x [-1,1] の矩形 (4 半平面の積)。
 	fn rect() -> Sketch {
 		Sketch::line(p(-2.0, -1.0), p(2.0, -1.0)) * Sketch::line(p(2.0, -1.0), p(2.0, 1.0)) * Sketch::line(p(2.0, 1.0), p(-2.0, 1.0)) * Sketch::line(p(-2.0, 1.0), p(-2.0, -1.0))
+	}
+
+	/// CCW 頂点列 -> 凸多角形 (半平面の積)。
+	fn convex(pts: &[DVec2]) -> Sketch {
+		let mut s = Sketch::line(pts[pts.len() - 1], pts[0]);
+		for w in pts.windows(2) {
+			s = s * Sketch::line(w[0], w[1]);
+		}
+		s
 	}
 
 	fn count(segs: &[Segment], f: impl Fn(&Segment) -> bool) -> usize {
@@ -527,6 +548,52 @@ mod tests {
 		// 右 ∂c / 上 ∂b / 上 ∂a / 左 ∂c / 下 ∂a / 下 ∂b
 		assert_eq!(count(&segs, |x| matches!(x, Segment::Arc { .. })), 6);
 		assert_eq!(count(&segs, |x| matches!(x, Segment::None)), 0); // 単一ループ
+	}
+
+	#[test]
+	fn line_is_normalized() {
+		// 同じ直線を長さ違いの線分から作っても同一リテラルになること。
+		let short = Sketch::line(p(0.0, 0.0), p(1.0, 0.0));
+		let long = Sketch::line(p(0.0, 0.0), p(4.0, 0.0));
+		assert_eq!(short.0, long.0);
+		let b = DVec2::new(short.0[0].y, short.0[0].z);
+		assert!((b.length() - 1.0).abs() < 1e-15);
+	}
+
+	#[test]
+	fn boundary_union_sharing_an_edge() {
+		// [0,1]² ∪ [1,2]x[0,1] = [0,2]x[0,1]。共有辺 x=1 は片方が `x≤1`、もう片方が `x≥1` で
+		// 符号が逆になる。同じ曲線なので arrangement には 1 本しか入ってはいけない (2 本入ると
+		// 同じ点に頂点が二重にでき、長さ 0 の辺が生える)。
+		//
+		// 辺が 6 本なのは正しい: x=1 は境界ではないが曲線としては残るので、上辺と下辺を
+		// そこで分割する。共線 2 本の連結であって、形は 2x1 の矩形。
+		let r1 = convex(&[p(0.0, 0.0), p(1.0, 0.0), p(1.0, 1.0), p(0.0, 1.0)]);
+		let r2 = convex(&[p(1.0, 0.0), p(2.0, 0.0), p(2.0, 1.0), p(1.0, 1.0)]);
+		let segs = boundary(&(r1 + r2)).unwrap();
+		assert_eq!(count(&segs, |x| matches!(x, Segment::Line { .. })), 6);
+		assert_eq!(count(&segs, |x| matches!(x, Segment::None)), 0); // 単一ループ
+															   // 長さ 0 の辺が無いこと (頂点の二重化の直接の症状)
+		let pts: Vec<DVec2> = segs.iter().filter_map(|x| if let Segment::Line { start } = x { Some(*start) } else { None }).collect();
+		assert!((0..pts.len()).all(|i| pts[i] != pts[(i + 1) % pts.len()]));
+	}
+
+	#[test]
+	fn boundary_orientation_follows_material_per_segment() {
+		// 上の union の外周は CCW (材料が進行方向左)。`k` と `¬k` が同居するので、材料側を
+		// リテラルの符号から決め打ちすると向きが反転する。符号付き面積で確認。
+		let r1 = convex(&[p(0.0, 0.0), p(1.0, 0.0), p(1.0, 1.0), p(0.0, 1.0)]);
+		let r2 = convex(&[p(1.0, 0.0), p(2.0, 0.0), p(2.0, 1.0), p(1.0, 1.0)]);
+		let segs = boundary(&(r1 + r2)).unwrap();
+		let pts: Vec<DVec2> = segs.iter().filter_map(|x| if let Segment::Line { start } = x { Some(*start) } else { None }).collect();
+		let area: f64 = (0..pts.len())
+			.map(|i| {
+				let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+				a.x * b.y - b.x * a.y
+			})
+			.sum::<f64>()
+			/ 2.0;
+		assert!((area - 2.0).abs() < 1e-9, "CCW の外周なら符号付き面積 +2、得た値 {area}");
 	}
 
 	#[test]
