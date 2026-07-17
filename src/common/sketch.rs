@@ -252,9 +252,31 @@ fn on_boundary(s: &Sketch, k: DVec4, pm: DVec2) -> bool {
 	side(s, k, pm, true) != side(s, k, pm, false)
 }
 
+/// 節 (円板の AND) が有界か。`x = x₀ + R·u` を代入すると `eval = a·R² + R·(2a(x₀·u) + b·u) + 定数`
+/// で、R→∞ の符号は `a` だけで決まる: `a>0` (真の円板) は全方向の無限遠を排除、`a<0` (円の外側) は
+/// 全方向を許すので有界化に寄与せず、`a=0` (半平面) は `b·u ≤ 0` の向きだけを残す。
+/// よって「生き残る u が無い」⇔ 有界。後退錐 `{u : b_i·u ≤ 0}` の端 ray は 2D では必ずどれかの
+/// `b` に直交するので、`±perp(b_j)` を候補に総当たりすれば厳密判定できる (三角関数も許容誤差も不要)。
+fn clause_bounded(clause: &[DVec4]) -> bool {
+	if clause.iter().any(|d| d.x > 0.0) {
+		return true; // 真の円板が 1 つあれば、節はその内部に収まる
+	}
+	let bs: Vec<DVec2> = clause.iter().filter(|d| d.x == 0.0).map(|d| DVec2::new(d.y, d.z)).collect();
+	if bs.is_empty() {
+		return false; // 円の外側だけ = 全方向が無限遠へ抜ける
+	}
+	let escapes = |u: DVec2| u != DVec2::ZERO && bs.iter().all(|b| b.dot(u) <= 0.0);
+	!bs.iter().flat_map(|b| [DVec2::new(-b.y, b.x), DVec2::new(b.y, -b.x)]).any(escapes)
+}
+
 /// `Sketch` (DNF) の境界を、生成側でループにトレースしたセグメント列に降ろす。
 /// 円・直線のみ対応。非有界領域・退化は `Err(InvalidEdge)`。第一版は各頂点 degree 2 前提。
 pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
+	// 有界性は境界を追う前に式から決まる。union は全節が有界なときだけ有界。
+	// 境界が有界でも領域が非有界な形 (有界形状の補集合) もここで捕まる。
+	if clauses(&s.0).any(|c| !clause_bounded(c)) {
+		return Err(Error::InvalidEdge("unbounded sketch region".into()));
+	}
 	// arrangement は「相異なる曲線」の上に組む。同じ曲線が複数のリテラルとして現れても
 	// (共線辺・(a+b)*c の展開) 1 本として扱わないと、同一点が別 index の頂点に化けて連結が切れる。
 	let mut disks: Vec<DVec4> = Vec::new();
@@ -293,16 +315,7 @@ pub(crate) fn boundary(s: &Sketch) -> Result<Vec<Segment>, Error> {
 			let mut ts: Vec<(f64, usize)> = on_disk[ki].iter().map(|&vi| ((verts[vi] - p0).dot(dir), vi)).collect();
 			ts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 			if ts.len() < 2 {
-				// 境界に触れるなら半無限レイ = 非有界
-				let tt = ts.first().map(|v| v.0 + 1.0).unwrap_or(0.0);
-				if on_boundary(s, k, p0 + dir * tt) {
-					return Err(Error::InvalidEdge("unbounded sketch region".into()));
-				}
-				continue;
-			}
-			// 両端の半無限レイが境界なら非有界
-			if on_boundary(s, k, p0 + dir * (ts[0].0 - 1.0)) || on_boundary(s, k, p0 + dir * (ts[ts.len() - 1].0 + 1.0)) {
-				return Err(Error::InvalidEdge("unbounded sketch region".into()));
+				continue; // 有界領域の境界は頂点間の線分。頂点 2 個未満の直線は寄与しない
 			}
 			let n = lb / bl;
 			for w in 0..ts.len() - 1 {
@@ -451,6 +464,34 @@ mod tests {
 	#[test]
 	fn boundary_halfplane_is_unbounded() {
 		assert!(boundary(&Sketch::line(p(0.0, 0.0), p(1.0, 0.0))).is_err());
+	}
+
+	/// 三角形 (0,1)(0,-1)(1,0) を CCW の 3 半平面で。
+	fn tri() -> Sketch {
+		Sketch::line(p(0.0, 1.0), p(0.0, -1.0)) * Sketch::line(p(0.0, -1.0), p(1.0, 0.0)) * Sketch::line(p(1.0, 0.0), p(0.0, 1.0))
+	}
+
+	#[test]
+	fn boundary_complement_of_bounded_is_unbounded() {
+		// 境界は三角形の 3 辺で有界だが領域は外側 = 非有界。境界レイを追う判定では捕れない。
+		assert!(boundary(&-tri()).is_err());
+		assert!(boundary(&-Sketch::circle(p(0.0, 0.0), 1.0)).is_err());
+	}
+
+	#[test]
+	fn boundary_strip_is_unbounded() {
+		// 平行 2 半平面。法線が真逆で後退錐は直線 = 非有界。
+		let strip = Sketch::line(p(0.0, 0.0), p(1.0, 0.0)) * Sketch::line(p(1.0, 1.0), p(0.0, 1.0));
+		assert!(boundary(&strip).is_err());
+	}
+
+	#[test]
+	fn reversed_winding_is_empty_not_exterior() {
+		// 辺を全部逆向きにすると ¬A∩¬B∩¬C。外側 (¬A∪¬B∪¬C) ではなく空集合。
+		let rev = Sketch::line(p(0.0, -1.0), p(0.0, 1.0)) * Sketch::line(p(1.0, 0.0), p(0.0, -1.0)) * Sketch::line(p(0.0, 1.0), p(1.0, 0.0));
+		assert!(!rev.contains(p(0.2, 0.0))); // 三角形の中でもない
+		assert!(!rev.contains(p(50.0, 50.0))); // 遠方でもない = 空
+		assert_eq!(boundary(&rev).unwrap().len(), 0);
 	}
 
 	#[test]
