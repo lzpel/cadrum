@@ -84,4 +84,8 @@ name = "08_shell"
 required-features = ["color"]
 
 [[example]]
+name = "13_sketch"
+required-features = ["color"]
+
+[[example]]
 name = "101_joint"
