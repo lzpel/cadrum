@@ -106,7 +106,8 @@ use crate::common::boolean::Boolean;
 use crate::common::color::Color;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
-use glam::{DMat3, DQuat, DVec3};
+use crate::common::sketch::{Segment, Sketch};
+use glam::{DMat3, DQuat, DVec2, DVec3};
 
 /// Tessellation parameters for `Solid::mesh` and `Edge::approximation_segments`.
 ///
@@ -401,6 +402,54 @@ pub trait EdgeStruct: Sized + Clone + Transform {
 	///   coincide (periodicity is encoded in the basis; do not duplicate)
 	/// - OCCT's interpolation fails (degenerate point distribution, etc.)
 	fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<Self, Error>;
+
+	/// Build the boundary edges of a 2D [`Sketch`] (a DNF of generalized disks),
+	/// laid out on the z=0 plane.
+	///
+	/// The pure-geometry arrangement (`common::sketch::boundary`) traces the region
+	/// boundary into oriented loops — material on the left, so outer loops run CCW
+	/// and holes CW — and this default method emits each loop head-to-tail via
+	/// [`line`](Self::line) / [`arc_3pts`](Self::arc_3pts) / [`circle`](Self::circle)
+	/// (a full circle's winding is carried by the sign of its radius, placed with
+	/// [`Transform::translate`]). Being a default method, every backend gets it for
+	/// free from those primitives.
+	///
+	/// The result is a flat `Vec<Edge>`: within a loop the edges connect head-to-tail
+	/// and carry orientation, and separate loops sit back-to-back, so a downstream
+	/// face builder can recover components and holes from connectivity + winding.
+	///
+	/// # Errors
+	///
+	/// Returns [`Error::InvalidEdge`] for an unbounded region (a half-plane, an
+	/// exterior, or an open wedge has no finite closed boundary), a degenerate disk,
+	/// or an OCCT edge-construction failure.
+	fn sketch(s: &Sketch) -> Result<Vec<Self>, Error> {
+		fn v3(p: DVec2) -> DVec3 {
+			DVec3::new(p.x, p.y, 0.0)
+		}
+		fn start_of(seg: &Segment) -> DVec2 {
+			match seg {
+				Segment::Line { start } | Segment::Arc { start, .. } => *start,
+				Segment::Circle { center, .. } => *center, // 自己ループ、end 未使用
+				Segment::None => unreachable!(),
+			}
+		}
+		let segs = crate::common::sketch::boundary(s)?;
+		let mut edges = Vec::new();
+		for lp in segs.split(|seg| matches!(seg, Segment::None)).filter(|l| !l.is_empty()) {
+			let n = lp.len();
+			for (i, seg) in lp.iter().enumerate() {
+				let end = start_of(&lp[(i + 1) % n]); // 次セグメントの start、末尾は先頭へ閉じる
+				edges.push(match seg {
+					Segment::Line { start } => Self::line(v3(*start), v3(end))?,
+					Segment::Arc { start, mid } => Self::arc_3pts(v3(*start), v3(*mid), v3(end))?,
+					Segment::Circle { center, radius } => Self::circle(radius.abs(), if *radius > 0.0 { DVec3::Z } else { DVec3::NEG_Z })?.translate(v3(*center)),
+					Segment::None => unreachable!(),
+				});
+			}
+		}
+		Ok(edges)
+	}
 }
 
 /// Backend-independent face trait (pub(crate) — not exposed to users).
