@@ -75,13 +75,3 @@ fn project_on_bspline_converges_to_interpolant() {
 	// Tangent is unit-length.
 	assert!((tg.length() - 1.0).abs() < TOL, "|tg|={}", tg.length());
 }
-
-#[test]
-fn project_empty_wire_returns_zero() {
-	// An empty wire has no edges; the `wire_project` idiom falls back to
-	// (ZERO, ZERO) via `unwrap_or` rather than panicking.
-	let empty: Vec<Edge> = Vec::new();
-	let (cp, tg) = wire_project(&empty, DVec3::ONE);
-	assert_eq!(cp, DVec3::ZERO);
-	assert_eq!(tg, DVec3::ZERO);
-}

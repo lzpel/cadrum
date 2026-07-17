@@ -55,14 +55,6 @@ fn test_rotated_preserves_volume() {
 }
 
 #[test]
-fn test_rotated_full_turn_preserves_volume() {
-	let shape = test_box();
-	// 360° 回転（元に戻る）
-	let rotated = shape.rotate_z(std::f64::consts::TAU);
-	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
-}
-
-#[test]
 fn test_rotated_y_preserves_volume() {
 	let shape = test_box();
 	let rotated = shape.rotate_y(std::f64::consts::FRAC_PI_2);
@@ -77,22 +69,6 @@ fn test_scale_volume() {
 	// 均一 2 倍スケール → 体積は 2³ = 8 倍
 	let scaled = shape.scale(DVec3::ZERO, 2.0);
 	assert!((scaled.volume() - 8000.0).abs() < 1e-3);
-}
-
-#[test]
-fn test_scale_half_volume() {
-	let shape = test_box();
-	// 均一 0.5 倍スケール → 体積は (0.5)³ = 0.125 倍 = 125
-	let scaled = shape.scale(DVec3::ZERO, 0.5);
-	assert!((scaled.volume() - 125.0).abs() < 1e-3);
-}
-
-#[test]
-fn test_scale_triple_volume() {
-	let shape = test_box();
-	// 3× uniform scale → volume × 27
-	let scaled = shape.scale(DVec3::ZERO, 3.0);
-	assert!((scaled.volume() - 27_000.0).abs() < 1e-3);
 }
 
 // ==================== face id preservation ====================

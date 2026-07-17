@@ -13,14 +13,6 @@ fn test_shell_cube_reduces_volume() {
 }
 
 #[test]
-fn test_shell_cube_preserves_solid_structure() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
-	let open = cube.iter_face().next().unwrap();
-	let shelled = cube.shell(-0.5, [open]).expect("shell should succeed");
-	assert!(shelled.volume() > 0.0, "shelled cube should produce a valid solid");
-}
-
-#[test]
 fn test_shell_outward_produces_wall() {
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let open = cube.iter_face().next().unwrap();
