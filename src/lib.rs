@@ -33,6 +33,7 @@ pub use common::{
 	boolean::Boolean,
 	error::Error,
 	mesh::{Mesh, Scene2D, SceneOption},
+	sketch::Sketch,
 };
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
@@ -88,6 +89,9 @@ impl Edge {
 	}
 	pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::EdgeStruct>::bspline(points, end)
+	}
+	pub fn sketch(s: &Sketch) -> Result<Vec<crate::Edge>, Error> {
+		<Self as crate::traits::EdgeStruct>::sketch(s)
 	}
 	pub fn translate(self, translation: DVec3) -> crate::Edge {
 		<Self as crate::traits::Transform>::translate(self, translation)
