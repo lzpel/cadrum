@@ -213,16 +213,14 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	let mut build = cxx_build::bridge("src/ffi.rs");
+	build.file("src/ffi.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
 	apply_compiler_flags(|s| {
 		build.flag(s);
 	});
 
 	// Mirror every enabled cargo feature as a FEATURE_<NAME> define so C++
-	// `#ifdef FEATURE_...` guards correspond 1:1 to cargo features (cargo
-	// already uppercases the name and maps `-` to `_`).
 	for name in env::vars().filter_map(|kv| kv.0.strip_prefix("CARGO_FEATURE_").map(str::to_owned)) {
 		build.define(&format!("FEATURE_{name}"), None);
 	}
@@ -238,9 +236,9 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored by the
 	// consumer's wasm init via `__anchor_wasi_stub`), so no separate C stub / `+whole-archive` link is needed here.
 
-	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
-	println!("cargo:rerun-if-changed=cpp/wrapper.h");
-	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
+	println!("cargo:rerun-if-changed=src/ffi.rs");
+	println!("cargo:rerun-if-changed=src/ffi.h");
+	println!("cargo:rerun-if-changed=src/ffi.cpp");
 }
 
 /// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.
@@ -433,7 +431,7 @@ mod source {
 		// 既定探索に任せる。generator は CMAKE_GENERATOR env、target/sysroot 等は CFLAGS_/CXXFLAGS_<target>。
 		// AR は転送しない: cmake は CMAKE_AR を PATH 解決せず bare 名だとリンクが壊れる。
 		// CMAKE_C_COMPILER を指定すれば cmake が compiler prefix から正しい ar を自動導出する
-		// （AR_<target> は cc-rs が wrapper.cpp の archive に使うので無駄にはならない）。
+		// （AR_<target> は cc-rs が src/ffi.cpp の archive に使うので無駄にはならない）。
 		let tgt = env::var("TARGET").unwrap_or_default().replace('-', "_");
 		for (cmake_key, base) in [("CMAKE_C_COMPILER", "CC"), ("CMAKE_CXX_COMPILER", "CXX")] {
 			for name in [base.to_string(), format!("{base}_{tgt}")] {

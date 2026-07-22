@@ -3,8 +3,8 @@
 
 use super::compound::CompoundShape;
 use super::ffi;
+use super::ffi::{RustReader, RustWriter};
 use super::solid::Solid;
-use super::stream::{RustReader, RustWriter};
 use crate::common::error::Error;
 use std::io::{Read, Write};
 

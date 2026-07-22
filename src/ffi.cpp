@@ -1,4 +1,4 @@
-#include "cadrum/src/occt/ffi.rs.h"
+#include "cadrum/src/ffi.rs.h"
 
 // ==================== OCCT headers (impl only — not exposed via wrapper.h) ====================
 //

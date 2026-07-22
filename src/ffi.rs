@@ -1,5 +1,4 @@
-use super::stream::{rust_reader_read, rust_writer_write};
-use super::stream::{RustReader, RustWriter};
+use std::io::{Read, Write};
 
 #[cxx::bridge(namespace = "cadrum")]
 mod ffi_bridge {
@@ -22,7 +21,7 @@ mod ffi_bridge {
 	}
 
 	unsafe extern "C++" {
-		include!("cadrum/cpp/wrapper.h");
+		include!("cadrum/src/ffi.h");
 
 		// Opaque C++ types (accessed as cadrum::TopoDS_Shape etc. via using aliases)
 		type TopoDS_Shape;
@@ -179,6 +178,58 @@ mod ffi_bridge {
 
 // Re-export all bridge items so other modules can use `ffi::TopoDS_Shape` etc.
 pub use ffi_bridge::*;
+
+// ==================== Stream wrappers ====================
+pub struct RustReader {
+	inner: *mut dyn Read,
+}
+
+impl RustReader {
+	/// Create a new RustReader wrapping the given reader.
+	///
+	/// # Safety
+	/// The caller must ensure that the resulting `RustReader` is not used
+	/// after `reader` is dropped. In practice, this is guaranteed because
+	/// the C++ FFI call is synchronous.
+	pub fn from_ref<'a>(reader: &'a mut (dyn Read + 'a)) -> Self {
+		// SAFETY: Caller must ensure `reader` outlives this RustReader.
+		// The `'static` bound is required by the raw pointer type, so we
+		// use transmute to erase the lifetime (lifetimes are compile-time only).
+		RustReader { inner: unsafe { std::mem::transmute::<*mut (dyn Read + 'a), *mut (dyn Read + 'static)>(reader as *mut (dyn Read + 'a)) } }
+	}
+}
+
+/// Wrapper around `dyn Write` passed to C++ as an opaque extern Rust type.
+///
+/// C++ calls `rust_writer_write()` to push bytes into the Rust writer,
+/// receiving them from a `std::streambuf` subclass that OCC writes to.
+pub struct RustWriter {
+	inner: *mut dyn Write,
+}
+
+impl RustWriter {
+	/// Create a new RustWriter wrapping the given writer.
+	///
+	/// # Safety
+	/// Same as `RustReader::from_ref`.
+	pub fn from_ref<'a>(writer: &'a mut (dyn Write + 'a)) -> Self {
+		// SAFETY: Caller must ensure `writer` outlives this RustWriter.
+		// See RustReader::from_ref for the same rationale.
+		RustWriter { inner: unsafe { std::mem::transmute::<*mut (dyn Write + 'a), *mut (dyn Write + 'static)>(writer as *mut (dyn Write + 'a)) } }
+	}
+}
+
+/// FFI callback: read up to `buf.len()` bytes from the RustReader.
+/// Returns the number of bytes actually read (0 = EOF).
+pub fn rust_reader_read(reader: &mut RustReader, buf: &mut [u8]) -> usize {
+	unsafe { (*reader.inner).read(buf).unwrap_or(0) }
+}
+
+/// FFI callback: write bytes into the RustWriter.
+/// Returns the number of bytes actually written.
+pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
+	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
+}
 
 // cxx opaque types default to `!Send + !Sync`. We mark them `Send` here so
 // that `UniquePtr<TopoDS_Shape>` (and friends) become `Send`, which in turn
