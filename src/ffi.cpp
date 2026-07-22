@@ -106,6 +106,7 @@
 #include <istream>
 #include <ostream>
 #include <sstream>
+#include <streambuf>
 #include <cmath>
 #include <cstring>
 #include <cstdint>
@@ -116,13 +117,6 @@
 
 namespace cadrum {
 
-// Forward declaration: STEP read post-process (defined further below near
-// decompose_into_solids). Used by both read_step_stream (this section) and
-// read_step_color_stream (in the FEATURE_COLOR block).
-static TopoDS_Shape try_sew_orphan_faces(
-    const TopoDS_Shape& compound,
-    std::unordered_map<uint64_t, std::array<float, 3>>* colorMap);
-
 // OCCT defaults to a stdout printer that emits "Statistics on Transfer" banners on STEP read/write.
 // Clear all printers at load time per the documented recommendation.
 // ******        Statistics on Transfer (Write)                 ******
@@ -130,141 +124,6 @@ static const int _silence_occt_default_printer = []() {
     Message::DefaultMessenger()->ChangePrinters().Clear();
     return 0;
 }();
-
-// ==================== RustReadStreambuf ====================
-
-std::streambuf::int_type RustReadStreambuf::underflow() {
-    rust::Slice<uint8_t> slice(
-        reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
-    size_t n = rust_reader_read(reader_, slice);
-    if (n == 0) return traits_type::eof();
-    setg(buf_, buf_, buf_ + n);
-    return traits_type::to_int_type(*gptr());
-}
-
-std::streambuf::pos_type RustReadStreambuf::seekpos(pos_type, std::ios_base::openmode) {
-    return pos_type(off_type(-1));
-}
-
-// ==================== RustWriteStreambuf ====================
-
-std::streambuf::int_type RustWriteStreambuf::overflow(int_type ch) {
-    if (ch != traits_type::eof()) {
-        buf_[pos_++] = static_cast<char>(ch);
-        if (pos_ >= sizeof(buf_)) {
-            if (!flush_buf()) return traits_type::eof();
-        }
-    }
-    return ch;
-}
-
-std::streamsize RustWriteStreambuf::xsputn(const char* s, std::streamsize count) {
-    std::streamsize written = 0;
-    while (written < count) {
-        std::streamsize space = sizeof(buf_) - pos_;
-        std::streamsize chunk = std::min(count - written, space);
-        std::memcpy(buf_ + pos_, s + written, chunk);
-        pos_ += static_cast<size_t>(chunk);
-        written += chunk;
-        if (pos_ >= sizeof(buf_)) {
-            if (!flush_buf()) return written;
-        }
-    }
-    return written;
-}
-
-int RustWriteStreambuf::sync() {
-    return flush_buf() ? 0 : -1;
-}
-
-bool RustWriteStreambuf::flush_buf() {
-    if (pos_ == 0) return true;
-    rust::Slice<const uint8_t> slice(
-        reinterpret_cast<const uint8_t*>(buf_), pos_);
-    size_t n = rust_writer_write(writer_, slice);
-    if (n < pos_) return false;
-    pos_ = 0;
-    return true;
-}
-
-std::streambuf::pos_type RustWriteStreambuf::seekpos(pos_type, std::ios_base::openmode) {
-    return pos_type(off_type(-1));
-}
-
-// ==================== Shape I/O (streambuf callback) ====================
-
-#ifndef FEATURE_COLOR
-// Plain STEP I/O — used only when FEATURE_COLOR is not defined.
-// With color, STEP routes through XCAF (`read_step_color_stream` /
-// `write_step_color_stream`) instead.
-
-std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader) {
-    RustReadStreambuf sbuf(reader);
-    std::istream is(&sbuf);
-
-    // OCCT 7.x bug workaround: STEPControl_Reader::~STEPControl_Reader()
-    // crashes when the reader was constructed on the stack and destroyed
-    // after a successful TransferRoots(). Allocating on the heap and never
-    // freeing avoids the destructor path entirely. The leaked memory is
-    // bounded (one reader per STEP read) and accepted as a known cost.
-    auto* step_reader = new STEPControl_Reader();
-    IFSelect_ReturnStatus status = step_reader->ReadStream("stream", is);
-
-    if (status != IFSelect_RetDone) {
-        return nullptr;
-    }
-
-    step_reader->TransferRoots(Message_ProgressRange());
-    // step_reader is intentionally leaked — see comment above.
-    return std::make_unique<TopoDS_Shape>(
-        try_sew_orphan_faces(step_reader->OneShape(), nullptr));
-}
-
-bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
-    RustWriteStreambuf sbuf(writer);
-    std::ostream os(&sbuf);
-    STEPControl_Writer step_writer;
-    if (step_writer.Transfer(shape, STEPControl_AsIs) != IFSelect_RetDone) {
-        return false;
-    }
-    return step_writer.WriteStream(os) == IFSelect_RetDone;
-}
-#endif // !FEATURE_COLOR
-
-std::unique_ptr<TopoDS_Shape> read_brep_stream(
-    rust::Slice<const uint8_t> data, size_t& out_consumed)
-{
-    // istringstream because BinTools::Read seeks backwards to shared sub-shapes.
-    std::istringstream iss(
-        std::string(reinterpret_cast<const char*>(data.data()), data.size()));
-
-    auto shape = std::make_unique<TopoDS_Shape>();
-    try {
-        BinTools::Read(*shape, iss);
-    } catch (const Standard_Failure&) {
-        return nullptr;  // out_consumed deliberately untouched
-    }
-    if (shape->IsNull()) {
-        return nullptr;  // ditto
-    }
-
-    // clear() is load-bearing: a payload read to its last byte leaves eofbit set, and
-    // tellg()'s sentry then turns that into failbit and returns -1.
-    iss.clear();
-    out_consumed = static_cast<size_t>(iss.tellg());
-    return shape;
-}
-
-bool write_brep_stream(const TopoDS_Shape& shape, RustWriter& writer) {
-    RustWriteStreambuf sbuf(writer);
-    std::ostream os(&sbuf);
-    try {
-        BinTools::Write(shape, os);
-    } catch (const Standard_Failure&) {
-        return false;
-    }
-    return os.good();
-}
 
 // ==================== Shape Constructors ====================
 
@@ -2006,6 +1865,170 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
         return nullptr;
     }
 }
+
+// ==================== Streambuf bridges (ffi.cpp-internal) ====================
+
+// std::streambuf subclass that reads from a Rust `dyn Read` via FFI callback
+class RustReadStreambuf : public std::streambuf {
+public:
+    explicit RustReadStreambuf(RustReader& reader) : reader_(reader) {}
+
+protected:
+    int_type underflow() override {
+        rust::Slice<uint8_t> slice(
+            reinterpret_cast<uint8_t*>(buf_), sizeof(buf_));
+        size_t n = rust_reader_read(reader_, slice);
+        if (n == 0) return traits_type::eof();
+        setg(buf_, buf_, buf_ + n);
+        return traits_type::to_int_type(*gptr());
+    }
+
+    // Override to keep the vtable slot resolved within this TU instead of
+    // referencing `std::basic_streambuf<char>::seekpos`, whose mangling depends
+    // on `std::fpos<mbstate_t>` — and `mbstate_t` is a typedef to the internal
+    // `_Mbstatet` on gcc 15 mingw but a different name on gcc 14, so the
+    // external symbol fails to resolve when the prebuilt ships gcc 14
+    // libstdc++.a but downstream links with gcc 15.
+    pos_type seekpos(pos_type, std::ios_base::openmode = std::ios_base::in | std::ios_base::out) override {
+        return pos_type(off_type(-1));
+    }
+
+private:
+    RustReader& reader_;
+    char buf_[8192];
+};
+
+// std::streambuf subclass that writes to a Rust `dyn Write` via FFI callback
+class RustWriteStreambuf : public std::streambuf {
+public:
+    explicit RustWriteStreambuf(RustWriter& writer) : writer_(writer) {}
+
+    ~RustWriteStreambuf() override {
+        sync();
+    }
+
+protected:
+    int_type overflow(int_type ch) override {
+        if (ch != traits_type::eof()) {
+            buf_[pos_++] = static_cast<char>(ch);
+            if (pos_ >= sizeof(buf_)) {
+                if (!flush_buf()) return traits_type::eof();
+            }
+        }
+        return ch;
+    }
+
+    std::streamsize xsputn(const char* s, std::streamsize count) override {
+        std::streamsize written = 0;
+        while (written < count) {
+            std::streamsize space = sizeof(buf_) - pos_;
+            std::streamsize chunk = std::min(count - written, space);
+            std::memcpy(buf_ + pos_, s + written, chunk);
+            pos_ += static_cast<size_t>(chunk);
+            written += chunk;
+            if (pos_ >= sizeof(buf_)) {
+                if (!flush_buf()) return written;
+            }
+        }
+        return written;
+    }
+
+    int sync() override {
+        return flush_buf() ? 0 : -1;
+    }
+
+    // See RustReadStreambuf::seekpos — same gcc 14/15 `_Mbstatet` mangling fix.
+    pos_type seekpos(pos_type, std::ios_base::openmode = std::ios_base::in | std::ios_base::out) override {
+        return pos_type(off_type(-1));
+    }
+
+private:
+    bool flush_buf() {
+        if (pos_ == 0) return true;
+        rust::Slice<const uint8_t> slice(
+            reinterpret_cast<const uint8_t*>(buf_), pos_);
+        size_t n = rust_writer_write(writer_, slice);
+        if (n < pos_) return false;
+        pos_ = 0;
+        return true;
+    }
+
+    RustWriter& writer_;
+    char buf_[8192];
+    size_t pos_ = 0;
+};
+
+
+
+std::unique_ptr<TopoDS_Shape> read_brep_stream(
+    rust::Slice<const uint8_t> data, size_t& out_consumed)
+{
+    // istringstream because BinTools::Read seeks backwards to shared sub-shapes.
+    std::istringstream iss(
+        std::string(reinterpret_cast<const char*>(data.data()), data.size()));
+
+    auto shape = std::make_unique<TopoDS_Shape>();
+    try {
+        BinTools::Read(*shape, iss);
+    } catch (const Standard_Failure&) {
+        return nullptr;  // out_consumed deliberately untouched
+    }
+    if (shape->IsNull()) {
+        return nullptr;  // ditto
+    }
+
+    // clear() is load-bearing: a payload read to its last byte leaves eofbit set, and
+    // tellg()'s sentry then turns that into failbit and returns -1.
+    iss.clear();
+    out_consumed = static_cast<size_t>(iss.tellg());
+    return shape;
+}
+
+bool write_brep_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+    RustWriteStreambuf sbuf(writer);
+    std::ostream os(&sbuf);
+    try {
+        BinTools::Write(shape, os);
+    } catch (const Standard_Failure&) {
+        return false;
+    }
+    return os.good();
+}
+
+#ifndef FEATURE_COLOR
+// Plain STEP I/O — used only when FEATURE_COLOR is not defined.
+std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader) {
+    RustReadStreambuf sbuf(reader);
+    std::istream is(&sbuf);
+
+    // OCCT 7.x bug workaround: STEPControl_Reader::~STEPControl_Reader()
+    // crashes when the reader was constructed on the stack and destroyed
+    // after a successful TransferRoots(). Allocating on the heap and never
+    // freeing avoids the destructor path entirely. The leaked memory is
+    // bounded (one reader per STEP read) and accepted as a known cost.
+    auto* step_reader = new STEPControl_Reader();
+    IFSelect_ReturnStatus status = step_reader->ReadStream("stream", is);
+
+    if (status != IFSelect_RetDone) {
+        return nullptr;
+    }
+
+    step_reader->TransferRoots(Message_ProgressRange());
+    // step_reader is intentionally leaked — see comment above.
+    return std::make_unique<TopoDS_Shape>(
+        try_sew_orphan_faces(step_reader->OneShape(), nullptr));
+}
+
+bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
+    RustWriteStreambuf sbuf(writer);
+    std::ostream os(&sbuf);
+    STEPControl_Writer step_writer;
+    if (step_writer.Transfer(shape, STEPControl_AsIs) != IFSelect_RetDone) {
+        return false;
+    }
+    return step_writer.WriteStream(os) == IFSelect_RetDone;
+}
+#endif // !FEATURE_COLOR
 
 } // namespace cadrum
 

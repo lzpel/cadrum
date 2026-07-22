@@ -8,10 +8,6 @@
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
 
-#include <cstdint>
-#include <streambuf>
-#include <memory>
-#include <vector>
 
 namespace cadrum {
 
@@ -27,51 +23,6 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
-// ==================== Streambuf bridges ====================
-
-// std::streambuf subclass that reads from a Rust `dyn Read` via FFI callback
-class RustReadStreambuf : public std::streambuf {
-public:
-    explicit RustReadStreambuf(RustReader& reader) : reader_(reader) {}
-
-protected:
-    int_type underflow() override;
-    // Override to keep the vtable slot resolved within wrapper.o instead of
-    // referencing `std::basic_streambuf<char>::seekpos`, whose mangling depends
-    // on `std::fpos<mbstate_t>` — and `mbstate_t` is a typedef to the internal
-    // `_Mbstatet` on gcc 15 mingw but a different name on gcc 14, so the
-    // external symbol fails to resolve when the prebuilt ships gcc 14
-    // libstdc++.a but downstream links with gcc 15.
-    pos_type seekpos(pos_type sp, std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override;
-
-private:
-    RustReader& reader_;
-    char buf_[8192];
-};
-
-// std::streambuf subclass that writes to a Rust `dyn Write` via FFI callback
-class RustWriteStreambuf : public std::streambuf {
-public:
-    explicit RustWriteStreambuf(RustWriter& writer) : writer_(writer) {}
-
-    ~RustWriteStreambuf() override {
-        sync();
-    }
-
-protected:
-    int_type overflow(int_type ch) override;
-    std::streamsize xsputn(const char* s, std::streamsize count) override;
-    int sync() override;
-    // See RustReadStreambuf::seekpos — same gcc 14/15 `_Mbstatet` mangling fix.
-    pos_type seekpos(pos_type sp, std::ios_base::openmode which = std::ios_base::in | std::ios_base::out) override;
-
-private:
-    bool flush_buf();
-
-    RustWriter& writer_;
-    char buf_[8192];
-    size_t pos_ = 0;
-};
 
 // ==================== Shape I/O (streambuf callback) ====================
 
