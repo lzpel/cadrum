@@ -48,14 +48,21 @@ impl RustWriter {
 	}
 }
 
-/// FFI callback: read up to `buf.len()` bytes from the RustReader.
-/// Returns the number of bytes actually read (0 = EOF).
-pub fn rust_reader_read(reader: &mut RustReader, buf: &mut [u8]) -> usize {
+/// FFI callback: read up to `len` bytes from the `RustReader` behind `reader`.
+/// Returns the number of bytes actually read (0 = EOF). Called by the C++
+/// `RustReadStreambuf` with an opaque pointer produced in `super::ffi`.
+#[no_mangle]
+extern "C" fn cadrum_reader_read(reader: *mut std::ffi::c_void, buf: *mut u8, len: usize) -> usize {
+	let reader = unsafe { &mut *reader.cast::<RustReader>() };
+	let buf = unsafe { std::slice::from_raw_parts_mut(buf, len) };
 	unsafe { (*reader.inner).read(buf).unwrap_or(0) }
 }
 
-/// FFI callback: write bytes into the RustWriter.
+/// FFI callback: write `len` bytes into the `RustWriter` behind `writer`.
 /// Returns the number of bytes actually written.
-pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
+#[no_mangle]
+extern "C" fn cadrum_writer_write(writer: *mut std::ffi::c_void, buf: *const u8, len: usize) -> usize {
+	let writer = unsafe { &mut *writer.cast::<RustWriter>() };
+	let buf = unsafe { std::slice::from_raw_parts(buf, len) };
 	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
 }

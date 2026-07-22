@@ -17,7 +17,7 @@ use std::sync::{Mutex, OnceLock};
 static LOFT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Encode `ProfileOrient` into FFI arguments: (kind, ux, uy, uz, aux_spine_edges).
-fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>) {
+fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, ffi::Ptr<ffi::EdgeVec>) {
 	let mut aux_vec = ffi::edge_vec_new();
 	let (kind, ux, uy, uz) = match orient {
 		ProfileOrient::Fixed => (0u32, 0.0, 0.0, 0.0),
@@ -25,7 +25,7 @@ fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<c
 		ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
 		ProfileOrient::Auxiliary(edges) => {
 			for e in edges {
-				ffi::edge_vec_push(aux_vec.pin_mut(), &e.inner);
+				ffi::edge_vec_push(&mut aux_vec, &e.inner);
 			}
 			(3u32, 0.0, 0.0, 0.0)
 		}
@@ -62,7 +62,7 @@ fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Shape, new_inner: &ffi::TopoD
 /// (new instance → fresh `OnceLock::new()`). See
 /// `notes/20260420-OCCTトポロジ不変性と設計含意.md`.
 pub struct Solid {
-	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
+	inner: ffi::Ptr<ffi::TopoDS_Shape>,
 	edges: OnceLock<Vec<Edge>>,
 	faces: OnceLock<Vec<Face>>,
 	/// Keyed by a face's TShape id, or by `Solid::id()` for the solid as a whole; a face
@@ -90,7 +90,7 @@ impl Solid {
 	///
 	/// # Panics
 	/// Panics if `inner` is not `TopAbs_SOLID` (and not null).
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
+	pub(crate) fn new(inner: ffi::Ptr<ffi::TopoDS_Shape>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
 		debug_assert!(ffi::shape_is_null(&inner) || ffi::shape_is_solid(&inner), "Solid::new called with a non-SOLID shape");
 		Solid {
 			inner,
@@ -251,7 +251,7 @@ impl SolidStruct for Solid {
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
 		let mut profile_vec = ffi::edge_vec_new();
 		for e in profile {
-			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(&mut profile_vec, &e.inner);
 		}
 		let shape = ffi::make_extrude(&profile_vec, dir.x, dir.y, dir.z);
 		if shape.is_null() {
@@ -270,7 +270,7 @@ impl SolidStruct for Solid {
 	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<Self, Error> {
 		let mut face_vec = ffi::face_vec_new();
 		for f in open_faces {
-			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
+			ffi::face_vec_push(&mut face_vec, &f.inner);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness, &mut history);
@@ -292,7 +292,7 @@ impl SolidStruct for Solid {
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(&mut edge_vec, &e.inner);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history);
@@ -312,7 +312,7 @@ impl SolidStruct for Solid {
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(&mut edge_vec, &e.inner);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history);
@@ -334,11 +334,11 @@ impl SolidStruct for Solid {
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {
 		let mut profile_vec = ffi::edge_vec_new();
 		for e in profile {
-			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(&mut profile_vec, &e.inner);
 		}
 		let mut spine_vec = ffi::edge_vec_new();
 		for e in spine {
-			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(&mut spine_vec, &e.inner);
 		}
 		let (kind, ux, uy, uz, aux_vec) = encode_orient(orient);
 		let shape = ffi::make_pipe_shell(&profile_vec, &spine_vec, kind, ux, uy, uz, &aux_vec);
@@ -366,11 +366,11 @@ impl SolidStruct for Solid {
 
 		for sec in sections {
 			if section_count > 0 {
-				ffi::edge_vec_push_null(all_edges.pin_mut());
+				ffi::edge_vec_push_null(&mut all_edges);
 			}
 			let mut count = 0u32;
 			for edge in sec {
-				ffi::edge_vec_push(all_edges.pin_mut(), &edge.inner);
+				ffi::edge_vec_push(&mut all_edges, &edge.inner);
 				count += 1;
 			}
 			if count == 0 {
@@ -408,7 +408,7 @@ impl SolidStruct for Solid {
 		let mut face_vec = ffi::face_vec_new();
 		let mut count = 0usize;
 		for f in faces {
-			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
+			ffi::face_vec_push(&mut face_vec, &f.inner);
 			count += 1;
 		}
 		if count == 0 {
@@ -529,7 +529,7 @@ impl SolidStruct for Solid {
 
 		let mut solid_vec = ffi::shape_vec_new();
 		for s in solids {
-			ffi::shape_vec_push(solid_vec.pin_mut(), s.inner());
+			ffi::shape_vec_push(&mut solid_vec, s.inner());
 		}
 		let mut history: Vec<u64> = Default::default();
 		let inner = ffi::builder_cells(&solid_vec, clauses, &mut history);

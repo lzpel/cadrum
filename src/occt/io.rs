@@ -49,7 +49,7 @@ fn read_color_trailer(tail: &[u8]) -> std::collections::HashMap<u32, Color> {
 /// carries explicit ids instead.
 #[cfg(feature = "color")]
 fn trailer_ids(shape: &ffi::TopoDS_Shape) -> Vec<u64> {
-	// Bound to locals: both are `UniquePtr<CxxVector<..>>` that the iterators borrow.
+	// Bound to locals: both are owned `Ptr<..Vec>`s that the iterators borrow.
 	let solids = ffi::decompose_into_solids(shape);
 	let faces = ffi::shape_faces(shape);
 	solids.iter().map(ffi::shape_tshape_id).chain(faces.iter().map(ffi::face_tshape_id)).collect()

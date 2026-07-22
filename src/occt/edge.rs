@@ -5,7 +5,7 @@ use glam::DVec3;
 
 /// An edge topology shape.
 pub struct Edge {
-	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Edge>,
+	pub(crate) inner: ffi::Ptr<ffi::TopoDS_Edge>,
 }
 
 impl Edge {
@@ -18,7 +18,7 @@ impl Edge {
 	/// iterators — all of which wrap an already-valid edge), callers use
 	/// `.expect("...")` with a descriptive message; the panic is unreachable
 	/// in practice but serves as a defensive marker.
-	pub(crate) fn try_from_ffi(inner: cxx::UniquePtr<ffi::TopoDS_Edge>, msg: String) -> Result<Self, Error> {
+	pub(crate) fn try_from_ffi(inner: ffi::Ptr<ffi::TopoDS_Edge>, msg: String) -> Result<Self, Error> {
 		if inner.is_null() {
 			Err(Error::InvalidEdge(msg))
 		} else {
@@ -94,17 +94,17 @@ impl EdgeStruct for Edge {
 
 	fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<Self>, Error> {
 		let coords: Vec<f64> = points.into_iter().flat_map(|p| [p.x, p.y, p.z]).collect();
-		let cxx_vec = ffi::make_polygon_edges(&coords);
+		let edge_vec = ffi::make_polygon_edges(&coords);
 		// C++ 側は失敗時に空ベクタを返す (null ではない)。点数不足や
 		// OCCT の MakePolygon 失敗で empty になるので、それを InvalidEdge に変換。
-		if cxx_vec.is_empty() {
+		if edge_vec.is_empty() {
 			return Err(Error::InvalidEdge(format!("polygon: construction failed (point count = {}, need ≥ 3 non-degenerate)", coords.len() / 3)));
 		}
-		// CxxVector<TopoDS_Edge> → Vec<Edge>: pull each element out into a
-		// UniquePtr<TopoDS_Edge> via deep_copy_edge so we own the topology.
+		// EdgeVec → Vec<Edge>: pull each element out into an owned
+		// `Ptr<TopoDS_Edge>` via deep_copy_edge so we own the topology.
 		// deep_copy_edge は既に有効な edge の複製なので null にはならない想定、
 		// 万一返った場合は InvalidEdge で failfast する。
-		cxx_vec.iter().map(|e| Edge::try_from_ffi(ffi::deep_copy_edge(e), "polygon: deep_copy_edge returned null".into())).collect()
+		edge_vec.iter().map(|e| Edge::try_from_ffi(ffi::deep_copy_edge(e), "polygon: deep_copy_edge returned null".into())).collect()
 	}
 
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error> {
