@@ -23,15 +23,18 @@ changes until `1.0`.
 
 #### Removed
 
-- **The `cxx` / `cxx-build` dependencies.** The FFI is now a plain C ABI:
-  `cpp/wrapper.h` declares `extern "C"` functions, `src/occt/ffi.rs` holds
-  committed bindgen-style declarations plus safe wrappers, and `cc` compiles
-  the wrapper.
-  This drops cxx's unconditionally-compiled `src/cxx.cc`, which forced every
-  consumer (notably wasm) to have a target C++ toolchain even when the wrapper
-  itself was prebuilt. bindgen was evaluated and intentionally NOT added as a
-  build-dependency: its build.rs compiles no C, but it requires libclang on
-  every consumer's build host, so the generated bindings are committed instead.
+- **The `cxx` / `cxx-build` dependencies.** The FFI is now a plain C ABI in
+  three files: `src/ffi.rs` (raw declarations + safe wrappers + Rust-side
+  callbacks — the single source of truth), `src/ffi.cpp` (OCCT wrapper with
+  handwritten extern "C" shims), and a generated header: `bridge()` in
+  build.rs parses ffi.rs with syn and writes `OUT_DIR/ffi.h`, which ffi.cpp
+  includes — so a signature drift between Rust and the shims is a C++
+  compile error (conflicting extern "C" declaration), the same machine check
+  cxx-build used to provide, without cxx's unconditionally-compiled
+  `src/cxx.cc` that forced every consumer (notably wasm) to have a target
+  C++ toolchain. bindgen was evaluated and intentionally NOT used: its
+  build.rs compiles no C, but it requires libclang on every consumer's build
+  host; syn (also cxx-build's own parser) needs neither.
 
 - **BRep text (ASCII `BRepTools`) I/O.** Only `BinTools` binary remains; an ASCII
   `.brep` returns `Error::BrepReadFailed`. [Why](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)

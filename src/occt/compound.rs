@@ -1,7 +1,7 @@
-use super::ffi;
 use super::solid::Solid;
 #[cfg(feature = "color")]
 use crate::common::color::Color;
+use crate::ffi;
 
 /// A compound shape wrapping multiple solids into a single `TopoDS_Compound`.
 ///

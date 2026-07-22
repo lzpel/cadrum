@@ -1,5 +1,5 @@
 use super::edge::Edge;
-use super::ffi;
+use crate::ffi;
 use crate::traits::FaceStruct;
 use glam::DVec3;
 use std::sync::OnceLock;

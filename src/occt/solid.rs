@@ -1,9 +1,9 @@
 use super::compound::CompoundShape;
 use super::edge::Edge;
 use super::face::Face;
-use super::ffi;
 use crate::common::boolean::Boolean;
 use crate::common::error::Error;
+use crate::ffi;
 use crate::traits::{ProfileOrient, SolidStruct, Transform};
 use glam::DVec3;
 use std::sync::{Mutex, OnceLock};

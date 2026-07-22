@@ -1,5 +1,5 @@
-use super::ffi;
 use crate::common::error::Error;
+use crate::ffi;
 use crate::traits::{BSplineEnd, EdgeStruct, Transform};
 use glam::DVec3;
 

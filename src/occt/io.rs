@@ -2,10 +2,10 @@
 //! `super::solid` (e.g. `Solid::read_step`, `Solid::write_step`, `Solid::mesh`).
 
 use super::compound::CompoundShape;
-use super::ffi;
 use super::solid::Solid;
-use super::stream::{RustReader, RustWriter};
 use crate::common::error::Error;
+use crate::ffi;
+use crate::ffi::{RustReader, RustWriter};
 use std::io::{Read, Write};
 
 #[cfg(feature = "color")]

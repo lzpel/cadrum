@@ -24,7 +24,7 @@ png = ["dep:tiny-skia"]
 pure = []
 
 [dependencies]
-glam = { version = ">=0.29", features = ["std"] }
+glam = ">=0.29"
 # Pure-Rust 2D rasterizer used by Scene2D::write_png. Pulled in only with
 # the `png` feature; tiny-skia bundles its own PNG encoder so no separate
 # `png` crate dep is needed.
@@ -39,9 +39,8 @@ tar = "0.4"
 walkdir = "2"
 # source feature only: build OCCT from upstream sources
 cmake = { version = "0.1", optional = true }
-# compile the C ABI wrapper (cpp/wrapper.cpp); also probes the target compiler
-# for runtime lib paths under source + CADRUM_BUNDLE_RUNTIME
 cc = "1"
+syn = { version = "2", default-features = false, features = ["full", "parsing"] }
 
 [dev-dependencies]
 # Used by examples/codegen.rs to parse traits.rs and rewrite marker regions.

@@ -1,6 +1,10 @@
 #![doc = include_str!("../README.md")]
 
 pub mod common;
+// C ABI to the OCCT wrapper (src/ffi.cpp). build.rs generates the matching C
+// header from this module — see `bridge()` in build.rs.
+#[cfg(not(feature = "pure"))]
+pub(crate) mod ffi;
 #[cfg(not(feature = "pure"))]
 pub mod occt;
 // The pure-Rust backend is not implemented yet (`src/pure.rs` does not exist).
