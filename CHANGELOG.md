@@ -47,7 +47,14 @@ changes until `1.0`.
   than flattened onto its faces. (#247)
 - **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
   `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
-  `BUILD_REVISION` is now `rev4`. (#203)
+  `BUILD_REVISION` is now `rev5`. (#203)
+- **Linux prebuilts are built with the manylinux base gcc (~8.5), not the
+  gcc-toolset.** The tarball then references only old libstdc++/libgcc symbols,
+  which resolve against any newer consumer runtime (Amazon Linux 2023 / gcc 11.4.1
+  and up) via the system libstdc++ — replacing the bundled `libstdc++.a` /
+  `libgcc.a`. Same `__cxa_call_terminate` fix as the bundle, without shipping a
+  static C++ runtime. windows-gnu keeps its bundle (no stable Windows system
+  libstdc++). (#147)
 - **wasm exception-handling uses the legacy encoding.** OCCT and the cxx wrapper
   build with `-mllvm -wasm-use-legacy-eh=true` against a self-built *legacy* eh
   sysroot (the released wasi-sdk one is exnref-only), dropping `--experimental-wasm-exnref`. (#199, #233)
