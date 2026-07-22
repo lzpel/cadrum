@@ -1,4 +1,4 @@
-#include "cadrum/src/occt/ffi.rs.h"
+#include "cadrum/src/ffi.rs.h"
 
 // ==================== OCCT headers (impl only — not exposed via wrapper.h) ====================
 //
@@ -93,9 +93,9 @@
 // --- I/O (BREP / STEP / progress) ---
 // STEP-specific headers are only needed by the non-color STEP path
 // (`read_step_stream` / `write_step_stream`); with color, STEP routes
-// through XCAF in the CADRUM_COLOR section below.
+// through XCAF in the FEATURE_COLOR section below.
 #include <BinTools.hxx>
-#ifndef CADRUM_COLOR
+#ifndef FEATURE_COLOR
 #include <STEPControl_Reader.hxx>
 #include <STEPControl_Writer.hxx>
 #include <Message_ProgressRange.hxx>
@@ -118,7 +118,7 @@ namespace cadrum {
 
 // Forward declaration: STEP read post-process (defined further below near
 // decompose_into_solids). Used by both read_step_stream (this section) and
-// read_step_color_stream (in the CADRUM_COLOR block).
+// read_step_color_stream (in the FEATURE_COLOR block).
 static TopoDS_Shape try_sew_orphan_faces(
     const TopoDS_Shape& compound,
     std::unordered_map<uint64_t, std::array<float, 3>>* colorMap);
@@ -193,8 +193,8 @@ std::streambuf::pos_type RustWriteStreambuf::seekpos(pos_type, std::ios_base::op
 
 // ==================== Shape I/O (streambuf callback) ====================
 
-#ifndef CADRUM_COLOR
-// Plain STEP I/O — used only when CADRUM_COLOR is not defined.
+#ifndef FEATURE_COLOR
+// Plain STEP I/O — used only when FEATURE_COLOR is not defined.
 // With color, STEP routes through XCAF (`read_step_color_stream` /
 // `write_step_color_stream`) instead.
 
@@ -229,7 +229,7 @@ bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer) {
     }
     return step_writer.WriteStream(os) == IFSelect_RetDone;
 }
-#endif // !CADRUM_COLOR
+#endif // !FEATURE_COLOR
 
 std::unique_ptr<TopoDS_Shape> read_brep_stream(
     rust::Slice<const uint8_t> data, size_t& out_consumed)
@@ -2009,7 +2009,7 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 
 } // namespace cadrum
 
-#ifdef CADRUM_COLOR
+#ifdef FEATURE_COLOR
 
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
@@ -2195,4 +2195,4 @@ bool write_step_color_stream(
 
 } // namespace cadrum
 
-#endif // CADRUM_COLOR
+#endif // FEATURE_COLOR

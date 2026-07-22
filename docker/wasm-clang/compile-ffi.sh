@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # GATE C: 自前ビルドの clang.wasm を bare wasmtime で動かし、cadrum の FFI
-# (cpp/wrapper.cpp + cxx glue) を wasm32-wasip1 の .o にコンパイルできるか検証する。
+# (src/ffi.cpp + cxx glue) を wasm32-wasip1 の .o にコンパイルできるか検証する。
 #
 # WASMFS は WASI preopen(--dir)を見ず、standalone の stdin は大入力で破綻し、clang の raw
 # バイナリ stdout 書き込みは 0x00 が化ける（emscripten #23724 / #21335）。よって:
 #  - 入力一式（ヘッダ＋ソース）を pack.py で 1 本の blob にまとめ #embed で clang.wasm に焼き込み、
 #    起動時に constructor(embed_data.c) が WASMFS へ展開する。
-#  - clang は WASMFS 上の /cadrum/cpp/wrapper.cpp を `-o /tmp/cadrum_out.o` でファイル出力し、
+#  - clang は WASMFS 上の /cadrum/src/ffi.cpp を `-o /tmp/cadrum_out.o` でファイル出力し、
 #    destructor がそれを hex で stdout に吐く → ホストで xxd -r -p して .o を復元する。
 set -euo pipefail
 source /opt/emsdk/emsdk_env.sh >/dev/null 2>&1 || true
@@ -22,8 +22,8 @@ WT="wasmtime run -W exceptions=y -W function-references=y -W gc=y"
 echo "=== stage FFI inputs (headers + source) ==="
 CXXB="$(ls -d "$SRC"/sandbox-wasm/target/wasm32-unknown-unknown/release/build/cadrum-*/out/cxxbridge/include | head -1)"
 test -n "$CXXB" || { echo "FAIL: cxxbridge include not found (build sandbox-wasm first)"; exit 1; }
-rm -rf /work/s1 && mkdir -p /work/s1/cadrum/cpp /work/s1/cxxbridge/include /work/s1/occt /work/s1/sysroot/include /work/s1/res/include
-cp "$SRC"/cpp/wrapper.cpp "$SRC"/cpp/wrapper.h /work/s1/cadrum/cpp/
+rm -rf /work/s1 && mkdir -p /work/s1/cadrum/src /work/s1/cxxbridge/include /work/s1/occt /work/s1/sysroot/include /work/s1/res/include
+cp "$SRC"/src/ffi.cpp "$SRC"/src/ffi.h /work/s1/cadrum/src/
 cp -r "$CXXB"/. /work/s1/cxxbridge/include/
 cp -r "$SRC"/target/occt-8_0_0_rev2-wasm32_unknown_unknown/include/opencascade /work/s1/occt/opencascade
 cp -r "$SRC"/sandbox-wasm/bundle/sysroot/include/wasm32-wasip1 /work/s1/sysroot/include/wasm32-wasip1
@@ -55,16 +55,16 @@ cp "$EMB/bin/clang.wasm" /work/clang-ffi.wasm
 echo "clang-ffi.wasm = $(stat -c %s /work/clang-ffi.wasm) bytes"
 echo "imports: env=$(wasm-objdump -x /work/clang-ffi.wasm 2>/dev/null | grep -c '<- env\.' || true) wasi=$(wasm-objdump -x /work/clang-ffi.wasm 2>/dev/null | grep -c '<- wasi_snapshot_preview1\.' || true)"
 
-# --- 5. clang.wasm で wrapper.cpp をコンパイル（stdin 不使用、.o はファイル→hex で取り出し） ---
-echo "=== GATE C: compile cadrum FFI wrapper.cpp under bare wasmtime ==="
+# --- 5. clang.wasm で ffi.cpp をコンパイル（stdin 不使用、.o はファイル→hex で取り出し） ---
+echo "=== GATE C: compile cadrum FFI ffi.cpp under bare wasmtime ==="
 WASI_EMU="-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
 # clang はファイルへ出力（raw バイナリ stdout は 0x00 が化けるため）。destructor が
 # /tmp/cadrum_out.o を hex で stdout に吐くので、ホストで xxd -r -p して復元する。
 set +e
 $WT /work/clang-ffi.wasm \
-    -c /cadrum/cpp/wrapper.cpp -o /tmp/cadrum_out.o \
+    -c /cadrum/src/ffi.cpp -o /tmp/cadrum_out.o \
     --target=wasm32-wasip1 -fwasm-exceptions -fexceptions -mllvm -wasm-use-legacy-eh=false \
-    -std=c++17 -D_USE_MATH_DEFINES -DCADRUM_COLOR $WASI_EMU \
+    -std=c++17 -D_USE_MATH_DEFINES -DFEATURE_COLOR $WASI_EMU \
     -nostdinc -nostdinc++ -nobuiltininc \
     -isystem /sysroot/include/wasm32-wasip1/eh/c++/v1 \
     -isystem /sysroot/include/wasm32-wasip1 \
@@ -89,8 +89,8 @@ if [ "$rc" -eq 0 ] && [ "$MAGIC" = "0061736d" ]; then
     rm -f /work/libcadrum_ffi_wasmclang.a
     ( cd /work && /opt/emsdk/upstream/bin/llvm-ar rcs libcadrum_ffi_wasmclang.a wrapper.o )
     echo "archived: $(stat -c %s /work/libcadrum_ffi_wasmclang.a) bytes"
-    echo "##### GATE C PASS: clang.wasm compiled cadrum FFI wrapper.cpp -> valid wasm32 object under bare wasmtime #####"
+    echo "##### GATE C PASS: clang.wasm compiled cadrum FFI ffi.cpp -> valid wasm32 object under bare wasmtime #####"
 else
-    echo "##### GATE C FAIL: wrapper.cpp compile did not produce a valid object (see /work/c1.err) #####"
+    echo "##### GATE C FAIL: ffi.cpp compile did not produce a valid object (see /work/c1.err) #####"
     exit 1
 fi
