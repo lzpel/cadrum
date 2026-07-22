@@ -4,19 +4,25 @@
 # 18.10+, Debian 10+, RHEL/Rocky/AlmaLinux 8+, Fedora 29+, Arch, openSUSE
 # Leap 15.1+). Same portability strategy Python wheels use.
 #
-# The image ships gcc (C++17 capable), cmake, make, curl, and git out of the
-# box. Rust is NOT bundled, so we install it via rustup.
+# The image ships the base gcc (/usr/bin/gcc 8.5, C++17 capable), cmake, make,
+# curl, and git. Base g++ is NOT installed (only gcc-toolset's), so we add it
+# below. Rust is NOT bundled, so we install it via rustup.
 FROM quay.io/pypa/manylinux_2_28_x86_64
+
+# Base gcc-c++ (g++ 8.5). The image has /usr/bin/gcc but no base /usr/bin/g++;
+# without this, CXX=/usr/bin/g++ would be missing and cmake's C++ compiler probe fails.
+RUN dnf install -y gcc-c++ && dnf clean all
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH=/root/.cargo/bin:$PATH
 
-# control cc crate and cargo command
-# target == host, so the image's default gcc/g++/ar cover both host build
-# dependencies and the OCCT cmake build.
-# ENV CC=gcc
-# ENV CXX=g++
-# ENV AR=ar
+# Pin to the AlmaLinux 8 base gcc (~8.5), NOT the PATH-default gcc-toolset. The base
+# gcc references only old libstdc++/libgcc symbols, so the prebuilt links against any
+# newer consumer runtime (e.g. Amazon Linux 2023 / gcc 11.4.1) with no bundling (#147).
+# build.rs forwards CC/CXX to CMAKE_C/CXX_COMPILER for the OCCT source build.
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+ENV AR=/usr/bin/ar
 ENV CARGO_BUILD_TARGET=x86_64-unknown-linux-gnu
 
 # add cargo target
