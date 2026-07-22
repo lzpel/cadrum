@@ -64,7 +64,7 @@ set +e
 $WT /work/clang-ffi.wasm \
     -c /cadrum/cpp/wrapper.cpp -o /tmp/cadrum_out.o \
     --target=wasm32-wasip1 -fwasm-exceptions -fexceptions -mllvm -wasm-use-legacy-eh=false \
-    -std=c++17 -D_USE_MATH_DEFINES -DCADRUM_COLOR $WASI_EMU \
+    -std=c++17 -D_USE_MATH_DEFINES -DFEATURE_COLOR $WASI_EMU \
     -nostdinc -nostdinc++ -nobuiltininc \
     -isystem /sysroot/include/wasm32-wasip1/eh/c++/v1 \
     -isystem /sysroot/include/wasm32-wasip1 \

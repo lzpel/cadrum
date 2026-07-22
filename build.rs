@@ -220,8 +220,12 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		build.flag(s);
 	});
 
-	#[cfg(feature = "color")]
-	build.define("CADRUM_COLOR", None);
+	// Mirror every enabled cargo feature as a FEATURE_<NAME> define so C++
+	// `#ifdef FEATURE_...` guards correspond 1:1 to cargo features (cargo
+	// already uppercases the name and maps `-` to `_`).
+	for name in env::vars().filter_map(|kv| kv.0.strip_prefix("CARGO_FEATURE_").map(str::to_owned)) {
+		build.define(&format!("FEATURE_{name}"), None);
+	}
 
 	// Name the FFI archive after `release_name(target, true)` so the produced
 	// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile

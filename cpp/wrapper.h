@@ -75,9 +75,9 @@ private:
 
 // ==================== Shape I/O (streambuf callback) ====================
 
-// Plain STEP I/O — only built without CADRUM_COLOR; with color, STEP goes
+// Plain STEP I/O — only built without FEATURE_COLOR; with color, STEP goes
 // through XCAF (`read_step_color_stream` etc.) instead.
-#ifndef CADRUM_COLOR
+#ifndef FEATURE_COLOR
 std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader);
 bool write_step_stream(const TopoDS_Shape& shape, RustWriter& writer);
 #endif
@@ -454,7 +454,7 @@ bool face_project_point(const TopoDS_Face& face,
 
 } // namespace cadrum
 
-#ifdef CADRUM_COLOR
+#ifdef FEATURE_COLOR
 
 namespace cadrum {
 
@@ -478,4 +478,4 @@ bool write_step_color_stream(
 
 } // namespace cadrum
 
-#endif // CADRUM_COLOR
+#endif // FEATURE_COLOR
