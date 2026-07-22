@@ -24,8 +24,9 @@ changes until `1.0`.
 #### Removed
 
 - **The `cxx` / `cxx-build` dependencies.** The FFI is now a plain C ABI:
-  `cpp/wrapper.h` is a pure C header, `src/occt/ffi.rs` holds committed
-  bindgen-style declarations plus safe wrappers, and `cc` compiles the wrapper.
+  `cpp/wrapper.h` declares `extern "C"` functions, `src/occt/ffi.rs` holds
+  committed bindgen-style declarations plus safe wrappers, and `cc` compiles
+  the wrapper.
   This drops cxx's unconditionally-compiled `src/cxx.cc`, which forced every
   consumer (notably wasm) to have a target C++ toolchain even when the wrapper
   itself was prebuilt. bindgen was evaluated and intentionally NOT added as a

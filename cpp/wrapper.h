@@ -1,14 +1,13 @@
 #pragma once
 
-// Pure C ABI between Rust (src/occt/ffi.rs) and the OCCT wrapper
-// (cpp/wrapper.cpp). The Rust-side bindings are committed at src/occt/ffi.rs
-// and kept in sync with this header by hand; the header stays bindgen-parseable
-// (plain C when __cplusplus is absent) so they can be regenerated mechanically.
+// C ABI between Rust (src/occt/ffi.rs) and the OCCT wrapper (cpp/wrapper.cpp).
+// The Rust-side bindings are committed at src/occt/ffi.rs and kept in sync
+// with this header by hand. Every type crosses the boundary as a pointer, so
+// Rust sees TopoDS_Shape / *Vec as opaque handles.
 
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
@@ -16,16 +15,8 @@
 typedef std::vector<TopoDS_Shape> ShapeVec;
 typedef std::vector<TopoDS_Face> FaceVec;
 typedef std::vector<TopoDS_Edge> EdgeVec;
+
 extern "C" {
-#else
-#include <stdbool.h>
-typedef struct TopoDS_Shape TopoDS_Shape;
-typedef struct TopoDS_Face TopoDS_Face;
-typedef struct TopoDS_Edge TopoDS_Edge;
-typedef struct ShapeVec ShapeVec;
-typedef struct FaceVec FaceVec;
-typedef struct EdgeVec EdgeVec;
-#endif
 
 // ==================== Rust-side callbacks (defined in src/occt) ====================
 // `vec` points at a Rust `Vec<T>`; `reader`/`writer` point at `RustReader` /
@@ -452,6 +443,4 @@ bool cadrum_write_step_color_stream(
 
 #endif // CADRUM_COLOR
 
-#ifdef __cplusplus
 } // extern "C"
-#endif
