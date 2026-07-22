@@ -23,6 +23,15 @@ changes until `1.0`.
 
 #### Removed
 
+- **The `cxx` / `cxx-build` dependencies.** The FFI is now a plain C ABI:
+  `cpp/wrapper.h` is a pure C header, `src/occt/ffi.rs` holds committed
+  bindgen-style declarations plus safe wrappers, and `cc` compiles the wrapper.
+  This drops cxx's unconditionally-compiled `src/cxx.cc`, which forced every
+  consumer (notably wasm) to have a target C++ toolchain even when the wrapper
+  itself was prebuilt. bindgen was evaluated and intentionally NOT added as a
+  build-dependency: its build.rs compiles no C, but it requires libclang on
+  every consumer's build host, so the generated bindings are committed instead.
+
 - **BRep text (ASCII `BRepTools`) I/O.** Only `BinTools` binary remains; an ASCII
   `.brep` returns `Error::BrepReadFailed`. [Why](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)
 - **`Mesh.uvs`.** Nothing ever read it. (#243)
@@ -48,7 +57,7 @@ changes until `1.0`.
 - **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
   `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
   `BUILD_REVISION` is now `rev4`. (#203)
-- **wasm exception-handling uses the legacy encoding.** OCCT and the cxx wrapper
+- **wasm exception-handling uses the legacy encoding.** OCCT and the FFI wrapper
   build with `-mllvm -wasm-use-legacy-eh=true` against a self-built *legacy* eh
   sysroot (the released wasi-sdk one is exnref-only), dropping `--experimental-wasm-exnref`. (#199, #233)
 

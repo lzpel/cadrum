@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # GATE C: 自前ビルドの clang.wasm を bare wasmtime で動かし、cadrum の FFI
-# (cpp/wrapper.cpp + cxx glue) を wasm32-wasip1 の .o にコンパイルできるか検証する。
+# (cpp/wrapper.cpp) を wasm32-wasip1 の .o にコンパイルできるか検証する。
 #
 # WASMFS は WASI preopen(--dir)を見ず、standalone の stdin は大入力で破綻し、clang の raw
 # バイナリ stdout 書き込みは 0x00 が化ける（emscripten #23724 / #21335）。よって:
@@ -20,11 +20,8 @@ WT="wasmtime run -W exceptions=y -W function-references=y -W gc=y"
 
 # --- 1. 入力一式を WASMFS パスに staging（ヘッダ＋ソース） ---
 echo "=== stage FFI inputs (headers + source) ==="
-CXXB="$(ls -d "$SRC"/sandbox-wasm/target/wasm32-unknown-unknown/release/build/cadrum-*/out/cxxbridge/include | head -1)"
-test -n "$CXXB" || { echo "FAIL: cxxbridge include not found (build sandbox-wasm first)"; exit 1; }
-rm -rf /work/s1 && mkdir -p /work/s1/cadrum/cpp /work/s1/cxxbridge/include /work/s1/occt /work/s1/sysroot/include /work/s1/res/include
+rm -rf /work/s1 && mkdir -p /work/s1/cadrum/cpp /work/s1/occt /work/s1/sysroot/include /work/s1/res/include
 cp "$SRC"/cpp/wrapper.cpp "$SRC"/cpp/wrapper.h /work/s1/cadrum/cpp/
-cp -r "$CXXB"/. /work/s1/cxxbridge/include/
 cp -r "$SRC"/target/occt-8_0_0_rev2-wasm32_unknown_unknown/include/opencascade /work/s1/occt/opencascade
 cp -r "$SRC"/sandbox-wasm/bundle/sysroot/include/wasm32-wasip1 /work/s1/sysroot/include/wasm32-wasip1
 cp -r "$EMB"/lib/clang/*/include/. /work/s1/res/include/
@@ -69,7 +66,7 @@ $WT /work/clang-ffi.wasm \
     -isystem /sysroot/include/wasm32-wasip1/eh/c++/v1 \
     -isystem /sysroot/include/wasm32-wasip1 \
     -isystem /res/include \
-    -I /occt/opencascade -I /cxxbridge/include -I / \
+    -I /occt/opencascade -I / \
     > /work/wrapper.hex 2>/work/c1.err
 rc=$?
 set -e

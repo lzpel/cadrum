@@ -52,7 +52,7 @@ ENV SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
 # using gcc because these are target-specific.
 ENV CC_wasm32_unknown_unknown=clang
 ENV CXX_wasm32_unknown_unknown=clang++
-# link-cplusplus defaults to libstdc++ on wasm; we use libc++.
+# cc-rs defaults to libstdc++ on wasm; we use libc++.
 ENV CXXSTDLIB=c++
 # Compile C/C++ as wasm32-wasip1 so --sysroot auto-resolves include/lib (and eh/c++/v1
 # under -fwasm-exceptions) and __wasi__ selects the proper libc++ rune table.

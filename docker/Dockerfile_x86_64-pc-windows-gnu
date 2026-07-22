@@ -6,7 +6,7 @@
 FROM debian:bookworm-slim
 
 # gcc/g++: HOST compiler for build-dependencies (aws-lc-rs, ring, etc.)
-# gcc-mingw-w64-*: TARGET cross-compiler for OCCT and cxx-build
+# gcc-mingw-w64-*: TARGET cross-compiler for OCCT and the cc-built wrapper
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates make cmake \
     gcc g++ \
@@ -21,7 +21,7 @@ ENV PATH=/root/.cargo/bin:$PATH
 # control cc crate and cargo command
 #
 # Target-specific CC_<target>/CXX_<target> so that HOST build-dependencies
-# use the native gcc while OCCT cmake and cxx-build use the mingw
+# use the native gcc while OCCT cmake and the cc-built wrapper use the mingw
 # cross-compiler.
 ENV CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
 ENV CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
