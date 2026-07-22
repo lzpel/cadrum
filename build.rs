@@ -213,8 +213,12 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		println!("cargo:rustc-link-arg=-static");
 	}
 
-	let mut build = cxx_build::bridge("src/occt/ffi.rs");
-	build.file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	// The C ABI wrapper (cpp/wrapper.h + src/occt/ffi.rs) is compiled with plain cc.
+	// cc also emits the C++ stdlib link line (`stdc++`/`c++` per target, CXXSTDLIB
+	// override honored — the wasm cross image sets CXXSTDLIB=c++), matching what
+	// cxx's link-cplusplus used to emit before cxx was removed (#235).
+	let mut build = cc::Build::new();
+	build.cpp(true).file("cpp/wrapper.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
 	apply_compiler_flags(|s| {
 		build.flag(s);
@@ -234,7 +238,6 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored by the
 	// consumer's wasm init via `__anchor_wasi_stub`), so no separate C stub / `+whole-archive` link is needed here.
 
-	println!("cargo:rerun-if-changed=src/occt/ffi.rs");
 	println!("cargo:rerun-if-changed=cpp/wrapper.h");
 	println!("cargo:rerun-if-changed=cpp/wrapper.cpp");
 }
@@ -303,8 +306,8 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
 ///   prebuilt-consumer build. Required for anything no external `-l` already requests
 ///   (GCC runtime, wasm libc++abi/unwind/c).
 /// - `false` → copy under the real name so an externally-emitted `-l <name>` resolves it
-///   via the occt lib-dir search path. Used for wasm `libc++.a`: cxx's link-cplusplus
-///   unconditionally emits `-l c++`, which needs the real file name (renaming breaks it).
+///   via the occt lib-dir search path. Used for wasm `libc++.a`: cc emits `-l c++`
+///   (CXXSTDLIB=c++ in the cross image), which needs the real file name (renaming breaks it).
 #[cfg(feature = "source")]
 fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str], prefix: bool) {
 	let compiler = cc::Build::new().get_compiler();
