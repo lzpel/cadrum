@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_0";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev4";
+const BUILD_REVISION: &str = "rev5";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -58,10 +58,12 @@ fn main() {
 
 	// Prebuilt tarball 作成時のみ host toolchain runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
 	// gate を切らないと source user 全員のホストランタイムが静的取り込みされてしまう。
-	// 現 policy: mingw / Linux GNU で GCC runtime を対象 (Windows MSVC は MSVC ランタイム、Mac は別系統)。
+	// 現 policy: mingw のみ GCC runtime を同梱 (Windows には安定した system libstdc++ が無い)。
+	// Linux GNU は manylinux base gcc で古いシンボルのみ参照するので消費者の system libstdc++ に
+	// 動的リンクさせ非同梱 (#147)。Windows MSVC は MSVC ランタイム、Mac は別系統。
 	#[cfg(feature = "source")]
 	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() {
-		if target.ends_with("windows-gnu") || target.contains("linux-gnu") {
+		if target.ends_with("windows-gnu") {
 			bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"], true);
 		} else if target.starts_with("wasm32") {
 			// -fwasm-exceptions ビルドの OCCT/libc++ が要求する eh 版ランタイムを同梱し prebuilt を

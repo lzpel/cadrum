@@ -29,7 +29,7 @@ publish: update publish-ready # publish to crates.io
 	cargo publish
 occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
 	cargo clean
-	# CADRUM_BUNDLE_RUNTIME=1 で OCCT lib dir に libstdc++.a / libgcc.a / libgcc_eh.a を libcadrum_* として同梱し、ホスト側 GCC との ABI 不整合を回避する (#89 / #147 対策)。
+	# CADRUM_BUNDLE_RUNTIME=1 は windows-gnu / wasm でのみランタイムを同梱する (#89)。native linux-gnu は base gcc ビルドで古いシンボルのみ参照し消費者の system libstdc++ に動的リンクするので no-op (#147)。
 	# pipefail is required so tee's exit code does not mask a cargo build failure
 	bash -c "set -o pipefail && CADRUM_BUNDLE_RUNTIME=1 cargo build --example 01_primitives --release --features source 2>&1 | tee out/log.txt"
 	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'

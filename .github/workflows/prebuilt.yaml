@@ -136,6 +136,6 @@ jobs:
       # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: occt-8_0_0_rev4
-          name: OCCT prebuilt v8.0.0 (rev4)
+          tag_name: occt-8_0_0_rev5
+          name: OCCT prebuilt v8.0.0 (rev5)
           files: dist/*.tar.gz
