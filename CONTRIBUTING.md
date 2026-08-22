@@ -16,7 +16,7 @@ out with anything you need.
 ## Preconditions
 
 You should be comfortable with `cargo` and the basics of building Rust
-projects. The first build downloads a prebuilt OCCT 8.0.0 tarball for
+projects. The first build downloads a prebuilt OCCT 8.0.1 tarball for
 supported targets and links it statically; on unsupported targets you will
 need CMake plus a C++17 compiler and `cargo build --features source`.
 See the [README](./README.md#build) for the full build matrix.

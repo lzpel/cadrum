@@ -40,6 +40,10 @@ changes until `1.0`.
 
 #### Changes
 
+- **OCCT bumped to 8.0.1** (patch release; was 8.0.0). No cadrum source changes
+  required — of the OCCT files `build.rs` patches only
+  `STEPConstruct_AP203Context.cxx` changed, and it is body-stubbed anyway. The
+  toolkit list is unchanged. Prebuilt tarballs move to tag `occt-8_0_1_rev1`.
 - **`Mesh.normals`.** One unit outward normal per vertex, evaluated on the B-rep
   surface rather than averaged from the triangles, and emitted as glTF `NORMAL`.
   Faces never share vertices, so each is its own smoothing group. (#243, #244)
@@ -47,7 +51,7 @@ changes until `1.0`.
   than flattened onto its faces. (#247)
 - **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
   `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
-  `BUILD_REVISION` is now `rev5`. (#203)
+  `BUILD_REVISION` is now `rev1`. (#203)
 - **Linux prebuilts are built with the manylinux base gcc (~8.5), not the
   gcc-toolset.** The tarball then references only old libstdc++/libgcc symbols,
   which resolve against any newer consumer runtime (Amazon Linux 2023 / gcc 11.4.1
