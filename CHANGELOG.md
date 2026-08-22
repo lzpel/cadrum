@@ -37,13 +37,10 @@ changes until `1.0`.
   found where the payload ended instead of by scanning the last four bytes, and
   keyed by solid as well as by face. Older files load with their colours dropped. (#247)
 - **Renamed the `source-build` feature to `source`.** (#182)
+- **OCCT bumped to 8.0.1** (patch release; was 8.0.0).
 
 #### Changes
 
-- **OCCT bumped to 8.0.1** (patch release; was 8.0.0). No cadrum source changes
-  required — of the OCCT files `build.rs` patches only
-  `STEPConstruct_AP203Context.cxx` changed, and it is body-stubbed anyway. The
-  toolkit list is unchanged. Prebuilt tarballs move to tag `occt-8_0_1_rev1`.
 - **`Mesh.normals`.** One unit outward normal per vertex, evaluated on the B-rep
   surface rather than averaged from the triangles, and emitted as glTF `NORMAL`.
   Faces never share vertices, so each is its own smoothing group. (#243, #244)
