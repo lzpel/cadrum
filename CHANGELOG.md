@@ -37,6 +37,7 @@ changes until `1.0`.
   found where the payload ended instead of by scanning the last four bytes, and
   keyed by solid as well as by face. Older files load with their colours dropped. (#247)
 - **Renamed the `source-build` feature to `source`.** (#182)
+- **OCCT bumped to 8.0.1** (patch release; was 8.0.0).
 
 #### Changes
 
@@ -47,7 +48,7 @@ changes until `1.0`.
   than flattened onto its faces. (#247)
 - **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
   `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
-  `BUILD_REVISION` is now `rev5`. (#203)
+  `BUILD_REVISION` is now `rev1`. (#203)
 - **Linux prebuilts are built with the manylinux base gcc (~8.5), not the
   gcc-toolset.** The tarball then references only old libstdc++/libgcc symbols,
   which resolve against any newer consumer runtime (Amazon Linux 2023 / gcc 11.4.1

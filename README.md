@@ -53,7 +53,7 @@ Add this to your `Cargo.toml`:
 cadrum = "^0.8"
 ```
 
-`cargo build` automatically downloads a prebuilt OCCT 8.0.0 binary for these targets:
+`cargo build` automatically downloads a prebuilt OCCT 8.0.1 binary for these targets:
 
 | | Target | Prebuilt OCCT |
 |--|--------|----------|

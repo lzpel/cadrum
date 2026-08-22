@@ -4,19 +4,19 @@ use std::path::{Path, PathBuf};
 /// OCCT release used by cadrum. Update this tag when bumping OCCT versions.
 /// `release_name()` derives the GitHub Release tag, the prebuilt tarball, and the
 /// cache directory name from this.
-const OCCT_VERSION: &str = "V8_0_0";
+const OCCT_VERSION: &str = "V8_0_1";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev5";
+const BUILD_REVISION: &str = "rev1";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
 /// target's hyphens are underscored too). `has_version` appends the cadrum crate
 /// version for the per-crate FFI artifact.
 ///
-/// - `release_name(None, false)`    → `occt-8_0_0_rev4`                              (GitHub Release タグ)
-/// - `release_name(Some(t), false)` → `occt-8_0_0_rev4-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
-/// - `release_name(Some(t), true)`  → `occt-8_0_0_rev4-wasm32_unknown_unknown-cadrum-0_8_13` (FFI tarball)
+/// - `release_name(None, false)`    → `occt-8_0_1_rev1`                              (GitHub Release タグ)
+/// - `release_name(Some(t), false)` → `occt-8_0_1_rev1-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
+/// - `release_name(Some(t), true)`  → `occt-8_0_1_rev1-wasm32_unknown_unknown-cadrum-0_8_13` (FFI tarball)
 fn release_name(target: Option<&str>, has_version: bool) -> String {
 	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
 	let mut name = format!("occt-{}_{}", occt, BUILD_REVISION);
@@ -454,7 +454,7 @@ mod source {
 		eprintln!("OCCT built at: {}", built.display());
 
 		// tarball を slim 化: cadrum は include/lib しか使わない。share/(doc・resource) と
-		// bin/(OCCT スクリプト) を削除。OCCT-8_0_0/(改変ソース) は LGPL 2.1 §2 のため下で残す。
+		// bin/(OCCT スクリプト) を削除。OCCT-8_0_1/(改変ソース) は LGPL 2.1 §2 のため下で残す。
 		for d in ["share", "bin"] {
 			let _ = std::fs::remove_dir_all(effective_root.join(d));
 		}
@@ -547,7 +547,7 @@ mod source {
 
 			// OCC_CONVERT_SIGNALS(signal→例外変換) を全 target で無効化。OSD_signal スタブ化と整合。
 			//
-			// このアームは「dead」ではなく実際に生きている: occt_defs_flags.cmake は OCCT 8.0.0 に
+			// このアームは「dead」ではなく実際に生きている: occt_defs_flags.cmake は OCCT 8.0.1 に
 			// 存在し `add_definitions(-DOCC_CONVERT_SIGNALS)` を含むため、ここで実際にコメントアウトされる。
 			// #209 はこれを dead と判断して削除したが、検証が wasm のみで、windows-gnu (mingw) ビルドでは
 			// 経路が生きていた。外すと OCCT が setjmp/longjmp ベースの Standard_ErrorHandler を使い、

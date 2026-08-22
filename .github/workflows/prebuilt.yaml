@@ -132,10 +132,10 @@ jobs:
           merge-multiple: true
 
       # NOTE: tag_name must match build.rs `release_name(None, false)` =
-      # `occt-<occt_version>_<BUILD_REVISION>` (e.g. `occt-8_0_0_rev3`). Bump this in
+      # `occt-<occt_version>_<BUILD_REVISION>` (e.g. `occt-8_0_1_rev1`). Bump this in
       # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: occt-8_0_0_rev5
-          name: OCCT prebuilt v8.0.0 (rev5)
+          tag_name: occt-8_0_1_rev1
+          name: OCCT prebuilt v8.0.1 (rev1)
           files: dist/*.tar.gz
