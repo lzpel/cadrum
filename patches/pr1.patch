@@ -1,0 +1,74 @@
+diff --git a/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_PipeShell.cxx b/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_PipeShell.cxx
+index 7fe332236c..7414680445 100644
+--- a/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_PipeShell.cxx
++++ b/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_PipeShell.cxx
+@@ -28,6 +28,9 @@
+ #include <BRepFill_LocationLaw.hxx>
+ #include <BRepFill_NSections.hxx>
+ #include <BRepFill_PipeShell.hxx>
++#include <GeomAdaptor_Curve.hxx>
++#include <cstdio>
++#include <cstdlib>
+ #include <BRepFill_Section.hxx>
+ #include <BRepFill_SectionLaw.hxx>
+ #include <BRepFill_SectionPlacement.hxx>
+@@ -370,6 +373,38 @@ void BRepFill_PipeShell::Set(const TopoDS_Wire&           AuxiliarySpine,
+     }
+     TheGuide = TopoDS::Wire(CW.Shape().Value(2));
+   }
++  // cadrum fix D: a closed guide made of one periodic curve should stay one periodic
++  // curve. SearchOrigin below re-origins the closed wire by splitting it at the point
++  // facing the spine origin; when that point falls near the wire's own seam vertex the
++  // split leaves a sliver edge, and BRepAdaptor_CompCurve then maps every edge onto a
++  // unit parameter span - the guide adaptor loses IsPeriodic(), gets a violent speed
++  // discontinuity at the seam, and the trihedron laws break down there. For the plane
++  // mode (origin- and orientation-independent) keep the periodic curve as-is instead.
++  occ::handle<Adaptor3d_Curve> aPeriodicGuide;
++  if (GuideClose && !CurvilinearEquivalence)
++  {
++    TopoDS_Edge     aSingleEdge;
++    TopoDS_Iterator anIt(TheGuide);
++    if (anIt.More())
++    {
++      aSingleEdge = TopoDS::Edge(anIt.Value());
++      anIt.Next();
++      if (anIt.More())
++        aSingleEdge.Nullify(); // more than one edge
++    }
++    if (!aSingleEdge.IsNull())
++    {
++      double                  aF, aL;
++      occ::handle<Geom_Curve> aCurve = BRep_Tool::Curve(aSingleEdge, aF, aL);
++      if (!aCurve.IsNull() && aCurve->IsPeriodic())
++        aPeriodicGuide = new GeomAdaptor_Curve(aCurve);
++    }
++  }
++
++  if (!aPeriodicGuide.IsNull())
++  {
++    // No re-origin needed: the plane mode searches the guide geometrically.
++  }
+   else if (GuideClose)
+   {
+     // Case guide closed : Determination of the origin
+@@ -396,7 +431,11 @@ void BRepFill_PipeShell::Set(const TopoDS_Wire&           AuxiliarySpine,
+   }
+ 
+   // transform the guide in a single curve
+-  occ::handle<BRepAdaptor_CompCurve> Guide = new (BRepAdaptor_CompCurve)(TheGuide);
++  occ::handle<Adaptor3d_Curve> Guide;
++  if (!aPeriodicGuide.IsNull())
++    Guide = aPeriodicGuide;
++  else
++    Guide = new (BRepAdaptor_CompCurve)(TheGuide);
+ 
+   if (CurvilinearEquivalence)
+   { // trihedron by curvilinear reduced abscissa
+@@ -711,6 +750,7 @@ bool BRepFill_PipeShell::Build()
+   // 1) Preparation
+   Prepare();
+ 
++
+   if (myStatus != GeomFill_PipeOk)
+   {
+     BRep_Builder B;

@@ -380,14 +380,17 @@ mod source {
 		}
 
 		let source_dir = std::fs::read_dir(effective_root).expect("Failed to read effective_root directory").flatten().find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir()).map(|e| e.path()).expect("OCCT source directory not found after extraction");
-
+		let mut patches: Map<PathBuf, String>=Default::default();
 		// Apply patches
+		patches.update(patch_from_file(&source_dir, include_str!("patches/pr1.patch")));
 		walk_occt_sources(&source_dir, |path| {
 			if let Some(patched) = patch_or_none(path) {
-				std::fs::write(path, patched).expect("patch write failed");
-				eprintln!("Patched {}", path.file_name().unwrap().to_string_lossy());
+				patches.insert(path, patched);
 			}
 		});
+		for (path, contents) in patches{
+			std::fs::write(source_dir.join(path), contents)
+		}
 
 		eprintln!("Building OCCT with CMake (this may take a while)...");
 
@@ -475,15 +478,12 @@ mod source {
 				}
 			}
 		}
-
 		// LGPL 2.1 §2: keep only patched files; remove everything else
-		walk_occt_sources(&source_dir, |path| {
-			if path.is_dir() {
-				let _ = std::fs::remove_dir_all(path);
-			} else if patch_or_none(path).is_none() {
-				let _ = std::fs::remove_file(path);
-			}
-		});
+		std::fs::remove_dir_all(&source_dir);
+    	std::fs::create_dir(&source_dir);
+		for (path, contents) in patches{
+			std::fs::write(source_dir.join(path), contents)
+		}
 		find_occt_dirs(effective_root)
 	}
 
