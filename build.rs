@@ -346,9 +346,7 @@ mod source {
 	use std::env;
 	use std::path::{Path, PathBuf};
 
-	/// Provide OCCT into `effective_root`: download source, patch, build with CMake,
-	/// then remove non-patched source files (LGPL 2.1 §2: keep only the modified files).
-	/// Paired with `occt_from_prebuilt` (selected by the `source` feature) in `resolve_occt`.
+	/// Provide OCCT into `effective_root`: download source, patch, build with CMake, paired with `occt_from_prebuilt` (selected by the `source` feature) in `resolve_occt`.
 	pub fn occt_from_source(effective_root: &Path) -> Option<[PathBuf; 2]> {
 		if let Some(dirs) = find_occt_dirs(effective_root) {
 			return Some(dirs);
@@ -380,16 +378,15 @@ mod source {
 		}
 
 		let source_dir = std::fs::read_dir(effective_root).expect("Failed to read effective_root directory").flatten().find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir()).map(|e| e.path()).expect("OCCT source directory not found after extraction");
-		let mut patches: Map<PathBuf, String>=Default::default();
-		// Apply patches
-		patches.update(patch_from_file(&source_dir, include_str!("patches/pr1.patch")));
+		let mut patches = patch_from_files(&source_dir, &[include_str!("patches/pr1.patch"), include_str!("patches/pr2.patch")]);
 		walk_occt_sources(&source_dir, |path| {
 			if let Some(patched) = patch_or_none(path) {
-				patches.insert(path, patched);
+				patches.insert(path.strip_prefix(&source_dir).expect("walked path escapes source_dir").to_path_buf(), patched);
 			}
 		});
-		for (path, contents) in patches{
-			std::fs::write(source_dir.join(path), contents)
+		for (path, contents) in &patches {
+			std::fs::write(source_dir.join(path), contents).expect("patch write failed");
+			eprintln!("Patched {}", path.display());
 		}
 
 		eprintln!("Building OCCT with CMake (this may take a while)...");
@@ -462,10 +459,6 @@ mod source {
 			let _ = std::fs::remove_dir_all(effective_root.join(d));
 		}
 
-		// lib/ からリンク対象(OCC_LIBS)以外を削除。cmake/pkgconfig も対象だが cadrum は build.rs で
-		// 直リンクし cmake/pkgconfig を消費しないので実害なし。min_depth(1) で lib root 自身は消さない。
-		// 拡張子を外した basename(file_stem)が OCC_LIBS のいずれかで終わるものだけ残す。contains だと
-		// "TKDE" が TKDEIGES 等を巻き込むので suffix 判定にする（libcadrum_* は後段で同梱され無関係）。
 		if let Some([_include_dir, lib_dir]) = find_occt_dirs(effective_root) {
 			for child in walkdir::WalkDir::new(&lib_dir).min_depth(1).into_iter().flatten() {
 				let stem = child.path().file_stem().and_then(|s| s.to_str()).unwrap_or_default();
@@ -478,13 +471,81 @@ mod source {
 				}
 			}
 		}
-		// LGPL 2.1 §2: keep only patched files; remove everything else
-		std::fs::remove_dir_all(&source_dir);
-    	std::fs::create_dir(&source_dir);
-		for (path, contents) in patches{
-			std::fs::write(source_dir.join(path), contents)
+		// LGPL 2.1 §2: keep only patched files; remove everything else.
+		std::fs::remove_dir_all(&source_dir).expect("failed to clear OCCT source tree");
+		for (path, contents) in &patches {
+			let path = source_dir.join(path);
+			std::fs::create_dir_all(path.parent().unwrap()).expect("failed to create patched source dir");
+			std::fs::write(&path, contents).expect("patched source write failed");
 		}
 		find_occt_dirs(effective_root)
+	}
+
+	/// unified diff 群を `source_dir` 下のソースに順に当て、(source_dir 相対パス, 適用後の内容)
+	/// を返す。同じファイルを触る diff が続けば前の適用結果に重ねるので、上流でスタックした
+	/// PR をそのまま並べられる。当たらなければ panic する: 黙って未適用の prebuilt を配ると
+	/// 原因の切り分けができない。上流に取り込まれたら該当の一行を消すだけで撤退できる。
+	fn patch_from_files(source_dir: &Path, diffs: &[&str]) -> std::collections::HashMap<PathBuf, String> {
+		let mut patches = std::collections::HashMap::new();
+		for chunk in diffs.iter().flat_map(|diff| diff.split("\ndiff --git ")) {
+			let Some(head) = chunk.lines().find(|line| line.starts_with("+++ ")) else { continue };
+			let target = head[4..].split('\t').next().unwrap_or_default().trim();
+			let target = PathBuf::from(target.strip_prefix("b/").unwrap_or(target));
+			let base = match patches.get(&target) {
+				Some(patched) => String::clone(patched),
+				None => std::fs::read_to_string(source_dir.join(&target)).unwrap_or_else(|e| panic!("patch target {} unreadable: {e}", target.display())),
+			};
+			let patched = diff_apply(&base, chunk).unwrap_or_else(|| panic!("patch does not apply to {}", target.display()));
+			patches.insert(target, patched);
+		}
+		patches
+	}
+
+	/// unified diff を `content` に適用する。どれか一つでもハンクが当たらなければ `None`。
+	/// ハンクの行番号は目安として扱い、位置がずれていれば近傍を探し直す(GNU patch 相当)。
+	fn diff_apply(content: &str, diff: &str) -> Option<String> {
+		let lines: Vec<&str> = content.lines().collect();
+		let mut out: Vec<&str> = Vec::new();
+		let mut cur = 0usize;
+		let mut it = diff.lines().peekable();
+
+		while let Some(header) = it.next() {
+			let Some(rest) = header.strip_prefix("@@ -") else { continue };
+			let hint: usize = rest.split([',', ' ']).next()?.parse().ok()?;
+
+			let (mut old, mut new) = (Vec::new(), Vec::new());
+			while let Some(body) = it.peek() {
+				match body.as_bytes().first() {
+					Some(b'-') => old.push(&body[1..]),
+					Some(b'+') => new.push(&body[1..]),
+					// 文脈行。git は末尾空白を落とすので長さ 0 の行も空の文脈行として扱う。
+					Some(b' ') | None => {
+						old.push(body.get(1..).unwrap_or(""));
+						new.push(body.get(1..).unwrap_or(""));
+					}
+					Some(b'\\') => {} // "\ No newline at end of file"
+					_ => break,
+				}
+				it.next();
+			}
+
+			// hint 位置から外側へ探す。直前のハンクの終端 `cur` より前には戻らず、
+			// `old` が残り行数より長ければその時点で不一致。
+			let last = lines.len().checked_sub(old.len()).filter(|last| *last >= cur)?;
+			let hint = hint.saturating_sub(1).clamp(cur, last);
+			let at = (0..=last - cur).flat_map(|d| [hint + d, hint.wrapping_sub(d)]).find(|&i| (cur..=last).contains(&i) && lines[i..i + old.len()] == old[..])?;
+
+			out.extend_from_slice(&lines[cur..at]);
+			out.extend_from_slice(&new);
+			cur = at + old.len();
+		}
+
+		out.extend_from_slice(&lines[cur..]);
+		let mut patched = out.join("\n");
+		if content.ends_with('\n') {
+			patched.push('\n');
+		}
+		Some(patched)
 	}
 
 	/// Walk the OCCT source tree.
