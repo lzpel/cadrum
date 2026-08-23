@@ -19,7 +19,18 @@ This document is written according to the [Keep a Changelog][kac] style.
 `cadrum` is in the `0.x` series. Minor-version bumps may include breaking
 changes until `1.0`.
 
-### Unreleased
+### 0.8.17
+
+- Add patches dir (#262)
+- Make downloading and extracting streamingly (#263)
+- Bump OCCT to 8.0.1 (#261)
+- Stop leaking (#260)
+- Build linux-gnu prebuilts with the manylinux base gcc, drop the runtime bundle (#258)
+- Remove the sandbox-wasm experiment directory (#256)
+- Inline the streambuf bridges into ffi.cpp and slim ffi.h (#255)
+- Define FEATURE_<NAME> for every enabled cargo feature (#254)
+
+### 0.8.16
 
 #### Removed
 
