@@ -35,7 +35,7 @@ tiny-skia = { version = "0.11", optional = true }
 [build-dependencies]
 cxx-build = "1"
 # download and extract prebuilt OCCT tarball
-minreq = { version = "2", features = ["https-rustls"] }
+minreq = { version = "3", features = ["https-rustls"] }
 libflate = "2"
 tar = "0.4"
 walkdir = "2"
