@@ -279,19 +279,17 @@ fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<[PathBuf; 2
 }
 
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
-	let bytes = fetch_bytes(url)?;
-	let gz = libflate::gzip::Decoder::new(&bytes[..]).map_err(|e| format!("gzip decode failed: {e}"))?;
-	tar::Archive::new(gz).unpack(dest).map_err(|e| format!("tar unpack failed: {e}"))?;
-	Ok(())
+	let gz = libflate::gzip::Decoder::new(fetch(url)?).map_err(|e| format!("gzip decode failed: {e}"))?;
+	tar::Archive::new(gz).unpack(dest).map_err(|e| format!("tar unpack failed: {e}"))
 }
 
-fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
-	if let Some(rest) = url.strip_prefix("file://") {
-		let path: PathBuf = if rest.len() >= 3 && rest.starts_with('/') && rest.as_bytes()[2] == b':' { PathBuf::from(&rest[1..]) } else { PathBuf::from(rest) };
-		std::fs::read(&path).map_err(|e| format!("read {}: {}", path.display(), e))
-	} else {
-		let resp = minreq::get(url).send().map_err(|e| e.to_string())?;
-		Ok(resp.into_bytes())
+fn fetch(url: &str) -> Result<Box<dyn std::io::Read>, String> {
+	match url.strip_prefix("file://") {
+		Some(rest) => {
+			let path: PathBuf = if rest.len() >= 3 && rest.starts_with('/') && rest.as_bytes()[2] == b':' { PathBuf::from(&rest[1..]) } else { PathBuf::from(rest) };
+			Ok(Box::new(std::fs::File::open(&path).map_err(|e| format!("read {}: {}", path.display(), e))?))
+		}
+		None => Ok(Box::new(minreq::get(url).send_lazy().map_err(|e| e.to_string())?)),
 	}
 }
 
@@ -355,25 +353,9 @@ mod source {
 		let occt_version = OCCT_VERSION;
 		let occt_url = format!("https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/{}.tar.gz", occt_version);
 
-		let extraction_sentinel = effective_root.join(".occt_extraction_done");
-
-		if !extraction_sentinel.exists() {
-			std::fs::create_dir_all(effective_root).unwrap();
-
-			if let Ok(entries) = std::fs::read_dir(effective_root) {
-				for entry in entries.flatten() {
-					let name = entry.file_name();
-					if name.to_string_lossy().starts_with("OCCT") && entry.path().is_dir() {
-						eprintln!("Removing partial OCCT extraction: {:?}", name);
-						let _ = std::fs::remove_dir_all(entry.path());
-					}
-				}
-			}
-
+		if !WalkDir::new(effective_root).max_depth(2).iter().any(|e| e.ok().is_some_and(|e| e.file_name() == "OCCT_LGPL_EXCEPTION.txt")){
 			eprintln!("Downloading OCCT {} from {} ...", occt_version, occt_url);
 			download_and_extract_tar_gz(&occt_url, effective_root).expect("Failed to download/extract OCCT source tarball");
-
-			std::fs::write(&extraction_sentinel, "done").unwrap();
 			eprintln!("OCCT source extracted successfully.");
 		}
 
@@ -529,15 +511,22 @@ mod source {
 				it.next();
 			}
 
-			// hint 位置から外側へ探す。直前のハンクの終端 `cur` より前には戻らず、
-			// `old` が残り行数より長ければその時点で不一致。
-			let last = lines.len().checked_sub(old.len()).filter(|last| *last >= cur)?;
-			let hint = hint.saturating_sub(1).clamp(cur, last);
-			let at = (0..=last - cur).flat_map(|d| [hint + d, hint.wrapping_sub(d)]).find(|&i| (cur..=last).contains(&i) && lines[i..i + old.len()] == old[..])?;
+			// hint 位置から外側へ探す。直前のハンクの終端 `cur` より前には戻らない。
+			let hint = hint.saturating_sub(1).max(cur);
+			let find = |needle: &[&str]| {
+				let last = lines.len().checked_sub(needle.len()).filter(|last| *last >= cur)?;
+				let hint = hint.min(last);
+				(0..=last - cur).flat_map(|d| [hint + d, hint.wrapping_sub(d)]).find(|&i| (cur..=last).contains(&i) && lines[i..i + needle.len()] == needle[..])
+			};
+			// `old` が無く `new` があるハンクは適用済み。読み飛ばして冪等にする(patch -N 相当)。
+			let (at, taken) = match find(&old) {
+				Some(at) => (at, old.len()),
+				None => (find(&new)?, new.len()),
+			};
 
 			out.extend_from_slice(&lines[cur..at]);
 			out.extend_from_slice(&new);
-			cur = at + old.len();
+			cur = at + taken;
 		}
 
 		out.extend_from_slice(&lines[cur..]);
