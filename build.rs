@@ -353,7 +353,7 @@ mod source {
 		let occt_version = OCCT_VERSION;
 		let occt_url = format!("https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/{}.tar.gz", occt_version);
 
-		if !WalkDir::new(effective_root).max_depth(2).iter().any(|e| e.ok().is_some_and(|e| e.file_name() == "OCCT_LGPL_EXCEPTION.txt")){
+		if !walkdir::WalkDir::new(effective_root).max_depth(2).into_iter().any(|e| e.ok().is_some_and(|e| e.file_name() == "OCCT_LGPL_EXCEPTION.txt")) {
 			eprintln!("Downloading OCCT {} from {} ...", occt_version, occt_url);
 			download_and_extract_tar_gz(&occt_url, effective_root).expect("Failed to download/extract OCCT source tarball");
 			eprintln!("OCCT source extracted successfully.");
