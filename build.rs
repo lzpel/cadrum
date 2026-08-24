@@ -434,7 +434,12 @@ mod source {
 		let occt_whitelist:Vec<PathBuf>={
 			let built=cfg.build();
 			eprintln!("OCCT built at: {}", built.display());
-			find_occt_whitelist(effective_root)?
+			let wl = find_occt_whitelist(effective_root)?;
+			eprintln!("Whitelist entries ({}):", wl.len());
+			for (i, w) in wl.iter().enumerate() {
+				eprintln!("  [{}] {}", i, w.display());
+			}
+			wl
 		};
 
 		fn prune_except(dir: &Path, whitelist: &[PathBuf]) -> std::io::Result<()> {
