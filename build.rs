@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_1";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev1";
+const BUILD_REVISION: &str = "rev2";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -17,16 +17,12 @@ const BUILD_REVISION: &str = "rev1";
 /// - `release_name(None, false)`    → `occt-8_0_1_rev1`                              (GitHub Release タグ)
 /// - `release_name(Some(t), false)` → `occt-8_0_1_rev1-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
 /// - `release_name(Some(t), true)`  → `occt-8_0_1_rev1-wasm32_unknown_unknown-cadrum-0_8_13` (FFI tarball)
-fn release_name(target: Option<&str>, has_version: bool) -> String {
+fn release_name(target: Option<&str>) -> String {
 	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
 	let mut name = format!("occt-{}_{}", occt, BUILD_REVISION);
 	if let Some(target) = target {
 		name.push('-');
 		name.push_str(&target.replace('-', "_"));
-	}
-	if has_version {
-		name.push_str("-cadrum-");
-		name.push_str(&env!("CARGO_PKG_VERSION").replace('.', "_"));
 	}
 	name
 }
@@ -52,9 +48,10 @@ fn main() {
 				p
 			}
 		})
-		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target), false)));
+		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target))));
 
-	let [occt_include, occt_lib_dir] = resolve_occt(&effective_root, &target);
+	let occt = resolve_occt(&effective_root, &target);
+	let [occt_include, occt_lib] = [&occt[0], &occt[1]];
 
 	// Prebuilt tarball 作成時のみ host toolchain runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
 	// gate を切らないと source user 全員のホストランタイムが静的取り込みされてしまう。
@@ -64,18 +61,18 @@ fn main() {
 	#[cfg(feature = "source")]
 	if env::var("CADRUM_BUNDLE_RUNTIME").is_ok() {
 		if target.ends_with("windows-gnu") {
-			bundle_runtime_libs(&occt_lib_dir, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"], true);
+			bundle_runtime_libs(&occt_lib, &["libstdc++.a", "libgcc.a", "libgcc_eh.a"], true);
 		} else if target.starts_with("wasm32") {
 			// -fwasm-exceptions ビルドの OCCT/libc++ が要求する eh 版ランタイムを同梱し prebuilt を
 			// 自己完結化する（実測: 4 つ同梱すれば RUSTFLAGS 無しでリンク・実行できる）。
 			// c++abi/unwind/c は外部 -l が出ないので prefix=true で walkdir に明示リンクさせる。
 			// libc++ は link-cplusplus の `-l c++` が実名を要求するので prefix=false で実名のまま置く。
-			bundle_runtime_libs(&occt_lib_dir, &["libc++abi.a", "libunwind.a", "libc.a"], true);
-			bundle_runtime_libs(&occt_lib_dir, &["libc++.a"], false);
+			bundle_runtime_libs(&occt_lib, &["libc++abi.a", "libunwind.a", "libc.a"], true);
+			bundle_runtime_libs(&occt_lib, &["libc++.a"], false);
 		}
 	}
 
-	link_occt_libraries(&occt_include, &occt_lib_dir, &target);
+	link_occt_libraries(&occt_include, &occt_lib, &target);
 }
 
 /// Derive the cargo target directory from `OUT_DIR`.
@@ -98,10 +95,10 @@ fn cargo_target_dir(target: &str) -> PathBuf {
 ///   1. Cache hit → use it
 ///   2. Cache miss + `source` → build from upstream sources
 ///   3. Cache miss otherwise → download prebuilt tarball
-fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
+fn resolve_occt(effective_root: &Path, target: &str) -> Vec<PathBuf> {
 	println!("cargo:rerun-if-changed={}", effective_root.display());
 
-	match find_occt_dirs(effective_root) {
+	match find_occt_whitelist(effective_root) {
 		Some(dirs) => return dirs,
 		None => {
 			#[cfg(feature = "source")]
@@ -129,13 +126,14 @@ fn resolve_occt(effective_root: &Path, target: &str) -> [PathBuf; 2] {
 	}
 }
 
-/// Probe `occt_root` for include and lib directories.
-/// Returns `Some([include_dir, lib_dir])` if both exist, `None` otherwise.
-fn find_occt_dirs(occt_root: &Path) -> Option<[PathBuf; 2]> {
+fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>> {
 	let pick = |cands: &[PathBuf]| cands.iter().find(|p| p.exists()).cloned();
-	let inc = pick(&[occt_root.join("include").join("opencascade"), occt_root.join("inc"), occt_root.join("include")])?;
-	let lib = pick(&[occt_root.join("lib"), occt_root.join("win64").join("gcc").join("lib"), occt_root.join("win64").join("clang").join("lib"), occt_root.join("win64").join("vc14").join("lib")])?;
-	Some([inc, lib])
+	// LICENSE_LGPL_21.txt / OCCT_LGPL_EXCEPTION.txt live at the install root on the
+	// Windows CMake layout, but under share/doc/opencascade on the Unix layout used by
+	// our Linux/wasm cross builds (OCCT CMakeLists.txt INSTALL_DIR_DOC).
+	let contains = |parents: &[PathBuf], prefx: &str| -> Option<PathBuf> { parents.iter().find_map(|parent| std::fs::read_dir(parent).ok()?.filter_map(Result::ok).find_map(|e| e.file_name().to_string_lossy().contains(prefx).then_some(e.path()))) };
+	let doc_dir = occt_root.join("share").join("doc").join("opencascade");
+	Some([pick(&[occt_root.join("include").join("opencascade"), occt_root.join("inc"), occt_root.join("include")])?, pick(&[occt_root.join("lib"), occt_root.join("win64").join("gcc").join("lib"), occt_root.join("win64").join("clang").join("lib"), occt_root.join("win64").join("vc14").join("lib")])?, contains(&[occt_root.to_path_buf()], "OCCT")?, contains(&[occt_root.to_path_buf(), doc_dir.clone()], "LICENSE")?, contains(&[occt_root.to_path_buf(), doc_dir], "EXCEPTION")?].to_vec())
 }
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
@@ -226,18 +224,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	for name in env::vars().filter_map(|kv| kv.0.strip_prefix("CARGO_FEATURE_").map(str::to_owned)) {
 		build.define(&format!("FEATURE_{name}"), None);
 	}
-
-	// Name the FFI archive after `release_name(target, true)` so the produced
-	// `lib<release_name>.a` is uniquely identifiable in the target dir (the makefile
-	// `cadrum` recipe locates it for the GitHub Release upload) and shares one
-	// naming authority with the download URL. cc auto-emits the matching
-	// `rustc-link-lib=static=<name>`, so local linking stays consistent.
-	build.compile(&release_name(Some(target), true));
-
-	// wasm: the `wasi_snapshot_preview1` / `env` imports dragged in by libc++ static
-	// init and OCCT are neutralized by no-op shims in `src/wasi_stub.rs` (anchored by the
-	// consumer's wasm init via `__anchor_wasi_stub`), so no separate C stub / `+whole-archive` link is needed here.
-
+	build.compile(&release_name(Some(target)));
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=src/ffi.h");
 	println!("cargo:rerun-if-changed=src/ffi.cpp");
@@ -246,10 +233,10 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 /// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.
 /// Paired with `occt_from_source` (selected by the `source` feature) in `resolve_occt`.
 #[cfg(not(feature = "source"))]
-fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<[PathBuf; 2]> {
-	let top_name = release_name(Some(target), false);
+fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf>> {
+	let top_name = release_name(Some(target));
 	let tarball_name = format!("{}.tar.gz", top_name);
-	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None, false), tarball_name));
+	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None), tarball_name));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
 
@@ -275,7 +262,7 @@ fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<[PathBuf; 2
 		}
 	}
 
-	find_occt_dirs(effective_root)
+	find_occt_whitelist(effective_root)
 }
 
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
@@ -340,13 +327,13 @@ fn bundle_runtime_libs(occt_lib_dir: &Path, libs: &[&str], prefix: bool) {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "source")]
 mod source {
-	use super::{download_and_extract_tar_gz, find_occt_dirs, OCCT_VERSION, OCC_LIBS};
+	use super::{download_and_extract_tar_gz, find_occt_whitelist, OCCT_VERSION, OCC_LIBS};
 	use std::env;
 	use std::path::{Path, PathBuf};
 
 	/// Provide OCCT into `effective_root`: download source, patch, build with CMake, paired with `occt_from_prebuilt` (selected by the `source` feature) in `resolve_occt`.
-	pub fn occt_from_source(effective_root: &Path) -> Option<[PathBuf; 2]> {
-		if let Some(dirs) = find_occt_dirs(effective_root) {
+	pub fn occt_from_source(effective_root: &Path) -> Option<Vec<PathBuf>> {
+		if let Some(dirs) = find_occt_whitelist(effective_root) {
 			return Some(dirs);
 		}
 
@@ -431,28 +418,31 @@ mod source {
 			cfg.cxxflag(s);
 		});
 
-		let built = cfg.build();
+		let occt_whitelist: Vec<PathBuf> = {
+			let built = cfg.build();
+			eprintln!("OCCT built at: {}", built.display());
+			find_occt_whitelist(effective_root)?
+		};
 
-		eprintln!("OCCT built at: {}", built.display());
-
-		// tarball を slim 化: cadrum は include/lib しか使わない。share/(doc・resource) と
-		// bin/(OCCT スクリプト) を削除。OCCT-8_0_1/(改変ソース) は LGPL 2.1 §2 のため下で残す。
-		for d in ["share", "bin"] {
-			let _ = std::fs::remove_dir_all(effective_root.join(d));
-		}
-
-		if let Some([_include_dir, lib_dir]) = find_occt_dirs(effective_root) {
-			for child in walkdir::WalkDir::new(&lib_dir).min_depth(1).into_iter().flatten() {
-				let stem = child.path().file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-				if !OCC_LIBS.iter().any(|lib| stem.ends_with(lib)) {
-					if child.file_type().is_file() {
-						let _ = std::fs::remove_file(child.path());
+		fn prune_except(dir: &Path, whitelist: &[PathBuf], is_white: &dyn Fn(&Path) -> bool) -> std::io::Result<()> {
+			for p in std::fs::read_dir(dir)?.filter_map(Result::ok).map(|v| v.path()) {
+				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w) || w.starts_with(&p)) || is_white(&p);
+				if is_whitelisted && p.is_dir() {
+					prune_except(&p, whitelist, is_white)?;
+				} else if !is_whitelisted {
+					if p.is_dir() {
+						std::fs::remove_dir_all(&p)?;
 					} else {
-						let _ = std::fs::remove_dir_all(child.path());
+						std::fs::remove_file(&p)?;
 					}
 				}
 			}
+			Ok(())
 		}
+		// dir 以下を再帰的に走査し、whitelist以外を削除
+		prune_except(&effective_root, &occt_whitelist, &|_| false).unwrap_or_default();
+		// lib/ 以下でリンクしないものを削除。whitelist に含む lib のみをホワイトリストとして残す。
+		prune_except(&occt_whitelist[1], &[], &|p| OCC_LIBS.iter().any(|lib| p.file_stem().unwrap_or_default().to_string_lossy().ends_with(lib))).unwrap_or_default();
 		// LGPL 2.1 §2: keep only patched files; remove everything else.
 		std::fs::remove_dir_all(&source_dir).expect("failed to clear OCCT source tree");
 		for (path, contents) in &patches {
@@ -460,7 +450,7 @@ mod source {
 			std::fs::create_dir_all(path.parent().unwrap()).expect("failed to create patched source dir");
 			std::fs::write(&path, contents).expect("patched source write failed");
 		}
-		find_occt_dirs(effective_root)
+		Some(occt_whitelist)
 	}
 
 	/// unified diff 群を `source_dir` 下のソースに順に当て、(source_dir 相対パス, 適用後の内容)

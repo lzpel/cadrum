@@ -33,15 +33,6 @@ occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
 	# pipefail is required so tee's exit code does not mask a cargo build failure
 	bash -c "set -o pipefail && CADRUM_BUNDLE_RUNTIME=1 cargo build --example 01_primitives --release --features source 2>&1 | tee out/log.txt"
 	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
-cadrum: generate # output out/libocct-<rev>-<target>-cadrum-<version>.a (wrapper compiled against the RELEASED prebuilt OCCT)
-	# cargo clean wipes any source-built OCCT cache (from `make occt`) so build.rs is
-	# forced down the prebuilt path: it downloads the RELEASED prebuilt OCCT and compiles
-	# the wrapper against exactly that. --release without --features source selects the
-	# prebuilt path; if that target's prebuilt is not released yet the download fails and
-	# so does this recipe -- never silently build/stage an archive against a missing/stale OCCT.
-	cargo clean
-	cargo build --example 01_primitives --release
-	find $(or $(CARGO_TARGET_DIR),target) -name 'libocct-*-cadrum*.a' -exec cp {} out/ \;
 sample-wasm: # write out the throwaway cdylib (CHECK_WASM_* at the end of this file) and build it for wasm. Must run inside the cross image: only it has the legacy-EH wasi-sysroot the prebuilt was built against. --target-dir points at cadrum's own target/ (overriding the container's CARGO_TARGET_DIR), which both puts the .wasm where the host can see it and lets build.rs find the extracted prebuilt OCCT at its default location -- no OCCT_ROOT needed.
 	mkdir -p target/check-wasm/src
 	printf '%s\n' "$$CHECK_WASM_CARGO_TOML" > target/check-wasm/Cargo.toml
