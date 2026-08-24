@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_1";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev1";
+const BUILD_REVISION: &str = "rev2";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -51,7 +51,7 @@ fn main() {
 		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target))));
 
 	let occt = resolve_occt(&effective_root, &target);
-	let [occt_include, occt_lib]= [&occt[0], &occt[1]];
+	let [occt_include, occt_lib] = [&occt[0], &occt[1]];
 
 	// Prebuilt tarball 作成時のみ host toolchain runtime を OCCT lib dir に同梱 (#89 / #147 対策)。
 	// gate を切らないと source user 全員のホストランタイムが静的取り込みされてしまう。
@@ -126,27 +126,14 @@ fn resolve_occt(effective_root: &Path, target: &str) -> Vec<PathBuf> {
 	}
 }
 
-fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>>{
+fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>> {
 	let pick = |cands: &[PathBuf]| cands.iter().find(|p| p.exists()).cloned();
-	let contains=|parent: &Path, prefx: &str| -> Option<PathBuf>{
-		std::fs::read_dir(parent).ok()?.filter_map(Result::ok).find_map(|e| e.file_name().to_string_lossy().contains(prefx).then_some(e.path()))
-    };
-	Some([
-		pick(&[
-			occt_root.join("include").join("opencascade"),
-			occt_root.join("inc"),
-			occt_root.join("include")
-		])?,
-		pick(&[
-			occt_root.join("lib"),
-			occt_root.join("win64").join("gcc").join("lib"),
-			occt_root.join("win64").join("clang").join("lib"),
-			occt_root.join("win64").join("vc14").join("lib")
-		])?,
-		contains(&occt_root, "OCCT")?,
-		contains(&occt_root, "LICENSE")?,
-		contains(&occt_root, "EXCEPTION")?,
-	].to_vec())
+	// LICENSE_LGPL_21.txt / OCCT_LGPL_EXCEPTION.txt live at the install root on the
+	// Windows CMake layout, but under share/doc/opencascade on the Unix layout used by
+	// our Linux/wasm cross builds (OCCT CMakeLists.txt INSTALL_DIR_DOC).
+	let contains = |parents: &[PathBuf], prefx: &str| -> Option<PathBuf> { parents.iter().find_map(|parent| std::fs::read_dir(parent).ok()?.filter_map(Result::ok).find_map(|e| e.file_name().to_string_lossy().contains(prefx).then_some(e.path()))) };
+	let doc_dir = occt_root.join("share").join("doc").join("opencascade");
+	Some([pick(&[occt_root.join("include").join("opencascade"), occt_root.join("inc"), occt_root.join("include")])?, pick(&[occt_root.join("lib"), occt_root.join("win64").join("gcc").join("lib"), occt_root.join("win64").join("clang").join("lib"), occt_root.join("win64").join("vc14").join("lib")])?, contains(&[occt_root.to_path_buf()], "OCCT")?, contains(&[occt_root.to_path_buf(), doc_dir.clone()], "LICENSE")?, contains(&[occt_root.to_path_buf(), doc_dir], "EXCEPTION")?].to_vec())
 }
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
@@ -431,21 +418,15 @@ mod source {
 			cfg.cxxflag(s);
 		});
 
-		let occt_whitelist:Vec<PathBuf>={
-			let built=cfg.build();
+		let occt_whitelist: Vec<PathBuf> = {
+			let built = cfg.build();
 			eprintln!("OCCT built at: {}", built.display());
-			let wl = find_occt_whitelist(effective_root)?;
-			eprintln!("Whitelist entries ({}):", wl.len());
-			for (i, w) in wl.iter().enumerate() {
-				eprintln!("  [{}] {}", i, w.display());
-			}
-			wl
+			find_occt_whitelist(effective_root)?
 		};
 
 		fn prune_except(dir: &Path, whitelist: &[PathBuf], is_white: &dyn Fn(&Path) -> bool) -> std::io::Result<()> {
 			for p in std::fs::read_dir(dir)?.filter_map(Result::ok).map(|v| v.path()) {
-				// whitelist に含まれるか、または is_white(&p) が真なら残す
-				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w)) || is_white(&p);
+				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w) || w.starts_with(&p)) || is_white(&p);
 				if is_whitelisted && p.is_dir() {
 					prune_except(&p, whitelist, is_white)?;
 				} else if !is_whitelisted {
