@@ -1,3 +1,7 @@
+### Unreleased
+
+- #265 Publish dated cross-image tags and document --pull=always against stale-latest EH mixups
+
 ### 0.8.17
 
 - #263 Stream the OCCT download and make patch application idempotent
