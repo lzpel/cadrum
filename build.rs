@@ -439,8 +439,8 @@ mod source {
 
 		fn prune_except(dir: &Path, whitelist: &[PathBuf]) -> std::io::Result<()> {
 			for p in std::fs::read_dir(dir)?.filter_map(Result::ok).map(|v| v.path()) {
-				// p が whitelist のどれかと等しいか、またはwhitelist のどれかがp以下にあるか
-				let is_whitelisted = whitelist.iter().any(|w| w == &p || w.starts_with(&p));
+				// p が whitelist のどれかの下にあるか、または whitelist そのものであるか
+				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w));
 				if is_whitelisted && p.is_dir() {
 					prune_except(&p, whitelist)?;
 				} else if !is_whitelisted {
