@@ -442,12 +442,12 @@ mod source {
 			wl
 		};
 
-		fn prune_except(dir: &Path, whitelist: &[PathBuf]) -> std::io::Result<()> {
+		fn prune_except(dir: &Path, whitelist: &[PathBuf], is_white: &dyn Fn(&Path) -> bool) -> std::io::Result<()> {
 			for p in std::fs::read_dir(dir)?.filter_map(Result::ok).map(|v| v.path()) {
-				// p が whitelist のどれかの下にあるか、または whitelist そのものであるか
-				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w));
+				// whitelist に含まれるか、または is_white(&p) が真なら残す
+				let is_whitelisted = whitelist.iter().any(|w| w == &p || p.starts_with(w)) || is_white(&p);
 				if is_whitelisted && p.is_dir() {
-					prune_except(&p, whitelist)?;
+					prune_except(&p, whitelist, is_white)?;
 				} else if !is_whitelisted {
 					if p.is_dir() {
 						std::fs::remove_dir_all(&p)?;
@@ -459,20 +459,9 @@ mod source {
 			Ok(())
 		}
 		// dir 以下を再帰的に走査し、whitelist以外を削除
-		prune_except(&effective_root, &occt_whitelist).unwrap_or_default();
+		prune_except(&effective_root, &occt_whitelist, &|_| false).unwrap_or_default();
 		// lib/ 以下でリンクしないものを削除。whitelist に含む lib のみをホワイトリストとして残す。
-		let lib_whitelist: Vec<PathBuf> = OCC_LIBS.iter()
-			.filter_map(|lib| {
-				std::fs::read_dir(&occt_whitelist[1]).ok()?
-					.filter_map(Result::ok)
-					.find_map(|e| {
-						let p = e.path();
-						p.file_stem().and_then(|s| s.to_str()).map(|s| s.ends_with(lib)).unwrap_or(false)
-							.then_some(p)
-					})
-			})
-			.collect();
-		prune_except(&occt_whitelist[1], &lib_whitelist).unwrap_or_default();
+		prune_except(&occt_whitelist[1], &[], &|p| OCC_LIBS.iter().any(|lib| p.file_stem().unwrap_or_default().to_string_lossy().ends_with(lib))).unwrap_or_default();
 		// LGPL 2.1 §2: keep only patched files; remove everything else.
 		std::fs::remove_dir_all(&source_dir).expect("failed to clear OCCT source tree");
 		for (path, contents) in &patches {
