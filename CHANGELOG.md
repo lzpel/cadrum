@@ -1,345 +1,98 @@
-# Changelog
-
-All notable changes to `cadrum` will be documented in this file.
-
-This document is written according to the [Keep a Changelog][kac] style.
-
-1. [Version 0](#version-0)
-	1. [Unreleased](#unreleased)
-	1. [0.8.10](#0810)
-	1. [0.8.0](#080)
-	1. [0.7.6](#076)
-	1. [0.7.5](#075)
-	1. [0.7.2](#072)
-	1. [0.6.0](#060)
-	1. [0.5.1](#051)
-
-## Version 0
-
-`cadrum` is in the `0.x` series. Minor-version bumps may include breaking
-changes until `1.0`.
-
 ### 0.8.17
 
-- Add patches dir (#262)
-- Make downloading and extracting streamingly (#263)
-- Bump OCCT to 8.0.1 (#261)
-- Stop leaking (#260)
-- Build linux-gnu prebuilts with the manylinux base gcc, drop the runtime bundle (#258)
-- Remove the sandbox-wasm experiment directory (#256)
-- Inline the streambuf bridges into ffi.cpp and slim ffi.h (#255)
-- Define FEATURE_<NAME> for every enabled cargo feature (#254)
+- #263 Stream the OCCT download and make patch application idempotent
+- #262 Vendor upstream-bound OCCT fixes as patch files
+- #261 Bump OCCT to 8.0.1
+- #260 Stop leaking STEPControl_Reader in read_step_stream
+- #258 Build linux-gnu prebuilts with the manylinux base gcc, drop the runtime bundle
+- #256 Remove the sandbox-wasm experiment directory
+- #255 Inline the streambuf bridges into ffi.cpp and slim ffi.h
+- #254 Define FEATURE_<NAME> for every enabled cargo feature
 
 ### 0.8.16
 
-#### Removed
-
-- **BRep text (ASCII `BRepTools`) I/O.** Only `BinTools` binary remains; an ASCII
-  `.brep` returns `Error::BrepReadFailed`. [Why](notes/20260714-BRep_textを捨てて前置マジックに移行.md). (#247)
-- **`Mesh.uvs`.** Nothing ever read it. (#243)
-- **glTF `KHR_materials_unlit`.** The material is plain metallic-roughness now —
-  metallic 0 / roughness 1, the Lambertian shading SVG and PNG already use. (#244)
-
-#### Breaking
-
-- **`Solid::read_brep_binary` / `write_brep_binary` are now `read_brep` /
-  `write_brep`.** With text gone there is only one BRep. (#247)
-- **The BRep colour trailer is now `[payload][b"CDCL"][u32 count][entries]`**,
-  found where the payload ended instead of by scanning the last four bytes, and
-  keyed by solid as well as by face. Older files load with their colours dropped. (#247)
-- **Renamed the `source-build` feature to `source`.** (#182)
-- **OCCT bumped to 8.0.1** (patch release; was 8.0.0).
-
-#### Changes
-
-- **`Mesh.normals`.** One unit outward normal per vertex, evaluated on the B-rep
-  surface rather than averaged from the triangles, and emitted as glTF `NORMAL`.
-  Faces never share vertices, so each is its own smoothing group. (#243, #244)
-- **STEP reads and writes a solid's own colour**, keyed by the solid's id rather
-  than flattened onto its faces. (#247)
-- **New prebuilt artifact naming scheme.** `occt-<version>_<rev>-<target>`, e.g.
-  `occt-8_0_0_rev2-wasm32_unknown_unknown.tar.gz` under tag `occt-8_0_0_rev2`;
-  `BUILD_REVISION` is now `rev1`. (#203)
-- **Linux prebuilts are built with the manylinux base gcc (~8.5), not the
-  gcc-toolset.** The tarball then references only old libstdc++/libgcc symbols,
-  which resolve against any newer consumer runtime (Amazon Linux 2023 / gcc 11.4.1
-  and up) via the system libstdc++ — replacing the bundled `libstdc++.a` /
-  `libgcc.a`. Same `__cxa_call_terminate` fix as the bundle, without shipping a
-  static C++ runtime. windows-gnu keeps its bundle (no stable Windows system
-  libstdc++). (#147)
-- **wasm exception-handling uses the legacy encoding.** OCCT and the cxx wrapper
-  build with `-mllvm -wasm-use-legacy-eh=true` against a self-built *legacy* eh
-  sysroot (the released wasi-sdk one is exnref-only), dropping `--experimental-wasm-exnref`. (#199, #233)
+- #247 Read and write STEP's solid-level colour keyed by the solid's id, drop BRep text I/O, rename read_brep_binary/write_brep_binary to read_brep/write_brep, and rework the BRep colour trailer
+- #244 Emit NORMAL in glTF and drop KHR_materials_unlit
+- #243 Give Mesh per-vertex surface normals, drop the unused uvs
+- #233 Roll back the wasm exception model from exnref to the legacy encoding
+- #203 Adopt the occt-<version>_<rev>-<target> prebuilt artifact naming scheme
+- #199 Make the wasm prebuilt self-contained, dropping the wasi-sdk dependency
+- #182 Rename the source-build feature to source
+- #147 Build Linux prebuilts with the manylinux base gcc so they link on older-GCC distros without a bundled C++ runtime
+- OCCT bumped to 8.0.1
 
 ### 0.8.10
 
-#### Notes
-
-Aggregates changes since 0.8.0. Headline: cadrum runs in the browser, and the
-prebuilt OCCT tarballs are much smaller.
-
-#### Changes
-
-- **WebAssembly support (`wasm32-unknown-unknown`).** A static OCCT 8.0.0 build
-  is now published for wasm, so models can be built directly in the browser. (#187)
-- **Smaller prebuilt tarballs.** The prebuilt OCCT is slimmed to just the
-  include / lib that cadrum links, dropping unused toolkits and resources. (#193)
+- #193 Slim the prebuilt OCCT to just the include and lib that cadrum links
+- #187 Build OCCT for wasm32-unknown-unknown so models can be built in the browser
+- Aggregates changes since 0.8.0
 
 ### 0.8.0
 
-#### Breaking
-
-- **Boolean API を単体×単体 + FFI 直通に限定。** OCCT の General BOP
-  (multi-args × multi-tools) は集合論的な `op(∪args, ∪tools)` を実装して
-  おらず、グループ内自己交差は未定義/破綻する (tools 自己交差で体積が
-  物理的に意味を失い、multi-tools intersect は連結結果でなく per-pair
-  piece を返す)。詳細は `notes/20260514-boolean演算は単体x単体のみ公開する方針.md`。
-  - **削除**: `Solid::union/subtract/intersect`、`Vec<Solid>::union/...`、
-    `Compound::union/subtract/intersect`。
-  - **追加**: `Solid::boolean_union/boolean_subtract/boolean_intersect`
-    (multi-args × multi-tools 通る唯一のパス、FFI 直通)。
-  - **追加**: `&Solid: Add/Sub/Mul` 演算子 (戻り値 `Result<Solid, Error>`)。
-    結果 Solid 数が 1 でないとき `Error::OneFailed(n)` を返す。
-  - **追加**: `Result<Solid, Error>: Sum<&Solid> + Product<&Solid>`。
-    `iter.sum::<Result<Solid, _>>()` で union 畳み込み、`product` で
-    intersect 畳み込み。中間は `Vec<Solid>` を保持し、終端でだけ
-    `exactly_one` 判定するため、途中で多ピースになるが最終的に 1 個に
-    連結するケース (オリンピックの輪を out-of-order で fold する等) も
-    正常に成功する。
-  - **追加**: `Error::OneFailed(usize)`。
-  - `SolidStruct` の HRTB で `for<'a> &'a Self: Add + Sub + Mul` と
-    `for<'a> Result<Self, Error>: Sum<&'a Self> + Product<&'a Self>` を
-    強制 → backend が boolean を実装する契約に演算子が含まれる。
-
-  **Migration**:
-
-  ```rust
-  // 旧 API → 新 API
-  a.union(&b)            → Solid::boolean_union([&a], [&b])      // または (&a + &b)?
-  a.subtract(&[hole])    → Solid::boolean_subtract([&a], [&hole]) // または (&a - &hole)?
-  vec.union(&tools)      → Solid::boolean_union(&vec, &tools)
-  // 複数を 1 個に畳む
-  vec.iter().sum::<Result<Solid, _>>()?
-  ```
-
-#### Changes
-
-- **OCCT bumped to 8.0.0** (final release; was 8.0.0-beta1). No source
-  changes required — APIs deprecated/removed in V8_0_0 (`Standard_Mutex`,
-  OCCT math wrappers like `::Sin` / `::Cos`, `NCollection_BasePointerVector`,
-  `TColGeom`, `PLib_Base`, `BRepMesh_PluginMacro`) are unused by cadrum's
-  `cpp/wrapper.cpp`. The toolkit list (`TKernel`, `TKMath`, ..., `TKDESTEP`)
-  is unchanged.
-- `tests/subtract.rs` → `tests/boolean_subtract.rs`、`tests/union.rs` →
-  `tests/boolean_union.rs` にリネーム (boolean 系の検証テストを命名で
-  集約)。
-
-#### Fixes
-
-- `examples/codegen.rs`: trait header の supertrait 抽出が `where` 句を
-  含めて誤読していた問題を修正。HRTB を含む where 句 (`+` を含む
-  trait bound) があると、`Compound` 等の supertrait が `"Compound where
-  for<'a> ..."` という文字列にぶら下がって認識されず、`impl Solid` への
-  forwarder 生成が大量に欠落していた。` where ` 以降を切り落とすように
-  修正。
+- Restrict the boolean API to Solid::boolean_union/boolean_subtract/boolean_intersect, removing Solid, Vec<Solid> and Compound union/subtract/intersect (see notes/20260514-boolean演算は単体x単体のみ公開する方針.md)
+- Add Add/Sub/Mul operators on &Solid and Sum/Product folding on Result<Solid, Error>, with new Error::OneFailed(usize)
+- OCCT bumped to 8.0.0 final; no source changes required
+- Rename tests/subtract.rs and tests/union.rs to tests/boolean_subtract.rs and tests/boolean_union.rs
+- Fix supertrait extraction in examples/codegen.rs misreading where clauses with HRTBs
 
 ### 0.7.6
 
-#### Notes
-
-Documentation-only release. No public API changes.
-
-The README is now the single source of truth for both GitHub and the
-docs.rs landing page, mirroring the [bitvec][bitvec-docs] convention.
-
-#### Changes
-
-- `src/lib.rs` reduced to `#![doc = include_str!("../README.md")]`. The
-  crate-root prose now lives in `README.md`.
-- `examples/markdown.rs` emits ` ```rust,no_run ` fences for example
-  programs so the `include_str!`'d README does not turn each example
-  into a slow doctest.
-- README's top section centered with `<div align="center">`, badges and
-  links converted to reference-style definitions, new `docs.rs`
-  build-status badge.
-- `CODE_OF_CONDUCT.md` (Rust CoC) and `CONTRIBUTING.md` added at the repo
-  root.
-- `CHANGELOG.md` extracted from the previous `## Release Notes` section
-  of the README.
-- `examples/codegen.rs` region indent normalized to tabs based on brace
-  depth so regenerated `impl` blocks honor the project's tab-indent
-  convention.
+- Reduce src/lib.rs to #![doc = include_str!("../README.md")], making the README the single crate-root doc
+- Emit rust,no_run fences in examples/markdown.rs so README examples are not slow doctests
+- Center the README top section and add a docs.rs build-status badge
+- Add CODE_OF_CONDUCT.md and CONTRIBUTING.md at the repo root
+- Extract CHANGELOG.md from the README's Release Notes section
+- Normalize examples/codegen.rs region indent to tabs by brace depth
+- Documentation-only release with no public API changes
 
 ### 0.7.5
 
-#### Notes
-
-Aggregated changes since 0.7.2 (no separate entries were written for
-0.7.3 / 0.7.4).
-
-#### Changes
-
-- **OCCT bumped to 8.0.0-beta1** ahead of the May 7 final release.
-  Inherits upstream perf gains (STEP read up to ~75% faster vs 7.7) and
-  the Shape-Healing / `BRepFill_PipeShell` crash fixes.
-- **Linux prebuilts are now self-contained** (#147): `libstdc++.a` /
-  `libgcc.a` / `libgcc_eh.a` are bundled into the tarball, so binaries
-  linked against the prebuilt no longer depend on the host distro's
-  libstdc++ runtime — fixes link-time `__cxa_call_terminate` undefined
-  errors on Amazon Linux 2023 and other distros with older default GCC.
-  Same self-contained guarantee that mingw already had since 0.7.2 (#89).
-- **`x86_64-pc-windows-gnullvm` prebuilt dropped.** The prior "support"
-  was a relabeled `windows-gnu` artifact, not a real llvm-mingw build.
-  Use `--features source-build` or switch to the `windows-gnu` toolchain.
-- **I/O methods relocated to `Solid` impl** (#145):
-  `Solid::write_step / write_brep_binary / write_brep_text / read_step / read_brep`.
-  The free-standing `cadrum::write_*` re-exports are gone.
-  **Breaking vs 0.7.4**: `cadrum::write_step(...)` →
-  `Solid::write_step(...)`, etc.
-- **`Edge::id()` / `Face::id()` / `Solid::id()`** (#142, #143):
-  TShape-pointer-based identity exposed as a stable `u64` for cross-shape
-  correspondence (e.g. before/after boolean ops). Replaces the
-  underscored `tshape_id`. **Breaking** for callers that named the old
-  method.
-- **`Face::iter_edge() -> impl Iterator<Item = &Edge>`** (#143):
-  face-edge incidence query without going through the Solid boundary
-  explorer.
-- **`Face::project(point)`** (#142): closest-point + normal query on a
-  face via `BRepExtrema_DistShapeShape`. Sibling to the existing
-  `Edge::project` / `Wire::project`.
-- **C¹-periodic B-spline seam fix** (#120):
-  `Solid::bspline(_, periodic=true)` no longer emits a discontinuous
-  U=0 seam — surfaces that previously showed dents at the seam now
-  interpolate smoothly. Regression test in `tests/bspline.rs`.
+- #147 Bundle libstdc++.a, libgcc.a and libgcc_eh.a into the Linux prebuilt so linked binaries no longer depend on the host libstdc++
+- #145 Move the I/O methods onto Solid: write_step, write_brep_binary, write_brep_text, read_step, read_brep
+- #143 Add Edge::id and Face::iter_edge for face-edge incidence
+- #142 Add Face::project and rename tshape_id to Edge/Face/Solid::id
+- #120 Fix the C¹-discontinuous U=0 seam in periodic Solid::bspline
+- OCCT bumped to 8.0.0-beta1
+- Drop the relabeled x86_64-pc-windows-gnullvm prebuilt
+- Aggregated changes since 0.7.2
 
 ### 0.7.2
 
-#### Notes
-
-Aggregated changes since 0.6.0 (no separate entries were written for
-0.6.1 – 0.7.1).
-
-#### Changes
-
-- **`Solid::shell(thickness, open_faces)`** — hollow a solid via
-  `BRepOffsetAPI_MakeThickSolid`. Empty `open_faces` produces a sealed
-  internal void (cavity). Example: `examples/08_shell.rs`.
-- **`Solid::fillet_edges(radius, edges)` /
-  `Solid::chamfer_edges(distance, edges)`** — uniform fillet / chamfer
-  on selected edges via `BRepFilletAPI_MakeFillet` / `MakeChamfer`.
-- **`Solid::area()` / `Solid::center()` / `Solid::inertia()`** — surface
-  area, center of mass, inertia tensor. Replaces the previous
-  `shell_count` query.
-- **`Wire::project(point)`** — closest-point + tangent query on
-  `Edge` / `Vec<Edge>` / `[Edge; N]` via `GeomAPI_ProjectPointOnCurve`.
-- **`Edge::end_point()` / `Edge::end_tangent()`** — added as siblings
-  to the existing `start_*` accessors.
-- **`Solid::iter_edge()` / `Solid::iter_face()`** — yield `&Edge` /
-  `&Face` references through internal `OnceLock` caches; first call
-  populates, subsequent calls are free.
-- **`Solid::history` + `Solid::iter_history()`** — face-derivation pairs
-  `[post_id, src_id]` populated by boolean ops and `clean()`. Lets
-  callers select result faces by their original input membership.
-- **Multi-color STEP read recovery (#129).** SolveSpace-style multi-color
-  STEP files (which duplicate `EDGE_CURVE` entities at face boundaries
-  instead of sharing them) used to land as `Compound{Shell×N}` with zero
-  solids, breaking every downstream op. A `BRepBuilderAPI_Sewing`
-  post-process now stitches coincident edges, promotes the result to one
-  valid `Solid`, and remaps the colormap. The same STEP file is
-  currently unfixable in CadQuery — see
-  `sandbox-cadquery/read_step_fillet.py`.
-- **`Mesh::write_svg` / `Mesh::to_svg` gained `up_dir: DVec3`** between
-  `view: DVec3` and `hidden_lines: bool` (#127). **Breaking vs 0.7.0**:
-  pass `DVec3::Z` to reproduce earlier output.
-- **`Transform` trait no longer in the public prelude** (#91) — its
-  methods reach you via `Compound` / `Wire` forwarders, so
-  `use cadrum::{Compound, Wire};` is enough for every transform call.
-  **Breaking vs 0.7.0** for code that imported `Transform` explicitly.
-- **`*_with_metadata` boolean variants removed** (#130) — the same
-  information is now available via `Solid::iter_history()` on the
-  result solid. **Breaking** for callers that consumed the metadata
-  tuple.
-- **glam types re-exported from the crate root** (#94, #95) — downstream
-  code no longer needs its own `glam` dependency for `DVec3` etc.
-- **OCCT `Statistics on Transfer` stdout chatter silenced** on every
-  STEP read / write (#97).
-- **mingw prebuilt is now self-contained** (#89): bundles the
-  container's `libstdc++.a` / `libgcc.a`, so user-built
-  `x86_64-pc-windows-gnu` executables do not depend on MinGW runtime
-  DLLs at link time.
-- **docs.rs build restored** (#107, #111): dropped the unsupported
-  `x86_64-pc-windows-msvc` target and reordered `build.rs` so trait
-  delegation generation runs before the DOCS_RS early-return.
-- New example `08_shell.rs` (hollow torus carved by halfspace-cut
-  openings); old `08_bspline.rs` renumbered to `09_bspline.rs`. Top
-  README image updated to the alphastell stellarator render (#125).
+- #130 Drop the *_with_metadata boolean variants in favor of Solid::iter_history
+- #129 Recover SolveSpace-style multi-color STEP files that read as zero solids by sewing duplicated edges
+- #127 Add up_dir parameter to Mesh::write_svg and Mesh::to_svg
+- #125 Update the top README image to the alphastell stellarator render
+- #111 Fix the docs.rs build by generating trait delegation before the DOCS_RS early-return
+- #107 Drop the unsupported x86_64-pc-windows-msvc target from docs.rs
+- #97 Silence OCCT's Statistics on Transfer stdout output on STEP read and write
+- #94 #95 Re-export glam types from the crate root so downstream code needs no glam dependency
+- #91 Hide the Transform trait behind Compound and Wire forwarders
+- #89 Bundle libstdc++.a and libgcc.a into the mingw prebuilt so windows-gnu executables need no MinGW runtime DLLs
+- Add Solid::shell(thickness, open_faces) via BRepOffsetAPI_MakeThickSolid
+- Add Solid::fillet_edges and Solid::chamfer_edges for uniform fillet and chamfer on selected edges
+- Add Solid::area, Solid::center and Solid::inertia, replacing shell_count
+- Add Wire::project closest-point and tangent query on edges
+- Add Edge::end_point and Edge::end_tangent
+- Add Solid::iter_edge and Solid::iter_face backed by OnceLock caches
+- Add Solid::history and Solid::iter_history face-derivation pairs from boolean ops and clean()
+- Add example 08_shell.rs and renumber 08_bspline.rs to 09_bspline.rs
+- Aggregated changes since 0.6.0
 
 ### 0.6.0
 
-#### Changes
-
-- **`source-build` feature now gates `cmake`/`walkdir` as optional
-  build-dependencies.** Default `cargo build` no longer compiles them,
-  significantly reducing build time on prebuilt targets. Users on
-  unsupported targets must enable `--features source-build` (behavior
-  unchanged — previously these targets also failed, just with a
-  download error instead of a clear message).
-- **`x86_64-pc-windows-gnu` prebuilt added** via Docker
-  cross-compilation with Debian mingw-w64 (posix thread model). All
-  MinGW runtime DLLs are statically absorbed — the resulting exe
-  depends only on Windows OS DLLs.
-- **LGPL 2.1 §2 compliance:** source builds now retain only the ~9
-  patched OCCT source files alongside the `.a` libraries, removing the
-  unmodified bulk (~88 MB of data/dox/tests). The patched files carry
-  timestamped headers per §2(a).
-- **`OCCT_ROOT` relative path handling fixed:** resolved via
-  `env::current_dir()` instead of the unreliable `CARGO_TARGET_DIR`
-  heuristic. `--target <triple>` flag now works correctly.
-- **`build.rs` restructured:** `resolve_occt` uses match chains with
-  `#[cfg]` for source-build vs prebuilt paths. Source-build code lives
-  in `#[cfg(feature = "source-build")] mod source`.
-  `patch_occt_sources` split into `walk_occt_sources` + `patch_or_none`
-  (side-effect-free).
-- **README simplified:** Build section moved after Usage with a
-  prebuilt target table + OS icons.
+- Gate cmake and walkdir behind the source-build feature as optional build-dependencies
+- Add the x86_64-pc-windows-gnu prebuilt via Docker cross-compilation with Debian mingw-w64, statically absorbing the MinGW runtime DLLs
+- Retain only the ~9 patched OCCT source files alongside the .a libraries for LGPL 2.1 §2 compliance
+- Resolve relative OCCT_ROOT via env::current_dir so the --target flag works
+- Restructure build.rs around resolve_occt with cfg-separated source-build code
+- Move the README build section after usage with a prebuilt target table
 
 ### 0.5.1
 
-#### Notes
-
-> 0.4.5 was published briefly but its version number was lower than the
-> already-published 0.5.0 (OCCT 7.9.3, older feature set), so
-> `cargo add cadrum` would silently pick up 0.5.0 instead of the newer
-> 0.4.5 code. Re-released as 0.5.1 with identical contents. Prefer
-> 0.5.1 over 0.4.5.
-
-#### Changes
-
-- **`Solid::bspline<const M, const N>(grid, periodic)`** — new
-  constructor: build a periodic B-spline solid from a 2D control-point
-  grid. V (cross-section) is always periodic; U (longitudinal) is
-  controlled by the `periodic` flag (torus when `true`, capped pipe
-  when `false`). Implemented via
-  `GeomAPI_PointsToBSplineSurface::Interpolate` over an augmented grid
-  plus `SetUPeriodic`/`SetVPeriodic`.
-- **`write_svg` / `Mesh::to_svg` now take `shading: bool`** — opt-in
-  Lambertian shading with head-on light. When `true`, triangles are
-  tinted by `0.5 + 0.5 * (normal · dir)` so curved/organic shapes read
-  clearly; `false` reproduces the pre-0.5.1 flat rendering. **Breaking
-  vs 0.5.0**: existing callers must add the flag (pass `false` to
-  preserve earlier output).
-- **`examples/08_bspline.rs`** rewritten: 2 field-period stellarator-like
-  torus with twisted + vertically undulating elliptic cross-sections,
-  exercising `Solid::bspline` and `shading=true`.
-- **`tests/bspline.rs`** added: verifies 180° point symmetry of the
-  stellarator shape via XZ/YZ half-space intersection (s1 ≈ s3,
-  s2 ≈ s4).
-- **`Error::BsplineFailed(String)`** new variant. **Breaking** for
-  downstream code that does exhaustive `match` on `Error`.
-- OCCT 8.0.0 deprecation warnings resolved in `make_bspline_edge` and
-  `make_bspline_solid` (`NCollection_HArray1<gp_Pnt>` via local `using`
-  alias to bypass the `Handle()` macro comma-splitting issue;
-  `NCollection_Array2<gp_Pnt>` directly).
-
-[bitvec-docs]: https://docs.rs/bitvec/latest/bitvec/
-[kac]: https://keepachangelog.com/
+- Re-release of 0.4.5, whose version number sorted below the already-published 0.5.0; prefer 0.5.1 over 0.4.5
+- Add Solid::bspline(grid, periodic) building a periodic B-spline solid from a 2D control-point grid
+- Add a shading flag to write_svg and Mesh::to_svg for opt-in Lambertian shading
+- Rewrite examples/08_bspline.rs as a 2 field-period stellarator-like torus
+- Add tests/bspline.rs verifying 180° point symmetry via half-space intersections
+- Add Error::BsplineFailed(String)
+- Resolve OCCT 8.0.0 deprecation warnings in make_bspline_edge and make_bspline_solid
