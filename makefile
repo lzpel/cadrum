@@ -23,8 +23,12 @@ publish: update publish-ready # publish to crates.io
 	# cross-wasm32-unknown-unknown step) so users can run
 	# `docker run ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build` without installing wasi-sdk.
 	# Requires a one-time `docker login ghcr.io -u lzpel` beforehand (token cached).
+	# Push a dated tag alongside latest: docker run silently reuses a stale local `latest`
+	# (a pre-#233 cache has an exnref sysroot -> mixed-EH module that engines reject).
 	docker tag cross-wasm32-unknown-unknown ghcr.io/lzpel/cross-wasm32-unknown-unknown:latest
+	docker tag cross-wasm32-unknown-unknown ghcr.io/lzpel/cross-wasm32-unknown-unknown:$$(date +%Y%m%d)
 	docker push ghcr.io/lzpel/cross-wasm32-unknown-unknown:latest
+	docker push ghcr.io/lzpel/cross-wasm32-unknown-unknown:$$(date +%Y%m%d)
 	# publish the crate sources to crates.io
 	cargo publish
 occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively

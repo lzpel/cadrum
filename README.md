@@ -77,9 +77,15 @@ We ship the wasi-sdk toolchain as a ready-to-use Docker image,
 — so you don't install wasi-sdk locally. Mount your project and build as usual:
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build --release
+docker run --rm --pull=always -v "$PWD":/work -w /work ghcr.io/lzpel/cross-wasm32-unknown-unknown cargo build --release
 # → target/wasm32-unknown-unknown/release/<your-crate>.wasm
 ```
+
+Keep `--pull=always`: without it docker silently reuses a locally cached `latest`,
+and an outdated image carries a wasm-EH sysroot that no longer matches the prebuilt
+OCCT — the linked module then mixes legacy and new EH instructions and every engine
+rejects it with `module uses a mix of legacy and new exception handling instructions`.
+Dated tags (e.g. `:20260824`) are also published if you need a pinned image.
 
 The image cross-compiles to `wasm32-unknown-unknown` by default; you get a `.wasm`
 from a binary or a `crate-type = ["cdylib"]` crate (a plain `lib` produces an `.rlib`).
