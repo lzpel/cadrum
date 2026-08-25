@@ -1,5 +1,6 @@
 ### 0.8.17
 
+- #268 Add solid_sweep tests for a closed periodic spine with an auxiliary guide
 - #267 Reorganize tests under a solid_* prefix and drop the integration test files
 - #263 Stream the OCCT download and make patch application idempotent
 - #262 Vendor upstream-bound OCCT fixes as patch files
