@@ -96,6 +96,10 @@ pub enum Error {
 	/// Invalid color string (unrecognized name or invalid hex format).
 	InvalidColor(String),
 
+	/// I/O failure from the caller's reader/writer, so `File::create(..)?`
+	/// composes inside a `Result<_, cadrum::Error>` function.
+	Io(std::io::Error),
+
 	/// Unknown error.
 	Unknown(String),
 }
@@ -127,9 +131,23 @@ impl std::fmt::Display for Error {
 			Error::StlWriteFailed => write!(f, "STL write failed"),
 			Error::GltfWriteFailed => write!(f, "glTF write failed"),
 			Error::InvalidColor(s) => write!(f, "Invalid color: \"{}\"", s),
+			Error::Io(error) => write!(f, "I/O error: {}", error),
 			Error::Unknown(msg) => write!(f, "Unknown error: {}", msg),
 		}
 	}
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Error::Io(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<std::io::Error> for Error {
+	fn from(error: std::io::Error) -> Self {
+		Error::Io(error)
+	}
+}
