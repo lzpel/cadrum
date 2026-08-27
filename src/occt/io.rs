@@ -75,7 +75,7 @@ fn write_color_trailer<W: Write>(compound: &CompoundShape, writer: &mut W) -> Re
 		out.extend_from_slice(&g.to_le_bytes());
 		out.extend_from_slice(&b.to_le_bytes());
 	}
-	writer.write_all(&out).map_err(|_| Error::BrepWriteFailed)
+	writer.write_all(&out).map_err(Error::Io)
 }
 
 // ==================== Reader / writer / mesh helpers ====================
@@ -92,7 +92,7 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 		let mut rgb: Vec<f32> = Default::default();
 		let inner = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb);
 		if inner.is_null() {
-			return Err(Error::StepReadFailed);
+			return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, "step: reader produced no shape (invalid or corrupted input)")));
 		}
 		let colormap: std::collections::HashMap<u64, Color> = ids.into_iter().zip(rgb.chunks_exact(3)).map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] })).collect();
 		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
@@ -102,7 +102,7 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 		let mut rust_reader = RustReader::from_ref(reader);
 		let inner = ffi::read_step_stream(&mut rust_reader);
 		if inner.is_null() {
-			return Err(Error::StepReadFailed);
+			return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, "step: reader produced no shape (invalid or corrupted input)")));
 		}
 		Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
 	}
@@ -112,13 +112,13 @@ pub(super) fn read_brep<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 	// Buffered whole: `BinTools::Read` seeks backwards to resolve shared sub-shape
 	// references, so it cannot run off a sequential stream.
 	let mut buf = Vec::new();
-	reader.read_to_end(&mut buf).map_err(|_| Error::BrepReadFailed)?;
+	reader.read_to_end(&mut buf)?;
 
 	// Payload length — where a trailer would begin. Unwritten, and unread, on null.
 	let mut consumed = 0usize;
 	let inner = ffi::read_brep_stream(&buf, &mut consumed);
 	if inner.is_null() {
-		return Err(Error::BrepReadFailed);
+		return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, "brep: reader produced no shape (invalid or corrupted input)")));
 	}
 
 	#[cfg(feature = "color")]
@@ -152,7 +152,7 @@ pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 		if ffi::write_step_color_stream(compound.inner(), &ids, &rgb, &mut rust_writer) {
 			Ok(())
 		} else {
-			Err(Error::StepWriteFailed)
+			Err(Error::Io(std::io::Error::other("step: OCCT writer reported failure")))
 		}
 	}
 	#[cfg(not(feature = "color"))]
@@ -161,7 +161,7 @@ pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 		if ffi::write_step_stream(compound.inner(), &mut rust_writer) {
 			Ok(())
 		} else {
-			Err(Error::StepWriteFailed)
+			Err(Error::Io(std::io::Error::other("step: OCCT writer reported failure")))
 		}
 	}
 }
@@ -172,7 +172,7 @@ pub(super) fn write_brep<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 		// Scoped: the streambuf flushes on drop, so the payload lands before the trailer.
 		let mut rust_writer = RustWriter::from_ref(writer);
 		if !ffi::write_brep_stream(compound.inner(), &mut rust_writer) {
-			return Err(Error::BrepWriteFailed);
+			return Err(Error::Io(std::io::Error::other("brep: OCCT writer reported failure")));
 		}
 	}
 	#[cfg(feature = "color")]
@@ -206,7 +206,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	let compound = CompoundShape::new(solids);
 	let data = ffi::mesh_shape(compound.inner(), options.deflection_linear, options.deflection_angular, options.relative_linear);
 	if !data.success {
-		return Err(Error::TriangulationFailed);
+		return Err(Error::Tesselation);
 	}
 	let vertex_count = data.vertices.len() / 3;
 	let vertices: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2])).collect();

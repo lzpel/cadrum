@@ -88,9 +88,9 @@ impl Mesh {
 	pub fn write_stl<W: std::io::Write>(&self, writer: &mut W) -> Result<(), super::error::Error> {
 		let tri_count = self.indices.len() / 3;
 		// 80-byte header
-		writer.write_all(&[0u8; 80]).map_err(|_| super::error::Error::StlWriteFailed)?;
+		writer.write_all(&[0u8; 80])?;
 		// Triangle count (u32 LE)
-		writer.write_all(&(tri_count as u32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+		writer.write_all(&(tri_count as u32).to_le_bytes())?;
 		for ti in 0..tri_count {
 			let i0 = self.indices[ti * 3];
 			let i1 = self.indices[ti * 3 + 1];
@@ -103,12 +103,12 @@ impl Mesh {
 			let n = tri_normal(self, ti).normalize_or_zero();
 			// Normal (3 x f32 LE)
 			for c in [n.x, n.y, n.z] {
-				writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+				writer.write_all(&(c as f32).to_le_bytes())?;
 			}
 			// Vertices (3 x 3 x f32 LE)
 			for v in [v0, v1, v2] {
 				for c in [v.x, v.y, v.z] {
-					writer.write_all(&(c as f32).to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+					writer.write_all(&(c as f32).to_le_bytes())?;
 				}
 			}
 			// Attribute byte count — RGB555 color (SolidView/MeshLab convention)
@@ -116,7 +116,7 @@ impl Mesh {
 			let attr = self.colormap.get(&self.face_ids[ti]).map_or(0, Color::as_u16);
 			#[cfg(not(feature = "color"))]
 			let attr = 0u16;
-			writer.write_all(&attr.to_le_bytes()).map_err(|_| super::error::Error::StlWriteFailed)?;
+			writer.write_all(&attr.to_le_bytes())?;
 		}
 		Ok(())
 	}
@@ -207,7 +207,7 @@ impl Mesh {
 			total += 8 + bin.len();
 		}
 
-		let mut w = |b: &[u8]| writer.write_all(b).map_err(|_| Error::GltfWriteFailed);
+		let mut w = |b: &[u8]| writer.write_all(b).map_err(Error::Io);
 		w(&0x46546C67u32.to_le_bytes())?; // magic "glTF"
 		w(&2u32.to_le_bytes())?; // version 2
 		w(&(total as u32).to_le_bytes())?;
@@ -749,7 +749,7 @@ impl Scene2D {
 		polylines_to_svg(&mut svg, &self.edges_hidden, "#bbb", &format!("{dash_len:.4},{dash_gap:.4}"), Some(hidden_sw));
 
 		svg.push_str("</svg>\n");
-		writer.write_all(svg.as_bytes()).map_err(|_| super::error::Error::SvgExportFailed)
+		writer.write_all(svg.as_bytes()).map_err(super::error::Error::Io)
 	}
 }
 
@@ -822,11 +822,11 @@ impl Scene2D {
 		let ty = -(layout.vy as f32) * s + off_y as f32;
 		let transform = Transform::from_row(s, 0.0, 0.0, -s, tx, ty);
 
-		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or(super::error::Error::PngExportFailed)?;
+		let mut pixmap = Pixmap::new(width as u32, height as u32).ok_or_else(|| super::error::Error::Validation(format!("png: invalid pixmap size {width}x{height}")))?;
 		self.render_to_pixmap(&mut pixmap, transform, layout.stroke_width as f32, layout.hidden_stroke_width as f32, layout.dash_len as f32, layout.dash_gap as f32, layout.anti_alias);
 
-		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
-		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+		let png_bytes = pixmap.encode_png().map_err(|e| super::error::Error::Io(std::io::Error::other(e.to_string())))?;
+		writer.write_all(&png_bytes).map_err(super::error::Error::Io)
 	}
 
 	/// Render this scene's triangles + edges into an existing pixmap with the
@@ -969,7 +969,7 @@ impl Mesh {
 		let pps = (panel_w.min(panel_h) as f64) / (2.0 * h);
 
 		// 背景は透過。下流で任意色に composite できる。
-		let mut pixmap = Pixmap::new(IMG_SIZE, IMG_SIZE).ok_or(super::error::Error::PngExportFailed)?;
+		let mut pixmap = Pixmap::new(IMG_SIZE, IMG_SIZE).ok_or_else(|| super::error::Error::Validation(format!("png: invalid pixmap size {IMG_SIZE}x{IMG_SIZE}")))?;
 
 		// Per-panel stroke widths in scene units (tiny-skia transform scales them to px).
 		let stroke_px = 1.5_f32;
@@ -1022,8 +1022,8 @@ impl Mesh {
 			draw_text(&mut pixmap, &label, center_x - text_w / 2.0, boundary_y - LABEL_SIZE - 4.0, LABEL_SIZE, 0x1f3a8a);
 		}
 
-		let png_bytes = pixmap.encode_png().map_err(|_| super::error::Error::PngExportFailed)?;
-		writer.write_all(&png_bytes).map_err(|_| super::error::Error::PngExportFailed)
+		let png_bytes = pixmap.encode_png().map_err(|e| super::error::Error::Io(std::io::Error::other(e.to_string())))?;
+		writer.write_all(&png_bytes).map_err(super::error::Error::Io)
 	}
 }
 
