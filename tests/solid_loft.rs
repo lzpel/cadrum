@@ -60,10 +60,10 @@ fn test_loft_02_single_section_returns_loft_failed() {
 
 	let err = result.err().expect("single section must return Err");
 	match err {
-		Error::LoftFailed(msg) => {
+		Error::Loft(msg) => {
 			assert!(msg.contains("≥2") || msg.contains(">=2") || msg.contains("got 1"), "error message should mention min section count, got: {}", msg);
 		}
-		other => panic!("expected Error::LoftFailed, got {:?}", other),
+		other => panic!("expected Error::Loft, got {:?}", other),
 	}
 }
 
@@ -79,10 +79,10 @@ fn test_loft_03_empty_section_returns_loft_failed() {
 
 	let err = result.err().expect("empty section must return Err");
 	match err {
-		Error::LoftFailed(msg) => {
+		Error::Loft(msg) => {
 			assert!(msg.contains("empty"), "error message should mention empty section, got: {}", msg);
 		}
-		other => panic!("expected Error::LoftFailed, got {:?}", other),
+		other => panic!("expected Error::Loft, got {:?}", other),
 	}
 }
 

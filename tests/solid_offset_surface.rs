@@ -65,8 +65,8 @@ fn test_offset_04_thin_plate_inward_returns_offset_failed() {
 
 	let result = plate.offset_surface(-0.5, 1.0e-6);
 	match result {
-		Err(Error::OffsetFailed(msg)) => assert!(msg.contains("offset"), "got: {}", msg),
-		Err(other) => panic!("expected Error::OffsetFailed, got {:?}", other),
+		Err(Error::Offset(msg)) => assert!(msg.contains("offset"), "got: {}", msg),
+		Err(other) => panic!("expected Error::Offset, got {:?}", other),
 		Ok(s) => panic!("thin-plate inward offset must fail, but produced a solid with volume {:.6}", s.volume()),
 	}
 }

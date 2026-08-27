@@ -34,8 +34,8 @@ fn test_sew_02_open_shell_returns_sew_failed() {
 
 	let err = Solid::sew(five, 1.0e-6).err().expect("5 of 6 faces must not sew into a solid");
 	match err {
-		Error::SewFailed(msg) => assert!(msg.contains("closed shell"), "error message should mention closed shell, got: {}", msg),
-		other => panic!("expected Error::SewFailed, got {:?}", other),
+		Error::Sew(msg) => assert!(msg.contains("closed shell"), "error message should mention closed shell, got: {}", msg),
+		other => panic!("expected Error::Sew, got {:?}", other),
 	}
 }
 
@@ -46,7 +46,7 @@ fn test_sew_03_empty_input_returns_sew_failed() {
 	let none: Vec<&Face> = vec![];
 	let err = Solid::sew(none, 1.0e-6).err().expect("empty face set must return Err");
 	match err {
-		Error::SewFailed(msg) => assert!(msg.contains("no faces"), "error message should mention empty input, got: {}", msg),
-		other => panic!("expected Error::SewFailed, got {:?}", other),
+		Error::Sew(msg) => assert!(msg.contains("no faces"), "error message should mention empty input, got: {}", msg),
+		other => panic!("expected Error::Sew, got {:?}", other),
 	}
 }
