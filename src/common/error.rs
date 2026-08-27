@@ -1,135 +1,82 @@
 /// Errors that can occur during CAD operations.
 #[derive(Debug)]
 pub enum Error {
-	/// STEP file read failed (invalid format or corrupted data).
-	StepReadFailed,
+	/// Caller-side misuse: an argument that cannot be interpreted, such as an invalid color string.
+	Validation(String),
 
-	/// BRep file read failed (invalid format or corrupted data).
-	BrepReadFailed,
-
-	/// STEP file write failed.
-	StepWriteFailed,
-
-	/// BRep file write failed.
-	BrepWriteFailed,
+	/// Read/Writel step brep gltf etc
+	Io(std::io::Error),
 
 	/// Triangulation/meshing failed.
-	TriangulationFailed,
+	Tesselation,
 
 	/// Boolean operation (fuse/cut/common) failed.
-	BooleanOperationFailed,
+	Boolean,
 
-	/// 単一 Solid を期待する演算 (`+`/`-`/`*` 演算子) で結果の Solid 数が 1 でなかった。
-	/// `usize` は実際の結果 Solid 数 (0 = 非交差/全削除、2+ = 結果が複数ピースに分割)。
-	/// 戻り値が複数ピースになりうる場合は `Solid::boolean_union/subtract/intersect` を
-	/// 直接使い `Vec<Solid>` を受け取ること。
-	OneFailed(usize),
+	/// Got not one solids although expecting one solid, typically as a result of boolean operation.
+	NotOne(usize),
+
+	/// Edge construction failed on degenerate input (collinear arc points, zero-length line, negative radius).
+	Edge(String),
 
 	/// Shape cleaning (UnifySameDomain) failed.
-	CleanFailed,
+	Clean,
 
-	/// Helix edge construction failed (e.g. degenerate parameters).
-	HelixFailed,
+	/// Extrusion (`Solid::extrude`) failed: empty profile, zero-length direction, or profile not closed.
+	Extrude,
 
-	/// Extrusion (`Solid::extrude`) failed: empty profile, zero-length
-	/// direction, or profile not closed.
-	ExtrudeFailed,
+	/// Pipe sweep (`Solid::sweep`) failed: profile not closed, or edges not connectable into a wire.
+	Sweep(String),
 
-	/// Pipe sweep (`Solid::sweep`) failed: profile not closed, edges not
-	/// connectable into a wire, or `BRepOffsetAPI_MakePipe` returned no shape.
-	SweepFailed,
+	/// Shell (`Solid::shell`) failed: thickness incompatible with the geometry, or self-intersecting offset.
+	Shell(String),
 
-	/// Shell / hollow (`Solid::shell` via `BRepOffsetAPI_MakeThickSolid`)
-	/// failed: thickness sign incompatible with geometry, sharp corners
-	/// yielding a self-intersecting offset surface, or OCCT internal failure.
-	ShellFailed,
+	/// Fillet (`Solid::fillet_edges`) failed: radius too large, tangent discontinuity, or foreign edge.
+	Fillet(String),
 
-	/// Fillet (`Solid::fillet_edges` via `BRepFilletAPI_MakeFillet`) failed:
-	/// radius too large for the local geometry, tangent discontinuity along
-	/// the selected edge chain, or an edge not belonging to `self` was passed.
-	FilletFailed,
+	/// Chamfer (`Solid::chamfer_edges`) failed: distance too large, tangent discontinuity, or foreign edge.
+	Chamfer(String),
 
-	/// Chamfer (`Solid::chamfer_edges` via `BRepFilletAPI_MakeChamfer`) failed:
-	/// distance too large for the local geometry, tangent discontinuity along
-	/// the selected edge chain, or an edge not belonging to `self` was passed.
-	ChamferFailed,
+	/// Loft (`Solid::loft`) failed: too few sections, or an ill-formed section wire.
+	Loft(String),
 
-	/// Lofting (`Solid::loft` / `BRepOffsetAPI_ThruSections`) failed: section
-	/// count too low, section wire ill-formed, or OCCT internal failure.
-	/// The string identifies which precondition or stage failed.
-	LoftFailed(String),
+	/// Sewing (`Solid::sew`) failed: the faces do not form exactly one closed shell within the tolerance.
+	Sew(String),
 
-	/// Sewing (`Solid::sew` / `BRepBuilderAPI_Sewing`) failed: the faces do
-	/// not form exactly one closed shell within the given tolerance (gaps,
-	/// overlaps, multiple disconnected shells, or stray faces). The string
-	/// identifies which precondition or stage failed.
-	SewFailed(String),
+	/// Surface offset (`Solid::offset_surface`) failed: the offset surfaces self-intersect.
+	Offset(String),
 
-	/// Surface offset (`Solid::offset_surface` / `BRepOffsetAPI_MakeOffsetShape`)
-	/// failed: the offset surfaces self-intersect (thin walls/slots thinner
-	/// than 2x the offset magnitude) or OCCT rejected the join. The string
-	/// carries the offending parameters.
-	OffsetFailed(String),
-
-	/// B-spline solid (`Solid::bspline`) construction failed: grid too small,
-	/// surface interpolation rejected the input, or sewing/capping failed.
-	/// The string identifies which stage failed and with what parameters.
-	BsplineFailed(String),
-
-	/// Edge construction failed due to degenerate input (e.g. collinear arc
-	/// points, zero-length line, negative radius). The string describes which
-	/// constructor failed and with which parameters.
-	InvalidEdge(String),
-
-	/// SVG export (HLR projection) failed.
-	SvgExportFailed,
-
-	/// PNG export failed (rasterizer / encoder / writer).
-	PngExportFailed,
-
-	/// STL write failed.
-	StlWriteFailed,
-
-	/// glTF (GLB binary) write failed.
-	GltfWriteFailed,
-
-	/// Invalid color string (unrecognized name or invalid hex format).
-	InvalidColor(String),
-
-	/// Unknown error.
-	Unknown(String),
+	/// B-spline solid (`Solid::bspline`) failed: grid too small, or interpolation/sewing rejected the input.
+	Bspline(String),
 }
 
 impl std::fmt::Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Error::StepReadFailed => write!(f, "STEP read failed"),
-			Error::BrepReadFailed => write!(f, "BRep read failed"),
-			Error::StepWriteFailed => write!(f, "STEP write failed"),
-			Error::BrepWriteFailed => write!(f, "BRep write failed"),
-			Error::TriangulationFailed => write!(f, "Triangulation failed"),
-			Error::BooleanOperationFailed => write!(f, "Boolean operation failed"),
-			Error::OneFailed(n) => write!(f, "Expected exactly one resulting Solid, got {}", n),
-			Error::CleanFailed => write!(f, "Shape clean failed"),
-			Error::HelixFailed => write!(f, "Helix failed"),
-			Error::ExtrudeFailed => write!(f, "Extrude failed"),
-			Error::SweepFailed => write!(f, "Sweep failed"),
-			Error::ShellFailed => write!(f, "Shell failed"),
-			Error::FilletFailed => write!(f, "Fillet failed"),
-			Error::ChamferFailed => write!(f, "Chamfer failed"),
-			Error::LoftFailed(msg) => write!(f, "Loft failed: {}", msg),
-			Error::SewFailed(msg) => write!(f, "Sew failed: {}", msg),
-			Error::OffsetFailed(msg) => write!(f, "Offset failed: {}", msg),
-			Error::BsplineFailed(msg) => write!(f, "Bspline failed: {}", msg),
-			Error::InvalidEdge(msg) => write!(f, "Invalid edge: {}", msg),
-			Error::SvgExportFailed => write!(f, "SVG export failed"),
-			Error::PngExportFailed => write!(f, "PNG export failed"),
-			Error::StlWriteFailed => write!(f, "STL write failed"),
-			Error::GltfWriteFailed => write!(f, "glTF write failed"),
-			Error::InvalidColor(s) => write!(f, "Invalid color: \"{}\"", s),
-			Error::Unknown(msg) => write!(f, "Unknown error: {}", msg),
+			Error::Validation(msg) => write!(f, "Validation failed: {msg}"),
+			Error::Io(e) => write!(f, "IO failed: {e}"),
+			Error::Tesselation => write!(f, "Tesselation failed"),
+			Error::Boolean => write!(f, "Boolean operation failed"),
+			Error::NotOne(n) => write!(f, "Expected exactly one resulting Solid, got {n}"),
+			Error::Edge(msg) => write!(f, "Edge failed: {msg}"),
+			Error::Clean => write!(f, "Clean failed"),
+			Error::Extrude => write!(f, "Extrude failed"),
+			Error::Sweep(msg) => write!(f, "Sweep failed: {msg}"),
+			Error::Shell(msg) => write!(f, "Shell failed: {msg}"),
+			Error::Fillet(msg) => write!(f, "Fillet failed: {msg}"),
+			Error::Chamfer(msg) => write!(f, "Chamfer failed: {msg}"),
+			Error::Loft(msg) => write!(f, "Loft failed: {msg}"),
+			Error::Sew(msg) => write!(f, "Sew failed: {msg}"),
+			Error::Offset(msg) => write!(f, "Offset failed: {msg}"),
+			Error::Bspline(msg) => write!(f, "Bspline failed: {msg}"),
 		}
 	}
 }
 
 impl std::error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+	fn from(e: std::io::Error) -> Self {
+		Error::Io(e)
+	}
+}
