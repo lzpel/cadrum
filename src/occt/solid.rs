@@ -255,7 +255,7 @@ impl SolidStruct for Solid {
 		}
 		let shape = ffi::make_extrude(&profile_vec, dir.x, dir.y, dir.z);
 		if shape.is_null() {
-			return Err(Error::ExtrudeFailed);
+			return Err(Error::Extrude);
 		}
 		Ok(Solid::new(
 			shape,
@@ -275,7 +275,7 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness, &mut history);
 		if shape.is_null() {
-			return Err(Error::ShellFailed);
+			return Err(Error::Shell(format!("thickness={thickness} incompatible with the geometry, or self-intersecting offset ({} open face(s))", face_vec.len())));
 		}
 		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
@@ -297,7 +297,7 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history);
 		if shape.is_null() {
-			return Err(Error::FilletFailed);
+			return Err(Error::Fillet(format!("radius={radius} does not fit the local geometry on {} edge(s)", edge_vec.len())));
 		}
 		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
@@ -317,7 +317,7 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history);
 		if shape.is_null() {
-			return Err(Error::ChamferFailed);
+			return Err(Error::Chamfer(format!("distance={distance} does not fit the local geometry on {} edge(s)", edge_vec.len())));
 		}
 		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
@@ -343,7 +343,7 @@ impl SolidStruct for Solid {
 		let (kind, ux, uy, uz, aux_vec) = encode_orient(orient);
 		let shape = ffi::make_pipe_shell(&profile_vec, &spine_vec, kind, ux, uy, uz, &aux_vec);
 		if shape.is_null() {
-			return Err(Error::SweepFailed);
+			return Err(Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s))", profile_vec.len(), spine_vec.len())));
 		}
 		Ok(Solid::new(
 			shape,
@@ -374,18 +374,18 @@ impl SolidStruct for Solid {
 				count += 1;
 			}
 			if count == 0 {
-				return Err(Error::LoftFailed(format!("loft: section {} is empty (each section must contain ≥1 edge)", section_count)));
+				return Err(Error::Loft(format!("loft: section {} is empty (each section must contain ≥1 edge)", section_count)));
 			}
 			section_count += 1;
 		}
 
 		if section_count < 2 {
-			return Err(Error::LoftFailed(format!("loft: need ≥2 sections, got {} (a single section has no thickness to skin across)", section_count)));
+			return Err(Error::Loft(format!("loft: need ≥2 sections, got {} (a single section has no thickness to skin across)", section_count)));
 		}
 
 		let shape = ffi::make_loft(&all_edges, ruled);
 		if shape.is_null() {
-			return Err(Error::LoftFailed(format!(
+			return Err(Error::Loft(format!(
 				"loft: OCCT BRepOffsetAPI_ThruSections failed (sections={}, ruled={}). \
 				 Check that each section forms a valid closed wire and sections are not coplanar.",
 				section_count, ruled
@@ -412,11 +412,11 @@ impl SolidStruct for Solid {
 			count += 1;
 		}
 		if count == 0 {
-			return Err(Error::SewFailed("sew: no faces given (need a face set forming one closed shell)".into()));
+			return Err(Error::Sew("sew: no faces given (need a face set forming one closed shell)".into()));
 		}
 		let shape = ffi::make_sewn_solid(&face_vec, tolerance);
 		if shape.is_null() {
-			return Err(Error::SewFailed(format!(
+			return Err(Error::Sew(format!(
 				"sew: {} faces do not form exactly one closed shell within tolerance {} \
 				 (gaps, overlaps, multiple shells, or stray faces)",
 				count, tolerance
@@ -435,7 +435,7 @@ impl SolidStruct for Solid {
 	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error> {
 		let shape = ffi::make_offset_shape(&self.inner, offset, tolerance);
 		if shape.is_null() {
-			return Err(Error::OffsetFailed(format!(
+			return Err(Error::Offset(format!(
 				"offset_surface: OCCT BRepOffsetAPI_MakeOffsetShape failed (offset={}, tolerance={}). \
 				 Thin walls/slots whose local thickness is ≤ 2|offset| self-intersect and are rejected.",
 				offset, tolerance
@@ -453,7 +453,7 @@ impl SolidStruct for Solid {
 
 	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error> {
 		if u < 2 || v < 3 {
-			return Err(Error::BsplineFailed(format!("grid must be at least 2x3 (u={}, v={})", u, v)));
+			return Err(Error::Bspline(format!("grid must be at least 2x3 (u={}, v={})", u, v)));
 		}
 
 		let mut coords = Vec::with_capacity(3 * u * v);
@@ -468,7 +468,7 @@ impl SolidStruct for Solid {
 
 		let shape = ffi::make_bspline_solid(&coords, u as u32, v as u32, u_periodic);
 		if shape.is_null() {
-			return Err(Error::BsplineFailed(format!("OCCT construction failed (u={}, v={}, u_periodic={})", u, v, u_periodic)));
+			return Err(Error::Bspline(format!("OCCT construction failed (u={}, v={}, u_periodic={})", u, v, u_periodic)));
 		}
 		Ok(Solid::new(
 			shape,
@@ -484,7 +484,7 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let inner = ffi::builder_clean(&self.inner, &mut history);
 		if inner.is_null() {
-			return Err(Error::CleanFailed);
+			return Err(Error::Clean);
 		}
 		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&inner, &history);
@@ -523,7 +523,7 @@ impl SolidStruct for Solid {
 		// CellsBuilder ベースの一括評価。DIMACS-flat DNF (`clauses`) を C++ 側に渡す。
 		let (solids, clauses) = (b.solids(), b.clauses());
 		if solids.is_empty() || clauses.is_empty() {
-			return Err(Error::OneFailed(0));
+			return Err(Error::NotOne(0));
 		}
 		debug_assert!(clauses.last() == Some(&0), "clauses must be 0-terminated");
 
@@ -534,7 +534,7 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let inner = ffi::builder_cells(&solid_vec, clauses, &mut history);
 		if inner.is_null() {
-			return Err(Error::BooleanOperationFailed);
+			return Err(Error::Boolean);
 		}
 
 		#[cfg(feature = "color")]

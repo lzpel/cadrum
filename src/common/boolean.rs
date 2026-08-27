@@ -30,19 +30,19 @@ impl<S: SolidStruct> Boolean<S> {
 		&self.clauses
 	}
 
-	/// FFI を呼んで結果が単一 Solid なら返す。複数または 0 個なら `OneFailed(n)`。
+	/// FFI を呼んで結果が単一 Solid なら返す。複数または 0 個なら `NotOne(n)`。
 	pub fn build(self) -> Result<S, Error> {
 		let mut v = self.build_vec()?;
 		match v.len() {
 			1 => Ok(v.pop().unwrap()),
-			n => Err(Error::OneFailed(n)),
+			n => Err(Error::NotOne(n)),
 		}
 	}
 
-	/// FFI を呼んで全ピースを返す。空式は `OneFailed(0)`。
+	/// FFI を呼んで全ピースを返す。空式は `NotOne(0)`。
 	pub fn build_vec(self) -> Result<Vec<S>, Error> {
 		if self.solids.is_empty() || self.clauses.is_empty() {
-			return Err(Error::OneFailed(0));
+			return Err(Error::NotOne(0));
 		}
 		S::boolean_build(&self)
 	}
@@ -194,7 +194,7 @@ boolean_lhs_ops!(&S);
 
 // ==================== Default (= ⊥ / union の単位元) ====================
 //
-// 空式 = ⊥ (空集合 / 何も選択していない)。`build()` は `OneFailed(0)`。
+// 空式 = ⊥ (空集合 / 何も選択していない)。`build()` は `NotOne(0)`。
 // union を fold で畳むときの init に使う: `iter.fold(Boolean::default(), |a, s| a + s)`。
 // `dnf_union(default(), b) == b` なので union の単位元として正しい。
 // intersect では零元 (annihilator) になるため init に使ってはいけない — intersect の集約は
