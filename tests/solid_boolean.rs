@@ -129,12 +129,12 @@ fn test_operator_overloads() {
 	let i: Solid = (&a * &b).build().expect("a * b should yield one solid");
 	println!("a * b (intersect): volume = {:.4}", i.volume());
 
-	// 非交差での intersect → build_vec で 0 個、build で OneFailed(0)
+	// 非交差での intersect → build_vec で 0 個、build で NotOne(0)
 	let far = Solid::cube(DVec3::ZERO, DVec3::ONE).translate(DVec3::new(100.0, 0.0, 0.0));
 	match (&a * &far).build() {
-		Err(e @ cadrum::Error::OneFailed(0)) => println!("a * far (disjoint) -> {:?}", e),
-		Err(e) => panic!("expected OneFailed(0), got {:?}", e),
-		Ok(_) => panic!("expected OneFailed(0), got Ok"),
+		Err(e @ cadrum::Error::NotOne(0)) => println!("a * far (disjoint) -> {:?}", e),
+		Err(e) => panic!("expected NotOne(0), got {:?}", e),
+		Ok(_) => panic!("expected NotOne(0), got Ok"),
 	}
 }
 
@@ -151,8 +151,8 @@ fn test_singleton_build() {
 fn test_empty_returns_error() {
 	let solids: Vec<Solid> = Vec::new();
 	match solids.iter().map(Boolean::from).reduce(|x, y| x + y).unwrap_or_else(Boolean::default).build() {
-		Err(cadrum::Error::OneFailed(0)) => {}
-		other => panic!("expected OneFailed(0), got {:?}", other.is_ok()),
+		Err(cadrum::Error::NotOne(0)) => {}
+		other => panic!("expected NotOne(0), got {:?}", other.is_ok()),
 	}
 }
 

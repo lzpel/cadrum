@@ -57,7 +57,7 @@ impl Color {
 			"brown" => "#a52a2a",
 			"tan" => "#d2b48c",
 			"skyblue" => "#87ceeb",
-			_ => return Err(super::error::Error::InvalidColor(s.to_string())),
+			_ => return Err(super::error::Error::Validation(s.to_string())),
 		};
 		Self::from_hex(hex)
 	}
@@ -67,10 +67,10 @@ impl Color {
 	/// The leading `#` is required. The remaining characters must be hex digits,
 	/// either 6 (RRGGBB) or 3 (RGB, each digit is doubled).
 	fn from_hex(s: &str) -> Result<Self, super::error::Error> {
-		let err = || super::error::Error::InvalidColor(s.to_string());
+		let err = || super::error::Error::Validation(s.to_string());
 		let hex = s.strip_prefix('#').ok_or_else(err)?;
 		if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-			return Err(super::error::Error::InvalidColor(s.to_string()));
+			return Err(super::error::Error::Validation(s.to_string()));
 		}
 		let (r, g, b) = match hex.len() {
 			6 => {
@@ -85,7 +85,7 @@ impl Color {
 				let b = u8::from_str_radix(&hex[2..3], 16).unwrap() * 17;
 				(r, g, b)
 			}
-			_ => return Err(super::error::Error::InvalidColor(s.to_string())),
+			_ => return Err(super::error::Error::Validation(s.to_string())),
 		};
 		Ok(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0 })
 	}

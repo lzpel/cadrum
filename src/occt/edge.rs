@@ -20,7 +20,7 @@ impl Edge {
 	/// in practice but serves as a defensive marker.
 	pub(crate) fn try_from_ffi(inner: cxx::UniquePtr<ffi::TopoDS_Edge>, msg: String) -> Result<Self, Error> {
 		if inner.is_null() {
-			Err(Error::InvalidEdge(msg))
+			Err(Error::Edge(msg))
 		} else {
 			Ok(Edge { inner })
 		}
@@ -96,14 +96,14 @@ impl EdgeStruct for Edge {
 		let coords: Vec<f64> = points.into_iter().flat_map(|p| [p.x, p.y, p.z]).collect();
 		let cxx_vec = ffi::make_polygon_edges(&coords);
 		// C++ 側は失敗時に空ベクタを返す (null ではない)。点数不足や
-		// OCCT の MakePolygon 失敗で empty になるので、それを InvalidEdge に変換。
+		// OCCT の MakePolygon 失敗で empty になるので、それを Error::Edge に変換。
 		if cxx_vec.is_empty() {
-			return Err(Error::InvalidEdge(format!("polygon: construction failed (point count = {}, need ≥ 3 non-degenerate)", coords.len() / 3)));
+			return Err(Error::Edge(format!("polygon: construction failed (point count = {}, need ≥ 3 non-degenerate)", coords.len() / 3)));
 		}
 		// CxxVector<TopoDS_Edge> → Vec<Edge>: pull each element out into a
 		// UniquePtr<TopoDS_Edge> via deep_copy_edge so we own the topology.
 		// deep_copy_edge は既に有効な edge の複製なので null にはならない想定、
-		// 万一返った場合は InvalidEdge で failfast する。
+		// 万一返った場合は Error::Edge で failfast する。
 		cxx_vec.iter().map(|e| Edge::try_from_ffi(ffi::deep_copy_edge(e), "polygon: deep_copy_edge returned null".into())).collect()
 	}
 
@@ -131,17 +131,17 @@ impl EdgeStruct for Edge {
 			BSplineEnd::NotAKnot | BSplineEnd::Clamped { .. } => 2,
 		};
 		if pts.len() < min_required {
-			return Err(Error::InvalidEdge(format!("bspline: need ≥{} points for {:?}, got {}", min_required, end, pts.len())));
+			return Err(Error::Edge(format!("bspline: need ≥{} points for {:?}, got {}", min_required, end, pts.len())));
 		}
 
 		// Periodic では先頭と末尾が一致してはならない。OCCT は周期性を基底関数に
 		// 組み込むので、ユーザーが点を重複させると行列が特異化して失敗する。
-		// 自動除去はせず InvalidEdge で誤用を明示する (AGENTS.md "誤解 vs 手間" 方針)。
+		// 自動除去はせず Error::Edge で誤用を明示する (AGENTS.md "誤解 vs 手間" 方針)。
 		if matches!(end, BSplineEnd::Periodic) {
 			let first = pts.first().expect("checked above");
 			let last = pts.last().expect("checked above");
 			if first == last {
-				return Err(Error::InvalidEdge(format!("bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point")));
+				return Err(Error::Edge(format!("bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point")));
 			}
 		}
 

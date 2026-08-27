@@ -266,7 +266,7 @@ pub enum BSplineEnd {
 	/// (position + tangent + curvature all match at the wrap-around).
 	/// The first data point must NOT be repeated at the end — periodicity
 	/// is encoded in the basis function structure. Passing a duplicated
-	/// endpoint yields [`Error::InvalidEdge`].
+	/// endpoint yields [`Error::Edge`].
 	///
 	/// Requires ≥ 3 distinct points. The most common choice for closed
 	/// profile curves (plasma poloidal sections, screw threads, gear teeth)
@@ -305,7 +305,7 @@ pub enum BSplineEnd {
 ///
 /// All constructors return `Result<..., Error>`. Invalid inputs (degenerate
 /// geometry, zero/negative radius, collinear arc points, etc.) yield
-/// `Error::InvalidEdge(String)` with a message that identifies the failing
+/// `Error::Edge(String)` with a message that identifies the failing
 /// constructor and the offending parameters.
 pub trait EdgeStruct: Sized + Clone + Transform {
 	/// Stable, backend-defined identity for this edge. Two `Edge` values
@@ -354,7 +354,7 @@ pub trait EdgeStruct: Sized + Clone + Transform {
 	/// constituent edges in order. The polygon is **always closed**: the
 	/// last point is automatically connected back to the first.
 	// 非平面の点列も受理する (検証しない) — `Solid::sweep` で face 化に失敗
-	// したとき `Error::SweepFailed` で気付ける想定なので、入力側での事前検査は省略。
+	// したとき `Error::Sweep` で気付ける想定なので、入力側での事前検査は省略。
 	fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<Self>, Error>;
 
 	/// Closed circle of radius `r` centered at the world origin, lying in
@@ -368,14 +368,14 @@ pub trait EdgeStruct: Sized + Clone + Transform {
 	/// edge into place rather than relying on the implicit choice.
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error>;
 
-	/// Straight line segment from `a` to `b`. Fails with `InvalidEdge` if
+	/// Straight line segment from `a` to `b`. Fails with `Error::Edge` if
 	/// `a == b` (zero-length segment).
 	fn line(a: DVec3, b: DVec3) -> Result<Self, Error>;
 
 	/// Circular arc through three points: start, mid, end. The unique circle
 	/// passing through the three points defines the arc; `mid` disambiguates
 	/// which of the two possible arcs is returned (the one passing through
-	/// `mid`). Fails with `InvalidEdge` if `mid` is collinear with `start`
+	/// `mid`). Fails with `Error::Edge` if `mid` is collinear with `start`
 	/// and `end`, or if any pair of points coincides.
 	fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<Self, Error>;
 
@@ -395,7 +395,7 @@ pub trait EdgeStruct: Sized + Clone + Transform {
 	///
 	/// # Errors
 	///
-	/// Returns [`Error::InvalidEdge`] if:
+	/// Returns [`Error::Edge`] if:
 	/// - point count is below the minimum (≥3 for `Periodic`, ≥2 otherwise)
 	/// - `BSplineEnd::Periodic` is requested but the first and last points
 	///   coincide (periodicity is encoded in the basis; do not duplicate)
@@ -519,7 +519,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 
 	/// Heal/regularize this solid (fuse coplanar faces, drop micro-edges,
 	/// repair small inconsistencies). Wraps `ShapeUpgrade_UnifySameDomain`
-	/// + cleanup. Failure is reported as `Error::CleanFailed`.
+	/// + cleanup. Failure is reported as `Error::Clean`.
 	fn clean(&self) -> Result<Self, Error>;
 	/// Extrude a closed profile wire along a direction vector to form a solid.
 	///
@@ -553,7 +553,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	/// Round the given edges of `self` with a uniform radius. Edges are
 	/// typically selected via `self.iter_edge().filter(...)`.
 	///
-	/// Wraps `BRepFilletAPI_MakeFillet`. Fails (`Error::FilletFailed`) if
+	/// Wraps `BRepFilletAPI_MakeFillet`. Fails (`Error::Fillet`) if
 	/// the radius is too large for the local geometry, if tangent
 	/// discontinuity prevents OCCT from building the fillet surface, or
 	/// if an edge not belonging to `self` is passed.
@@ -569,7 +569,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	///
 	/// Wraps `BRepFilletAPI_MakeChamfer`. The chamfer plane is symmetric —
 	/// the same `distance` is taken off along each of the two faces
-	/// adjacent to the edge. Fails (`Error::ChamferFailed`) under the same
+	/// adjacent to the edge. Fails (`Error::Chamfer`) under the same
 	/// conditions as `fillet_edges`.
 	///
 	/// Empty `edges` is a no-op and returns a clone of `self`.
@@ -629,7 +629,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	/// automatically so the enclosed volume is positive regardless of the
 	/// input faces' orientations).
 	///
-	/// Fails with [`Error::SewFailed`] when the faces leave gaps wider than
+	/// Fails with [`Error::Sew`] when the faces leave gaps wider than
 	/// `tolerance`, overlap, form multiple disconnected shells, or include
 	/// stray faces that belong to no closed shell.
 	fn sew<'a>(faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error>
@@ -651,7 +651,7 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	/// magnitude reaches half the local wall thickness makes opposing offset
 	/// faces cross, and an outward offset pinches shut inside narrow concave
 	/// slots ≤ `2·offset` wide. OCCT rejects the self-intersecting result and
-	/// this method returns [`Error::OffsetFailed`] — reduce `offset` or
+	/// this method returns [`Error::Offset`] — reduce `offset` or
 	/// remove/split the thin feature first.
 	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error>;
 

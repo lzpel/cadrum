@@ -57,5 +57,5 @@ fn test_chamfer_distance_too_large_returns_err() {
 	let edges: Vec<_> = cube.iter_edge().collect();
 	// d = 5 > a/2 = 1 → geometrically impossible; OCCT reports not-done.
 	let err = cube.chamfer_edges(5.0, edges).err().expect("oversized distance must fail");
-	assert!(matches!(err, Error::ChamferFailed), "expected ChamferFailed, got {:?}", err);
+	assert!(matches!(err, Error::Chamfer(_)), "expected Error::Chamfer, got {:?}", err);
 }

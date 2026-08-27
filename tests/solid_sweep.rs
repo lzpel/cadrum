@@ -35,7 +35,7 @@ fn square_profile(spine: &Edge) -> Result<Vec<Edge>, Error> {
 }
 
 /// spine も aux も periodic B-spline 1 本のまま `ProfileOrient::Auxiliary` で sweep。
-/// 素の OCCT 8.0.1 ではこの組み合わせは SweepFailed になるか破綻形状を返すので、
+/// 素の OCCT 8.0.1 ではこの組み合わせは Error::Sweep になるか破綻形状を返すので、
 /// patches/pr1.patch (fix D) と patches/pr2.patch (fix A) が効いていることの回帰テスト。
 fn closed_auxiliary_sweep() -> Result<Solid, Error> {
 	let spine = Edge::bspline(&sample(0, CURVE_STEPS), BSplineEnd::Periodic)?;

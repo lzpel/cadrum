@@ -55,5 +55,5 @@ fn test_fillet_radius_too_large_returns_err() {
 	let edges: Vec<_> = cube.iter_edge().collect();
 	// r = 5 > a/2 = 1 → geometrically impossible; OCCT reports not-done.
 	let err = cube.fillet_edges(5.0, edges).err().expect("oversized radius must fail");
-	assert!(matches!(err, Error::FilletFailed), "expected FilletFailed, got {:?}", err);
+	assert!(matches!(err, Error::Fillet(_)), "expected Error::Fillet, got {:?}", err);
 }
