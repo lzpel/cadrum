@@ -1,5 +1,11 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.8.18
+
+- #273 Rework Solid::offset to per-face offsets and add offset/sew/moebius examples
+- #272 Simplify the markdown example generator
+- #271 Use curvilinear equivalence in the Auxiliary guide law
+
 ### 0.8.17
 
 - #270 Collapse the Error enum from 25 variants to 16, add From<std::io::Error>, and route I/O and export failures through Error::Io
