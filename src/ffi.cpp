@@ -1492,7 +1492,7 @@ std::unique_ptr<TopoDS_Shape> make_pipe_shell(
                 BRepBuilderAPI_MakeWire auxMaker;
                 for (const auto& e : aux_spine_edges) auxMaker.Add(e);
                 if (!auxMaker.IsDone()) return nullptr;
-                shell.SetMode(auxMaker.Wire(), false);
+                shell.SetMode(auxMaker.Wire(), true);
                 break;
             }
             default: {
