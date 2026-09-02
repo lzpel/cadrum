@@ -362,15 +362,11 @@ std::unique_ptr<TopoDS_Shape> make_sewn_solid(
     const std::vector<TopoDS_Face>& faces,
     double tolerance);
 
-// Offset every face of `shape` by signed `offset` (positive = outward,
-// negative = inward) using BRepOffsetAPI_MakeOffsetShape (PerformByJoin,
-// BRepOffset_Skin, GeomAbs_Arc). A SHELL/compound result is upgraded to a
-// solid when it contains exactly one closed shell or one solid. Returns
-// nullptr when OCCT rejects the offset — typically a self-intersecting
-// result (|offset| ≥ half the local wall thickness of a thin feature, or a
-// concave slot narrower than 2*offset pinching shut).
-std::unique_ptr<TopoDS_Shape> make_offset_shape(
+// Offset the given faces of `shape` by signed `offset` along their normals,
+// extending their neighbours; nullptr when OCCT rejects a self-intersecting offset.
+std::unique_ptr<TopoDS_Shape> make_offset(
     const TopoDS_Shape& shape,
+    const std::vector<TopoDS_Face>& faces,
     double offset,
     double tolerance);
 

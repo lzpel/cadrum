@@ -43,7 +43,7 @@ pub enum Error {
 	/// Sewing (`Solid::sew`) failed: the faces do not form exactly one closed shell within the tolerance.
 	Sew(String),
 
-	/// Surface offset (`Solid::offset_surface`) failed: the offset surfaces self-intersect.
+	/// Surface offset (`Solid::offset`) failed: the offset surfaces self-intersect.
 	Offset(String),
 
 	/// B-spline solid (`Solid::bspline`) failed: grid too small, or interpolation/sewing rejected the input.

@@ -33,6 +33,12 @@ impl Clone for Edge {
 	}
 }
 
+impl std::fmt::Debug for Edge {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "Edge({}, start={:?}, end={:?})", self.id(), self.start_point(), self.end_point())
+	}
+}
+
 impl EdgeStruct for Edge {
 	fn id(&self) -> u64 {
 		ffi::edge_tshape_id(&self.inner)

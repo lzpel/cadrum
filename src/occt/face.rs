@@ -22,6 +22,12 @@ impl Face {
 	}
 }
 
+impl std::fmt::Debug for Face {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "Face({})", self.id())
+	}
+}
+
 impl FaceStruct for Face {
 	type Edge = Edge;
 

@@ -67,6 +67,7 @@
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepOffset_MakeOffset.hxx>
 #include <BRepOffset_Mode.hxx>
 #include <GeomAbs_JoinType.hxx>
 
@@ -1625,28 +1626,25 @@ std::unique_ptr<TopoDS_Shape> make_sewn_solid(
     }
 }
 
-// Offset every face of `shape` by signed `offset` (positive = outward)
-// using BRepOffsetAPI_MakeOffsetShape. Same PerformByJoin configuration as
-// builder_thick_solid's sealed-shell fallback (Skin mode, Arc join). The
-// result of offsetting a solid is normally a SOLID, but OCCT occasionally
-// returns the bare offset SHELL or a one-element compound — both are
-// upgraded here so the Rust side always receives a TopAbs_SOLID. Returns
-// nullptr when OCCT rejects the offset (self-intersecting offset surfaces:
-// |offset| ≥ half the local wall thickness, or a concave slot narrower
-// than 2*offset pinching shut).
-std::unique_ptr<TopoDS_Shape> make_offset_shape(
+// Offset the given faces of `shape` by signed `offset` along their normals; a
+// SHELL/compound result is upgraded so Rust always receives a TopAbs_SOLID.
+std::unique_ptr<TopoDS_Shape> make_offset(
     const TopoDS_Shape& shape,
+    const std::vector<TopoDS_Face>& faces,
     double offset,
     double tolerance)
 {
     try {
-        BRepOffsetAPI_MakeOffsetShape offsetter;
-        offsetter.PerformByJoin(
-            shape, offset, tolerance,
+        // Per-face offsets need the Intersection join; Arc rejects them.
+        BRepOffset_MakeOffset offsetter;
+        offsetter.Initialize(
+            shape, /*offset=*/ 0.0, tolerance,
             /*mode=*/ BRepOffset_Skin,
-            /*intersection=*/ false,
+            /*intersection=*/ true,
             /*selfInter=*/ false,
-            /*join=*/ GeomAbs_Arc);
+            /*join=*/ GeomAbs_Intersection);
+        for (const TopoDS_Face& f : faces) offsetter.SetOffsetOnFace(f, offset);
+        offsetter.MakeOffsetShape();
         if (!offsetter.IsDone()) return nullptr;
         TopoDS_Shape result = offsetter.Shape();
         if (result.IsNull()) return nullptr;

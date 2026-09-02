@@ -107,6 +107,7 @@ use crate::common::color::Color;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
 use glam::{DMat3, DQuat, DVec3};
+use std::fmt::Debug;
 
 /// Tessellation parameters for `Solid::mesh` and `Edge::approximation_segments`.
 ///
@@ -307,7 +308,7 @@ pub enum BSplineEnd {
 /// geometry, zero/negative radius, collinear arc points, etc.) yield
 /// `Error::Edge(String)` with a message that identifies the failing
 /// constructor and the offending parameters.
-pub trait EdgeStruct: Sized + Clone + Transform {
+pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	/// Stable, backend-defined identity for this edge. Two `Edge` values
 	/// returning the same `id()` refer to the same topology element.
 	/// Use to compare edges across `Solid::iter_edge()` / `Face::iter_edge()`
@@ -411,7 +412,7 @@ pub trait EdgeStruct: Sized + Clone + Transform {
 ///
 /// examples/codegen.rs generates `impl Face { pub fn ... }` from this trait
 /// so callers reach the methods inherently as `face.id()` / `face.project(p)`.
-pub trait FaceStruct: Sized {
+pub trait FaceStruct: Sized + Debug {
 	type Edge: EdgeStruct;
 
 	/// Stable, backend-defined identity for this face. Two `Face` values
@@ -460,7 +461,7 @@ pub trait FaceStruct: Sized {
 ///
 /// Associated types `Edge`/`Face` keep this trait backend-independent: each
 /// backend (occt / pure) binds them to its own concrete types in the impl.
-pub trait SolidStruct: Sized + Clone + Transform {
+pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	type Edge: EdgeStruct;
 	type Face: FaceStruct;
 
@@ -636,24 +637,19 @@ pub trait SolidStruct: Sized + Clone + Transform {
 	where
 		Self::Face: 'a;
 
-	/// Offset every face of this solid by a constant signed distance,
-	/// producing a new solid whose boundary is parallel to the original
-	/// surface. `offset > 0` grows outward, `offset < 0` shrinks inward —
-	/// the mold/tooling primitive (cavity = `part.offset_surface(t, tol)`).
+	/// Offset the given faces by a signed distance along their normals
+	/// (`offset > 0` outward, `offset < 0` inward); neighbours are extended or
+	/// trimmed to follow, so convex edges stay sharp (join=Intersection).
+	/// `self.iter_face()` offsets every face — the mold/tooling primitive;
+	/// a subset is direct-modeling push-pull. `tolerance` is the working
+	/// precision (`1e-6` suits millimeter scale).
 	///
-	/// Wraps `BRepOffsetAPI_MakeOffsetShape` (`PerformByJoin`, mode=Skin,
-	/// join=Arc): convex edges/corners are blended with cylindrical/spherical
-	/// arcs of radius `offset`; concave ones are extended and intersected.
-	/// `tolerance` is the offset algorithm's working precision (`1e-6` is a
-	/// reasonable default at millimeter scale).
-	///
-	/// **Known failure mode — thin features**: an inward offset whose
-	/// magnitude reaches half the local wall thickness makes opposing offset
-	/// faces cross, and an outward offset pinches shut inside narrow concave
-	/// slots ≤ `2·offset` wide. OCCT rejects the self-intersecting result and
-	/// this method returns [`Error::Offset`] — reduce `offset` or
-	/// remove/split the thin feature first.
-	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error>;
+	/// Fails with [`Error::Offset`] when the offset self-intersects: an inward
+	/// offset reaching half the local wall thickness, or a concave slot
+	/// narrower than `2·offset` pinching shut.
+	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error>
+	where
+		Self::Face: 'a;
 
 	/// Build a B-spline surface solid from a 2D control-point grid.
 	///

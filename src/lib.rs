@@ -214,8 +214,8 @@ impl Solid {
 	pub fn sew<'a>(faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::sew(faces, tolerance)
 	}
-	pub fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<crate::Solid, Error> {
-		<Self as crate::traits::SolidStruct>::offset_surface(self, offset, tolerance)
+	pub fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::offset(self, offset, faces, tolerance)
 	}
 	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)
