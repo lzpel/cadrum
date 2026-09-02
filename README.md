@@ -177,10 +177,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [01_primitives.png](https://lzpel.github.io/cadrum/01_primitives.png) | [01_primitives.step](https://lzpel.github.io/cadrum/01_primitives.step) | [01_primitives.glb](https://lzpel.github.io/cadrum/01_primitives.glb) | [01_primitives.stl](https://lzpel.github.io/cadrum/01_primitives.stl) | [01_primitives.svg](https://lzpel.github.io/cadrum/01_primitives.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/01_primitives.svg' alt='01_primitives' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/01_primitives.svg' alt='01_primitives' width='360'/>
 
 #### Write read
 
@@ -239,10 +239,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [02_write_read.png](https://lzpel.github.io/cadrum/02_write_read.png) | [02_write_read.step](https://lzpel.github.io/cadrum/02_write_read.step) | [02_write_read.glb](https://lzpel.github.io/cadrum/02_write_read.glb) | [02_write_read.brep](https://lzpel.github.io/cadrum/02_write_read.brep) | [02_write_read.stl](https://lzpel.github.io/cadrum/02_write_read.stl) | [02_write_read.svg](https://lzpel.github.io/cadrum/02_write_read.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/02_write_read.svg' alt='02_write_read' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/02_write_read.svg' alt='02_write_read' width='360'/>
 
 #### Transform
 
@@ -290,10 +290,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [03_transform.png](https://lzpel.github.io/cadrum/03_transform.png) | [03_transform.step](https://lzpel.github.io/cadrum/03_transform.step) | [03_transform.glb](https://lzpel.github.io/cadrum/03_transform.glb) | [03_transform.stl](https://lzpel.github.io/cadrum/03_transform.stl) | [03_transform.svg](https://lzpel.github.io/cadrum/03_transform.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/03_transform.svg' alt='03_transform' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/03_transform.svg' alt='03_transform' width='360'/>
 
 #### Boolean
 
@@ -350,10 +350,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [04_boolean.png](https://lzpel.github.io/cadrum/04_boolean.png) | [04_boolean.step](https://lzpel.github.io/cadrum/04_boolean.step) | [04_boolean.glb](https://lzpel.github.io/cadrum/04_boolean.glb) | [04_boolean.stl](https://lzpel.github.io/cadrum/04_boolean.stl) | [04_boolean.svg](https://lzpel.github.io/cadrum/04_boolean.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/04_boolean.svg' alt='04_boolean' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/04_boolean.svg' alt='04_boolean' width='360'/>
 
 #### Extrude
 
@@ -433,10 +433,10 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [05_extrude.png](https://lzpel.github.io/cadrum/05_extrude.png) | [05_extrude.step](https://lzpel.github.io/cadrum/05_extrude.step) | [05_extrude.glb](https://lzpel.github.io/cadrum/05_extrude.glb) | [05_extrude.stl](https://lzpel.github.io/cadrum/05_extrude.stl) | [05_extrude.svg](https://lzpel.github.io/cadrum/05_extrude.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/05_extrude.svg' alt='05_extrude' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/05_extrude.svg' alt='05_extrude' width='360'/>
 
 #### Loft
 
@@ -539,10 +539,10 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [06_loft.png](https://lzpel.github.io/cadrum/06_loft.png) | [06_loft.step](https://lzpel.github.io/cadrum/06_loft.step) | [06_loft.glb](https://lzpel.github.io/cadrum/06_loft.glb) | [06_loft.stl](https://lzpel.github.io/cadrum/06_loft.stl) | [06_loft.svg](https://lzpel.github.io/cadrum/06_loft.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/06_loft.svg' alt='06_loft' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/06_loft.svg' alt='06_loft' width='360'/>
 
 #### Sweep
 
@@ -690,10 +690,10 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [07_sweep.png](https://lzpel.github.io/cadrum/07_sweep.png) | [07_sweep.step](https://lzpel.github.io/cadrum/07_sweep.step) | [07_sweep.glb](https://lzpel.github.io/cadrum/07_sweep.glb) | [07_sweep.stl](https://lzpel.github.io/cadrum/07_sweep.stl) | [07_sweep.svg](https://lzpel.github.io/cadrum/07_sweep.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/07_sweep.svg' alt='07_sweep' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/07_sweep.svg' alt='07_sweep' width='360'/>
 
 #### Shell
 
@@ -761,12 +761,14 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [08_shell.png](https://lzpel.github.io/cadrum/08_shell.png) | [08_shell.step](https://lzpel.github.io/cadrum/08_shell.step) | [08_shell.glb](https://lzpel.github.io/cadrum/08_shell.glb) | [08_shell.stl](https://lzpel.github.io/cadrum/08_shell.stl) | [08_shell.svg](https://lzpel.github.io/cadrum/08_shell.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/08_shell.svg' alt='08_shell' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/08_shell.svg' alt='08_shell' width='360'/>
 
 #### Bspline
+
+
 
 ```sh
 cargo run --example 09_bspline
@@ -828,10 +830,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [09_bspline.png](https://lzpel.github.io/cadrum/09_bspline.png) | [09_bspline.step](https://lzpel.github.io/cadrum/09_bspline.step) | [09_bspline.glb](https://lzpel.github.io/cadrum/09_bspline.glb) | [09_bspline.stl](https://lzpel.github.io/cadrum/09_bspline.stl) | [09_bspline.svg](https://lzpel.github.io/cadrum/09_bspline.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/09_bspline.svg' alt='09_bspline' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/09_bspline.svg' alt='09_bspline' width='360'/>
 
 #### Fillet
 
@@ -890,10 +892,10 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [10_fillet.png](https://lzpel.github.io/cadrum/10_fillet.png) | [10_fillet.step](https://lzpel.github.io/cadrum/10_fillet.step) | [10_fillet.glb](https://lzpel.github.io/cadrum/10_fillet.glb) | [10_fillet.stl](https://lzpel.github.io/cadrum/10_fillet.stl) | [10_fillet.svg](https://lzpel.github.io/cadrum/10_fillet.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/10_fillet.svg' alt='10_fillet' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/10_fillet.svg' alt='10_fillet' width='360'/>
 
 #### Chamfer
 
@@ -952,10 +954,10 @@ fn main() -> Result<(), Error> {
 }
 
 ```
+
 Output: [11_chamfer.png](https://lzpel.github.io/cadrum/11_chamfer.png) | [11_chamfer.step](https://lzpel.github.io/cadrum/11_chamfer.step) | [11_chamfer.glb](https://lzpel.github.io/cadrum/11_chamfer.glb) | [11_chamfer.stl](https://lzpel.github.io/cadrum/11_chamfer.stl) | [11_chamfer.svg](https://lzpel.github.io/cadrum/11_chamfer.svg)
 
-<div align=center><img src='https://lzpel.github.io/cadrum/11_chamfer.svg' alt='11_chamfer' width='360'/></div>
-
+<img src='https://lzpel.github.io/cadrum/11_chamfer.svg' alt='11_chamfer' width='360'/>
 
 #### Multiview
 
@@ -995,9 +997,10 @@ fn main() -> Result<(), cadrum::Error> {
 }
 
 ```
+
 Output: [12_multiview.png](https://lzpel.github.io/cadrum/12_multiview.png) | [12_multiview.glb](https://lzpel.github.io/cadrum/12_multiview.glb) | [12_multiview.stl](https://lzpel.github.io/cadrum/12_multiview.stl)
 
-
+<img src='https://lzpel.github.io/cadrum/12_multiview.png' alt='12_multiview' width='360'/>
 
 ## The Type Map
 
