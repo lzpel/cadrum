@@ -144,6 +144,12 @@ impl Solid {
 	}
 }
 
+impl std::fmt::Debug for Solid {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "Solid({}, center={:?}, faces={}, edges={})", self.id(), self.center(), self.iter_face().count(), self.iter_edge().count())
+	}
+}
+
 impl SolidStruct for Solid {
 	type Edge = Edge;
 	type Face = Face;
@@ -432,11 +438,15 @@ impl SolidStruct for Solid {
 
 	// ==================== Offset surface ====================
 
-	fn offset_surface(&self, offset: f64, tolerance: f64) -> Result<Self, Error> {
-		let shape = ffi::make_offset_shape(&self.inner, offset, tolerance);
+	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<Self, Error> {
+		let mut face_vec = ffi::face_vec_new();
+		for f in faces {
+			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
+		}
+		let shape = ffi::make_offset(&self.inner, &face_vec, offset, tolerance);
 		if shape.is_null() {
 			return Err(Error::Offset(format!(
-				"offset_surface: OCCT BRepOffsetAPI_MakeOffsetShape failed (offset={}, tolerance={}). \
+				"offset: OCCT BRepOffset_MakeOffset failed (offset={}, tolerance={}). \
 				 Thin walls/slots whose local thickness is ≤ 2|offset| self-intersect and are rejected.",
 				offset, tolerance
 			)));
