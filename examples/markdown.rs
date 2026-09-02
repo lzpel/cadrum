@@ -52,6 +52,26 @@ impl Entry {
 		self.content.lines().find(|l| l.starts_with("//!")).map(|l| l.trim_start_matches("//!").trim()).unwrap_or("")
 	}
 }
+// 生成物
+type Output = (PathBuf, Vec<u8>); // (relative path, contents) / (相対パス, 内容)
+
+fn main() {
+	let entries: Vec<Entry> = collect_entries();
+	let outputs: Vec<Output> = collect_outputs(&entries);
+
+	// Each arg is a file path: dispatch by filename / 各引数をファイル名で判別して処理
+	for arg in std::env::args().skip(1) {
+		let path = PathBuf::from(&arg);
+		let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+		if name.starts_with("SUMMARY") {
+			write_summary(&path, &entries, &outputs);
+		} else if name.starts_with("README") {
+			write_readme(&path, &entries[1..], &outputs);
+		} else {
+			eprintln!("unknown target: {arg} (expected SUMMARY.md or README.md)");
+		}
+	}
+}
 
 /// Collect numbered example files (NN_*.rs) sorted by name.
 /// 番号付き example (NN_*.rs) をファイル名順に収集する。
@@ -77,7 +97,7 @@ fn collect_entries() -> Vec<Entry> {
 
 /// Run each example in a temp directory and collect all generated files, sorted by path.
 /// 一時ディレクトリで各 example を実行し、生成されたファイルをパス順で回収する。
-fn collect_outputs(entries: &[Entry]) -> Vec<(PathBuf, Vec<u8>)> {
+fn collect_outputs(entries: &[Entry]) -> Vec<Output> {
 	let tmp = std::env::temp_dir().join("cadrum_examples");
 	clean_dir(&tmp);
 
@@ -90,7 +110,7 @@ fn collect_outputs(entries: &[Entry]) -> Vec<(PathBuf, Vec<u8>)> {
 	}
 
 	// Read all files from the temp directory / 一時ディレクトリの全ファイルを読み込む
-	let mut outputs: Vec<(PathBuf, Vec<u8>)> = fs::read_dir(&tmp)
+	let mut outputs: Vec<Output> = fs::read_dir(&tmp)
 		.unwrap()
 		.filter_map(|e| e.ok())
 		.filter_map(|e| {
@@ -107,7 +127,7 @@ fn collect_outputs(entries: &[Entry]) -> Vec<(PathBuf, Vec<u8>)> {
 
 /// Write output files, SUMMARY.md, and per-example markdown pages.
 /// 生成物・SUMMARY.md・各 example の markdown ページを出力する。
-fn write_summary(summary_path: &Path, entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) {
+fn write_summary(summary_path: &Path, entries: &[Entry], outputs: &[Output]) {
 	let out_dir = summary_path.parent().expect("summary_path must have a parent directory");
 	clean_dir(out_dir);
 
@@ -135,102 +155,53 @@ fn write_summary(summary_path: &Path, entries: &[Entry], outputs: &[(PathBuf, Ve
 	eprintln!("generated: {}", summary_path.display());
 }
 
-/// Render a single example as markdown (description + run command + code + image) for README.
-/// README 用に 1つの example を説明 + 実行コマンド + ソース + 画像の markdown として生成する。
-/// 画像は GitHub Pages (mdbook 出力) の URL を参照する。
-fn render_example(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
-	let (stem, desc) = (entry.stem(), entry.description());
-	let mut s = String::new();
-	if !desc.is_empty() {
-		s.push_str(&format!("\n{}\n", desc));
-	}
-	s.push_str(&format!("\n```sh\ncargo run --example {}\n```\n", stem));
-	// `rust,no_run`: the README is `include_str!`'d into `src/lib.rs`, so each
-	// example program would otherwise become a doctest that `cargo test` tries
-	// to compile and run (slow + writes files). `no_run` keeps the type check.
-	s.push_str(&format!("\n```rust,no_run\n{}\n```\n", entry.content));
-	s.push_str(&render_assets(entry, outputs));
-	s.push('\n');
-	s
-}
-
-/// Render README asset markdown for an entry: a single-line `Output:` row of
-/// download links (present artifacts only, fixed type order) followed by the
-/// SVG preview image.
-/// entry に属するアセットを 1 行の `Output:` リンク行 + SVG プレビュー画像にして返す。
-fn render_assets(entry: &Entry, outputs: &[(PathBuf, Vec<u8>)]) -> String {
+/// Render README asset markdown for an entry: Output links + preview images.
+fn render_assets(entry: &Entry, outputs: &[Output]) -> String {
 	let stem = entry.stem();
-	// Files belonging to this example, e.g. "01_primitives.glb" / この example の生成物
-	let owned = |ext: &str| -> Vec<String> { outputs.iter().filter_map(|(p, _)| p.to_str().map(str::to_string)).filter(|name| name.starts_with(stem) && name.ends_with(&format!(".{ext}"))).collect() };
-
-	// One link per present artifact, in a fixed type order / 固定順で存在物のみリンク化
-	let links: Vec<String> = ["png", "step", "glb", "brep", "stl", "svg"].iter().flat_map(|ext| owned(ext)).map(|name| format!("[{name}](https://lzpel.github.io/cadrum/{name})")).collect();
-	if links.is_empty() {
-		return String::new();
-	}
-
-	let mut out = format!("Output: {}\n", links.join(" | "));
-	// Keep the SVG preview image below the links / SVG プレビュー画像を下に残す
-	for name in owned("svg") {
-		out.push_str(&format!("\n<div align=center><img src='https://lzpel.github.io/cadrum/{name}' alt='{stem}' width='360'/></div>\n"));
-	}
-	out
+	let links: Vec<String> = ["png", "step", "glb", "brep", "stl", "svg"].iter().filter_map(|ext| find_output(outputs, stem, ext).map(|v| format!("[{}]({})", format!("{}.{}", stem, ext), link_output(&v)))).collect();
+	let previews = ["svg", "png"].iter().find_map(|ext| find_output(outputs, stem, ext).map(|out| format!("<img src='{}' alt='{}' width='360'/>", link_output(&out), stem)));
+	format!("Output: {}\n\n{}", links.join(" | "), previews.unwrap_or_default())
 }
 
 /// Render the `## Usage` section: thumbnail table + install instructions.
-fn render_usage(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
+fn render_usage(entries: &[Entry], outputs: &[Output]) -> String {
 	const COLS: usize = 4;
-	let mut s = String::from("<!--GALLERY-->\n\n<table>\n");
-	if !entries.is_empty() {
-		let rows = entries.len().div_ceil(COLS);
-		for row in 0..rows {
-			let cells: Vec<Option<(&Entry, &str)>> = (0..COLS)
-				.map(|col| {
-					let entry = entries.get(row * COLS + col)?;
-					let img = outputs.iter().filter_map(|(p, _)| p.to_str()).find(|n| n.starts_with(entry.stem()) && (n.ends_with(".svg") || n.ends_with(".png")))?;
-					Some((entry, img))
-				})
-				.collect();
-			s.push_str(&format!(
-				"<tr>{}</tr>\n",
-				cells
-					.iter()
-					.map(|cell| {
-						let v = cell.map(|(e, _)| format!("<a href='#{anchor}'>{title}</a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
-						format!("<th width='25%'>{}</th>", v)
-					})
-					.collect::<String>()
-			));
-			s.push_str(&format!(
-				"<tr>{}</tr>\n",
-				cells
-					.iter()
-					.map(|cell| {
-						let v = cell.map(|(e, img)| format!("<a href='#{anchor}'><img src='https://lzpel.github.io/cadrum/{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = e.slug(), title = e.plain_title())).unwrap_or_default();
-						format!("<td width='25%'>{}</td>", v)
-					})
-					.collect::<String>()
-			));
+	let cells: Vec<[String; 2]> = entries
+		.iter()
+		.map(|entry| {
+			let img = &find_output(outputs, entry.stem(), "png").map(link_output).unwrap_or_default();
+			let th = format!("<a href='#{anchor}'>{title}</a>", anchor = entry.slug(), title = entry.plain_title());
+			let td = format!("<a href='#{anchor}'><img src='{img}' width='100%' height='auto' alt='{title}'/></a>", anchor = entry.slug(), title = entry.plain_title());
+			[th, td]
+		})
+		.collect();
+	{
+		let mut s = String::from("<!--GALLERY-->\n\n<table>\n");
+		for chunk in cells.chunks(COLS) {
+			for (i, tag) in ["th", "td"].iter().enumerate() {
+				let row: String = (0..COLS).map(|col| format!("<{tag} width='25%'>{}</{tag}>", chunk.get(col).map(|cell| cell[i].as_str()).unwrap_or_default())).collect();
+				s.push_str(&format!("<tr>{row}</tr>\n"));
+			}
 		}
+		s.push_str("</table>\n");
+		s
 	}
-	s.push_str("</table>\n");
-	s
 }
 
 /// Render the `## Example` section: every entry listed with `#### Title`.
-fn render_example_section(entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) -> String {
-	let mut s = String::from("## Examples\n");
-	for entry in entries {
-		s.push_str(&format!("\n#### {}\n", entry.title()));
-		s.push_str(&render_example(entry, outputs));
+fn render_example_section(entries: &[Entry], outputs: &[Output]) -> String {
+	fn render_example(entry: &Entry, outputs: &[Output]) -> String {
+		let header = format!("\n{}\n\n```sh\ncargo run --example {}\n```\n\n```rust,no_run\n{}\n```\n", entry.description(), entry.stem(), entry.content);
+		let asset = render_assets(entry, outputs);
+		format!("{}\n{}", header, asset)
 	}
-	s.push('\n');
-	s
+	let examples: Vec<String> = entries.iter().map(|entry| format!("\n#### {}\n{}", entry.title(), &render_example(entry, outputs))).collect();
+	format!("## Examples\n{}\n", examples.join("\n"))
 }
 
 /// Update README.md by replacing `## Usage` and `## Example` sections.
 /// README.md の `## Usage` と `## Example` 節を自動生成で置換する。
-fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &[(PathBuf, Vec<u8>)]) {
+fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &[Output]) {
 	let readme = fs::read_to_string(readme_path).expect("failed to read README.md");
 
 	let mut new_readme = String::with_capacity(readme.len());
@@ -268,20 +239,10 @@ fn clean_dir(dir: &Path) {
 	fs::create_dir_all(dir).expect("failed to create directory");
 }
 
-fn main() {
-	let entries = collect_entries();
-	let outputs = collect_outputs(&entries);
+fn find_output<'a>(outputs: &'a [Output], stem: &str, ext: &str) -> Option<&'a Output> {
+	outputs.iter().find(|(p, _)| p.extension().is_some_and(|v| v == ext) && p.file_stem().is_some_and(|s| s == stem))
+}
 
-	// Each arg is a file path: dispatch by filename / 各引数をファイル名で判別して処理
-	for arg in std::env::args().skip(1) {
-		let path = PathBuf::from(&arg);
-		let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-		if name.starts_with("SUMMARY") {
-			write_summary(&path, &entries, &outputs);
-		} else if name.starts_with("README") {
-			write_readme(&path, &entries[1..], &outputs);
-		} else {
-			eprintln!("unknown target: {arg} (expected SUMMARY.md or README.md)");
-		}
-	}
+fn link_output(output: &Output) -> String {
+	format!("https://lzpel.github.io/cadrum/{}", output.0.file_name().unwrap_or_default().to_string_lossy())
 }
