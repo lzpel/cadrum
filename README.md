@@ -15,8 +15,10 @@ cadrum is a Rust CAD crate using statically-linked, headless [OpenCASCADE][occt]
 <tr><td width='25%'><a href='#primitives'><img src='https://lzpel.github.io/cadrum/01_primitives.png' width='100%' height='auto' alt='primitives'/></a></td><td width='25%'><a href='#write-read'><img src='https://lzpel.github.io/cadrum/02_write_read.png' width='100%' height='auto' alt='write read'/></a></td><td width='25%'><a href='#transform'><img src='https://lzpel.github.io/cadrum/03_transform.png' width='100%' height='auto' alt='transform'/></a></td><td width='25%'><a href='#boolean'><img src='https://lzpel.github.io/cadrum/04_boolean.png' width='100%' height='auto' alt='boolean'/></a></td></tr>
 <tr><th width='25%'><a href='#extrude'>extrude</a></th><th width='25%'><a href='#loft'>loft</a></th><th width='25%'><a href='#sweep'>sweep</a></th><th width='25%'><a href='#shell'>shell</a></th></tr>
 <tr><td width='25%'><a href='#extrude'><img src='https://lzpel.github.io/cadrum/05_extrude.png' width='100%' height='auto' alt='extrude'/></a></td><td width='25%'><a href='#loft'><img src='https://lzpel.github.io/cadrum/06_loft.png' width='100%' height='auto' alt='loft'/></a></td><td width='25%'><a href='#sweep'><img src='https://lzpel.github.io/cadrum/07_sweep.png' width='100%' height='auto' alt='sweep'/></a></td><td width='25%'><a href='#shell'><img src='https://lzpel.github.io/cadrum/08_shell.png' width='100%' height='auto' alt='shell'/></a></td></tr>
-<tr><th width='25%'><a href='#bspline'>bspline</a></th><th width='25%'><a href='#fillet'>fillet</a></th><th width='25%'><a href='#chamfer'>chamfer</a></th><th width='25%'><a href='#multiview'>multiview</a></th></tr>
-<tr><td width='25%'><a href='#bspline'><img src='https://lzpel.github.io/cadrum/09_bspline.png' width='100%' height='auto' alt='bspline'/></a></td><td width='25%'><a href='#fillet'><img src='https://lzpel.github.io/cadrum/10_fillet.png' width='100%' height='auto' alt='fillet'/></a></td><td width='25%'><a href='#chamfer'><img src='https://lzpel.github.io/cadrum/11_chamfer.png' width='100%' height='auto' alt='chamfer'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/12_multiview.png' width='100%' height='auto' alt='multiview'/></a></td></tr>
+<tr><th width='25%'><a href='#bspline'>bspline</a></th><th width='25%'><a href='#fillet'>fillet</a></th><th width='25%'><a href='#chamfer'>chamfer</a></th><th width='25%'><a href='#offset'>offset</a></th></tr>
+<tr><td width='25%'><a href='#bspline'><img src='https://lzpel.github.io/cadrum/09_bspline.png' width='100%' height='auto' alt='bspline'/></a></td><td width='25%'><a href='#fillet'><img src='https://lzpel.github.io/cadrum/10_fillet.png' width='100%' height='auto' alt='fillet'/></a></td><td width='25%'><a href='#chamfer'><img src='https://lzpel.github.io/cadrum/11_chamfer.png' width='100%' height='auto' alt='chamfer'/></a></td><td width='25%'><a href='#offset'><img src='https://lzpel.github.io/cadrum/12_offset.png' width='100%' height='auto' alt='offset'/></a></td></tr>
+<tr><th width='25%'><a href='#sew'>sew</a></th><th width='25%'><a href='#moebius'>moebius</a></th><th width='25%'><a href='#multiview'>multiview</a></th><th width='25%'></th></tr>
+<tr><td width='25%'><a href='#sew'><img src='https://lzpel.github.io/cadrum/13_sew.png' width='100%' height='auto' alt='sew'/></a></td><td width='25%'><a href='#moebius'><img src='https://lzpel.github.io/cadrum/14_moebius.png' width='100%' height='auto' alt='moebius'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/15_multiview.png' width='100%' height='auto' alt='multiview'/></a></td><td width='25%'></td></tr>
 </table>
 
 ## What is cadrum
@@ -121,8 +123,8 @@ C++17 compiler (GCC, Clang, or MSVC) and CMake.
 |---|---|
 | **Primitives** | `Solid::cube`, `Solid::sphere`, `Solid::cylinder`, `Solid::cone`, `Solid::torus`, `Solid::half_space` |
 | **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline` |
-| **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline` |
-| **Editing** | `Solid::shell`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
+| **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline`, `Solid::sew` |
+| **Editing** | `Solid::shell`, `Solid::offset`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
 | **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains` |
 | **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Face::iter_edge`, `Face::project`, `Edge::project` |
 | **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` |
@@ -775,9 +777,6 @@ cargo run --example 09_bspline
 ```
 
 ```rust,no_run
-use cadrum::{DQuat, DVec3, Solid};
-use std::f64::consts::TAU;
-
 // 2 field-period stellarator-like torus.
 // `Solid::bspline` is fed a 2D control-point grid to build a periodic B-spline solid.
 // Every variation below is invariant under phi → phi+π (or shifts by a multiple
@@ -786,6 +785,8 @@ use std::f64::consts::TAU;
 //   b(phi)       = 1.0 + 0.4 * cos(2φ)      Z semi-axis
 //   psi(phi)     = 2 * phi                  cross-section twist (2 turns per loop)
 //   z_shift(phi) = 1.0 * sin(2φ)            vertical undulation
+use cadrum::{DQuat, DVec3, Solid};
+use std::f64::consts::TAU;
 const M: usize = 48; // toroidal (U) — must be even for 180° symmetry
 const N: usize = 24; // poloidal (V) — arbitrary
 const RING_R: f64 = 6.0;
@@ -959,12 +960,185 @@ Output: [11_chamfer.png](https://lzpel.github.io/cadrum/11_chamfer.png) | [11_ch
 
 <img src='https://lzpel.github.io/cadrum/11_chamfer.svg' alt='11_chamfer' width='360'/>
 
+#### Offset
+
+Signed surface offset: one drilled block grown by +3, the original, and shrunk by -3 side by side — every face moves along its normal, so the hole shrinks as the body grows.
+
+```sh
+cargo run --example 12_offset
+```
+
+```rust,no_run
+//! Signed surface offset: one drilled block grown by +3, the original, and shrunk by -3 side by side — every face moves along its normal, so the hole shrinks as the body grows.
+
+use cadrum::{DVec3, Solid};
+
+fn main() -> Result<(), cadrum::Error> {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(24.0, 40.0, 16.0));
+	let hole = Solid::cylinder(5.0, DVec3::Z * 16.0).translate(DVec3::new(12.0, 20.0, 0.0));
+	let part = (&block - &hole).build()?.color("#4a90d9");
+
+	// offset > 0 grows outward (hole tightens), offset < 0 shrinks inward (hole widens).
+	let grown = part.offset(3.0, part.iter_face(), 1.0e-6)?.translate(-DVec3::X * 50.0).color("#e67e22");
+	let shrunk = part.offset(-3.0, part.iter_face(), 1.0e-6)?.translate(DVec3::X * 50.0).color("#2ecc71");
+
+	let solids = [grown, part, shrunk];
+	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+
+	let mesh = Solid::mesh(&solids, Default::default())?;
+	let scene = mesh.scene(Default::default());
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
+}
+
+```
+
+Output: [12_offset.png](https://lzpel.github.io/cadrum/12_offset.png) | [12_offset.step](https://lzpel.github.io/cadrum/12_offset.step) | [12_offset.glb](https://lzpel.github.io/cadrum/12_offset.glb) | [12_offset.stl](https://lzpel.github.io/cadrum/12_offset.stl) | [12_offset.svg](https://lzpel.github.io/cadrum/12_offset.svg)
+
+<img src='https://lzpel.github.io/cadrum/12_offset.svg' alt='12_offset' width='360'/>
+
+#### Sew
+
+Sew closes a seam no boolean can: a hexagonal ring of mitered triangular prisms is lofted with coincident first/last sections, the caps are dropped, sew fuses the ring (genus 0 → 1), and clean erases the seam edges entirely.
+
+```sh
+cargo run --example 13_sew
+```
+
+```rust,no_run
+//! Sew closes a seam no boolean can: a hexagonal ring of mitered triangular prisms is lofted with coincident first/last sections, the caps are dropped, sew fuses the ring (genus 0 → 1), and clean erases the seam edges entirely.
+// sew (#186) targets surface-first work: closing lofted skin panels or surface-only STEP into a watertight solid.
+// The seam sits mid-segment, so its two half-panels are coplanar and clean can dissolve the stitched edges.
+
+use cadrum::{DVec3, Edge, Face, Solid};
+use std::f64::consts::{PI, TAU};
+
+fn main() -> Result<(), cadrum::Error> {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
+
+	let (m, r) = (6usize, 20.0);
+	let profile = [(-5.0, -4.0), (5.0, -2.0), (0.0, 6.0)]; // (radial, z), tilted so only the seam planes coincide
+	let vert = |k: usize| DVec3::new((TAU * k as f64 / m as f64).cos(), (TAU * k as f64 / m as f64).sin(), 0.0) * r;
+
+	// Miter section at ring vertex k: profile stretched by 1/cos(alpha) along the radial bisector.
+	let alpha = PI / m as f64;
+	let miter = |k: usize| profile.map(|(u, z)| vert(k) + vert(k).normalize() * (u / alpha.cos()) + DVec3::Z * z);
+	// Perpendicular section at the middle of segment 0 — the seam, where the loft starts and ends.
+	let mid_pt = (vert(0) + vert(1)) / 2.0;
+	let mid = profile.map(|(u, z)| mid_pt + mid_pt.normalize() * u + DVec3::Z * z);
+
+	let sections: Vec<Vec<Edge>> = std::iter::once(mid).chain((1..=m).map(miter)).chain(std::iter::once(mid)).map(|pts| Edge::polygon(&pts)).collect::<Result<_, _>>()?;
+	let fake = Solid::loft(sections.iter(), true)?;
+
+	let seam = mid_pt - DVec3::Z;
+	let d0 = (vert(1) - vert(0)).normalize();
+	let ring: Vec<&Face> = fake
+		.iter_face()
+		.filter(|f| {
+			let (p, normal) = f.project(seam);
+			!((p - seam).length() < 1e-6 && normal.dot(d0).abs() > 0.9)
+		})
+		.collect();
+	let torus = Solid::sew(ring, 1.0e-6)?.clean()?.color("#2ecc71");
+	println!("faces: fake={} torus={} / contains(seam): fake={} torus={}", fake.iter_face().count(), torus.iter_face().count(), fake.contains(seam), torus.contains(seam));
+
+	let solids = [torus];
+	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+
+	let mesh = Solid::mesh(&solids, Default::default())?;
+	let scene = mesh.scene(Default::default());
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
+}
+
+```
+
+Output: [13_sew.png](https://lzpel.github.io/cadrum/13_sew.png) | [13_sew.step](https://lzpel.github.io/cadrum/13_sew.step) | [13_sew.glb](https://lzpel.github.io/cadrum/13_sew.glb) | [13_sew.stl](https://lzpel.github.io/cadrum/13_sew.stl) | [13_sew.svg](https://lzpel.github.io/cadrum/13_sew.svg)
+
+<img src='https://lzpel.github.io/cadrum/13_sew.svg' alt='13_sew' width='360'/>
+
+#### Moebius
+
+mevius using BSplineEnd::Periodic and ProfileOrient::Auxiliary. Mevius but it's twisted more.
+
+```sh
+cargo run --example 14_moebius
+```
+
+```rust,no_run
+//! mevius using BSplineEnd::Periodic and ProfileOrient::Auxiliary. Mevius but it's twisted more.
+
+use cadrum::{BSplineEnd, DVec3, Edge, ProfileOrient, Solid};
+use std::f64::consts::TAU;
+
+fn main() -> Result<(), cadrum::Error> {
+	let guided_spine = |phi: f64| {
+		let p = DVec3::new(10., 0.0, 0.0);
+		let g = p + 2. / 2. * DVec3::X;
+		[p, (g - p).rotate_y(phi * 2.) + p].map(|v| v.rotate_z(phi))
+	};
+	const SIZE: usize = 10;
+	let v: [[DVec3; 2]; SIZE] = std::array::from_fn(|i| guided_spine(TAU * i as f64 / SIZE as f64));
+	let spine = Edge::bspline(&v.map(|a| a[0])[..SIZE], BSplineEnd::Periodic)?;
+	let aux = Edge::bspline(&v.map(|a| a[1])[..SIZE], BSplineEnd::Periodic)?;
+
+	let tube = |curve: &Edge| -> Result<Solid, cadrum::Error> {
+		let profile = Edge::circle(0.1, DVec3::Z)?;
+		Solid::sweep([&profile.align_z(curve.start_tangent(), DVec3::Z).translate(curve.start_point())], [curve], ProfileOrient::Up(DVec3::Z))
+	};
+	let spine_tube = tube(&spine)?.color("#4a90d9");
+	let aux_tube = tube(&aux)?.color("#e67e22");
+	println!("spine tube: faces={}  aux tube: faces={}", spine_tube.iter_face().count(), aux_tube.iter_face().count());
+	output(&[spine_tube, aux_tube], Some("_tubes"))?;
+	let prof = profile(2.0, 0.2)?.map(|v| v.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point()));
+	let mevius = Solid::sweep(&prof, &[spine], ProfileOrient::Auxiliary(&[aux]))?.color("#2ebc71");
+	output(&[mevius], None)?;
+	return Ok(());
+}
+
+fn profile(width: f64, height: f64) -> Result<[Edge; 4], cadrum::Error> {
+	let v: Vec<Edge> = Edge::polygon(&[DVec3::new(-width / 2., -height / 2., 0.0), DVec3::new(width / 2., -height / 2., 0.0), DVec3::new(width / 2., height / 2., 0.0), DVec3::new(-width / 2., height / 2., 0.0)])?;
+	Ok(v.try_into().unwrap())
+}
+
+fn output(solids: &[Solid], suffix: Option<&str>) -> Result<(), cadrum::Error> {
+	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap().to_string() + suffix.unwrap_or_default();
+	Solid::write_step(solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
+	let mesh = Solid::mesh(solids, Default::default())?;
+	let scene = mesh.scene(Default::default());
+	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
+	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
+	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
+
+	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	Ok(())
+}
+
+```
+
+Output: [14_moebius.png](https://lzpel.github.io/cadrum/14_moebius.png) | [14_moebius.step](https://lzpel.github.io/cadrum/14_moebius.step) | [14_moebius.glb](https://lzpel.github.io/cadrum/14_moebius.glb) | [14_moebius.stl](https://lzpel.github.io/cadrum/14_moebius.stl) | [14_moebius.svg](https://lzpel.github.io/cadrum/14_moebius.svg)
+
+<img src='https://lzpel.github.io/cadrum/14_moebius.svg' alt='14_moebius' width='360'/>
+
 #### Multiview
 
 Fixed 4-view multiview PNG for LLM-driven design loops.
 
 ```sh
-cargo run --example 12_multiview
+cargo run --example 15_multiview
 ```
 
 ```rust,no_run
@@ -998,9 +1172,9 @@ fn main() -> Result<(), cadrum::Error> {
 
 ```
 
-Output: [12_multiview.png](https://lzpel.github.io/cadrum/12_multiview.png) | [12_multiview.glb](https://lzpel.github.io/cadrum/12_multiview.glb) | [12_multiview.stl](https://lzpel.github.io/cadrum/12_multiview.stl)
+Output: [15_multiview.png](https://lzpel.github.io/cadrum/15_multiview.png) | [15_multiview.glb](https://lzpel.github.io/cadrum/15_multiview.glb) | [15_multiview.stl](https://lzpel.github.io/cadrum/15_multiview.stl)
 
-<img src='https://lzpel.github.io/cadrum/12_multiview.png' alt='12_multiview' width='360'/>
+<img src='https://lzpel.github.io/cadrum/15_multiview.png' alt='15_multiview' width='360'/>
 
 ## The Type Map
 
@@ -1024,20 +1198,17 @@ let v = s.volume();
 
 ## Errors
 
-Every fallible operation returns `Result<T, Error>` with `Error`
-enumerating the failure modes (`Error::SweepFailed`,
-`Error::FilletFailed`, `Error::InvalidEdge`, etc.). Variants that need
-detail carry a `String` payload identifying which constructor or parameter
-combination tripped OCCT, so panics are reserved for true logic bugs.
+Every fallible operation returns `std::result::Result<T, cadrum::Error>` with `Error` enumerating the failure modes (`Error::Sweep`, `Error::Fillet`, `Error::Edge`, etc.).
+I/O and export failures are routed through `Error::Io(std::io::Error)`.
+Panics are reserved for true logic bugs.
 
 ## License
 
 This project is licensed under the MIT License.
 
-Compiled binaries include [OpenCASCADE Technology][occt] (OCCT),
-which is licensed under the [LGPL 2.1][occt-license].
+Compiled binaries include [OpenCASCADE Technology][occt] (OCCT), which is licensed under the [LGPL 2.1][occt-license].
 Users who distribute applications built with cadrum must comply with the LGPL 2.1 terms.
-Since cadrum builds OCCT from source, end users can rebuild and relink OCCT to satisfy this requirement.
+End users must be able to rebuild and relink OCCT to satisfy this requirement.
 
 <!-- Badges -->
 [license_img]: https://img.shields.io/github/license/lzpel/cadrum
