@@ -1,6 +1,3 @@
-use cadrum::{DQuat, DVec3, Solid};
-use std::f64::consts::TAU;
-
 // 2 field-period stellarator-like torus.
 // `Solid::bspline` is fed a 2D control-point grid to build a periodic B-spline solid.
 // Every variation below is invariant under phi → phi+π (or shifts by a multiple
@@ -9,6 +6,8 @@ use std::f64::consts::TAU;
 //   b(phi)       = 1.0 + 0.4 * cos(2φ)      Z semi-axis
 //   psi(phi)     = 2 * phi                  cross-section twist (2 turns per loop)
 //   z_shift(phi) = 1.0 * sin(2φ)            vertical undulation
+use cadrum::{DQuat, DVec3, Solid};
+use std::f64::consts::TAU;
 const M: usize = 48; // toroidal (U) — must be even for 180° symmetry
 const N: usize = 24; // poloidal (V) — arbitrary
 const RING_R: f64 = 6.0;
