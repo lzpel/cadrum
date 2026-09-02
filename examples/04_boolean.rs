@@ -17,11 +17,11 @@ fn main() -> Result<(), cadrum::Error> {
 	// intersect: only the overlapping volume — offset X=80
 	let intersect: Solid = (&make_box * &make_cyl).build()?;
 
-	let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 4.);
+	let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 5.);
 	let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU / 3.), cylinder.clone().rotate_z(-std::f64::consts::TAU / 3.)];
 
 	// union of all cylinders (fold from Boolean::default() = ⊥)
-	let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, s| a + s).unwrap().build()?;
+	let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, s| a + s).unwrap().build()?.clean()?;
 	let sum = sum.color("#d875ff");
 
 	// intersection of all cylinders (reduce — intersect has no fixed init)
