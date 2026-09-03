@@ -173,9 +173,11 @@ const OCC_LIBS: &[&str] = &[
 /// the OCCT source build). Shared so the wrapper and OCCT get identical flags — in particular
 /// the same wasm EH encoding, which must match the legacy-built wasi-sdk eh sysroot (#199, #233).
 fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
-	// MSVC: compile sources as UTF-8.
+	// MSVC: compile sources as UTF-8, and keep std::min/max off the STL vectorized helpers
+	// (__std_min_4i etc.) in msvcp140, which impose a toolset floor on prebuilt consumers (#276).
 	if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
 		apply("/utf-8");
+		apply("/D_USE_STD_VECTOR_ALGORITHMS=0");
 	}
 	// wasm: force the legacy EH encoding, matching the legacy eh sysroot the cross image
 	// self-builds (exnref needs a runtime opt-in; #233). No-op without -fwasm-exceptions.
