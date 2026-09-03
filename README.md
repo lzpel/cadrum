@@ -101,11 +101,6 @@ unsafe { __wasm_call_ctors() };
 Then run the output through `wasm-bindgen` / `wasm-pack` for browser glue. See
 [`opencascade-wasm32-unknown-unknown-example`](https://github.com/lzpel/opencascade-wasm32-unknown-unknown-example) for a complete setup.
 
-**Runtime requirement:** the module is built with Wasm exception handling
-(`-fwasm-exceptions`, the legacy encoding), so it needs a runtime that supports the
-Wasm exception-handling proposal — any current browser, or Node (no
-`--experimental-wasm-exnref` flag required).
-
 ### Building for other targets
 
 For a target without a prebuilt OCCT, build OCCT from source:
