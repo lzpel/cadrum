@@ -802,8 +802,8 @@ bool face_project_point(const TopoDS_Face& face,
 
     try {
         const gp_Pnt target(px, py, pz);
-        bool found = false, has_uv = false;
-        double best_d2 = 0.0, bu = 0.0, bv = 0.0;
+        bool has_uv = false;
+        double best_d2 = Precision::Infinite(), bu = 0.0, bv = 0.0;
         gp_Pnt best_p;
 
         // Orthogonal projections onto the face interior. BRepExtrema_ExtPF
@@ -813,11 +813,10 @@ bool face_project_point(const TopoDS_Face& face,
         if (ext.IsDone()) {
             for (int i = 1; i <= ext.NbExt(); ++i) {
                 const double d2 = ext.SquareDistance(i);
-                if (found && d2 >= best_d2) continue;
+                if (d2 >= best_d2) continue;
                 best_d2 = d2;
                 best_p = ext.Point(i);
                 ext.Parameter(i, bu, bv);
-                found = true;
                 has_uv = true;
             }
         }
@@ -847,7 +846,7 @@ bool face_project_point(const TopoDS_Face& face,
             for (const double t : {u, first, last}) {
                 const gp_Pnt p = curve.Value(t);
                 const double d2 = target.SquareDistance(p);
-                if (found && d2 >= best_d2) continue;
+                if (d2 >= best_d2) continue;
                 best_d2 = d2;
                 best_p = p;
                 // The edge shares its parameter with its pcurve, so the same t
@@ -858,11 +857,10 @@ bool face_project_point(const TopoDS_Face& face,
                     bu = uv.X();
                     bv = uv.Y();
                 }
-                found = true;
             }
         }
 
-        if (!found) return false;
+        if (Precision::IsInfinite(best_d2)) return false;  // no interior extremum and no boundary
         cpx = best_p.X();
         cpy = best_p.Y();
         cpz = best_p.Z();
