@@ -10,22 +10,8 @@ pub struct Color {
 impl std::str::FromStr for Color {
 	type Err = super::error::Error;
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Self::from_str(s)
-	}
-}
-
-#[cfg(feature = "color")]
-impl From<&str> for Color {
-	fn from(s: &str) -> Self {
-		Color::from_str(s).unwrap_or_else(|_| panic!("invalid color: {s:?}"))
-	}
-}
-
-#[cfg(feature = "color")]
-impl Color {
 	/// Parse a color string: CSS named colors (e.g. `"red"`) or hex (`"#f00"`, `"#ff0000"`).
-	pub fn from_str(s: &str) -> Result<Self, super::error::Error> {
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if s.starts_with('#') {
 			return Self::from_hex(s);
 		}
@@ -61,9 +47,19 @@ impl Color {
 		};
 		Self::from_hex(hex)
 	}
+}
 
+#[cfg(feature = "color")]
+impl From<&str> for Color {
+	fn from(s: &str) -> Self {
+		s.parse().unwrap_or_else(|_| panic!("invalid color: {s:?} (expected a CSS name like \"red\" or hex like \"#f00\" / \"#ff0000\")"))
+	}
+}
+
+#[cfg(feature = "color")]
+impl Color {
 	/// Parse a hex color string like `"#ff8800"` or `"#f80"`.
-	///
+	///h
 	/// The leading `#` is required. The remaining characters must be hex digits,
 	/// either 6 (RRGGBB) or 3 (RGB, each digit is doubled).
 	fn from_hex(s: &str) -> Result<Self, super::error::Error> {

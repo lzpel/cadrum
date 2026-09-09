@@ -122,7 +122,7 @@ fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
 #[cfg(feature = "color")]
 #[test]
 fn test_fillet_carries_face_color_via_history() {
-	let red = cadrum::Color::from_str("#ff0000").expect("valid hex");
+	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
 	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let face_ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
 	for id in face_ids {
