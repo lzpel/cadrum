@@ -84,7 +84,7 @@
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
 #include <GeomAPI_PointsToBSplineSurface.hxx>
-#include <GeomAPI_ProjectPointOnCurve.hxx>
+#include <Extrema_ExtPC.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
 #include <NCollection_Array2.hxx>
@@ -1123,25 +1123,30 @@ bool edge_project_point(const TopoDS_Edge& edge,
     cpx = 0.0; cpy = 0.0; cpz = 0.0;
     tx = 0.0; ty = 0.0; tz = 0.0;
     try {
-        double first = 0.0, last = 0.0;
-        Handle(Geom_Curve) gcurve = BRep_Tool::Curve(edge, first, last);
-        if (gcurve.IsNull()) return false;
+        // BRepAdaptor_Curve は 3D 曲線を持たない縮退エッジ (球の極・円錐の頂点) でも
+        // pcurve + サーフェス経由で評価できる。BRep_Tool::Curve を直接引くと null で
+        // 落ちるので使わない。ファイル内の他の edge_* 関数もこのアダプタ経由。
+        BRepAdaptor_Curve curve(edge);
+        const double first = curve.FirstParameter();
+        const double last = curve.LastParameter();
         gp_Pnt target(px, py, pz);
-        GeomAPI_ProjectPointOnCurve projector(target, gcurve, first, last);
+        Extrema_ExtPC extrema(target, curve, first, last);
         double u;
-        if (projector.NbPoints() > 0) {
-            u = projector.LowerDistanceParameter();
+        if (extrema.IsDone() && extrema.NbExt() > 0) {
+            int best = 1;
+            for (int i = 2; i <= extrema.NbExt(); i++) {
+                if (extrema.SquareDistance(i) < extrema.SquareDistance(best)) best = i;
+            }
+            u = extrema.Point(best).Parameter();
         } else {
-            // No interior extremum within [first, last] — distance is monotonic
-            // along the curve segment (e.g. line segment with target beyond an
-            // endpoint). Clamp to whichever endpoint is closer.
-            double d_first = target.Distance(gcurve->Value(first));
-            double d_last  = target.Distance(gcurve->Value(last));
+            // 区間内に極値なし — 距離が単調 (端点の外側にある線分など)。近い端点にクランプ。
+            double d_first = target.Distance(curve.Value(first));
+            double d_last  = target.Distance(curve.Value(last));
             u = (d_first <= d_last) ? first : last;
         }
         gp_Pnt p;
         gp_Vec v;
-        gcurve->D1(u, p, v);
+        curve.D1(u, p, v);
         cpx = p.X(); cpy = p.Y(); cpz = p.Z();
         if (v.Magnitude() > Precision::Confusion()) {
             v.Normalize();
