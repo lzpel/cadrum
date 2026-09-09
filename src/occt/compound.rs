@@ -58,20 +58,18 @@ impl CompoundShape {
 	}
 
 	/// Decompose into individual solids, consuming the compound.
-	///
-	/// Each result solid receives a clone of the full `history` — over-inclusion
-	/// is harmless because `iter_history()` consumers filter pairs by checking
-	/// `src_id` against the original input's face IDs.
 	pub fn decompose(self) -> Vec<Solid> {
 		let solid_shapes = ffi::decompose_into_solids(&self.inner);
 		solid_shapes
 			.iter()
 			.map(|s| {
+				let local: std::collections::HashSet<u64> = ffi::shape_faces(s).iter().map(ffi::face_tshape_id).collect();
+				let history = self.history.chunks_exact(2).filter(|p| local.contains(&p[0])).flatten().copied().collect();
 				Solid::new(
 					ffi::clone_shape_handle(s),
 					#[cfg(feature = "color")]
 					self.colormap.clone(),
-					self.history.clone(),
+					history,
 				)
 			})
 			.collect()
