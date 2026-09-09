@@ -38,9 +38,9 @@ impl FaceStruct for Face {
 	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		// FFI returns false only on truly catastrophic OCCT failure; for a
-		// well-formed face this is effectively unreachable.
-		assert!(ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz), "Face::project: BRepExtrema_ExtPF failed (this is a bug)");
+		// FFI returns false only when OCCT throws or the face is unbounded: a
+		// bounded face always has a boundary to fall back on.
+		assert!(ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz), "Face::project: OCCT threw or the face has no boundary (this is a bug)");
 		(DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz))
 	}
 

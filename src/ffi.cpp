@@ -801,34 +801,73 @@ bool face_project_point(const TopoDS_Face& face,
     nx = 0.0; ny = 0.0; nz = 0.0;
 
     try {
-        // BRepExtrema_ExtPF respects face trim, unlike Extrema_ExtPS which
-        // works on the underlying infinite surface. The vertex wrapping
-        // overhead (Handle alloc) is bounded — single Handle per call.
-        TopoDS_Vertex vert = BRepBuilderAPI_MakeVertex(gp_Pnt(px, py, pz));
-        BRepExtrema_ExtPF ext(vert, face);
-        if (!ext.IsDone() || ext.NbExt() < 1) return false;
+        const gp_Pnt target(px, py, pz);
+        bool has_uv = false;
+        double best_d2 = Precision::Infinite(), bu = 0.0, bv = 0.0;
+        gp_Pnt best_p;
 
-        // Pick the smallest-distance extremum.
-        int best = 1;
-        double best_d2 = ext.SquareDistance(1);
-        for (int i = 2; i <= ext.NbExt(); ++i) {
-            double d2 = ext.SquareDistance(i);
-            if (d2 < best_d2) {
+        // Orthogonal projections onto the face interior. BRepExtrema_ExtPF
+        // respects the trim: it keeps only extrema classified inside the face.
+        TopoDS_Vertex vert = BRepBuilderAPI_MakeVertex(target);
+        BRepExtrema_ExtPF ext(vert, face);
+        if (ext.IsDone()) {
+            for (int i = 1; i <= ext.NbExt(); ++i) {
+                const double d2 = ext.SquareDistance(i);
+                if (d2 >= best_d2) continue;
                 best_d2 = d2;
-                best = i;
+                best_p = ext.Point(i);
+                ext.Parameter(i, bu, bv);
+                has_uv = true;
             }
         }
 
-        gp_Pnt cp = ext.Point(best);
-        cpx = cp.X();
-        cpy = cp.Y();
-        cpz = cp.Z();
+        // Nearest points on the boundary wires. An interior extremum can be
+        // farther than the boundary (a 270° cylindrical face keeps only the far
+        // wall), and outside the trim there is no interior extremum at all, so
+        // both sets must be compared rather than one used as a fallback.
+        for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+            const TopoDS_Edge& edge = TopoDS::Edge(it.Current());
+            BRepAdaptor_Curve curve(edge);
+            const double first = curve.FirstParameter();
+            const double last = curve.LastParameter();
+            Extrema_ExtPC extrema(target, curve, first, last);
+            double u = first;
+            if (extrema.IsDone() && extrema.NbExt() > 0) {
+                int k = 1;
+                for (int i = 2; i <= extrema.NbExt(); ++i) {
+                    if (extrema.SquareDistance(i) < extrema.SquareDistance(k)) k = i;
+                }
+                u = extrema.Point(k).Parameter();
+            }
+            // The endpoints are candidates too: an interior extremum of the
+            // curve can be farther than either end.
+            double pf = 0.0, pl = 0.0;
+            Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, pf, pl);
+            for (const double t : {u, first, last}) {
+                const gp_Pnt p = curve.Value(t);
+                const double d2 = target.SquareDistance(p);
+                if (d2 >= best_d2) continue;
+                best_d2 = d2;
+                best_p = p;
+                // The edge shares its parameter with its pcurve, so the same t
+                // gives the (u, v) the normal needs.
+                has_uv = !pcurve.IsNull();
+                if (has_uv) {
+                    const gp_Pnt2d uv = pcurve->Value(t);
+                    bu = uv.X();
+                    bv = uv.Y();
+                }
+            }
+        }
 
-        double u, v;
-        ext.Parameter(best, u, v);
+        if (Precision::IsInfinite(best_d2)) return false;  // no interior extremum and no boundary
+        cpx = best_p.X();
+        cpy = best_p.Y();
+        cpz = best_p.Z();
+        if (!has_uv) return true;  // cp valid, normal stays 0.
 
         BRepAdaptor_Surface surf(face);
-        BRepLProp_SLProps props(surf, u, v, /*derivOrder=*/1, Precision::Confusion());
+        BRepLProp_SLProps props(surf, bu, bv, /*derivOrder=*/1, Precision::Confusion());
         if (!props.IsNormalDefined()) return true;  // cp valid, normal stays 0.
 
         gp_Dir n = props.Normal();

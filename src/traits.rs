@@ -427,7 +427,10 @@ pub trait FaceStruct: Sized + Debug {
 	/// tangent)` on a 1D curve.
 	///
 	/// The closest hit respects the face's trim — projection lands on the
-	/// actual face area, not its underlying infinite surface. To project
+	/// actual face area, not its underlying infinite surface. It therefore
+	/// lands on a boundary wire whenever no interior point is nearer, and
+	/// there `p - closest_point` is not parallel to `outward_normal`, which
+	/// always describes the surface at the hit. To project
 	/// onto a full solid, iterate `Solid::iter_face()` and call `project`
 	/// on each face; the caller picks the smallest-distance face and keeps
 	/// the face object for follow-up queries (e.g. `face.id()` for
