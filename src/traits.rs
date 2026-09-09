@@ -329,9 +329,9 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	/// Polyline approximation of the edge within `tolerance`, as ordered points.
 	fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3>;
 	/// Project `p` onto the edge and return `(closest_point, unit_tangent)`.
-	/// The tangent follows the curve's native parameter direction. Panics only
-	/// on an edge with no 3D geometric curve (an FFI-level bug, which
-	/// cadrum-built edges never produce), not on degenerate user input.
+	/// The tangent follows the curve's native parameter direction, and is the
+	/// zero vector on a degenerate edge (a sphere pole or cone apex, which
+	/// collapses to a single point); callers detect it via `tangent.length() == 0`.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
 	/// Construct a single helical edge on a cylindrical surface centered at
