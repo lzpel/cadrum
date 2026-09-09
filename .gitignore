@@ -13,3 +13,4 @@ linkedin.md
 *.tar.gz
 uv.lock
 *.dockerignore
+.DS_Store
