@@ -130,7 +130,7 @@ pub struct Tessellation {
 
 impl Default for Tessellation {
 	fn default() -> Self {
-		// Relative 0.2% linear + 0.5 rad angular: scale-independent and "just
+		// Relative 0.4% linear + 0.5 rad angular: scale-independent and "just
 		// right" for most shapes without over-tessellating.
 		Self { deflection_linear: 0.004, deflection_angular: 0.5, relative_linear: true }
 	}
