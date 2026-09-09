@@ -1028,7 +1028,7 @@ impl Mesh {
 }
 
 #[cfg(feature = "png")]
-fn nice_step(target: f64) -> f64 { //Glyph/label size in pixels. Largest `{1, 2, 5} × 10^n` value ≤ `target`
+fn nice_step(target: f64) -> f64 {
 	if !target.is_finite() || target <= 0.0 {
 		return 1.0;
 	}

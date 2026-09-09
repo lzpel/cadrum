@@ -138,3 +138,24 @@ fn test_fillet_carries_face_color_via_history() {
 		assert!(filleted.colormap().contains_key(post), "face {post} should inherit color via history");
 	}
 }
+
+/// boolean が複数ピースに割れたとき、各ピースの history は自分の face だけを
+/// `post_id` に持つ（兄弟ピースの由来を主張しない）。
+#[test]
+fn test_split_boolean_pieces_own_disjoint_history() {
+	let block = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let slab = Solid::cube(DVec3::new(-1.0, -1.0, 4.0), DVec3::new(11.0, 11.0, 6.0));
+	let pieces = (&block - &slab).build_vec().expect("cut splits the block");
+	assert_eq!(pieces.len(), 2, "the slab must cut the block in two");
+
+	let mut seen: HashSet<u64> = HashSet::new();
+	for piece in &pieces {
+		let faces: HashSet<u64> = piece.iter_face().map(|f| f.id()).collect();
+		let hist: Vec<[u64; 2]> = piece.iter_history().collect();
+		assert!(!hist.is_empty(), "a cut piece must keep its own history");
+		for [post, _] in &hist {
+			assert!(faces.contains(post), "post_id {post} is not a face of this piece");
+			assert!(seen.insert(*post), "post_id {post} claimed by more than one piece");
+		}
+	}
+}
