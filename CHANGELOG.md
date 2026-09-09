@@ -1,5 +1,15 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.8.19
+
+- #282 Return the true nearest point on a trimmed face from Face::project
+- #281 Project edges through BRepAdaptor_Curve so degenerate edges work
+- #279 Give each decomposed solid only its own face history
+- #278 Collapse the duplicated Color::from_str and clear the png-gated dead code warnings
+- #277 Define _USE_STD_VECTOR_ALGORITHMS=0 for msvc builds
+- #275 Drop the stale wasm exception-handling runtime requirement from the README
+- #274 Clean the fused cylinders and widen their offset in the boolean example
+
 ### 0.8.18
 
 - #273 Rework Solid::offset to per-face offsets and add offset/sew/moebius examples
