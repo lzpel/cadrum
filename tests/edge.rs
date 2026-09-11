@@ -6,7 +6,7 @@
 //! closest point is computed analytically from the curve definition and
 //! compared to the FFI result.
 
-use cadrum::{BSplineEnd, Edge};
+use cadrum::{BSplineEnd, Edge, Solid};
 use glam::DVec3;
 
 const TOL: f64 = 1e-6;
@@ -74,4 +74,22 @@ fn project_on_bspline_converges_to_interpolant() {
 	assert!((0.7..=1.0).contains(&r), "radius out of envelope: {r}");
 	// Tangent is unit-length.
 	assert!((tg.length() - 1.0).abs() < TOL, "|tg|={}", tg.length());
+}
+
+// ==================== ellipse ====================
+
+/// An ellipse of semi-axes a, b extruded by h encloses `π a b h`.
+#[test]
+fn ellipse_extrudes_to_the_analytical_volume() {
+	let profile = [Edge::ellipse(4.0, 2.0, DVec3::Z, DVec3::X).unwrap()];
+	let solid = Solid::extrude(&profile, &[], DVec3::Z * 3.0).unwrap();
+	let want = std::f64::consts::PI * 4.0 * 2.0 * 3.0;
+	assert!((solid.volume() - want).abs() < 1e-3, "volume = {}, want {want}", solid.volume());
+}
+
+#[test]
+fn ellipse_rejects_invalid_params() {
+	assert!(Edge::ellipse(1.0, 2.0, DVec3::Z, DVec3::X).is_err(), "minor must not exceed major");
+	assert!(Edge::ellipse(2.0, 0.0, DVec3::Z, DVec3::X).is_err(), "minor must be positive");
+	assert!(Edge::ellipse(2.0, 1.0, DVec3::Z, DVec3::Z).is_err(), "x_ref must not be parallel to axis");
 }

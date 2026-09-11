@@ -142,6 +142,7 @@ mod ffi_bridge {
 		fn make_helix_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, radius: f64, pitch: f64, height: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_polygon_edges(coords: &[f64]) -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn make_circle_edge(ax: f64, ay: f64, az: f64, radius: f64) -> UniquePtr<TopoDS_Edge>;
+		fn make_ellipse_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, major_radius: f64, minor_radius: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_line_edge(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_arc_edge(sx: f64, sy: f64, sz: f64, mx: f64, my: f64, mz: f64, ex: f64, ey: f64, ez: f64) -> UniquePtr<TopoDS_Edge>;
 		fn make_bspline_edge(coords: &[f64], end_kind: u32, sx: f64, sy: f64, sz: f64, ex: f64, ey: f64, ez: f64) -> UniquePtr<TopoDS_Edge>;
@@ -159,6 +160,7 @@ mod ffi_bridge {
 		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Edge>;
 
 		fn make_extrude(profile_edges: &CxxVector<TopoDS_Edge>, dx: f64, dy: f64, dz: f64) -> UniquePtr<TopoDS_Shape>;
+		fn make_revolve(profile_edges: &CxxVector<TopoDS_Edge>, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> UniquePtr<TopoDS_Shape>;
 		fn make_pipe_shell(all_edges: &CxxVector<TopoDS_Edge>, spine_edges: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine_edges: &CxxVector<TopoDS_Edge>) -> UniquePtr<TopoDS_Shape>;
 		fn make_loft(all_edges: &CxxVector<TopoDS_Edge>, ruled: bool) -> UniquePtr<TopoDS_Shape>;
 		fn make_sewn_solid(faces: &CxxVector<TopoDS_Face>, tolerance: f64) -> UniquePtr<TopoDS_Shape>;

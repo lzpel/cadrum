@@ -67,3 +67,29 @@ fn test_sweep_02_closed_auxiliary_volume_matches_pappus() {
 	let rel = (solid.volume() - expected).abs() / expected;
 	assert!(rel < 1.0e-3, "volume {:.3} vs Pappus {:.3} (relative error {:.3e})", solid.volume(), expected, rel);
 }
+
+// ==================== CorrectedTorsion ====================
+
+/// 螺旋 spine は捩率が一定で非ゼロ。`CorrectedTorsion` は捩れを追わない
+/// フレームで掃くので、体積は断面積 × spine 長に一致する。
+#[test]
+fn test_sweep_04_corrected_torsion_on_a_helix_matches_the_tube_volume() {
+	let (radius, pitch, height) = (5., 4., 12.);
+	let spine = Edge::helix(radius, pitch, height, DVec3::Z, DVec3::X).expect("helix");
+	let profile = square_profile(&spine).expect("profile");
+	let solid = Solid::sweep(&profile, &[spine], ProfileOrient::CorrectedTorsion).expect("corrected sweep");
+
+	let per_turn = ((std::f64::consts::TAU * radius).powi(2) + pitch.powi(2)).sqrt();
+	let want = SIDE * SIDE * per_turn * (height / pitch);
+	assert!((solid.volume() - want).abs() < 1e-2, "volume = {}, want {want}", solid.volume());
+}
+
+/// 平面 spine は捩率がゼロなので、corrected frame は raw Frenet と一致する。
+#[test]
+fn test_sweep_05_corrected_torsion_equals_torsion_on_a_planar_spine() {
+	let spine = Edge::arc_3pts(DVec3::X, DVec3::new(6., 0., 5.), DVec3::new(11., 0., 0.)).expect("arc");
+	let profile = square_profile(&spine).expect("profile");
+	let torsion = Solid::sweep(&profile, &[spine.clone()], ProfileOrient::Torsion).expect("torsion sweep");
+	let corrected = Solid::sweep(&profile, &[spine], ProfileOrient::CorrectedTorsion).expect("corrected sweep");
+	assert!((torsion.volume() - corrected.volume()).abs() < 1e-9, "torsion {} vs corrected {}", torsion.volume(), corrected.volume());
+}

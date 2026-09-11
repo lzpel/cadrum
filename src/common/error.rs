@@ -25,6 +25,9 @@ pub enum Error {
 	/// Extrusion (`Solid::extrude`) failed: empty profile, zero-length direction, or profile not closed.
 	Extrude,
 
+	/// Revolution (`Solid::revolve`) failed: empty profile, profile not closed, or a zero axis or angle.
+	Revolve(String),
+
 	/// Pipe sweep (`Solid::sweep`) failed: profile not closed, or edges not connectable into a wire.
 	Sweep(String),
 
@@ -61,6 +64,7 @@ impl std::fmt::Display for Error {
 			Error::Edge(msg) => write!(f, "Edge failed: {msg}"),
 			Error::Clean => write!(f, "Clean failed"),
 			Error::Extrude => write!(f, "Extrude failed"),
+			Error::Revolve(msg) => write!(f, "Revolve failed: {msg}"),
 			Error::Sweep(msg) => write!(f, "Sweep failed: {msg}"),
 			Error::Shell(msg) => write!(f, "Shell failed: {msg}"),
 			Error::Fillet(msg) => write!(f, "Fillet failed: {msg}"),
