@@ -237,6 +237,14 @@ std::unique_ptr<std::vector<TopoDS_Edge>> make_polygon_edges(
 std::unique_ptr<TopoDS_Edge> make_circle_edge(
     double ax, double ay, double az, double radius);
 
+// Construct a closed elliptical edge centered at the world origin, lying in
+// the plane normal to `axis`, with `x_ref` fixing the major-axis direction.
+// Requires major_radius >= minor_radius > 0 and x_ref not parallel to axis.
+std::unique_ptr<TopoDS_Edge> make_ellipse_edge(
+    double ax, double ay, double az,
+    double xrx, double xry, double xrz,
+    double major_radius, double minor_radius);
+
 // Construct a straight line segment edge from point a to point b.
 std::unique_ptr<TopoDS_Edge> make_line_edge(
     double ax, double ay, double az,
@@ -303,11 +311,20 @@ std::unique_ptr<TopoDS_Edge> mirror_edge(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-// Extrude a closed profile wire into a solid using BRepPrimAPI_MakePrism.
-// Internally builds Wire → Face → Prism.
+// Extrude null-separated profile wires into a solid using
+// BRepPrimAPI_MakePrism. The first wire is the outer boundary and the rest
+// are holes; sentinels are TopoDS_Edge().IsNull() == true.
 std::unique_ptr<TopoDS_Shape> make_extrude(
     const std::vector<TopoDS_Edge>& profile_edges,
     double dx, double dy, double dz);
+
+// Revolve the same null-separated profile wires about the axis through
+// (ox, oy, oz) along (dx, dy, dz) using BRepPrimAPI_MakeRevol.
+std::unique_ptr<TopoDS_Shape> make_revolve(
+    const std::vector<TopoDS_Edge>& profile_edges,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle);
 
 // Sweep a closed profile wire (built from `profile_edges`) along a spine
 // wire (built from `spine_edges`) using BRepOffsetAPI_MakePipeShell. The

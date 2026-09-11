@@ -81,6 +81,9 @@ impl Edge {
 	pub fn circle(radius: f64, axis: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::EdgeStruct>::circle(radius, axis)
 	}
+	pub fn ellipse(major_radius: f64, minor_radius: f64, axis: DVec3, x_ref: DVec3) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::ellipse(major_radius, minor_radius, axis, x_ref)
+	}
 	pub fn line(a: DVec3, b: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::EdgeStruct>::line(a, b)
 	}
@@ -203,8 +206,11 @@ impl Solid {
 	pub fn clean(&self) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::clean(self)
 	}
-	pub fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<crate::Solid, Error> {
-		<Self as crate::traits::SolidStruct>::extrude(profile, dir)
+	pub fn extrude<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, dir: DVec3) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::extrude(wires, dir)
+	}
+	pub fn revolve<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::revolve(wires, axis_origin, axis_direction, angle)
 	}
 	pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)

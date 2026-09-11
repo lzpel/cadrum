@@ -116,6 +116,11 @@ impl EdgeStruct for Edge {
 		Edge::try_from_ffi(inner, format!("circle: invalid params (radius={radius}, axis={axis:?})"))
 	}
 
+	fn ellipse(major_radius: f64, minor_radius: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
+		let inner = ffi::make_ellipse_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, major_radius, minor_radius);
+		Edge::try_from_ffi(inner, format!("ellipse: invalid params (major_radius={major_radius}, minor_radius={minor_radius}, axis={axis:?}, x_ref={x_ref:?})"))
+	}
+
 	fn line(a: DVec3, b: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_line_edge(a.x, a.y, a.z, b.x, b.y, b.z);
 		Edge::try_from_ffi(inner, format!("line: zero-length segment (a={a:?}, b={b:?})"))

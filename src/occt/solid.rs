@@ -22,6 +22,7 @@ fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<c
 	let (kind, ux, uy, uz) = match orient {
 		ProfileOrient::Fixed => (0u32, 0.0, 0.0, 0.0),
 		ProfileOrient::Torsion => (1u32, 0.0, 0.0, 0.0),
+		ProfileOrient::CorrectedTorsion => (4u32, 0.0, 0.0, 0.0),
 		ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
 		ProfileOrient::Auxiliary(edges) => {
 			for e in edges {
@@ -31,6 +32,21 @@ fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<c
 		}
 	};
 	(kind, ux, uy, uz, aux_vec)
+}
+
+/// Pack the wires into one FFI vector, separated by the null-edge sentinels
+/// `make_extrude` / `make_revolve` split on.
+fn wires_to_ffi<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W) -> cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>> {
+	let mut edge_vec = ffi::edge_vec_new();
+	for (i, wire) in wires.into_iter().enumerate() {
+		if i > 0 {
+			ffi::edge_vec_push_null(edge_vec.pin_mut());
+		}
+		for e in wire {
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+		}
+	}
+	edge_vec
 }
 
 #[cfg(feature = "color")]
@@ -254,14 +270,27 @@ impl SolidStruct for Solid {
 
 	// ==================== Extrude ====================
 
-	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
-		let mut profile_vec = ffi::edge_vec_new();
-		for e in profile {
-			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
-		}
-		let shape = ffi::make_extrude(&profile_vec, dir.x, dir.y, dir.z);
+	fn extrude<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, dir: DVec3) -> Result<Self, Error> {
+		let edge_vec = wires_to_ffi(wires);
+		let shape = ffi::make_extrude(&edge_vec, dir.x, dir.y, dir.z);
 		if shape.is_null() {
 			return Err(Error::Extrude);
+		}
+		Ok(Solid::new(
+			shape,
+			#[cfg(feature = "color")]
+			std::collections::HashMap::new(),
+			Default::default(),
+		))
+	}
+
+	// ==================== Revolve ====================
+
+	fn revolve<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
+		let edge_vec = wires_to_ffi(wires);
+		let shape = ffi::make_revolve(&edge_vec, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle);
+		if shape.is_null() {
+			return Err(Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?} did not produce a solid")));
 		}
 		Ok(Solid::new(
 			shape,

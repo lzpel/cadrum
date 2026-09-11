@@ -232,6 +232,14 @@ pub enum ProfileOrient<'a> {
 	///   `Up` を使う
 	Torsion,
 
+	/// Profile follows OCCT's corrected-Frenet trihedron: the same frame as
+	/// `Torsion`, transported so it stays defined where curvature drops to
+	/// zero. CadQuery's `isFrenet = false` default.
+	///
+	/// - **適**: 直線と円弧が混在する spine、変曲点を含むスプライン
+	/// - **不適**: 曲線の自然な捻れを profile に反映させたいケース (`Torsion` を使う)
+	CorrectedTorsion,
+
 	/// Profile keeps the given direction as its "up" axis (binormal).
 	///
 	/// - **適**: 道路 (`up = DVec3::Z`), 線路, パイプ, 運河 — 重力方向を
@@ -369,6 +377,12 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	/// deterministic start point should translate/rotate the resulting
 	/// edge into place rather than relying on the implicit choice.
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error>;
+
+	/// Closed ellipse centered at the world origin, lying in the plane normal
+	/// to `axis`, with `x_ref` fixing the major-axis direction. Fails with
+	/// `Error::Edge` unless `major_radius >= minor_radius > 0` and `x_ref` is
+	/// not parallel to `axis`.
+	fn ellipse(major_radius: f64, minor_radius: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error>;
 
 	/// Straight line segment from `a` to `b`. Fails with `Error::Edge` if
 	/// `a == b` (zero-length segment).
@@ -540,11 +554,26 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// repair small inconsistencies). Wraps `ShapeUpgrade_UnifySameDomain`
 	/// + cleanup. Failure is reported as `Error::Clean`.
 	fn clean(&self) -> Result<Self, Error>;
-	/// Extrude a closed profile wire along a direction vector to form a solid.
+	/// Extrude closed wires along a direction vector to form a solid.
 	///
-	/// Internally builds a face from the wire and uses `BRepPrimAPI_MakePrism`.
-	/// Fails if the profile is empty, not closed, or the direction is zero-length.
-	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Self::Edge>, dir: DVec3) -> Result<Self, Error>
+	/// The first wire is the outer boundary and every later one becomes an
+	/// opening in the extruded face, so a plate with a hole is
+	/// `[&outer, &hole]` and a plain profile is `[&outer]`. All wires share one
+	/// iterator type, so mixed containers need a common spelling such as
+	/// `Solid::extrude([outer.as_slice(), hole.as_slice()], dir)`. Internally
+	/// builds a face from the wires and uses `BRepPrimAPI_MakePrism`. Fails if
+	/// `wires` is empty or not closed, or if the direction is zero-length.
+	fn extrude<'a, I: IntoIterator<Item = &'a Self::Edge>, W: IntoIterator<Item = I>>(wires: W, dir: DVec3) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
+
+	/// Revolve closed wires about an axis to form a solid.
+	///
+	/// `wires` works as in `extrude`. The axis is the same `(origin, direction)`
+	/// pair `Transform::rotate` takes and `angle` is in radians, so `revolve`
+	/// sweeps the profile through that very rotation. Uses
+	/// `BRepPrimAPI_MakeRevol`. Fails if the axis or the angle is zero.
+	fn revolve<'a, I: IntoIterator<Item = &'a Self::Edge>, W: IntoIterator<Item = I>>(wires: W, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error>
 	where
 		Self::Edge: 'a;
 

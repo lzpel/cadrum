@@ -24,6 +24,7 @@
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Elips.hxx>
 #include <gp_Cone.hxx>
 #include <gp_Cylinder.hxx>
 #include <gp_Pln.hxx>
@@ -58,6 +59,7 @@
 #include <BRepPrimAPI_MakeHalfSpace.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
 
 // --- Boolean operations & shape cleanup ---
@@ -1069,6 +1071,29 @@ std::unique_ptr<TopoDS_Edge> make_circle_edge(
     }
 }
 
+// Closed ellipse centred at the origin. `x_ref` fixes the major-axis
+// direction, projected perpendicular to the axis as gp_Ax2 does for gp_Circ.
+std::unique_ptr<TopoDS_Edge> make_ellipse_edge(
+    double ax, double ay, double az,
+    double xrx, double xry, double xrz,
+    double major_radius, double minor_radius)
+{
+    try {
+        if (minor_radius < Precision::Confusion()) return nullptr;
+        if (major_radius < minor_radius) return nullptr;
+        gp_Dir axis_dir(ax, ay, az);
+        gp_Dir x_ref(xrx, xry, xrz);
+        if (axis_dir.IsParallel(x_ref, Precision::Angular())) return nullptr;
+        gp_Ax2 ax2(gp_Pnt(0.0, 0.0, 0.0), axis_dir, x_ref);
+        gp_Elips elips(ax2, major_radius, minor_radius);
+        BRepBuilderAPI_MakeEdge edgeMaker(elips);
+        if (!edgeMaker.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Edge>(edgeMaker.Edge());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
 std::unique_ptr<TopoDS_Edge> make_line_edge(
     double ax, double ay, double az,
     double bx, double by, double bz)
@@ -1527,24 +1552,78 @@ std::unique_ptr<TopoDS_Shape> builder_chamfer(
     }
 }
 
-// Extrude a closed profile wire into a solid via BRepPrimAPI_MakePrism.
-// Edges → Wire → Face → Prism (solid).
+// Build a face from null-separated wires: the first is the outer boundary,
+// the rest are holes, added reversed so they subtract from it.
+static bool face_from_wires(const std::vector<TopoDS_Edge>& edges, TopoDS_Face& out)
+{
+    std::vector<TopoDS_Wire> wires;
+    BRepBuilderAPI_MakeWire wire_maker;
+    bool has_edges = false;
+    for (const auto& e : edges) {
+        if (e.IsNull()) {
+            if (!has_edges) continue;
+            if (!wire_maker.IsDone()) return false;
+            wires.push_back(wire_maker.Wire());
+            wire_maker = BRepBuilderAPI_MakeWire();
+            has_edges = false;
+        } else {
+            wire_maker.Add(e);
+            has_edges = true;
+        }
+    }
+    if (has_edges) {
+        if (!wire_maker.IsDone()) return false;
+        wires.push_back(wire_maker.Wire());
+    }
+    if (wires.empty()) return false;
+
+    BRepBuilderAPI_MakeFace face_maker(wires.front());
+    if (!face_maker.IsDone()) return false;
+    for (std::size_t i = 1; i < wires.size(); ++i) {
+        face_maker.Add(TopoDS::Wire(wires[i].Reversed()));
+        if (!face_maker.IsDone()) return false;
+    }
+    out = face_maker.Face();
+    return true;
+}
+
+// Extrude null-separated profile wires into a solid via BRepPrimAPI_MakePrism.
 std::unique_ptr<TopoDS_Shape> make_extrude(
     const std::vector<TopoDS_Edge>& profile_edges,
     double dx, double dy, double dz)
 {
     try {
-        if (profile_edges.empty()) return nullptr;
-        BRepBuilderAPI_MakeWire wire_maker;
-        for (const auto& e : profile_edges) wire_maker.Add(e);
-        if (!wire_maker.IsDone()) return nullptr;
-        BRepBuilderAPI_MakeFace face_maker(wire_maker.Wire());
-        if (!face_maker.IsDone()) return nullptr;
-        gp_Vec dir(dx, dy, dz);
-        BRepPrimAPI_MakePrism prism(face_maker.Face(), dir);
+        const gp_Vec dir(dx, dy, dz);
+        if (dir.Magnitude() < Precision::Confusion()) return nullptr;
+        TopoDS_Face face;
+        if (!face_from_wires(profile_edges, face)) return nullptr;
+        BRepPrimAPI_MakePrism prism(face, dir);
         prism.Build();
         if (!prism.IsDone()) return nullptr;
         return std::make_unique<TopoDS_Shape>(prism.Shape());
+    } catch (const Standard_Failure&) {
+        return nullptr;
+    }
+}
+
+// Revolve null-separated profile wires about an axis via BRepPrimAPI_MakeRevol.
+std::unique_ptr<TopoDS_Shape> make_revolve(
+    const std::vector<TopoDS_Edge>& profile_edges,
+    double ox, double oy, double oz,
+    double dx, double dy, double dz,
+    double angle)
+{
+    try {
+        const gp_Vec axis_vec(dx, dy, dz);
+        if (axis_vec.Magnitude() < Precision::Confusion()) return nullptr;
+        if (std::abs(angle) < Precision::Angular()) return nullptr;
+        TopoDS_Face face;
+        if (!face_from_wires(profile_edges, face)) return nullptr;
+        const gp_Ax1 axis(gp_Pnt(ox, oy, oz), gp_Dir(axis_vec));
+        BRepPrimAPI_MakeRevol revol(face, axis, angle);
+        revol.Build();
+        if (!revol.IsDone()) return nullptr;
+        return std::make_unique<TopoDS_Shape>(revol.Shape());
     } catch (const Standard_Failure&) {
         return nullptr;
     }
@@ -1607,6 +1686,11 @@ std::unique_ptr<TopoDS_Shape> make_pipe_shell(
                 for (const auto& e : aux_spine_edges) auxMaker.Add(e);
                 if (!auxMaker.IsDone()) return nullptr;
                 shell.SetMode(auxMaker.Wire(), true);
+                break;
+            }
+            case 4: {
+                // CorrectedTorsion: OCCT's corrected-Frenet trihedron.
+                shell.SetMode(false);
                 break;
             }
             default: {
