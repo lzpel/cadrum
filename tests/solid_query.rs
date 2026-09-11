@@ -62,3 +62,37 @@ fn test_sphere_mass_properties_match_analytical() {
 	assert!(i.col(2).x.abs() < 1e-3);
 	assert!(i.col(2).y.abs() < 1e-3);
 }
+
+/// A cube's six face centers sit at the middle of each side: per axis the
+/// extremes are 0 and `a`, and every center lies on its own face.
+#[test]
+fn test_cube_face_centers_match_analytical() {
+	let a = 10.0_f64;
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let centers = cube.iter_face().map(|face| face.center()).collect::<Vec<_>>();
+
+	assert_eq!(centers.len(), 6);
+	for axis in 0..3 {
+		let min = centers.iter().map(|c| c[axis]).fold(f64::INFINITY, f64::min);
+		let max = centers.iter().map(|c| c[axis]).fold(f64::NEG_INFINITY, f64::max);
+		assert!(min.abs() < EPS, "axis {axis} minimum = {min}, expected 0");
+		assert!((max - a).abs() < EPS, "axis {axis} maximum = {max}, expected {a}");
+	}
+	for (face, center) in cube.iter_face().zip(&centers) {
+		assert!((face.project(*center).0 - *center).length() < EPS, "center {center} is off its own face");
+	}
+}
+
+/// Every face of a cube has area a², and the six sum to the solid's own area.
+#[test]
+fn test_cube_face_areas_match_analytical() {
+	let a = 10.0_f64;
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let areas = cube.iter_face().map(|face| face.area()).collect::<Vec<_>>();
+
+	assert_eq!(areas.len(), 6);
+	for area in &areas {
+		assert!((area - a.powi(2)).abs() < EPS, "face area = {area}, expected {}", a.powi(2));
+	}
+	assert!((areas.iter().sum::<f64>() - cube.area()).abs() < EPS);
+}

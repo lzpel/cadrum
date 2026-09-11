@@ -422,6 +422,14 @@ pub trait FaceStruct: Sized + Debug {
 	/// meaning beyond equality / hash use.
 	fn id(&self) -> u64;
 
+	/// Area of the trimmed face.
+	fn area(&self) -> f64;
+
+	/// Area-weighted center of the trimmed face, for directional face selection.
+	/// Curved or concave faces place it off the face, and on a closed surface
+	/// no single point of the face is nearest to it, so `project` picks one arbitrarily.
+	fn center(&self) -> DVec3;
+
 	/// Project a 3D point onto this face. Returns `(closest_point,
 	/// outward_normal)`. Sister of `Wire::project` which returns `(closest,
 	/// tangent)` on a 1D curve.
@@ -501,7 +509,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// Volume of the solid (uniform density).
 	fn volume(&self) -> f64;
 	/// Total surface area of the solid.
-	fn area(&self) -> f64;
+	fn area(&self) -> f64 {
+		self.iter_face().map(FaceStruct::area).sum()
+	}
 	/// Center of mass (uniform density).
 	fn center(&self) -> DVec3;
 	/// Inertia tensor about the **world origin** (uniform density).

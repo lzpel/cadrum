@@ -100,7 +100,6 @@ mod ffi_bridge {
 		fn shape_is_null(shape: &TopoDS_Shape) -> bool;
 		fn shape_is_solid(shape: &TopoDS_Shape) -> bool;
 		fn shape_volume(shape: &TopoDS_Shape) -> f64;
-		fn shape_surface_area(shape: &TopoDS_Shape) -> f64;
 		fn shape_center_of_mass(shape: &TopoDS_Shape, x: &mut f64, y: &mut f64, z: &mut f64);
 		fn shape_inertia_tensor(shape: &TopoDS_Shape, m00: &mut f64, m01: &mut f64, m02: &mut f64, m10: &mut f64, m11: &mut f64, m12: &mut f64, m20: &mut f64, m21: &mut f64, m22: &mut f64);
 		fn shape_contains_point(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> bool;
@@ -131,6 +130,8 @@ mod ffi_bridge {
 		fn shape_tshape_id(shape: &TopoDS_Shape) -> u64;
 		fn edge_tshape_id(edge: &TopoDS_Edge) -> u64;
 
+		fn face_surface_area(face: &TopoDS_Face) -> f64;
+		fn face_center_of_mass(face: &TopoDS_Face, x: &mut f64, y: &mut f64, z: &mut f64);
 		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> bool;
 
 		// ==================== Edge Methods ====================

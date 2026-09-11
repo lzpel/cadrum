@@ -585,12 +585,6 @@ double shape_volume(const TopoDS_Shape& shape) {
     return props.Mass();
 }
 
-double shape_surface_area(const TopoDS_Shape& shape) {
-    GProp_GProps props;
-    BRepGProp::SurfaceProperties(shape, props);
-    return props.Mass();
-}
-
 void shape_center_of_mass(const TopoDS_Shape& shape,
     double& x, double& y, double& z)
 {
@@ -788,6 +782,21 @@ uint64_t shape_tshape_id(const TopoDS_Shape& shape) {
 
 uint64_t edge_tshape_id(const TopoDS_Edge& edge) {
     return reinterpret_cast<uint64_t>(edge.TShape().get());
+}
+
+double face_surface_area(const TopoDS_Face& face) {
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    return props.Mass();
+}
+
+void face_center_of_mass(const TopoDS_Face& face,
+    double& x, double& y, double& z)
+{
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    gp_Pnt center = props.CentreOfMass();
+    x = center.X(); y = center.Y(); z = center.Z();
 }
 
 bool face_project_point(const TopoDS_Face& face,

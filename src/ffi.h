@@ -165,7 +165,6 @@ std::unique_ptr<TopoDS_Shape> transform_mirror(
 bool shape_is_null(const TopoDS_Shape& shape);
 bool shape_is_solid(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
-double shape_surface_area(const TopoDS_Shape& shape);
 void shape_center_of_mass(const TopoDS_Shape& shape,
     double& x, double& y, double& z);
 void shape_inertia_tensor(const TopoDS_Shape& shape,
@@ -388,6 +387,11 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 uint64_t face_tshape_id(const TopoDS_Face& face);
 uint64_t shape_tshape_id(const TopoDS_Shape& shape);
 uint64_t edge_tshape_id(const TopoDS_Edge& edge);
+
+double face_surface_area(const TopoDS_Face& face);
+// Area-weighted center of the trimmed face surface.
+void face_center_of_mass(const TopoDS_Face& face,
+    double& x, double& y, double& z);
 
 // Project a 3D point onto `face`. Sister of `edge_project_point`.
 // Returns the closest point on the (trimmed) face surface and the outward

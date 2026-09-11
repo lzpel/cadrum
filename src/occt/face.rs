@@ -35,6 +35,16 @@ impl FaceStruct for Face {
 		ffi::face_tshape_id(&self.inner)
 	}
 
+	fn area(&self) -> f64 {
+		ffi::face_surface_area(&self.inner)
+	}
+
+	fn center(&self) -> DVec3 {
+		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
+		ffi::face_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
+		DVec3::new(x, y, z)
+	}
+
 	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
