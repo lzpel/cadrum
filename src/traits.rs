@@ -426,7 +426,8 @@ pub trait FaceStruct: Sized + Debug {
 	fn area(&self) -> f64;
 
 	/// Area-weighted center of the trimmed face, for directional face selection.
-	/// Curved or concave faces place it off the face; `project` maps it back on.
+	/// Curved or concave faces place it off the face, and on a closed surface
+	/// no single point of the face is nearest to it, so `project` picks one arbitrarily.
 	fn center(&self) -> DVec3;
 
 	/// Project a 3D point onto this face. Returns `(closest_point,
