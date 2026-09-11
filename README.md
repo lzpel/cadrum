@@ -374,27 +374,27 @@ use cadrum::{BSplineEnd, DVec3, Edge, Error, Solid};
 /// Square polygon → box (simplest extrude).
 fn build_box() -> Result<Solid, Error> {
 	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(5.0, 0.0, 0.0), DVec3::new(5.0, 5.0, 0.0), DVec3::new(0.0, 5.0, 0.0)])?;
-	Solid::extrude(&profile, &[], DVec3::Z * 8.0)
+	Solid::extrude([&profile], DVec3::Z * 8.0)
 }
 
 /// Circle extruded at a steep angle → oblique cylinder.
 fn build_oblique_cylinder() -> Result<Solid, Error> {
 	let profile = [Edge::circle(3.0, DVec3::Z)?];
-	Solid::extrude(&profile, &[], DVec3::new(-4.0, -6.0, 8.0))
+	Solid::extrude([&profile], DVec3::new(-4.0, -6.0, 8.0))
 }
 
 /// L-shaped polygon → L-beam.
 fn build_l_beam() -> Result<Solid, Error> {
 	let profile = Edge::polygon(&[DVec3::new(0.0, 0.0, 0.0), DVec3::new(4.0, 0.0, 0.0), DVec3::new(4.0, 1.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(1.0, 3.0, 0.0), DVec3::new(0.0, 3.0, 0.0)])?;
-	Solid::extrude(&profile, &[], DVec3::Z * 12.0)
+	Solid::extrude([&profile], DVec3::Z * 12.0)
 }
 
-/// Square plate with an elliptical hole: the second argument carries the
-/// inner wires, each of which becomes an opening in the extruded face.
+/// Square plate with an elliptical hole: the first wire is the outer boundary
+/// and every later one becomes an opening in the extruded face.
 fn build_plate_with_hole() -> Result<Solid, Error> {
 	let outer = Edge::polygon(&[DVec3::new(-4.0, -3.0, 0.0), DVec3::new(4.0, -3.0, 0.0), DVec3::new(4.0, 3.0, 0.0), DVec3::new(-4.0, 3.0, 0.0)])?;
 	let hole = vec![Edge::ellipse(2.5, 1.5, DVec3::Z, DVec3::X)?];
-	Solid::extrude(&outer, [&hole], DVec3::Z * 2.0)
+	Solid::extrude([&outer, &hole], DVec3::Z * 2.0)
 }
 
 /// Heart-shaped BSpline profile extruded along Z.
@@ -412,7 +412,7 @@ fn build_heart() -> Result<Solid, Error> {
 		],
 		BSplineEnd::Periodic,
 	)?];
-	Solid::extrude(&profile, &[], DVec3::Z * 7.0)
+	Solid::extrude([&profile], DVec3::Z * 7.0)
 }
 
 fn main() -> Result<(), Error> {

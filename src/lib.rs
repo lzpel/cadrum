@@ -206,11 +206,11 @@ impl Solid {
 	pub fn clean(&self) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::clean(self)
 	}
-	pub fn extrude<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(profile: I, holes: W, dir: DVec3) -> Result<crate::Solid, Error> {
-		<Self as crate::traits::SolidStruct>::extrude(profile, holes, dir)
+	pub fn extrude<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, dir: DVec3) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::extrude(wires, dir)
 	}
-	pub fn revolve<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(profile: I, holes: W, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<crate::Solid, Error> {
-		<Self as crate::traits::SolidStruct>::revolve(profile, holes, axis_origin, axis_direction, angle)
+	pub fn revolve<'a, I: IntoIterator<Item = &'a Edge>, W: IntoIterator<Item = I>>(wires: W, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::revolve(wires, axis_origin, axis_direction, angle)
 	}
 	pub fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::shell(self, thickness, open_faces)

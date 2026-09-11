@@ -21,7 +21,7 @@ fn test_no_face_source_ops_have_empty_history() {
 	assert_eq!(Solid::cube(DVec3::ZERO, DVec3::splat(1.0)).iter_history().count(), 0, "cube");
 	assert_eq!(Solid::sphere(1.0).iter_history().count(), 0, "sphere");
 
-	let extruded = Solid::extrude(&square(4.0), &[], DVec3::Z * 3.0).expect("extrude");
+	let extruded = Solid::extrude([&square(4.0)], DVec3::Z * 3.0).expect("extrude");
 	assert_eq!(extruded.iter_history().count(), 0, "extrude");
 
 	let profile = [Edge::circle(1.0, DVec3::Z).expect("circle")];

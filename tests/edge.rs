@@ -82,7 +82,7 @@ fn project_on_bspline_converges_to_interpolant() {
 #[test]
 fn ellipse_extrudes_to_the_analytical_volume() {
 	let profile = [Edge::ellipse(4.0, 2.0, DVec3::Z, DVec3::X).unwrap()];
-	let solid = Solid::extrude(&profile, &[], DVec3::Z * 3.0).unwrap();
+	let solid = Solid::extrude([&profile], DVec3::Z * 3.0).unwrap();
 	let want = std::f64::consts::PI * 4.0 * 2.0 * 3.0;
 	assert!((solid.volume() - want).abs() < 1e-3, "volume = {}, want {want}", solid.volume());
 }
