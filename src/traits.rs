@@ -508,7 +508,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// Volume of the solid (uniform density).
 	fn volume(&self) -> f64;
 	/// Total surface area of the solid.
-	fn area(&self) -> f64;
+	fn area(&self) -> f64 {
+		self.iter_face().map(FaceStruct::area).sum()
+	}
 	/// Center of mass (uniform density).
 	fn center(&self) -> DVec3;
 	/// Inertia tensor about the **world origin** (uniform density).

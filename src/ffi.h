@@ -165,7 +165,6 @@ std::unique_ptr<TopoDS_Shape> transform_mirror(
 bool shape_is_null(const TopoDS_Shape& shape);
 bool shape_is_solid(const TopoDS_Shape& shape);
 double shape_volume(const TopoDS_Shape& shape);
-double shape_surface_area(const TopoDS_Shape& shape);
 void shape_center_of_mass(const TopoDS_Shape& shape,
     double& x, double& y, double& z);
 void shape_inertia_tensor(const TopoDS_Shape& shape,

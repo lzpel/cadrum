@@ -622,10 +622,6 @@ impl SolidStruct for Solid {
 		ffi::shape_volume(&self.inner)
 	}
 
-	fn area(&self) -> f64 {
-		ffi::shape_surface_area(&self.inner)
-	}
-
 	fn center(&self) -> DVec3 {
 		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
 		ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
