@@ -171,7 +171,6 @@ void shape_inertia_tensor(const TopoDS_Shape& shape,
     double& m00, double& m01, double& m02,
     double& m10, double& m11, double& m12,
     double& m20, double& m21, double& m22);
-bool shape_distance(const TopoDS_Shape& first, const TopoDS_Shape& second, double& out_distance);
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
 void shape_bounding_box(const TopoDS_Shape& shape,
     double& xmin, double& ymin, double& zmin,

@@ -515,8 +515,6 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn center(&self) -> DVec3;
 	/// Inertia tensor about the **world origin** (uniform density).
 	fn inertia(&self) -> DMat3;
-	/// Exact minimum distance to `other`; zero when the two volumes overlap.
-	fn distance(&self, other: &Self) -> Result<f64, Error>;
 	/// Whether `point` lies inside (or on) the solid.
 	fn contains(&self, point: DVec3) -> bool;
 	/// Axis-aligned bounding box as `[min, max]`.

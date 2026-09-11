@@ -182,9 +182,6 @@ impl Solid {
 	pub fn inertia(&self) -> DMat3 {
 		<Self as crate::traits::SolidStruct>::inertia(self)
 	}
-	pub fn distance(&self, other: &crate::Solid) -> Result<f64, Error> {
-		<Self as crate::traits::SolidStruct>::distance(self, other)
-	}
 	pub fn contains(&self, point: DVec3) -> bool {
 		<Self as crate::traits::SolidStruct>::contains(self, point)
 	}

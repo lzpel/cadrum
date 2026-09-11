@@ -44,7 +44,6 @@
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
-#include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepExtrema_ExtPF.hxx>
 #include <BRepLProp_SLProps.hxx>
 #include <BRepAdaptor_Surface.hxx>
@@ -619,23 +618,6 @@ void shape_inertia_tensor(const TopoDS_Shape& shape,
     m02 = ic.Value(1,3) - mass * dx * dz;
     m12 = ic.Value(2,3) - mass * dy * dz;
     m10 = m01; m20 = m02; m21 = m12;
-}
-
-// Exact minimum distance; zero when the two volumes overlap (InnerSolution).
-bool shape_distance(const TopoDS_Shape& first, const TopoDS_Shape& second, double& out_distance) {
-    try {
-        BRepExtrema_DistShapeShape query(first, second);
-        if (!query.IsDone()) return false;
-        if (query.InnerSolution()) {
-            out_distance = 0.0;
-            return true;
-        }
-        if (query.NbSolution() == 0) return false;
-        out_distance = query.Value();
-        return std::isfinite(out_distance) && out_distance >= 0.0;
-    } catch (const Standard_Failure&) {
-        return false;
-    }
 }
 
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z) {

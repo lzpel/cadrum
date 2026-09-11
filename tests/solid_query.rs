@@ -83,22 +83,6 @@ fn test_cube_face_centers_match_analytical() {
 	}
 }
 
-/// Minimum distance between two 10-cubes offset along x: a 5 gap measures 5
-/// and is symmetric, while touching, overlapping and nested pairs read zero.
-#[test]
-fn test_cube_distance_matches_analytical() {
-	let a = 10.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
-	let shifted = |dx: f64| Solid::cube(DVec3::new(dx, 0.0, 0.0), DVec3::new(dx + a, a, a));
-	let nested = Solid::cube(DVec3::splat(2.0), DVec3::splat(8.0));
-
-	assert!((cube.distance(&shifted(15.0)).unwrap() - 5.0).abs() < EPS);
-	assert!((shifted(15.0).distance(&cube).unwrap() - 5.0).abs() < EPS);
-	assert!(cube.distance(&shifted(10.0)).unwrap() < EPS);
-	assert!(cube.distance(&shifted(9.0)).unwrap() < EPS);
-	assert!(cube.distance(&nested).unwrap() < EPS);
-}
-
 /// Every face of a cube has area a², and the six sum to the solid's own area.
 #[test]
 fn test_cube_face_areas_match_analytical() {
