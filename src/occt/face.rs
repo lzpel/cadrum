@@ -1,5 +1,6 @@
 use super::edge::Edge;
 use super::ffi;
+use crate::common::surface::{Surface, SurfaceKind};
 use crate::traits::FaceStruct;
 use glam::DVec3;
 use std::sync::OnceLock;
@@ -33,6 +34,22 @@ impl FaceStruct for Face {
 
 	fn id(&self) -> u64 {
 		ffi::face_tshape_id(&self.inner)
+	}
+
+	fn surface(&self) -> Option<Surface> {
+		let (mut ox, mut oy, mut oz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut ax, mut ay, mut az) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut rx, mut ry, mut rz) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut right_handed, mut p1, mut p2) = (false, 0.0_f64, 0.0_f64);
+		let kind = match ffi::face_surface(&self.inner, &mut ox, &mut oy, &mut oz, &mut ax, &mut ay, &mut az, &mut rx, &mut ry, &mut rz, &mut right_handed, &mut p1, &mut p2) {
+			1 => SurfaceKind::Plane,
+			2 => SurfaceKind::Cylinder { radius: p1 },
+			3 => SurfaceKind::Cone { radius: p1, semi_angle: p2 },
+			4 => SurfaceKind::Sphere { radius: p1 },
+			5 => SurfaceKind::Torus { major_radius: p1, minor_radius: p2 },
+			_ => return None,
+		};
+		Some(Surface { origin: DVec3::new(ox, oy, oz), axis: DVec3::new(ax, ay, az), ref_dir: DVec3::new(rx, ry, rz), right_handed, kind })
 	}
 
 	fn area(&self) -> f64 {

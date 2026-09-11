@@ -3,7 +3,7 @@
 //! OCCT computes properties with uniform density ρ = 1; the inertia tensor is
 //! returned about the world origin (not the center of mass).
 
-use cadrum::Solid;
+use cadrum::{Solid, SurfaceKind};
 use glam::DVec3;
 
 const EPS: f64 = 1e-6;
@@ -95,4 +95,59 @@ fn test_cube_face_areas_match_analytical() {
 		assert!((area - a.powi(2)).abs() < EPS, "face area = {area}, expected {}", a.powi(2));
 	}
 	assert!((areas.iter().sum::<f64>() - cube.area()).abs() < EPS);
+}
+
+/// Every cube face lies on a plane whose placement is an orthonormal frame
+/// through the face, oriented along the face normal up to sign.
+#[test]
+fn test_cube_faces_report_planes() {
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	for face in cube.iter_face() {
+		let s = face.surface().expect("a cube face lies on a plane");
+		assert_eq!(s.kind, SurfaceKind::Plane);
+		assert!((s.axis.length() - 1.0).abs() < EPS);
+		assert!((s.ref_dir.length() - 1.0).abs() < EPS);
+		assert!(s.axis.dot(s.ref_dir).abs() < EPS, "ref_dir must be orthogonal to axis");
+		assert!(s.right_handed, "an unmirrored cube keeps right-handed placements");
+		assert!((s.y_dir() - s.axis.cross(s.ref_dir)).length() < EPS);
+
+		let (on_face, normal) = face.project(face.center());
+		assert!((on_face - s.origin).dot(s.axis).abs() < EPS, "the face must lie on its own plane");
+		assert!((s.axis.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
+	}
+}
+
+/// Primitives report the parameters they were built from, and the placement
+/// origin is the surface's, not a point on the face.
+#[test]
+fn test_primitive_surfaces_match_construction() {
+	let cylinder = Solid::cylinder(3.0, DVec3::Z * 10.0);
+	let radii = cylinder
+		.iter_face()
+		.filter_map(|f| match f.surface().expect("elementary").kind {
+			SurfaceKind::Cylinder { radius } => Some(radius),
+			_ => None,
+		})
+		.collect::<Vec<_>>();
+	assert_eq!(radii.len(), 1, "a cylinder has one cylindrical face and two caps");
+	assert!((radii[0] - 3.0).abs() < EPS);
+
+	let sphere = Solid::sphere(5.0);
+	let s = sphere.iter_face().next().unwrap().surface().expect("elementary");
+	assert!(matches!(s.kind, SurfaceKind::Sphere { radius } if (radius - 5.0).abs() < EPS));
+	assert!(s.origin.length() < EPS, "a sphere places its origin at the centre, off the face");
+
+	let torus = Solid::torus(10.0, 3.0, DVec3::Z);
+	let t = torus.iter_face().next().unwrap().surface().expect("elementary");
+	assert!(matches!(t.kind, SurfaceKind::Torus { major_radius, minor_radius } if (major_radius - 10.0).abs() < EPS && (minor_radius - 3.0).abs() < EPS));
+
+	let cone = Solid::cone(5.0, 2.0, DVec3::Z * 10.0);
+	let angle = cone
+		.iter_face()
+		.find_map(|f| match f.surface().expect("elementary").kind {
+			SurfaceKind::Cone { semi_angle, .. } => Some(semi_angle),
+			_ => None,
+		})
+		.expect("a cone has a conical face");
+	assert!((angle.abs().tan() - 0.3).abs() < EPS, "tan(semi_angle) = (r1 - r2) / height, got {angle}");
 }
