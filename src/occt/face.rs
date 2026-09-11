@@ -38,10 +38,10 @@ impl FaceStruct for Face {
 
 	fn surface(&self) -> Option<Surface> {
 		let (mut ox, mut oy, mut oz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		let (mut ax, mut ay, mut az) = (0.0_f64, 0.0_f64, 0.0_f64);
+		let (mut zx, mut zy, mut zz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut xx, mut xy, mut xz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut p1, mut p2) = (0.0_f64, 0.0_f64);
-		let kind = match ffi::face_surface(&self.inner, &mut ox, &mut oy, &mut oz, &mut ax, &mut ay, &mut az, &mut xx, &mut xy, &mut xz, &mut p1, &mut p2) {
+		let kind = match ffi::face_surface(&self.inner, &mut ox, &mut oy, &mut oz, &mut zx, &mut zy, &mut zz, &mut xx, &mut xy, &mut xz, &mut p1, &mut p2) {
 			1 => SurfaceKind::Plane,
 			2 => SurfaceKind::Cylinder { radius: p1 },
 			3 => SurfaceKind::Cone { radius: p1, semi_angle: p2 },
@@ -49,7 +49,7 @@ impl FaceStruct for Face {
 			5 => SurfaceKind::Torus { major_radius: p1, minor_radius: p2 },
 			_ => return None,
 		};
-		Some(Surface { origin: DVec3::new(ox, oy, oz), axis: DVec3::new(ax, ay, az), x_dir: DVec3::new(xx, xy, xz), kind })
+		Some(Surface { origin: DVec3::new(ox, oy, oz), axis_z: DVec3::new(zx, zy, zz), axis_x: DVec3::new(xx, xy, xz), kind })
 	}
 
 	fn area(&self) -> f64 {

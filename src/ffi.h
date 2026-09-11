@@ -394,7 +394,7 @@ double face_surface_area(const TopoDS_Face& face);
 // 5 torus. A mirrored placement is normalised so that axis x X is its Y.
 uint32_t face_surface(const TopoDS_Face& face,
     double& ox, double& oy, double& oz,
-    double& ax, double& ay, double& az,
+    double& zx, double& zy, double& zz,
     double& xx, double& xy, double& xz,
     double& p1, double& p2);
 // Area-weighted center of the trimmed face surface.

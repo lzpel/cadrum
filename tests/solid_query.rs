@@ -140,28 +140,28 @@ fn test_cube_faces_report_planes() {
 	for face in cube.iter_face() {
 		let s = face.surface().expect("a cube face lies on a plane");
 		assert_eq!(s.kind, SurfaceKind::Plane);
-		assert!((s.axis.length() - 1.0).abs() < EPS);
-		assert!((s.x_dir.length() - 1.0).abs() < EPS);
-		assert!(s.axis.dot(s.x_dir).abs() < EPS, "x_dir must be orthogonal to axis");
-		assert!((s.axis.cross(s.x_dir).length() - 1.0).abs() < EPS, "the frame must be orthonormal");
+		assert!((s.axis_z.length() - 1.0).abs() < EPS);
+		assert!((s.axis_x.length() - 1.0).abs() < EPS);
+		assert!(s.axis_z.dot(s.axis_x).abs() < EPS, "axis_x must be orthogonal to axis_z");
+		assert!((s.axis_z.cross(s.axis_x).length() - 1.0).abs() < EPS, "the frame must be orthonormal");
 
 		let (on_face, normal) = face.project(face.center());
-		assert!((on_face - s.origin).dot(s.axis).abs() < EPS, "the face must lie on its own plane");
-		assert!((s.axis.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
+		assert!((on_face - s.origin).dot(s.axis_z).abs() < EPS, "the face must lie on its own plane");
+		assert!((s.axis_z.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
 	}
 }
 
-/// Mirroring keeps the frame right-handed: `axis.cross(x_dir)` stays the
+/// Mirroring keeps the frame right-handed: `axis_z.cross(axis_x)` stays the
 /// placement's Y direction instead of flipping to its negation.
 #[test]
 fn test_mirrored_faces_keep_right_handed_frames() {
 	let mirrored = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).mirror(DVec3::ZERO, DVec3::X);
 	for face in mirrored.iter_face() {
 		let s = face.surface().expect("a cube face lies on a plane");
-		let y = s.axis.cross(s.x_dir);
+		let y = s.axis_z.cross(s.axis_x);
 		assert!((y.length() - 1.0).abs() < EPS);
-		assert!((y.dot(s.axis)).abs() < EPS);
-		assert!((y.dot(s.x_dir)).abs() < EPS);
-		assert!((s.x_dir.cross(y) - s.axis).length() < EPS, "x cross y must return the axis");
+		assert!((y.dot(s.axis_z)).abs() < EPS);
+		assert!((y.dot(s.axis_x)).abs() < EPS);
+		assert!((s.axis_x.cross(y) - s.axis_z).length() < EPS, "x cross y must return the axis");
 	}
 }

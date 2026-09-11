@@ -4,7 +4,7 @@ use glam::DVec3;
 /// parameters of the subtype it places.
 ///
 /// Reported as the surface itself carries it — the face's own orientation is not
-/// folded in, so `axis` is not necessarily the outward normal of a planar face.
+/// folded in, so `axis_z` is not necessarily the outward normal of a planar face.
 /// `Face::project` reports that.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Surface {
@@ -12,12 +12,12 @@ pub struct Surface {
 	/// axis and a sphere at the centre.
 	pub origin: DVec3,
 	/// STEP `axis`, the placement's Z direction.
-	pub axis: DVec3,
+	pub axis_z: DVec3,
 	/// The placement's X direction, fixing where `u = 0` sits on the surface.
-	/// The frame is always right-handed, so its Y direction is `axis.cross(x_dir)`.
-	/// A mirrored face is normalised into that convention, which negates STEP's
-	/// `ref_direction` and moves `u = 0` by half a turn.
-	pub x_dir: DVec3,
+	/// The frame is always right-handed, so Y is `axis_z.cross(axis_x)` and is
+	/// not carried. A mirrored face is normalised into that convention, which
+	/// negates STEP's `ref_direction` and moves `u = 0` by half a turn.
+	pub axis_x: DVec3,
 	pub kind: SurfaceKind,
 }
 
