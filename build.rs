@@ -268,7 +268,7 @@ fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf
 }
 
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
-	let gz = libflate::gzip::Decoder::new(fetch(url)?).map_err(|e| format!("gzip decode failed: {e}"))?;
+	let gz = flate2::read::GzDecoder::new(fetch(url)?);
 	tar::Archive::new(gz).unpack(dest).map_err(|e| format!("tar unpack failed: {e}"))
 }
 
