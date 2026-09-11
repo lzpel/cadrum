@@ -22,8 +22,13 @@
 // --- Geometry primitives (gp / Geom / 2d) ---
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
+#include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Cone.hxx>
+#include <gp_Cylinder.hxx>
 #include <gp_Pln.hxx>
+#include <gp_Sphere.hxx>
+#include <gp_Torus.hxx>
 #include <gp_Trsf.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom2d_Line.hxx>
@@ -70,6 +75,7 @@
 #include <BRepOffset_MakeOffset.hxx>
 #include <BRepOffset_Mode.hxx>
 #include <GeomAbs_JoinType.hxx>
+#include <GeomAbs_SurfaceType.hxx>
 
 // --- Mesh, classification, mass / surface properties ---
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -788,6 +794,60 @@ double face_surface_area(const TopoDS_Face& face) {
     GProp_GProps props;
     BRepGProp::SurfaceProperties(face, props);
     return props.Mass();
+}
+
+uint32_t face_surface(const TopoDS_Face& face,
+    double& ox, double& oy, double& oz,
+    double& zx, double& zy, double& zz,
+    double& xx, double& xy, double& xz,
+    double& p1, double& p2)
+{
+    uint32_t kind = 0;
+    gp_Ax3 pos;
+    p1 = 0.0; p2 = 0.0;
+    try {
+        BRepAdaptor_Surface surf(face);
+        switch (surf.GetType()) {
+            case GeomAbs_Plane: {
+                kind = 1; pos = surf.Plane().Position();
+                break;
+            }
+            case GeomAbs_Cylinder: {
+                const gp_Cylinder cyl = surf.Cylinder();
+                kind = 2; pos = cyl.Position(); p1 = cyl.Radius();
+                break;
+            }
+            case GeomAbs_Cone: {
+                const gp_Cone cone = surf.Cone();
+                kind = 3; pos = cone.Position();
+                p1 = cone.RefRadius(); p2 = cone.SemiAngle();
+                break;
+            }
+            case GeomAbs_Sphere: {
+                const gp_Sphere sph = surf.Sphere();
+                kind = 4; pos = sph.Position(); p1 = sph.Radius();
+                break;
+            }
+            case GeomAbs_Torus: {
+                const gp_Torus tor = surf.Torus();
+                kind = 5; pos = tor.Position();
+                p1 = tor.MajorRadius(); p2 = tor.MinorRadius();
+                break;
+            }
+            default: break;
+        }
+    } catch (const Standard_Failure&) {
+        return 0;
+    }
+    const gp_Pnt origin = pos.Location();
+    const gp_Dir axis = pos.Direction();
+    gp_Dir x = pos.XDirection();
+    // Normalise a mirrored placement, so axis x X is always its Y direction.
+    if (!pos.Direct()) x.Reverse();
+    ox = origin.X(); oy = origin.Y(); oz = origin.Z();
+    zx = axis.X(); zy = axis.Y(); zz = axis.Z();
+    xx = x.X(); xy = x.Y(); xz = x.Z();
+    return kind;
 }
 
 void face_center_of_mass(const TopoDS_Face& face,

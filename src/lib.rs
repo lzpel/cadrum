@@ -33,6 +33,7 @@ pub use common::{
 	boolean::Boolean,
 	error::Error,
 	mesh::{Mesh, Scene2D, SceneOption},
+	surface::{Surface, SurfaceKind},
 };
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
@@ -127,6 +128,9 @@ impl Face {
 	}
 	pub fn area(&self) -> f64 {
 		<Self as crate::traits::FaceStruct>::area(self)
+	}
+	pub fn surface(&self) -> Option<Surface> {
+		<Self as crate::traits::FaceStruct>::surface(self)
 	}
 	pub fn center(&self) -> DVec3 {
 		<Self as crate::traits::FaceStruct>::center(self)

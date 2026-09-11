@@ -106,6 +106,7 @@ use crate::common::boolean::Boolean;
 use crate::common::color::Color;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
+use crate::common::surface::Surface;
 use glam::{DMat3, DQuat, DVec3};
 use std::fmt::Debug;
 
@@ -424,6 +425,10 @@ pub trait FaceStruct: Sized + Debug {
 
 	/// Area of the trimmed face.
 	fn area(&self) -> f64;
+
+	/// The elementary surface this face lies on. `None` for B-spline, Bezier,
+	/// offset and other non-elementary surfaces.
+	fn surface(&self) -> Option<Surface>;
 
 	/// Area-weighted center of the trimmed face, for directional face selection.
 	/// Curved or concave faces place it off the face, and on a closed surface
