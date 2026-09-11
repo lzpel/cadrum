@@ -799,8 +799,7 @@ double face_surface_area(const TopoDS_Face& face) {
 uint32_t face_surface(const TopoDS_Face& face,
     double& ox, double& oy, double& oz,
     double& ax, double& ay, double& az,
-    double& rx, double& ry, double& rz,
-    bool& right_handed,
+    double& xx, double& xy, double& xz,
     double& p1, double& p2)
 {
     uint32_t kind = 0;
@@ -842,11 +841,12 @@ uint32_t face_surface(const TopoDS_Face& face,
     }
     const gp_Pnt origin = pos.Location();
     const gp_Dir axis = pos.Direction();
-    const gp_Dir ref = pos.XDirection();
+    gp_Dir x = pos.XDirection();
+    // Normalise a mirrored placement, so axis x X is always its Y direction.
+    if (!pos.Direct()) x.Reverse();
     ox = origin.X(); oy = origin.Y(); oz = origin.Z();
     ax = axis.X(); ay = axis.Y(); az = axis.Z();
-    rx = ref.X(); ry = ref.Y(); rz = ref.Z();
-    right_handed = pos.Direct();
+    xx = x.X(); xy = x.Y(); xz = x.Z();
     return kind;
 }
 

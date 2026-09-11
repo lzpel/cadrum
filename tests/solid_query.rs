@@ -97,26 +97,6 @@ fn test_cube_face_areas_match_analytical() {
 	assert!((areas.iter().sum::<f64>() - cube.area()).abs() < EPS);
 }
 
-/// Every cube face lies on a plane whose placement is an orthonormal frame
-/// through the face, oriented along the face normal up to sign.
-#[test]
-fn test_cube_faces_report_planes() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
-	for face in cube.iter_face() {
-		let s = face.surface().expect("a cube face lies on a plane");
-		assert_eq!(s.kind, SurfaceKind::Plane);
-		assert!((s.axis.length() - 1.0).abs() < EPS);
-		assert!((s.ref_dir.length() - 1.0).abs() < EPS);
-		assert!(s.axis.dot(s.ref_dir).abs() < EPS, "ref_dir must be orthogonal to axis");
-		assert!(s.right_handed, "an unmirrored cube keeps right-handed placements");
-		assert!((s.y_dir() - s.axis.cross(s.ref_dir)).length() < EPS);
-
-		let (on_face, normal) = face.project(face.center());
-		assert!((on_face - s.origin).dot(s.axis).abs() < EPS, "the face must lie on its own plane");
-		assert!((s.axis.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
-	}
-}
-
 /// Primitives report the parameters they were built from, and the placement
 /// origin is the surface's, not a point on the face.
 #[test]
@@ -150,4 +130,38 @@ fn test_primitive_surfaces_match_construction() {
 		})
 		.expect("a cone has a conical face");
 	assert!((angle.abs().tan() - 0.3).abs() < EPS, "tan(semi_angle) = (r1 - r2) / height, got {angle}");
+}
+
+/// Every cube face lies on a plane whose placement is a right-handed orthonormal
+/// frame through the face, aligned with the face normal up to sign.
+#[test]
+fn test_cube_faces_report_planes() {
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	for face in cube.iter_face() {
+		let s = face.surface().expect("a cube face lies on a plane");
+		assert_eq!(s.kind, SurfaceKind::Plane);
+		assert!((s.axis.length() - 1.0).abs() < EPS);
+		assert!((s.x_dir.length() - 1.0).abs() < EPS);
+		assert!(s.axis.dot(s.x_dir).abs() < EPS, "x_dir must be orthogonal to axis");
+		assert!((s.axis.cross(s.x_dir).length() - 1.0).abs() < EPS, "the frame must be orthonormal");
+
+		let (on_face, normal) = face.project(face.center());
+		assert!((on_face - s.origin).dot(s.axis).abs() < EPS, "the face must lie on its own plane");
+		assert!((s.axis.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
+	}
+}
+
+/// Mirroring keeps the frame right-handed: `axis.cross(x_dir)` stays the
+/// placement's Y direction instead of flipping to its negation.
+#[test]
+fn test_mirrored_faces_keep_right_handed_frames() {
+	let mirrored = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).mirror(DVec3::ZERO, DVec3::X);
+	for face in mirrored.iter_face() {
+		let s = face.surface().expect("a cube face lies on a plane");
+		let y = s.axis.cross(s.x_dir);
+		assert!((y.length() - 1.0).abs() < EPS);
+		assert!((y.dot(s.axis)).abs() < EPS);
+		assert!((y.dot(s.x_dir)).abs() < EPS);
+		assert!((s.x_dir.cross(y) - s.axis).length() < EPS, "x cross y must return the axis");
+	}
 }

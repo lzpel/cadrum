@@ -13,12 +13,11 @@ pub struct Surface {
 	pub origin: DVec3,
 	/// STEP `axis`, the placement's Z direction.
 	pub axis: DVec3,
-	/// STEP `ref_direction`, already made orthogonal to `axis` and normalised.
-	/// It carries no shape, only where `u = 0` sits on the surface.
-	pub ref_dir: DVec3,
-	/// Whether the placement is right-handed, i.e. whether its Y direction is
-	/// `axis × ref_dir` rather than its negation. Mirroring produces the latter.
-	pub right_handed: bool,
+	/// The placement's X direction, fixing where `u = 0` sits on the surface.
+	/// The frame is always right-handed, so its Y direction is `axis.cross(x_dir)`.
+	/// A mirrored face is normalised into that convention, which negates STEP's
+	/// `ref_direction` and moves `u = 0` by half a turn.
+	pub x_dir: DVec3,
 	pub kind: SurfaceKind,
 }
 
@@ -42,16 +41,4 @@ pub enum SurfaceKind {
 		major_radius: f64,
 		minor_radius: f64,
 	},
-}
-
-impl Surface {
-	/// The placement's Y direction, completing the frame with `axis` and `ref_dir`.
-	pub fn y_dir(&self) -> DVec3 {
-		let y = self.axis.cross(self.ref_dir);
-		if self.right_handed {
-			y
-		} else {
-			-y
-		}
-	}
 }

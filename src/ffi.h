@@ -391,12 +391,11 @@ uint64_t edge_tshape_id(const TopoDS_Edge& edge);
 double face_surface_area(const TopoDS_Face& face);
 // The face's elementary surface as its STEP axis2_placement_3d-shaped
 // placement. Returns the kind: 0 other, 1 plane, 2 cylinder, 3 cone, 4 sphere,
-// 5 torus. `p1` / `p2` carry the subtype radii and semi-angle.
+// 5 torus. A mirrored placement is normalised so that axis x X is its Y.
 uint32_t face_surface(const TopoDS_Face& face,
     double& ox, double& oy, double& oz,
     double& ax, double& ay, double& az,
-    double& rx, double& ry, double& rz,
-    bool& right_handed,
+    double& xx, double& xy, double& xz,
     double& p1, double& p2);
 // Area-weighted center of the trimmed face surface.
 void face_center_of_mass(const TopoDS_Face& face,

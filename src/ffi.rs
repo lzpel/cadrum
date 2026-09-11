@@ -130,7 +130,7 @@ mod ffi_bridge {
 		fn shape_tshape_id(shape: &TopoDS_Shape) -> u64;
 		fn edge_tshape_id(edge: &TopoDS_Edge) -> u64;
 
-		fn face_surface(face: &TopoDS_Face, ox: &mut f64, oy: &mut f64, oz: &mut f64, ax: &mut f64, ay: &mut f64, az: &mut f64, rx: &mut f64, ry: &mut f64, rz: &mut f64, right_handed: &mut bool, p1: &mut f64, p2: &mut f64) -> u32;
+		fn face_surface(face: &TopoDS_Face, ox: &mut f64, oy: &mut f64, oz: &mut f64, ax: &mut f64, ay: &mut f64, az: &mut f64, xx: &mut f64, xy: &mut f64, xz: &mut f64, p1: &mut f64, p2: &mut f64) -> u32;
 		fn face_surface_area(face: &TopoDS_Face) -> f64;
 		fn face_center_of_mass(face: &TopoDS_Face, x: &mut f64, y: &mut f64, z: &mut f64);
 		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> bool;
