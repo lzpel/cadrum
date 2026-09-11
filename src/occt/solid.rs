@@ -642,6 +642,11 @@ impl SolidStruct for Solid {
 		glam::DMat3::from_cols_array(&[m00, m10, m20, m01, m11, m21, m02, m12, m22])
 	}
 
+	fn distance(&self, other: &Self) -> Result<f64, Error> {
+		let mut distance = 0.0;
+		ffi::shape_distance(&self.inner, &other.inner, &mut distance).then_some(distance).ok_or(Error::Distance)
+	}
+
 	fn contains(&self, point: DVec3) -> bool {
 		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
 	}

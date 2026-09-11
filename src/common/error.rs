@@ -22,6 +22,9 @@ pub enum Error {
 	/// Shape cleaning (UnifySameDomain) failed.
 	Clean,
 
+	/// Minimum-distance query (`Solid::distance`) failed.
+	Distance,
+
 	/// Extrusion (`Solid::extrude`) failed: empty profile, zero-length direction, or profile not closed.
 	Extrude,
 
@@ -60,6 +63,7 @@ impl std::fmt::Display for Error {
 			Error::NotOne(n) => write!(f, "Expected exactly one resulting Solid, got {n}"),
 			Error::Edge(msg) => write!(f, "Edge failed: {msg}"),
 			Error::Clean => write!(f, "Clean failed"),
+			Error::Distance => write!(f, "Distance failed"),
 			Error::Extrude => write!(f, "Extrude failed"),
 			Error::Sweep(msg) => write!(f, "Sweep failed: {msg}"),
 			Error::Shell(msg) => write!(f, "Shell failed: {msg}"),

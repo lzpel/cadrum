@@ -172,6 +172,7 @@ void shape_inertia_tensor(const TopoDS_Shape& shape,
     double& m00, double& m01, double& m02,
     double& m10, double& m11, double& m12,
     double& m20, double& m21, double& m22);
+bool shape_distance(const TopoDS_Shape& first, const TopoDS_Shape& second, double& out_distance);
 bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
 void shape_bounding_box(const TopoDS_Shape& shape,
     double& xmin, double& ymin, double& zmin,
@@ -388,6 +389,11 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 uint64_t face_tshape_id(const TopoDS_Face& face);
 uint64_t shape_tshape_id(const TopoDS_Shape& shape);
 uint64_t edge_tshape_id(const TopoDS_Edge& edge);
+
+double face_surface_area(const TopoDS_Face& face);
+// Area-weighted center of the trimmed face surface.
+void face_center_of_mass(const TopoDS_Face& face,
+    double& x, double& y, double& z);
 
 // Project a 3D point onto `face`. Sister of `edge_project_point`.
 // Returns the closest point on the (trimmed) face surface and the outward
