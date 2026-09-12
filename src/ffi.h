@@ -273,7 +273,8 @@ void edge_endpoints(const TopoDS_Edge& edge,
 void edge_tangents(const TopoDS_Edge& edge,
     double& sx, double& sy, double& sz,
     double& ex, double& ey, double& ez);
-bool edge_is_closed(const TopoDS_Edge& edge);
+// Smallest distance OCCT treats as zero (Precision::Confusion).
+double precision_confusion();
 
 // Project a world point onto the edge's underlying curve. Returns false if
 // the curve is missing or the projector cannot converge (leaves outputs 0).
