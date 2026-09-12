@@ -75,3 +75,34 @@ fn project_on_bspline_converges_to_interpolant() {
 	// Tangent is unit-length.
 	assert!((tg.length() - 1.0).abs() < TOL, "|tg|={}", tg.length());
 }
+
+// ==================== is_loop ====================
+
+#[test]
+fn is_loop_single() {
+	assert_eq!(Edge::precision_distance(), 1.0e-7);
+	// A single closed edge is a loop — the case the removed `is_closed` covered.
+	let circle = Edge::circle(2.0, DVec3::Z).unwrap();
+	assert!(Edge::is_loop(&[circle]));
+	let line = Edge::line(DVec3::ZERO, DVec3::X).unwrap();
+	assert!(!Edge::is_loop(&[line]));
+	assert!(!Edge::is_loop(&[]));
+}
+
+#[test]
+fn is_loop_gap_at_precision_distance() {
+	//without gap
+	let square = Edge::polygon(&[DVec3::ZERO, DVec3::X, DVec3::X + DVec3::Y, DVec3::Y]).unwrap();
+	assert!(Edge::is_loop(&square));
+	// with gap
+	let tolerance = Edge::precision_distance();
+	let a = DVec3::ZERO;
+	let b = DVec3::X;
+	let c = DVec3::Y;
+	// Reopen the loop by a gap an order of magnitude above the tolerance.
+	let gap = DVec3::new(0.0, 0.0, tolerance * 10.0);
+	let open = [Edge::line(a, b).unwrap(), Edge::line(b, c).unwrap(), Edge::line(c, a + gap).unwrap()];
+	assert!(!Edge::is_loop(&open));
+	let closed = [Edge::line(a, b).unwrap(), Edge::line(b, c).unwrap(), Edge::line(c, a).unwrap()];
+	assert!(Edge::is_loop(&closed));
+}

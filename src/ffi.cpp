@@ -1212,15 +1212,8 @@ void edge_tangents(const TopoDS_Edge& edge,
     } catch (const Standard_Failure&) {}
 }
 
-bool edge_is_closed(const TopoDS_Edge& edge) {
-    try {
-        BRepAdaptor_Curve curve(edge);
-        gp_Pnt p_start = curve.Value(curve.FirstParameter());
-        gp_Pnt p_end   = curve.Value(curve.LastParameter());
-        return p_start.Distance(p_end) < Precision::Confusion();
-    } catch (const Standard_Failure&) {
-        return false;
-    }
+double precision_confusion() {
+    return Precision::Confusion();
 }
 
 bool edge_project_point(const TopoDS_Edge& edge,

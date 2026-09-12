@@ -63,14 +63,17 @@ impl Edge {
 	pub fn end_tangent(&self) -> DVec3 {
 		<Self as crate::traits::EdgeStruct>::end_tangent(self)
 	}
-	pub fn is_closed(&self) -> bool {
-		<Self as crate::traits::EdgeStruct>::is_closed(self)
-	}
 	pub fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3> {
 		<Self as crate::traits::EdgeStruct>::approximation_segments(self, tessellation)
 	}
 	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		<Self as crate::traits::EdgeStruct>::project(self, p)
+	}
+	pub fn precision_distance() -> f64 {
+		<Self as crate::traits::EdgeStruct>::precision_distance()
+	}
+	pub fn is_loop<'a>(edges: impl IntoIterator<Item = &'a crate::Edge>) -> bool {
+		<Self as crate::traits::EdgeStruct>::is_loop(edges)
 	}
 	pub fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::EdgeStruct>::helix(radius, pitch, height, axis, x_ref)

@@ -74,8 +74,8 @@ impl EdgeStruct for Edge {
 		DVec3::new(ex, ey, ez)
 	}
 
-	fn is_closed(&self) -> bool {
-		ffi::edge_is_closed(&self.inner)
+	fn precision_distance() -> f64 {
+		ffi::precision_confusion()
 	}
 
 	fn approximation_segments(&self, tessellation: crate::traits::Tessellation) -> Vec<DVec3> {
