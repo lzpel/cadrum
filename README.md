@@ -17,8 +17,8 @@ cadrum is a Rust CAD crate using statically-linked, headless [OpenCASCADE][occt]
 <tr><td width='25%'><a href='#extrude'><img src='https://lzpel.github.io/cadrum/05_extrude.png' width='100%' height='auto' alt='extrude'/></a></td><td width='25%'><a href='#revolve'><img src='https://lzpel.github.io/cadrum/06_revolve.png' width='100%' height='auto' alt='revolve'/></a></td><td width='25%'><a href='#loft'><img src='https://lzpel.github.io/cadrum/07_loft.png' width='100%' height='auto' alt='loft'/></a></td><td width='25%'><a href='#sweep'><img src='https://lzpel.github.io/cadrum/08_sweep.png' width='100%' height='auto' alt='sweep'/></a></td></tr>
 <tr><th width='25%'><a href='#shell'>shell</a></th><th width='25%'><a href='#bspline'>bspline</a></th><th width='25%'><a href='#fillet'>fillet</a></th><th width='25%'><a href='#chamfer'>chamfer</a></th></tr>
 <tr><td width='25%'><a href='#shell'><img src='https://lzpel.github.io/cadrum/09_shell.png' width='100%' height='auto' alt='shell'/></a></td><td width='25%'><a href='#bspline'><img src='https://lzpel.github.io/cadrum/10_bspline.png' width='100%' height='auto' alt='bspline'/></a></td><td width='25%'><a href='#fillet'><img src='https://lzpel.github.io/cadrum/11_fillet.png' width='100%' height='auto' alt='fillet'/></a></td><td width='25%'><a href='#chamfer'><img src='https://lzpel.github.io/cadrum/12_chamfer.png' width='100%' height='auto' alt='chamfer'/></a></td></tr>
-<tr><th width='25%'><a href='#offset'>offset</a></th><th width='25%'><a href='#sew'>sew</a></th><th width='25%'><a href='#moebius'>moebius</a></th><th width='25%'><a href='#multiview'>multiview</a></th></tr>
-<tr><td width='25%'><a href='#offset'><img src='https://lzpel.github.io/cadrum/13_offset.png' width='100%' height='auto' alt='offset'/></a></td><td width='25%'><a href='#sew'><img src='https://lzpel.github.io/cadrum/14_sew.png' width='100%' height='auto' alt='sew'/></a></td><td width='25%'><a href='#moebius'><img src='https://lzpel.github.io/cadrum/15_moebius.png' width='100%' height='auto' alt='moebius'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/16_multiview.png' width='100%' height='auto' alt='multiview'/></a></td></tr>
+<tr><th width='25%'><a href='#offset'>offset</a></th><th width='25%'><a href='#sew'>sew</a></th><th width='25%'><a href='#multiview'>multiview</a></th><th width='25%'></th></tr>
+<tr><td width='25%'><a href='#offset'><img src='https://lzpel.github.io/cadrum/13_offset.png' width='100%' height='auto' alt='offset'/></a></td><td width='25%'><a href='#sew'><img src='https://lzpel.github.io/cadrum/14_sew.png' width='100%' height='auto' alt='sew'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/15_multiview.png' width='100%' height='auto' alt='multiview'/></a></td><td width='25%'></td></tr>
 </table>
 
 ## What is cadrum
@@ -609,7 +609,6 @@ cargo run --example 08_sweep
 
 ```rust,no_run
 //! Sweep showcase: M2 screw (helix spine) + U-shaped pipe (line+arc+line spine)
-//! + twisted ribbon (`Auxiliary` aux-spine mode).
 //!
 //! `ProfileOrient` controls how the profile is oriented as it travels along the spine:
 //!
@@ -629,7 +628,7 @@ cargo run --example 08_sweep
 //!   toward a parallel auxiliary spine. Arbitrary twist control — e.g. a
 //!   helical `aux_spine` on a straight `spine` produces a twisted ribbon.
 
-use cadrum::{DVec3, Edge, Error, ProfileOrient, Solid};
+use cadrum::{BSplineEnd, DQuat, DVec3, Edge, Error, ProfileOrient, Solid};
 
 // ==================== Component 1: M2 ISO screw ====================
 
@@ -677,11 +676,11 @@ fn build_u_pipe() -> Result<Solid, Error> {
 	let bend_radius = half_gap;
 
 	// U-shaped path in the XZ plane, centered on origin in X: A↑B ⌒ C↓D.
-	let a = DVec3::new(-half_gap, 0.0, 0.0);
-	let b = DVec3::new(-half_gap, 0.0, leg_length);
+	let a = DVec3::new(0.0, -half_gap, 0.0);
+	let b = DVec3::new(0.0, -half_gap, leg_length);
 	let arc_mid = DVec3::new(0.0, 0.0, leg_length + bend_radius);
-	let c = DVec3::new(half_gap, 0.0, leg_length);
-	let d = DVec3::new(half_gap, 0.0, 0.0);
+	let c = DVec3::new(0.0, half_gap, leg_length);
+	let d = DVec3::new(0.0, half_gap, 0.0);
 
 	// Spine wire: line → semicircle → line.
 	let up_leg = Edge::line(a, b)?;
@@ -694,47 +693,35 @@ fn build_u_pipe() -> Result<Solid, Error> {
 
 	// Up(+Y) fixes the binormal to the path-plane normal, avoiding Frenet
 	// degeneracy on the straight segments.
-	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Up(DVec3::Y))?;
+	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Torsion)?;
 	Ok(pipe.translate(DVec3::X * 6.0).color("blue"))
 }
 
-// ==================== Component 3: Auxiliary-spine twisted ribbon ====================
-
-// Sweeping a straight spine with `Auxiliary(&[helix])` rotates the tracked
-// axis of the profile at each point to face the corresponding helix point.
-// A pitch=h helix makes exactly one 360° turn over [0, h], so a flat
-// rectangular profile becomes a ribbon twisted once. With `Fixed` or
-// `Torsion` the profile wouldn't rotate along a straight spine — visible
-// twist is therefore proof that Auxiliary is in effect.
-fn build_twisted_ribbon() -> Result<Solid, Error> {
-	let h = 8.0;
-	let aux_r = 3.0;
-
-	let spine = Edge::line(DVec3::ZERO, DVec3::Z * h)?;
-	let aux = Edge::helix(aux_r, h, h, DVec3::Z, DVec3::X)?;
-
-	// Flat rectangle (10:1 aspect) — circles or squares wouldn't reveal any twist.
-	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
-
-	let ribbon = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(ribbon.translate(DVec3::X * 12.0).color("green"))
+fn build_moebius(r: f64) -> Result<Solid, Error> {
+	const N: usize = 24;
+	let phi = |phi: f64| -> [DVec3; 2] {
+		let [p, d] = [DVec3::X * r, DVec3::X * r / 10.];
+		let [rz, ry] = [DQuat::from_rotation_z(phi), DQuat::from_rotation_y(2. * phi)];
+		[rz * p, rz * (p + ry * d)]
+	};
+	let ring: [[DVec3; 2]; N] = std::array::from_fn(|i| phi(i as f64 / N as f64 * std::f64::consts::TAU));
+	let spine = Edge::bspline(&(ring.map(|v| v[0])), BSplineEnd::Periodic)?;
+	let aux = Edge::bspline(&(ring.map(|v| v[1])), BSplineEnd::Periodic)?;
+	let profile = Edge::polygon(&[DVec3::new(-0.3, -0.3, 0.0), DVec3::new(0.5, -0.5, 0.0), DVec3::new(0.3, 0.3, 0.0), DVec3::new(-0.3, 0.3, 0.0)])?;
+	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point())).collect();
+	let band = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
+	Ok(band.align_z(DVec3::X, DVec3::Z).translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
 }
-
-// ==================== main: side-by-side layout ====================
-//
-// Each builder places its component at its final world position (screw at
-// origin, U-pipe at x=6, ribbon at x=12) and applies its color, so main
-// just concatenates them.
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let all = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?];
+	let all = [build_m2_screw()?, build_u_pipe()?, build_moebius(3.)?];
 
 	Solid::write_step(&all, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
 	// Helical threads have dense hidden lines that clutter the output; disable them.
 	let mesh = Solid::mesh(&all, Default::default())?;
-	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, -1.0), hidden_edges: false, ..Default::default() });
+	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(-1.0, 1.0, 0.5), hidden_edges: false, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
@@ -1122,76 +1109,12 @@ Output: [14_sew.png](https://lzpel.github.io/cadrum/14_sew.png) | [14_sew.step](
 
 <img src='https://lzpel.github.io/cadrum/14_sew.svg' alt='14_sew' width='360'/>
 
-#### Moebius
-
-mevius using BSplineEnd::Periodic and ProfileOrient::Auxiliary. Mevius but it's twisted more.
-
-```sh
-cargo run --example 15_moebius
-```
-
-```rust,no_run
-//! mevius using BSplineEnd::Periodic and ProfileOrient::Auxiliary. Mevius but it's twisted more.
-
-use cadrum::{BSplineEnd, DVec3, Edge, ProfileOrient, Solid};
-use std::f64::consts::TAU;
-
-fn main() -> Result<(), cadrum::Error> {
-	let guided_spine = |phi: f64| {
-		let p = DVec3::new(10., 0.0, 0.0);
-		let g = p + 2. / 2. * DVec3::X;
-		[p, (g - p).rotate_y(phi * 2.) + p].map(|v| v.rotate_z(phi))
-	};
-	const SIZE: usize = 10;
-	let v: [[DVec3; 2]; SIZE] = std::array::from_fn(|i| guided_spine(TAU * i as f64 / SIZE as f64));
-	let spine = Edge::bspline(&v.map(|a| a[0])[..SIZE], BSplineEnd::Periodic)?;
-	let aux = Edge::bspline(&v.map(|a| a[1])[..SIZE], BSplineEnd::Periodic)?;
-
-	let tube = |curve: &Edge| -> Result<Solid, cadrum::Error> {
-		let profile = Edge::circle(0.1, DVec3::Z)?;
-		Solid::sweep([&profile.align_z(curve.start_tangent(), DVec3::Z).translate(curve.start_point())], [curve], ProfileOrient::Up(DVec3::Z))
-	};
-	let spine_tube = tube(&spine)?.color("#4a90d9");
-	let aux_tube = tube(&aux)?.color("#e67e22");
-	println!("spine tube: faces={}  aux tube: faces={}", spine_tube.iter_face().count(), aux_tube.iter_face().count());
-	output(&[spine_tube, aux_tube], Some("_tubes"))?;
-	let prof = profile(2.0, 0.2)?.map(|v| v.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point()));
-	let mevius = Solid::sweep(&prof, &[spine], ProfileOrient::Auxiliary(&[aux]))?.color("#2ebc71");
-	output(&[mevius], None)?;
-	return Ok(());
-}
-
-fn profile(width: f64, height: f64) -> Result<[Edge; 4], cadrum::Error> {
-	let v: Vec<Edge> = Edge::polygon(&[DVec3::new(-width / 2., -height / 2., 0.0), DVec3::new(width / 2., -height / 2., 0.0), DVec3::new(width / 2., height / 2., 0.0), DVec3::new(-width / 2., height / 2., 0.0)])?;
-	Ok(v.try_into().unwrap())
-}
-
-fn output(solids: &[Solid], suffix: Option<&str>) -> Result<(), cadrum::Error> {
-	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap().to_string() + suffix.unwrap_or_default();
-	Solid::write_step(solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
-	let mesh = Solid::mesh(solids, Default::default())?;
-	let scene = mesh.scene(Default::default());
-	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
-	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
-	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
-	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
-
-	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
-	Ok(())
-}
-
-```
-
-Output: [15_moebius.png](https://lzpel.github.io/cadrum/15_moebius.png) | [15_moebius.step](https://lzpel.github.io/cadrum/15_moebius.step) | [15_moebius.glb](https://lzpel.github.io/cadrum/15_moebius.glb) | [15_moebius.stl](https://lzpel.github.io/cadrum/15_moebius.stl) | [15_moebius.svg](https://lzpel.github.io/cadrum/15_moebius.svg)
-
-<img src='https://lzpel.github.io/cadrum/15_moebius.svg' alt='15_moebius' width='360'/>
-
 #### Multiview
 
 Fixed 4-view multiview PNG for LLM-driven design loops.
 
 ```sh
-cargo run --example 16_multiview
+cargo run --example 15_multiview
 ```
 
 ```rust,no_run
@@ -1225,9 +1148,9 @@ fn main() -> Result<(), cadrum::Error> {
 
 ```
 
-Output: [16_multiview.png](https://lzpel.github.io/cadrum/16_multiview.png) | [16_multiview.glb](https://lzpel.github.io/cadrum/16_multiview.glb) | [16_multiview.stl](https://lzpel.github.io/cadrum/16_multiview.stl)
+Output: [15_multiview.png](https://lzpel.github.io/cadrum/15_multiview.png) | [15_multiview.glb](https://lzpel.github.io/cadrum/15_multiview.glb) | [15_multiview.stl](https://lzpel.github.io/cadrum/15_multiview.stl)
 
-<img src='https://lzpel.github.io/cadrum/16_multiview.png' alt='16_multiview' width='360'/>
+<img src='https://lzpel.github.io/cadrum/15_multiview.png' alt='15_multiview' width='360'/>
 
 ## The Type Map
 

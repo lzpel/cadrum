@@ -1,5 +1,4 @@
 //! Sweep showcase: M2 screw (helix spine) + U-shaped pipe (line+arc+line spine)
-//! + twisted ribbon (`Auxiliary` aux-spine mode).
 //!
 //! `ProfileOrient` controls how the profile is oriented as it travels along the spine:
 //!
@@ -19,7 +18,7 @@
 //!   toward a parallel auxiliary spine. Arbitrary twist control — e.g. a
 //!   helical `aux_spine` on a straight `spine` produces a twisted ribbon.
 
-use cadrum::{DVec3, Edge, Error, ProfileOrient, Solid};
+use cadrum::{BSplineEnd, DQuat, DVec3, Edge, Error, ProfileOrient, Solid};
 
 // ==================== Component 1: M2 ISO screw ====================
 
@@ -67,11 +66,11 @@ fn build_u_pipe() -> Result<Solid, Error> {
 	let bend_radius = half_gap;
 
 	// U-shaped path in the XZ plane, centered on origin in X: A↑B ⌒ C↓D.
-	let a = DVec3::new(-half_gap, 0.0, 0.0);
-	let b = DVec3::new(-half_gap, 0.0, leg_length);
+	let a = DVec3::new(0.0, -half_gap, 0.0);
+	let b = DVec3::new(0.0, -half_gap, leg_length);
 	let arc_mid = DVec3::new(0.0, 0.0, leg_length + bend_radius);
-	let c = DVec3::new(half_gap, 0.0, leg_length);
-	let d = DVec3::new(half_gap, 0.0, 0.0);
+	let c = DVec3::new(0.0, half_gap, leg_length);
+	let d = DVec3::new(0.0, half_gap, 0.0);
 
 	// Spine wire: line → semicircle → line.
 	let up_leg = Edge::line(a, b)?;
@@ -84,47 +83,35 @@ fn build_u_pipe() -> Result<Solid, Error> {
 
 	// Up(+Y) fixes the binormal to the path-plane normal, avoiding Frenet
 	// degeneracy on the straight segments.
-	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Up(DVec3::Y))?;
+	let pipe = Solid::sweep(&[profile], &[up_leg, bend, down_leg], ProfileOrient::Torsion)?;
 	Ok(pipe.translate(DVec3::X * 6.0).color("blue"))
 }
 
-// ==================== Component 3: Auxiliary-spine twisted ribbon ====================
-
-// Sweeping a straight spine with `Auxiliary(&[helix])` rotates the tracked
-// axis of the profile at each point to face the corresponding helix point.
-// A pitch=h helix makes exactly one 360° turn over [0, h], so a flat
-// rectangular profile becomes a ribbon twisted once. With `Fixed` or
-// `Torsion` the profile wouldn't rotate along a straight spine — visible
-// twist is therefore proof that Auxiliary is in effect.
-fn build_twisted_ribbon() -> Result<Solid, Error> {
-	let h = 8.0;
-	let aux_r = 3.0;
-
-	let spine = Edge::line(DVec3::ZERO, DVec3::Z * h)?;
-	let aux = Edge::helix(aux_r, h, h, DVec3::Z, DVec3::X)?;
-
-	// Flat rectangle (10:1 aspect) — circles or squares wouldn't reveal any twist.
-	let profile = Edge::polygon(&[DVec3::new(-2.0, -0.2, 0.0), DVec3::new(2.0, -0.2, 0.0), DVec3::new(2.0, 0.2, 0.0), DVec3::new(-2.0, 0.2, 0.0)])?;
-
-	let ribbon = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(ribbon.translate(DVec3::X * 12.0).color("green"))
+fn build_moebius(r: f64) -> Result<Solid, Error> {
+	const N: usize = 24;
+	let phi = |phi: f64| -> [DVec3; 2] {
+		let [p, d] = [DVec3::X * r, DVec3::X * r / 10.];
+		let [rz, ry] = [DQuat::from_rotation_z(phi), DQuat::from_rotation_y(2. * phi)];
+		[rz * p, rz * (p + ry * d)]
+	};
+	let ring: [[DVec3; 2]; N] = std::array::from_fn(|i| phi(i as f64 / N as f64 * std::f64::consts::TAU));
+	let spine = Edge::bspline(&(ring.map(|v| v[0])), BSplineEnd::Periodic)?;
+	let aux = Edge::bspline(&(ring.map(|v| v[1])), BSplineEnd::Periodic)?;
+	let profile = Edge::polygon(&[DVec3::new(-0.3, -0.3, 0.0), DVec3::new(0.5, -0.5, 0.0), DVec3::new(0.3, 0.3, 0.0), DVec3::new(-0.3, 0.3, 0.0)])?;
+	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point())).collect();
+	let band = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
+	Ok(band.align_z(DVec3::X, DVec3::Z).translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
 }
-
-// ==================== main: side-by-side layout ====================
-//
-// Each builder places its component at its final world position (screw at
-// origin, U-pipe at x=6, ribbon at x=12) and applies its color, so main
-// just concatenates them.
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let all = [build_m2_screw()?, build_u_pipe()?, build_twisted_ribbon()?];
+	let all = [build_m2_screw()?, build_u_pipe()?, build_moebius(3.)?];
 
 	Solid::write_step(&all, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
 	// Helical threads have dense hidden lines that clutter the output; disable them.
 	let mesh = Solid::mesh(&all, Default::default())?;
-	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, -1.0), hidden_edges: false, ..Default::default() });
+	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(-1.0, 1.0, 0.5), hidden_edges: false, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
