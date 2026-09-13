@@ -7,50 +7,25 @@
 //! place. Splitting traits / consumers across files (or merging them) doesn't
 //! affect the result — just point codegen at the union of files involved.
 //!
-//! ## Marker
+//! The marker line itself is preserved; everything from the next line down to
+//! the closing `}` of the enclosing scope is replaced:
 //!
-//! `////////// codegen.rs` — preserved verbatim. The lines from the next line
-//! down to the closing `}` of the enclosing scope are replaced based on the
-//! enclosing block:
+//!   - inside `impl X { ... }`            → `XStruct` chain inherent methods (supertrait walk + dedup)
+//!   - inside `pub trait X: Y, Z { ... }` → forwarder default methods for parent traits Y, Z
 //!
-//!   - inside `impl X { ... }`            → render `XStruct` chain inherent methods (supertrait walk + dedup)
-//!   - inside `pub trait X: Y, Z { ... }` → render forwarder default methods for parent traits Y, Z
+//! Parser constraints:
 //!
-//! ## Parser constraints
-//!
-//!   - the `fn` line up to (but excluding) any `where` is the captured signature;
-//!     it must fit on one line (lifetime/generics included)
-//!   - `where` clauses are dropped from the forwarder — both the inline form
-//!     (`... -> R where T: Bound;`) and the multi-line form (clause on following
-//!     lines). A forwarder never needs them: `Self` is concrete in the inherent
-//!     impl, so lifetime/assoc-type bounds are auto-satisfied. Any bound the
-//!     forwarder actually needs must be inline in the generic list, e.g.
-//!     `fn loft<'a, I: IntoIterator<Item = &'a Self::Edge>, S: IntoIterator<Item = I>>`.
+//!   - the trait header must fit on one line, `{` included
 //!   - `#[cfg(...)]` attaches to the next fn only (single-line attribute)
-//!   - default impl bodies may span multiple lines (skipped via brace counting)
 //!
-//! ## Output shape
-//!
-//! Each forwarder is emitted as a 3-line block (signature + ` {`, tab-indented
-//! body, closing `}`) — the canonical form rustfmt produces under this repo's
-//! `rustfmt.toml` (`hard_tabs=true`, `max_width=1000`). Dropping `where` and
-//! matching rustfmt's block shape keeps `cargo fmt` and codegen idempotent:
-//! neither rewrites the other's output.
+//! Each forwarder is emitted as a 3-line block — the canonical form rustfmt
+//! produces under this repo's `rustfmt.toml` (`hard_tabs=true`, `max_width=1000`),
+//! so `cargo fmt` and codegen never rewrite each other's output.
 
-use regex::Regex;
 use std::collections::HashSet;
-use std::sync::LazyLock;
 
-// All regexes compiled once. The codegen run is small enough that the savings
-// are negligible — the goal is putting the patterns in one visible block.
-static TRAIT_HEADER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)\s*(?::\s*([^{]+?))?\s*\{").unwrap());
-static MARKER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*//////////\s+codegen\.rs\s*$").unwrap());
-static TRAIT_OPENER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:pub\s+)?trait\s+(\w+)").unwrap());
-static IMPL_OPENER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*impl(?:\s*<[^>]*>)?\s+(\w+)").unwrap());
-static SELF_BARE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf\b").unwrap());
-static SELF_ELEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Elem\b").unwrap());
-static SELF_EDGE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Edge\b").unwrap());
-static SELF_FACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bSelf::Face\b").unwrap());
+const MARKER: &str = "//////////";
+const LIFETIME: char = '\'';
 
 fn main() {
 	let paths: Vec<String> = std::env::args().skip(1).collect();
@@ -60,27 +35,19 @@ fn main() {
 		std::process::exit(1);
 	}
 
-	// Read every input file once so we can use the same buffer for both
-	// parsing (pooling trait defs) and rewriting (comparing for diff).
-	let sources: Vec<(String, String)> = paths.iter().map(|p| (p.clone(), std::fs::read_to_string(p).unwrap_or_else(|e| panic!("read {}: {}", p, e)))).collect();
-
-	let mut traits: Vec<TraitDef> = Vec::new();
-	for (_, src) in &sources {
-		traits.extend(parse_traits(src));
-	}
+	let sources: Vec<(String, String)> = paths.iter().map(|p| (p.clone(), std::fs::read_to_string(p).unwrap_or_else(|e| panic!("read {p}: {e}")))).collect();
+	let traits: Vec<TraitDef> = sources.iter().flat_map(|(_, src)| parse_traits(src)).collect();
 
 	for (path, original) in &sources {
 		let updated = regenerate(original, &traits);
-		if &updated != original {
-			std::fs::write(path, &updated).unwrap_or_else(|e| panic!("write {}: {}", path, e));
-			eprintln!("updated {}", path);
+		if &updated == original {
+			eprintln!("no diff {path}");
 		} else {
-			eprintln!("no diff {}", path);
+			std::fs::write(path, &updated).unwrap_or_else(|e| panic!("write {path}: {e}"));
+			eprintln!("updated {path}");
 		}
 	}
 }
-
-// ============================ data types ============================
 
 struct Method {
 	cfg: Option<String>,
@@ -97,69 +64,74 @@ struct TraitDef {
 	methods: Vec<Method>,
 }
 
-// ============================ parser ============================
+fn is_marker(line: &str) -> bool {
+	line.trim().strip_prefix(MARKER).is_some_and(|rest| rest.trim() == "codegen.rs")
+}
+
+fn leading_ident(s: &str) -> String {
+	s.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect()
+}
+
+fn is_word(c: Option<char>) -> bool {
+	c.is_some_and(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// `(name, supertraits)` for a one-line trait header, or `None` for any other line.
+fn parse_trait_header(line: &str) -> Option<(String, Vec<String>)> {
+	let trimmed = line.trim();
+	let head = trimmed.strip_prefix("pub ").unwrap_or(trimmed).strip_prefix("trait ")?;
+	let head = &head[..head.find('{')?];
+	let (name, bounds) = head.split_once(':').unwrap_or((head, ""));
+	// `where` は supertrait リストより先に切り落とす。`where` 節自身が `+` を含む bound
+	// (例 `for<'a> &'a Self: Add + Sub`) を持つため、split('+') が先だと
+	// `"Compound where for<'a> &'a Self: Add"` のような誤った supertrait 名が混入する。
+	let bounds = bounds.split(" where ").next().unwrap_or(bounds);
+	let supertraits = bounds.split('+').map(|b| b.trim().to_string()).filter(|b| !b.is_empty() && !b.starts_with(LIFETIME)).collect();
+	Some((name.trim().to_string(), supertraits))
+}
 
 fn parse_traits(src: &str) -> Vec<TraitDef> {
-	let mut traits = Vec::new();
 	let lines: Vec<&str> = src.lines().collect();
+	let mut traits = Vec::new();
 	let mut i = 0;
-
 	while i < lines.len() {
-		let line = lines[i];
-		if line.trim_start().starts_with("//") {
+		let header = if lines[i].trim_start().starts_with("//") { None } else { parse_trait_header(lines[i]) };
+		let Some((name, supertraits)) = header else {
 			i += 1;
 			continue;
-		}
-		if let Some(caps) = TRAIT_HEADER_RE.captures(line) {
-			let name = caps.get(1).unwrap().as_str().to_string();
-			let supertraits: Vec<String> = caps.get(2).map_or_else(Vec::new, |s| {
-				// `where` 節は supertrait リストから除外。 `where` 節自身が `+` を
-				// 含む trait bound (例 `for<'a> &'a Self: Add + Sub`) を持つため、
-				// split('+') の前に切り落とさないと `"Compound where for<'a> &'a Self: Add"`
-				// のような誤った supertrait 名が混入する。
-				let s = s.as_str();
-				let s = s.split(" where ").next().unwrap_or(s);
-				s.split('+').map(|p| p.trim().to_string()).filter(|p| !p.is_empty() && !p.starts_with('\'')).collect()
-			});
-
-			let mut methods = Vec::new();
-			i += 1;
-			let mut pending_cfg: Option<String> = None;
-			while i < lines.len() {
-				let l = lines[i].trim();
-				if l == "}" {
-					break;
-				}
-				if l.starts_with("#[cfg(") {
-					pending_cfg = Some(l.to_string());
+		};
+		let mut methods = Vec::new();
+		let mut pending_cfg: Option<String> = None;
+		i += 1;
+		while i < lines.len() && lines[i].trim() != "}" {
+			let l = lines[i].trim();
+			if l.starts_with("#[cfg(") {
+				pending_cfg = Some(l.to_string());
+			} else if l.starts_with("fn ") {
+				// rustfmt puts a `where` clause on its own line, so a signature may span
+				// several lines. Join until `;` (declaration) or `{` (default body) ends it.
+				let mut signature = l.to_string();
+				while !signature.ends_with(';') && !signature.ends_with('{') && i + 1 < lines.len() {
 					i += 1;
-					continue;
+					signature.push(' ');
+					signature.push_str(lines[i].trim());
 				}
-				if l.starts_with("type ") || l.starts_with("//") || l.is_empty() {
+				if let Some(m) = parse_method(&signature, pending_cfg.take(), name.clone()) {
+					methods.push(m);
+				}
+				let mut depth = usize::from(signature.ends_with('{'));
+				while depth > 0 && i + 1 < lines.len() {
 					i += 1;
-					continue;
+					let body = lines[i].trim();
+					depth += body.matches('{').count();
+					depth = depth.saturating_sub(body.matches('}').count());
 				}
-				if l.starts_with("fn ") {
-					if let Some(m) = parse_method(l, pending_cfg.take(), name.clone()) {
-						methods.push(m);
-					}
-					// Skip multi-line default impl body via brace counting.
-					if l.ends_with('{') {
-						let mut depth = 1usize;
-						while depth > 0 && i + 1 < lines.len() {
-							i += 1;
-							let body = lines[i].trim();
-							depth += body.matches('{').count();
-							depth = depth.saturating_sub(body.matches('}').count());
-						}
-					}
-				} else {
-					pending_cfg = None;
-				}
-				i += 1;
+			} else if !(l.starts_with("type ") || l.starts_with("//") || l.is_empty()) {
+				pending_cfg = None;
 			}
-			traits.push(TraitDef { name, supertraits, methods });
+			i += 1;
 		}
+		traits.push(TraitDef { name, supertraits, methods });
 		i += 1;
 	}
 	traits
@@ -167,49 +139,25 @@ fn parse_traits(src: &str) -> Vec<TraitDef> {
 
 fn parse_method(line: &str, cfg: Option<String>, origin_trait: String) -> Option<Method> {
 	let line = line.trim_end_matches(';');
-	let line = if let Some(brace) = line.find('{') { line[..brace].trim_end() } else { line };
-	let fn_idx = line.find("fn ")?;
-	let rest = &line[fn_idx + 3..];
+	let line = line.find('{').map_or(line, |brace| line[..brace].trim_end());
+	let rest = &line[line.find("fn ")? + 3..];
 	let paren_open = rest.find('(')?;
-	let name_with_generics = rest[..paren_open].trim();
-	let name = name_with_generics.find('<').map_or_else(|| name_with_generics.to_string(), |a| name_with_generics[..a].trim().to_string());
-	let paren_close = rest.rfind(')')?;
-	let args_str = &rest[paren_open + 1..paren_close];
-
-	let mut has_self = false;
-	let mut args = Vec::new();
-	for arg in split_args(args_str) {
-		let arg = arg.trim();
-		if arg.is_empty() {
-			continue;
-		}
-		if matches!(arg, "self" | "&self" | "mut self" | "&mut self") {
-			has_self = true;
-			continue;
-		}
-		if let Some(colon) = arg.find(':') {
-			args.push(arg[..colon].trim().to_string());
-		}
-	}
-	// Drop any `where` clause from the captured signature. The forwarder never
-	// needs it: in the inherent impl `Self` is the concrete type, so lifetime /
-	// associated-type bounds (`Self::Edge: 'a`) are auto-satisfied. Emitting a
-	// `where` would also force rustfmt to break the block across lines, fighting
-	// codegen and breaking `cargo fmt` ⇄ codegen idempotency. Bounds the
-	// forwarder genuinely needs (e.g. loft's `S: IntoIterator<Item = I>`) must be
-	// written inline in the generic list instead.
-	let sig = line[fn_idx..].trim();
-	let signature = sig.split(" where ").next().unwrap_or(sig).trim().to_string();
+	let name = leading_ident(rest[..paren_open].trim());
+	let args: Vec<&str> = split_args(&rest[paren_open + 1..rest.rfind(')')?]).into_iter().map(str::trim).filter(|a| !a.is_empty()).collect();
+	let has_self = args.iter().any(|a| matches!(*a, "self" | "&self" | "mut self" | "&mut self"));
+	let args = args.iter().filter_map(|a| a.split_once(':')).map(|(n, _)| n.trim().to_string()).collect();
+	// A forwarder never needs the `where`: `Self` is concrete in the inherent impl, so
+	// lifetime / assoc-type bounds are auto-satisfied, and emitting one would make rustfmt
+	// break the block and fight codegen. Bounds the forwarder does need (loft's
+	// `S: IntoIterator<Item = I>`) must be inline in the generic list instead.
+	let signature = line.split(" where ").next().unwrap_or(line).trim().to_string();
 	Some(Method { cfg, signature, name, args, has_self, origin_trait })
 }
 
 /// Split an argument list by `,` while respecting `<>` and `()` nesting.
-/// regex can't help here — balanced brackets are not regular.
 fn split_args(s: &str) -> Vec<&str> {
 	let mut result = Vec::new();
-	let mut angle = 0usize;
-	let mut paren = 0usize;
-	let mut start = 0;
+	let (mut angle, mut paren, mut start) = (0usize, 0usize, 0usize);
 	for (i, b) in s.bytes().enumerate() {
 		match b {
 			b'<' => angle += 1,
@@ -227,117 +175,53 @@ fn split_args(s: &str) -> Vec<&str> {
 	result
 }
 
-// ============================ type substitution ============================
-//
-// In `impl X` rendering, associated types (`Self::Edge` / `Self::Face` /
-// `Self::Elem`) and bare `Self` are rewritten to concrete names. Only used
-// for impl-block emission — trait-body forwarders preserve `Self` verbatim.
-
-fn resolve_types_for_impl(sig: &str, concrete: &str) -> String {
-	let s = SELF_ELEM_RE.replace_all(sig, concrete);
-	let s = SELF_EDGE_RE.replace_all(&s, "Edge");
-	let s = SELF_FACE_RE.replace_all(&s, "Face");
-	replace_self_bare(&s, concrete)
-}
-
-/// Replace bare `Self` with `concrete`, but leave `Self:` (where-clause /
-/// path-prefix usage like `Self::Output` from std traits) alone. The associated
-/// types we DO know about are rewritten by earlier `replace_all` calls; this
-/// guard catches the rest.
-fn replace_self_bare(text: &str, concrete: &str) -> String {
-	SELF_BARE_RE
-		.replace_all(text, |caps: &regex::Captures| {
-			let end = caps.get(0).unwrap().end();
-			if text[end..].starts_with(':') {
-				"Self".to_string()
-			} else {
-				concrete.to_string()
+/// Rewrite `Self` and the known associated types to concrete names, for `impl X`
+/// rendering only — trait-body forwarders keep `Self` verbatim.
+fn resolve_self(sig: &str, concrete: &str) -> String {
+	let mut out = String::with_capacity(sig.len());
+	let mut pos = 0;
+	while let Some(at) = sig[pos..].find("Self").map(|off| pos + off) {
+		out.push_str(&sig[pos..at]);
+		pos = at + "Self".len();
+		let tail = &sig[pos..];
+		if is_word(sig[..at].chars().next_back()) || is_word(tail.chars().next()) {
+			out.push_str("Self");
+			continue;
+		}
+		let assoc = [("::Elem", concrete), ("::Edge", "Edge"), ("::Face", "Face")];
+		match assoc.into_iter().find(|(path, _)| tail.strip_prefix(path).is_some_and(|t| !is_word(t.chars().next()))) {
+			Some((path, name)) => {
+				out.push_str(name);
+				pos += path.len();
 			}
-		})
-		.into_owned()
+			// `Self::Output` and other unknown associated types keep their prefix.
+			None if tail.starts_with(':') => out.push_str("Self"),
+			None => out.push_str(concrete),
+		}
+	}
+	out.push_str(&sig[pos..]);
+	out
 }
 
-// ============================ method aggregation ============================
-
-fn collect_methods<'a>(td: &'a TraitDef, all: &'a [TraitDef]) -> Vec<&'a Method> {
-	let mut seen: HashSet<String> = HashSet::new();
-	let mut out: Vec<&Method> = Vec::new();
+fn collect_methods<'a>(td: &'a TraitDef, all: &'a [TraitDef], seen: &mut HashSet<String>, out: &mut Vec<&'a Method>) {
 	for m in &td.methods {
 		if seen.insert(m.name.clone()) {
 			out.push(m);
 		}
 	}
-	walk_supers(&td.supertraits, all, &mut seen, &mut out);
-	out
-}
-
-fn walk_supers<'a>(supers: &[String], all: &'a [TraitDef], seen: &mut HashSet<String>, out: &mut Vec<&'a Method>) {
-	for super_name in supers {
-		let Some(parent) = all.iter().find(|t| &t.name == super_name) else { continue };
-		for m in &parent.methods {
-			if seen.insert(m.name.clone()) {
-				out.push(m);
-			}
-		}
-		walk_supers(&parent.supertraits, all, seen, out);
+	for parent in td.supertraits.iter().filter_map(|s| all.iter().find(|t| &t.name == s)) {
+		collect_methods(parent, all, seen, out);
 	}
 }
 
-// ============================ region rewriting ============================
-
-fn regenerate(src: &str, traits: &[TraitDef]) -> String {
-	let lines: Vec<&str> = src.split('\n').collect();
-	let depths = compute_depths(&lines);
-
-	let mut out: Vec<String> = Vec::with_capacity(lines.len());
-	let mut cursor = 0usize;
-	let mut i = 0usize;
-	while i < lines.len() {
-		if MARKER_RE.is_match(lines[i]) {
-			for j in cursor..=i {
-				out.push(lines[j].to_string());
-			}
-			let depth = depths[i];
-			let indent: String = "\t".repeat(depth as usize);
-			let region_end = compute_region_end(&depths, i, depth);
-			let context = determine_context(&lines, i, &depths, depth);
-			out.extend(render(&context, &indent, traits));
-			cursor = region_end;
-			i = region_end;
-		} else {
-			i += 1;
-		}
+fn emit(out: &mut Vec<String>, indent: &str, m: &Method, visibility: &str, signature: &str, trait_path: &str) {
+	let args: Vec<&str> = m.has_self.then_some("self").into_iter().chain(m.args.iter().map(String::as_str)).collect();
+	if let Some(cfg) = &m.cfg {
+		out.push(format!("{indent}{cfg}"));
 	}
-	for j in cursor..lines.len() {
-		out.push(lines[j].to_string());
-	}
-	out.join("\n")
-}
-
-fn compute_depths(lines: &[&str]) -> Vec<i32> {
-	let mut depths = Vec::with_capacity(lines.len() + 1);
-	depths.push(0i32);
-	for line in lines {
-		let stripped = strip_line_comment(line);
-		let opens = stripped.matches('{').count() as i32;
-		let closes = stripped.matches('}').count() as i32;
-		depths.push(*depths.last().unwrap() + opens - closes);
-	}
-	depths
-}
-
-fn strip_line_comment(line: &str) -> String {
-	line.find("//").map_or_else(|| line.to_string(), |idx| line[..idx].to_string())
-}
-
-fn compute_region_end(depths: &[i32], marker_idx: usize, marker_depth: i32) -> usize {
-	let lines_len = depths.len() - 1;
-	for j in (marker_idx + 1)..lines_len {
-		if depths[j + 1] < marker_depth {
-			return j;
-		}
-	}
-	lines_len
+	out.push(format!("{indent}{visibility}{signature} {{"));
+	out.push(format!("{indent}\t<Self as {trait_path}>::{}({})", m.name, args.join(", ")));
+	out.push(format!("{indent}}}"));
 }
 
 enum Context {
@@ -345,82 +229,68 @@ enum Context {
 	TraitBody { name: String },
 }
 
-fn determine_context(lines: &[&str], marker_idx: usize, depths: &[i32], marker_depth: i32) -> Context {
-	if marker_depth == 0 {
-		panic!("marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`", marker_idx + 1);
-	}
-	let target = marker_depth - 1;
-	let mut j = marker_idx;
-	while j > 0 {
-		j -= 1;
-		if depths[j] == target && depths[j + 1] > target {
-			return classify_opener(lines[j]);
-		}
-	}
-	panic!("could not find enclosing block opener for marker at line {}", marker_idx + 1)
-}
-
 fn classify_opener(line: &str) -> Context {
-	if let Some(caps) = TRAIT_OPENER_RE.captures(line) {
-		return Context::TraitBody { name: caps.get(1).unwrap().as_str().to_string() };
+	let trimmed = line.trim();
+	let trimmed = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
+	if let Some(rest) = trimmed.strip_prefix("trait ") {
+		return Context::TraitBody { name: leading_ident(rest) };
 	}
-	if let Some(caps) = IMPL_OPENER_RE.captures(line) {
-		return Context::Impl { ty: caps.get(1).unwrap().as_str().to_string() };
+	if let Some(rest) = trimmed.strip_prefix("impl").filter(|r| r.starts_with([' ', '<'])) {
+		let rest = rest.trim_start();
+		let rest = rest.strip_prefix('<').map_or(rest, |g| g.split_once('>').map_or("", |(_, r)| r).trim_start());
+		return Context::Impl { ty: leading_ident(rest) };
 	}
-	panic!("unrecognized enclosing opener: {}", line);
+	panic!("unrecognized enclosing opener: {line}");
 }
-
-// ============================ rendering ============================
 
 fn render(context: &Context, indent: &str, traits: &[TraitDef]) -> Vec<String> {
+	let mut out = Vec::new();
 	match context {
-		Context::Impl { ty } => render_impl(ty, indent, traits),
-		Context::TraitBody { name } => render_trait_body(name, indent, traits),
-	}
-}
-
-fn render_impl(ty: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
-	let trait_name = format!("{}Struct", ty);
-	let td = traits.iter().find(|t| t.name == trait_name).unwrap_or_else(|| panic!("no trait `{}` for impl `{}`", trait_name, ty));
-	let methods = collect_methods(td, traits);
-	let concrete = format!("crate::{}", ty);
-
-	let mut out = Vec::new();
-	for m in methods {
-		if let Some(cfg) = &m.cfg {
-			out.push(format!("{}{}", indent, cfg));
-		}
-		let sig = resolve_types_for_impl(&m.signature, &concrete);
-		let trait_path = format!("crate::traits::{}", m.origin_trait);
-		out.push(format!("{}pub {} {{", indent, sig));
-		out.push(format!("{}\t<Self as {}>::{}({})", indent, trait_path, m.name, format_call_args(m)));
-		out.push(format!("{}}}", indent));
-	}
-	out
-}
-
-fn render_trait_body(name: &str, indent: &str, traits: &[TraitDef]) -> Vec<String> {
-	let td = traits.iter().find(|t| t.name == name).unwrap_or_else(|| panic!("no trait `{}`", name));
-	let mut out = Vec::new();
-	for super_name in &td.supertraits {
-		let Some(parent) = traits.iter().find(|t| &t.name == super_name) else { continue };
-		for m in &parent.methods {
-			if let Some(cfg) = &m.cfg {
-				out.push(format!("{}{}", indent, cfg));
+		Context::Impl { ty } => {
+			let trait_name = format!("{ty}Struct");
+			let td = traits.iter().find(|t| t.name == trait_name).unwrap_or_else(|| panic!("no trait `{trait_name}` for impl `{ty}`"));
+			let (mut seen, mut methods) = (HashSet::new(), Vec::new());
+			collect_methods(td, traits, &mut seen, &mut methods);
+			let concrete = format!("crate::{ty}");
+			for m in methods {
+				emit(&mut out, indent, m, "pub ", &resolve_self(&m.signature, &concrete), &format!("crate::traits::{}", m.origin_trait));
 			}
-			out.push(format!("{}{} {{", indent, m.signature));
-			out.push(format!("{}\t<Self as {}>::{}({})", indent, super_name, m.name, format_call_args(m)));
-			out.push(format!("{}}}", indent));
+		}
+		Context::TraitBody { name } => {
+			let td = traits.iter().find(|t| &t.name == name).unwrap_or_else(|| panic!("no trait `{name}`"));
+			for super_name in &td.supertraits {
+				let Some(parent) = traits.iter().find(|t| &t.name == super_name) else { continue };
+				for m in &parent.methods {
+					emit(&mut out, indent, m, "", &m.signature, super_name);
+				}
+			}
 		}
 	}
 	out
 }
 
-fn format_call_args(m: &Method) -> String {
-	let mut parts: Vec<String> = Vec::new();
-	if m.has_self {
-		parts.push("self".to_string());
+fn regenerate(src: &str, traits: &[TraitDef]) -> String {
+	let lines: Vec<&str> = src.split('\n').collect();
+	let mut depths: Vec<i32> = Vec::with_capacity(lines.len() + 1);
+	depths.push(0);
+	for line in &lines {
+		let code = line.find("//").map_or(*line, |idx| &line[..idx]);
+		depths.push(depths.last().unwrap() + code.matches('{').count() as i32 - code.matches('}').count() as i32);
 	}
-	parts.extend(m.args.iter().cloned());
-	parts.join(", ")
+
+	let mut out: Vec<String> = Vec::with_capacity(lines.len());
+	let mut i = 0;
+	while i < lines.len() {
+		out.push(lines[i].to_string());
+		if !is_marker(lines[i]) {
+			i += 1;
+			continue;
+		}
+		let depth = depths[i];
+		assert!(depth > 0, "marker at line {} is at module level — markers must be inside `impl X {{ ... }}` or `pub trait X: ... {{ ... }}`", i + 1);
+		let opener = (0..i).rev().find(|&j| depths[j] == depth - 1 && depths[j + 1] > depth - 1).unwrap_or_else(|| panic!("could not find enclosing block opener for marker at line {}", i + 1));
+		out.extend(render(&classify_opener(lines[opener]), &"\t".repeat(depth as usize), traits));
+		i = (i + 1..lines.len()).find(|&j| depths[j + 1] < depth).unwrap_or(lines.len());
+	}
+	out.join("\n")
 }

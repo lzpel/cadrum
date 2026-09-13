@@ -87,7 +87,6 @@
 //!   `+` を含む bound が where 句にあっても supertrait 抽出を汚染しない
 //!
 //! メソッドシグネチャ:
-//! - fn シグネチャは1行に収めること（`where` 句・ライフタイム・ジェネリクス引数も同じ行）
 //! - default impl はサポート。本体が1行に収まる場合はそのまま、複数行の場合も
 //!   `{...}` ブロックを brace 深さでスキップする
 //! - ライフタイム引数 `<'a, 'b>` および `where Self: 'a` のような句はそのまま保持される。
@@ -351,17 +350,17 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	/// line(c, a)]` traces the same triangle but reports `false`, even though
 	/// `Solid::extrude` accepts it — OCCT reverses edges to connect them, this
 	/// does not.
-	// rustfmt would break `where` onto its own line, hiding the opening brace from
-	// examples/codegen.rs (see the one-line signature rule in this file's header).
-	#[rustfmt::skip]
-	fn is_loop<'a>(edges: impl IntoIterator<Item = &'a Self>) -> bool where Self: 'a {
+	fn is_loop<'a>(edges: impl IntoIterator<Item = &'a Self>) -> bool
+	where
+		Self: 'a,
+	{
 		let mut edges = edges.into_iter();
 		let Some(first) = edges.next() else { return false };
 		let mut end = first.end_point();
 		for edge in edges {
 			match end.distance(edge.start_point()) <= Self::precision_distance() {
-				true=> end = edge.end_point(),
-				false=> return false
+				true => end = edge.end_point(),
+				false => return false,
 			}
 		}
 		end.distance(first.start_point()) <= Self::precision_distance()

@@ -45,8 +45,6 @@ cmake = { version = "0.1", optional = true }
 cc = "1"
 
 [dev-dependencies]
-# Used by examples/codegen.rs to parse traits.rs and rewrite marker regions.
-regex = "1"
 
 # Examples that depend on the `color` feature. Cargo will skip building these
 # under `--no-default-features`. Examples without a `[[example]]` entry
