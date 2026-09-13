@@ -1,5 +1,17 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.8.20
+
+- #296 Fold the Moebius band into the sweep example, replacing the twisted ribbon; 16_multiview renumbered to 15_multiview
+- #294 Breaking: Error::Extrude, Error::Clean and Error::Boolean now carry a String; FFI failures are cxx Results carrying OCCT's own message instead of null shapes
+- #292 Add Solid::revolve, a 06_revolve example, and holes in both surfacing examples; examples from 06_loft onward renumbered
+- #290 Extrude a profile with holes: a flat edge list is split into closed loops, later loops become holes, winding does not matter
+- #289 Parse multi-line fn signatures in codegen; drop the regex dev-dependency
+- #288 Breaking: Replace Edge::is_closed with Edge::is_loop and add Edge::precision_distance
+- #285 Add Face::surface, the elementary surface a face lies on
+- #284 Add Face::area and Face::center
+- #283 Decode the prebuilt OCCT tarball with flate2 instead of libflate
+
 ### 0.8.19
 
 - #282 Return the true nearest point on a trimmed face from Face::project
