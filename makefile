@@ -5,12 +5,12 @@ test: # test all
 	cargo test
 big: # list top 20 largest blobs in git history (bytes, path) — includes deleted files; use to find repo-bloating commits
 	git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '/^blob/ {size=$$3; $$1=$$2=$$3=""; sub(/^ +/, ""); printf "%12d  %s\n", size, $$0}' | sort -n
-update: generate # regenerate codegen/README/markdown from examples, then build out/html
+update: generate # regenerate codegen/README/markdown from examples, then build docs/out
 	cargo install --root out mdbook --version 0.4.50
 	cargo fmt
 	cargo run --example codegen -- src/traits.rs src/lib.rs
 	cargo run --example markdown -- docs/SUMMARY.md ./README.md
-	./out/bin/mdbook build
+	./out/bin/mdbook build docs
 publish-ready: # guard: HEAD must be on main and match remote main's tip
 	git branch --show-current | grep -qx main # on main
 	gh api repos/lzpel/cadrum/commits/main --jq .sha | grep -q $(shell git rev-parse --short HEAD) # latest
