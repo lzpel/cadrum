@@ -1,4 +1,3 @@
-PATH_DOCS=out/markdown
 generate: # prepare for deploy
 	mkdir -p out
 	find . -maxdepth 1 -name .gitignore | xargs -IX sed '/^#\s*EOF_DOCKERIGNORE.*/q' X > .dockerignore
@@ -10,7 +9,7 @@ update: generate # regenerate codegen/README/markdown from examples, then build 
 	cargo install --root out mdbook --version 0.4.50
 	cargo fmt
 	cargo run --example codegen -- src/traits.rs src/lib.rs
-	cargo run --example markdown -- $(PATH_DOCS)/SUMMARY.md ./README.md
+	cargo run --example markdown -- docs/SUMMARY.md ./README.md
 	./out/bin/mdbook build
 publish-ready: # guard: HEAD must be on main and match remote main's tip
 	git branch --show-current | grep -qx main # on main
