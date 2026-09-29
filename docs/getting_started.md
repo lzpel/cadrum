@@ -25,7 +25,7 @@ fn main() -> Result<(), cadrum::Error> {
 
 ```bibtex
 @software{cadrum,
-  author = {lzpel},
+  author = {Satoshi Misumi},
   title = {cadrum: a Rust CAD crate using statically-linked, headless OpenCASCADE},
   year = {2026},
   url = {https://github.com/lzpel/cadrum},

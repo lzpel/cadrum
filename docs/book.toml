@@ -2,10 +2,10 @@
 title = "cadrum"
 authors = ["lzpel"]
 language = "en"
-src = "docs"
+src = "."
 
 [build]
-build-dir = "out/html"
+build-dir = "out"
 
 [output.html]
 git-repository-url = "https://github.com/lzpel/cadrum"
