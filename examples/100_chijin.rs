@@ -25,7 +25,7 @@ fn chijin() -> Result<Solid, cadrum::Error> {
 	//     させるだけなので任意の正の値で可
 	//   - ProfileOrient::Up(Y) でプロファイルの上方向を Y 固定 → 回転(revolve)と等価
 	let cross_section = Edge::polygon(&[DVec3::new(0.0, 5.0, 0.0), DVec3::new(15.0, 5.0, 0.0), DVec3::new(17.0, 3.0, 0.0), DVec3::new(15.0, 4.0, 0.0), DVec3::new(0.0, 4.0, 0.0)])?;
-	let sheet = color_faces(Solid::revolve(&cross_section, DVec3::ZERO, DVec3::Y,std::f64::consts::PI*2.)?, "#fff");
+	let sheet = color_faces(Solid::revolve(&cross_section, DVec3::ZERO, DVec3::Y, std::f64::consts::PI * 2.)?, "#fff");
 	let sheets = [sheet.clone().mirror(DVec3::ZERO, DVec3::Y), sheet];
 
 	// ── Lacing blocks: 2x1x8, rotated 60° around Y, placed at z=15 ──────
@@ -61,7 +61,7 @@ fn main() -> Result<(), cadrum::Error> {
 	scene.write_png([1280, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
-	// This size 1280 x 640 is special because 00_chijin.png is used for github repository social media preview image.
+	// This size 1280 x 640 is special because 100_chijin.png is used for github repository social media preview image.
 	// > we recommend a size of at least 640 by 320 pixels (1280 by 640 pixels for best display).　See https://docs.github.com/ja/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview
 
 	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");

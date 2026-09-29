@@ -2,7 +2,7 @@
 title = "cadrum"
 authors = ["lzpel"]
 language = "en"
-src = "out/markdown"
+src = "docs"
 
 [build]
 build-dir = "out/html"

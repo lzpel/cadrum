@@ -2,13 +2,15 @@
 //! 番号付き example から mdbook 用 markdown と README の Examples 節を生成する。
 //!
 //! Usage / 使い方:
-//!   cargo run --example markdown -- out/markdown/SUMMARY.md ./README.md
+//!   cargo run --example markdown -- docs/SUMMARY.md ./README.md
 //!
 //! 1. Discover NN_*.rs in examples/ / examples/ 配下の NN_*.rs を収集
 //! 2. Run each example, collect outputs / 各 example を実行し生成物を回収
 //! 3. Write SUMMARY.md + per-example .md / SUMMARY.md と各 example 用 .md を出力
 //! 4. Update README.md ## Examples section / README.md の ## Examples 節を更新
 
+use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -26,10 +28,15 @@ impl Entry {
 		self.path.file_stem().unwrap().to_str().unwrap()
 	}
 
+	/// Numeric prefix, e.g. 1 for "01_primitives", 100 for "100_chijin".
+	fn number(&self) -> usize {
+		self.stem().split('_').next().unwrap().parse().unwrap()
+	}
+
 	/// Plain title without the numeric prefix, e.g. "primitives" or "write read".
 	/// 数字プレフィックス除去 + `_` → 空白。
 	fn plain_title(&self) -> String {
-		self.stem()[3..].replace('_', " ")
+		self.stem().split_once('_').unwrap().1.replace('_', " ")
 	}
 
 	/// Display title, e.g. "Primitives" / 表示タイトル
@@ -64,9 +71,9 @@ fn main() {
 		let path = PathBuf::from(&arg);
 		let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 		if name.starts_with("SUMMARY") {
-			write_summary(&path, &entries, &outputs);
+			update_summary(&path, &entries, &outputs);
 		} else if name.starts_with("README") {
-			write_readme(&path, &entries[1..], &outputs);
+			update_readme(&path, &entries[..entries.partition_point(|e| e.number() < 100)], &outputs);
 		} else {
 			eprintln!("unknown target: {arg} (expected SUMMARY.md or README.md)");
 		}
@@ -82,7 +89,7 @@ fn collect_entries() -> Vec<Entry> {
 		.filter_map(|e| e.ok())
 		.filter_map(|e| {
 			let name = e.file_name().into_string().ok()?;
-			if name.len() >= 4 && name.ends_with(".rs") && name.as_bytes()[0].is_ascii_digit() && name.as_bytes()[1].is_ascii_digit() && name.as_bytes()[2] == b'_' {
+			if name.len() >= 4 && name.ends_with(".rs") && name.as_bytes()[0].is_ascii_digit() && name.as_bytes()[1].is_ascii_digit() {
 				let path = e.path();
 				let content = fs::read_to_string(&path).ok()?;
 				Some(Entry { path, content })
@@ -91,7 +98,7 @@ fn collect_entries() -> Vec<Entry> {
 			}
 		})
 		.collect();
-	entries.sort_by(|a, b| a.stem().cmp(b.stem()));
+	entries.sort_by_key(Entry::number);
 	entries
 }
 
@@ -125,34 +132,52 @@ fn collect_outputs(entries: &[Entry]) -> Vec<Output> {
 	outputs
 }
 
-/// Write output files, SUMMARY.md, and per-example markdown pages.
-/// 生成物・SUMMARY.md・各 example の markdown ページを出力する。
-fn write_summary(summary_path: &Path, entries: &[Entry], outputs: &[Output]) {
-	let out_dir = summary_path.parent().expect("summary_path must have a parent directory");
-	clean_dir(out_dir);
-
+fn update_template(path: &Path, insert: HashMap<String, String>) {
+	let contents_old = fs::read_to_string(path).expect("failed to read template");
+	let mut tag: Option<&str> = None;
+	let mut contents_new = String::new();
+	for line in contents_old.lines() {
+		match (tag, line.trim().starts_with("<!--*")) {
+			(Some(x), true) => {
+				if x == line.trim() {
+					tag = None;
+					writeln!(contents_new, "{x}\n{}\n{x}", insert.get(x).map(String::as_str).unwrap_or("")).unwrap();
+				} else {
+					panic!("tag {x} is not closed")
+				}
+			}
+			(Some(_), false) => continue,
+			(None, true) => tag = Some(line.trim()),
+			(None, false) => writeln!(contents_new, "{line}").unwrap(),
+		}
+	}
+	assert!(tag.is_none(), "tag {tag:?} is not closed");
+	fs::write(path, contents_new).unwrap();
+	eprintln!("updated: {}", path.display());
+}
+/// Write example outputs and pages next to SUMMARY.md, and fill its `<!--*SUMMARY_EXAMPLES*-->` block.
+fn update_summary(summary_path: &Path, entries: &[Entry], outputs: &[Output]) {
+	let out_dir = summary_path.parent().unwrap();
 	// Write example output files (svg, step, brep, etc.) / example の生成物を書き出す
 	for (path, contents) in outputs {
 		fs::write(out_dir.join(path), contents).unwrap();
 	}
 
 	// Build SUMMARY.md and individual pages / SUMMARY.md と個別ページを生成する
-	let mut summary = String::from("# Summary\n\n");
+	let mut summary = String::from("\n");
 	for entry in entries {
-		let (stem, title, desc) = (entry.stem(), entry.title(), entry.description());
-		summary.push_str(&format!("- [{}]({}.md)\n", title, stem));
+		summary.push_str(&format!("- [{}]({}.md)\n", entry.title(), entry.stem()));
 
 		// Format assets as markdown / 生成物を markdown 形式に変換
 		let assets = render_assets(entry, outputs);
 
-		let desc_section = if desc.is_empty() { String::new() } else { format!("\n{}\n", desc) };
+		let desc_section = if entry.description().is_empty() { String::new() } else { format!("\n{}\n", entry.description()) };
 		let assets_section = if assets.is_empty() { String::new() } else { format!("\n{}", assets) };
-		let md = format!("# {}\n{}\n```rust\n{}\n```{}", title, desc_section, entry.content, assets_section);
-		fs::write(out_dir.join(format!("{}.md", stem)), md).unwrap();
+		let md = format!("# {}\n{}\n```rust\n{}\n```{}", entry.title(), desc_section, entry.content, assets_section);
+		fs::write(out_dir.join(format!("{}.md", entry.stem())), md).unwrap();
 	}
 
-	fs::write(summary_path, &summary).unwrap();
-	eprintln!("generated: {}", summary_path.display());
+	update_template(summary_path, HashMap::from([("<!--*SUMMARY_EXAMPLES*-->".to_string(), summary)]));
 }
 
 /// Render README asset markdown for an entry: Output links + preview images.
@@ -164,7 +189,7 @@ fn render_assets(entry: &Entry, outputs: &[Output]) -> String {
 }
 
 /// Render the `## Usage` section: thumbnail table + install instructions.
-fn render_usage(entries: &[Entry], outputs: &[Output]) -> String {
+fn render_gallery(entries: &[Entry], outputs: &[Output]) -> String {
 	const COLS: usize = 4;
 	let cells: Vec<[String; 2]> = entries
 		.iter()
@@ -176,7 +201,7 @@ fn render_usage(entries: &[Entry], outputs: &[Output]) -> String {
 		})
 		.collect();
 	{
-		let mut s = String::from("<!--GALLERY-->\n\n<table>\n");
+		let mut s = String::from("\n<table>\n");
 		for chunk in cells.chunks(COLS) {
 			for (i, tag) in ["th", "td"].iter().enumerate() {
 				let row: String = (0..COLS).map(|col| format!("<{tag} width='25%'>{}</{tag}>", chunk.get(col).map(|cell| cell[i].as_str()).unwrap_or_default())).collect();
@@ -196,38 +221,12 @@ fn render_example_section(entries: &[Entry], outputs: &[Output]) -> String {
 		format!("{}\n{}", header, asset)
 	}
 	let examples: Vec<String> = entries.iter().map(|entry| format!("\n#### {}\n{}", entry.title(), &render_example(entry, outputs))).collect();
-	format!("## Examples\n{}\n", examples.join("\n"))
+	format!("{}\n", examples.join("\n"))
 }
 
-/// Update README.md by replacing `## Usage` and `## Example` sections.
-/// README.md の `## Usage` と `## Example` 節を自動生成で置換する。
-fn write_readme(readme_path: &Path, entries: &[Entry], outputs: &[Output]) {
-	let readme = fs::read_to_string(readme_path).expect("failed to read README.md");
-
-	let mut new_readme = String::with_capacity(readme.len());
-	let mut last_end = 0;
-
-	for (i, line) in readme.lines().enumerate() {
-		let content = match line.trim() {
-			"<!--GALLERY-->" => render_usage(entries, outputs),
-			"## Examples" => render_example_section(entries, outputs),
-			_ => continue,
-		};
-
-		let line_start = readme.lines().take(i).map(|l| l.len() + 1).sum::<usize>();
-		let line_end = line_start + line.len() + 1;
-		let section_end = readme[line_end..].find("\n## ").map(|j| line_end + j + 1).unwrap_or(readme.len());
-
-		new_readme.push_str(&readme[last_end..line_start]);
-		new_readme.push_str(&content);
-		new_readme.push('\n');
-
-		last_end = section_end;
-	}
-	new_readme.push_str(&readme[last_end..]);
-
-	fs::write(readme_path, &new_readme).unwrap();
-	eprintln!("updated: {}", readme_path.display());
+/// Fill the `<!--*GALLERY*-->` and `<!--*EXAMPLES*-->` blocks of README.md.
+fn update_readme(readme_path: &Path, entries: &[Entry], outputs: &[Output]) {
+	update_template(readme_path, HashMap::from([("<!--*GALLERY*-->".to_string(), render_gallery(entries, outputs)), ("<!--*EXAMPLES*-->".to_string(), render_example_section(entries, outputs))]));
 }
 
 /// Remove and recreate a directory.

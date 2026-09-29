@@ -6,9 +6,9 @@ cadrum is a Rust CAD crate using statically-linked, headless [OpenCASCADE][occt]
 [![Crates.io][crate_img]][crate_link]
 [![docs.rs][docsrs_img]][docsrs_link]
 
-<div align="center"><img src="https://lzpel.github.io/cadrum/00_chijin.png" alt="cadrum" max-height="300" width="auto"/></div>
+<div align="center"><img src="https://lzpel.github.io/cadrum/100_chijin.png" alt="cadrum" max-height="300" width="auto"/></div>
 
-<!--GALLERY-->
+<!--*GALLERY*-->
 
 <table>
 <tr><th width='25%'><a href='#primitives'>primitives</a></th><th width='25%'><a href='#write-read'>write read</a></th><th width='25%'><a href='#transform'>transform</a></th><th width='25%'><a href='#boolean'>boolean</a></th></tr>
@@ -20,6 +20,8 @@ cadrum is a Rust CAD crate using statically-linked, headless [OpenCASCADE][occt]
 <tr><th width='25%'><a href='#offset'>offset</a></th><th width='25%'><a href='#sew'>sew</a></th><th width='25%'><a href='#multiview'>multiview</a></th><th width='25%'></th></tr>
 <tr><td width='25%'><a href='#offset'><img src='https://lzpel.github.io/cadrum/13_offset.png' width='100%' height='auto' alt='offset'/></a></td><td width='25%'><a href='#sew'><img src='https://lzpel.github.io/cadrum/14_sew.png' width='100%' height='auto' alt='sew'/></a></td><td width='25%'><a href='#multiview'><img src='https://lzpel.github.io/cadrum/15_multiview.png' width='100%' height='auto' alt='multiview'/></a></td><td width='25%'></td></tr>
 </table>
+
+<!--*GALLERY*-->
 
 ## What is cadrum
 
@@ -141,6 +143,8 @@ C++17 compiler (GCC, Clang, or MSVC) and CMake.
   prebuilt path. Enable it for targets that have no published prebuilt.
 
 ## Examples
+
+<!--*EXAMPLES*-->
 
 #### Primitives
 
@@ -1151,6 +1155,8 @@ fn main() -> Result<(), cadrum::Error> {
 Output: [15_multiview.png](https://lzpel.github.io/cadrum/15_multiview.png) | [15_multiview.glb](https://lzpel.github.io/cadrum/15_multiview.glb) | [15_multiview.stl](https://lzpel.github.io/cadrum/15_multiview.stl)
 
 <img src='https://lzpel.github.io/cadrum/15_multiview.png' alt='15_multiview' width='360'/>
+
+<!--*EXAMPLES*-->
 
 ## The Type Map
 

@@ -1,11 +1,6 @@
 # Contributing Guide
 
-Contributions, feature requests, usage questions, and general contacts of any
-kind are absolutely welcome.
-
-Note that this is a hobby project worked on in spare time. I can only give a
-best-effort promise of availability or responsiveness, but please do reach
-out with anything you need.
+Contributions, feature requests, usage questions, and general contacts of any kind are absolutely welcome.
 
 ## Contact
 
@@ -13,35 +8,11 @@ out with anything you need.
   bugs, feature requests, and design discussions.
 - GitHub: [@lzpel](https://github.com/lzpel)
 
-## Preconditions
-
-You should be comfortable with `cargo` and the basics of building Rust
-projects. The first build downloads a prebuilt OCCT 8.0.1 tarball for
-supported targets and links it statically; on unsupported targets you will
-need CMake plus a C++17 compiler and `cargo build --features source`.
-See the [README](./README.md#build) for the full build matrix.
-
-The project uses **tab indentation** (`U+0009`) throughout. `rustfmt.toml`
-sets `hard_tabs = true`, so running `cargo fmt` keeps formatting consistent.
-
-This project aims to expose OpenCASCADE through an idiomatic Rust API, so
-contributions to documentation, examples, and ergonomic tweaks are equally
-welcome alongside patches to the FFI core.
-
 ## Submitting Changes
 
-If you have a patch you think is worth inspecting right away, opening a pull
-request without prelude is fine, although an accompanying explanation of
-what the patch does and why is appreciated.
+If you have a patch you think is worth inspecting right away, opening a pull request without prelude is fine, although an accompanying explanation of what the patch does and why is appreciated.
 
-For larger or design-affecting changes, please open an issue first to
-discuss the approach. The trait surface in `src/traits.rs` and the codegen
-pipeline in `examples/codegen.rs` interact in non-obvious ways, so a quick
-alignment saves rework.
-
-If you have questions, bugs, suggestions, or any other contributions that
-do not immediately touch the codebase, please open an issue or reach out
-informally on GitHub.
+For larger or design-affecting changes, please open an issue first to discuss the approach. The trait surface in `src/traits.rs` and the codegen pipeline in `make update` interact in non-obvious ways, so a quick alignment saves rework.
 
 ## Environment
 
@@ -55,7 +26,4 @@ make publish  # publish to crates.io (for maintainers), including upload release
 
 ### Before opening a PR
 
-1. `make update` — formats, then regenerates derived files (`src/lib.rs`
-   delegations from `src/traits.rs`, the README `## Examples` section from
-   the numbered examples). Output is deterministic; commit the resulting diff.
-2. `make test` — runs unit, integration, and doc tests.
+`make test` — runs unit, integration, and doc tests.
