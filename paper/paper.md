@@ -88,6 +88,10 @@ The calculation shows that a neutron shield is mandatory. With only a 50 cm lead
 
 The whole chain is reproducible in continuous integration. From the equilibrium file to the heating tallies it is rerun by the repository's continuous integration, which is possible because the geometry step is an ordinary, deterministic program.
 
+## Use outside the author's projects
+
+cadrum is also used outside its author's projects. Valurile [@valurile], a lattice Boltzmann flow solver for CPUs and CUDA GPUs, reads STEP geometry through cadrum and uses the face identifiers carried by its meshes to assign boundary conditions to individual CAD faces.
+
 # AI usage disclosure
 
 The author used generative AI in writing the software and this paper. Claude (Anthropic) was used through Claude Code to assist in writing the software, its documentation and a draft of this paper. All generated code was reviewed and tested by the author, and the text was checked against the source code and the cited works. The author takes full responsibility for the software and for the content of this manuscript.
