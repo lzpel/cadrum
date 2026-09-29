@@ -90,7 +90,7 @@ The whole chain is reproducible in continuous integration. From the equilibrium 
 
 ## Use outside the author's projects
 
-cadrum is also used outside its author's projects, including two simulation tools. Valurile [@valurile], a lattice Boltzmann flow solver for CPUs and CUDA GPUs, reads STEP geometry through cadrum and uses the face identifiers carried by its meshes to assign boundary conditions to individual CAD faces. Oxiprep [@oxiprep], a computer-aided engineering preprocessor, imports and builds geometry with cadrum and starts its surface and volume meshing for analysis from cadrum's tessellation of each solid. Beyond simulation, cadrum also serves several design and file-conversion applications.
+cadrum has been on crates.io since March 2026 with over 5,000 downloads; 11 public repositories by other developers depend on it, including two simulation tools. Valurile [@valurile], a lattice Boltzmann flow solver for CPUs and CUDA GPUs, reads STEP geometry through cadrum and uses the face identifiers carried by its meshes to assign boundary conditions to individual CAD faces. Oxiprep [@oxiprep], a computer-aided engineering preprocessor, imports and builds geometry with cadrum and starts its surface and volume meshing for analysis from cadrum's tessellation of each solid. The others are design, modeling and file-conversion applications, such as a STEP-to-STL converter and a desktop 3D model library.
 
 # AI usage disclosure
 
