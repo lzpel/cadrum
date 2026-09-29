@@ -51,7 +51,7 @@ cc = "1"
 # (02_write_read, markdown) build under all feature configurations.
 
 [[example]]
-name = "00_chijin"
+name = "100_chijin"
 required-features = ["color"]
 
 [[example]]
