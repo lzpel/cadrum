@@ -1,6 +1,6 @@
 //! Build a chijin (hand drum from Amami Oshima) with colors, boolean ops, and SVG export.
 
-use cadrum::{Color, DVec3, Edge, ProfileOrient, Solid};
+use cadrum::{Color, DVec3, Edge, Solid};
 use std::f64::consts::PI;
 
 /// Paint every face. A face colour outranks the solid colour, and boolean ops carry it
@@ -25,8 +25,7 @@ fn chijin() -> Result<Solid, cadrum::Error> {
 	//     させるだけなので任意の正の値で可
 	//   - ProfileOrient::Up(Y) でプロファイルの上方向を Y 固定 → 回転(revolve)と等価
 	let cross_section = Edge::polygon(&[DVec3::new(0.0, 5.0, 0.0), DVec3::new(15.0, 5.0, 0.0), DVec3::new(17.0, 3.0, 0.0), DVec3::new(15.0, 4.0, 0.0), DVec3::new(0.0, 4.0, 0.0)])?;
-	let spine = Edge::circle(1.0, DVec3::Y)?;
-	let sheet = color_faces(Solid::sweep(&cross_section, &[spine], ProfileOrient::Up(DVec3::Y))?, "#fff");
+	let sheet = color_faces(Solid::revolve(&cross_section, DVec3::ZERO, DVec3::Y,std::f64::consts::PI*2.)?, "#fff");
 	let sheets = [sheet.clone().mirror(DVec3::ZERO, DVec3::Y), sheet];
 
 	// ── Lacing blocks: 2x1x8, rotated 60° around Y, placed at z=15 ──────
