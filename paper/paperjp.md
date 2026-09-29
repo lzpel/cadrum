@@ -60,25 +60,11 @@ OCCT はシステムへのインストールなしに静的リンクされる。
 
 # 研究への貢献 (Research impact statement)
 
-cadrum は alphastell [@alphastell] の形状エンジンである。alphastell は、VMEC 平衡 [@hirshman1983vmec] からステラレータ型核融合炉の成立性を評価するオープンなワークフローである。
-
-alphastell は、コイルとブランケットを cadrum でソリッドとして構築する。最外閉磁気面は、VMEC によってポロイダル角 $\theta$ とトロイダル角 $\phi$ のフーリエ級数として与えられる。
+cadrum は alphastell [@alphastell] の形状エンジンである。alphastell は、VMEC 平衡 [@hirshman1983vmec] からステラレータ型核融合炉の成立性を評価するオープンなワークフローである。VMEC はプラズマ境界を、ポロイダル角 $\theta$ とトロイダル角 $\phi$ のフーリエ級数として与える。
 
 $$\mathbf{x}(\theta,\phi) = (R\cos\phi,\ R\sin\phi,\ Z),\quad R = \sum_{m,n} R_{mn}\cos(m\theta - n\phi),\quad Z = \sum_{m,n} Z_{mn}\sin(m\theta - n\phi)$$
 
-ここで $n$ は磁場周期数の倍数を動く。モジュラーコイルのフィラメントは、コイルの磁場 $\mathbf{B}$ が単位法線 $\mathbf{n}$ を持つこの磁気面 $S$ に接するよう、SIMSOPT [@landreman2021simsopt] で最適化される。
-
-$$\int_S \frac{(\mathbf{B}\cdot\mathbf{n})^2}{|\mathbf{B}|^2}\,dA \to 0$$
-
-コイル中心線上の各点 $\mathbf{c}_i$ について、磁気面上の最近点 $\mathbf{x}_i = \mathbf{x}(\theta_i,\phi_i)$ は次の条件を満たす。
-
-$$(\nabla\mathbf{x})^\top(\mathbf{c}_i - \mathbf{x}_i) = \mathbf{0},\qquad \nabla\mathbf{x} = (\partial_\theta\mathbf{x},\ \partial_\phi\mathbf{x})$$
-
-このとき $\mathbf{c}_i - \mathbf{x}_i$ は、$\mathbf{x}_i$ における三次元曲面の法線 $\mathbf{n}_i = \partial_\phi\mathbf{x} \times \partial_\theta\mathbf{x} \,/\, |\partial_\phi\mathbf{x} \times \partial_\theta\mathbf{x}|$ と平行になる。補助ガイドの点は、この法線に沿ってコイルから磁気面の方へ、$w \times h = 0.40\ \mathrm{m} \times 0.50\ \mathrm{m}$ の断面の対角線の半分だけ進んだ位置に置く。
-
-$$\mathbf{g}_i = \mathbf{c}_i - \frac{\sqrt{w^2 + h^2}}{2}\,\mathbf{n}_i$$
-
-$\mathbf{c}_i$ と $\mathbf{g}_i$ を通る B スプライン曲線が cadrum のスイープの中心線と補助ガイドとなり、矩形断面は中心線に垂直に保たれたままプラズマの方を向く。厚さ $t$ の増殖ブランケットのシェルは、$\mathbf{x}$ と $\mathbf{x} + t\,\hat{\mathbf{n}}_\phi$ を境界とする 2 つの B スプラインソリッドのブーリアン差である。ここで $\hat{\mathbf{n}}_\phi \propto (\partial_\theta Z\cos\phi,\ \partial_\theta Z\sin\phi,\ -\partial_\theta R)$ は、$\phi$ 一定の各断面内での外向き法線である。これらのソリッドは STEP に書き出され、DAGMC 形状に変換され、二次光子を含めて OpenMC [@romano2015openmc] で輸送計算される。
+ここで $n$ は磁場周期数の倍数を動く。alphastell はこの級数を $(\theta,\phi)$ の格子点で標本化し、cadrum の Solid::bspline がその格子を両方の角度方向に周期的な B スプライン曲面で補間する。これにより、すべての標本点を通る曲面を持つ、厳密に閉じたソリッドが得られる。増殖ブランケットは、この境界のソリッドと、それを外側へオフセットしたソリッドとのブーリアン差である。SIMSOPT [@landreman2021simsopt] で最適化したコイルのフィラメントも同様に周期的な B スプライン曲線として補間し、Solid::sweep でそれぞれに沿って矩形断面をスイープする。その補助スパインのモードでは、フィラメントからプラズマの方へずらした 2 本目の B スプライン曲線を与えることで、断面をフィラメントに垂直に保ったまま常にプラズマの方へ向ける。フレネ標構では変曲点で断面が反転してしまう。これらのソリッドは STEP に書き出され、DAGMC 形状に変換され、二次光子を含めて OpenMC [@romano2015openmc] で輸送計算される。
 
 ![alphastell において cadrum で構築した、4 周期の準ヘリカル対称ステラレータのモジュラーコイルとプラズマ（4 方向からの図）。\label{fig:coils}](al_09_coil_heating.geometry.png)
 
@@ -86,7 +72,7 @@ $\mathbf{c}_i$ と $\mathbf{g}_i$ を通る B スプライン曲線が cadrum �
 
 ![cadrum で構築した形状に対し OpenMC で計算した、核融合出力 3.1 GW における \autoref{fig:coils} のコイルの核発熱（色は対数目盛）。\label{fig:heating}](al_09_coil_heating.heating.png)
 
-一連の処理全体は継続的インテグレーションで再現できる。平衡ファイルから発熱のタリーに至るまでの処理はリポジトリの継続的インテグレーションで再実行されており、それが可能なのは形状生成の工程が通常の決定的なプログラムだからである。
+形状生成の工程は通常の決定的なプログラムであるため、平衡ファイルから発熱のタリーに至る一連の処理全体が継続的インテグレーションで再実行されている。
 
 ## 著者以外のプロジェクトでの利用
 

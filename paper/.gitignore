@@ -1,0 +1,6 @@
+# Outputs of openjournals/inara
+*.pdf
+*.crossref
+*.jats
+*.tex
+jats/
