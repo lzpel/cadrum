@@ -114,6 +114,18 @@ OCCT_ROOT=/path/to/occt cargo build --features source
 If `OCCT_ROOT` is unset, the source build is cached under `target/`. Requires a
 C++17 compiler (GCC, Clang, or MSVC) and CMake.
 
+## Test
+
+The test suite lives in `tests/`, one file per modeling operation plus STEP and
+BRep round-trip tests. Run it on any supported native target with:
+
+```sh
+cargo test
+```
+
+The first run downloads the prebuilt OCCT archive for your target and links it
+statically, so no OpenCASCADE installation is needed. `make test` is an alias.
+
 ## Capabilities
 
 | Area | Methods |
