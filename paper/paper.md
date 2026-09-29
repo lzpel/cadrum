@@ -60,25 +60,11 @@ Rendering is headless. Meshing and rendering to SVG and PNG are done in Rust wit
 
 # Research impact statement
 
-cadrum is the geometry engine of alphastell [@alphastell]. alphastell is an open workflow that assesses the feasibility of stellarator fusion reactors from a VMEC equilibrium [@hirshman1983vmec].
-
-alphastell builds its coils and blankets as solids with cadrum. The last closed flux surface is given by VMEC as a Fourier series in the poloidal angle $\theta$ and the toroidal angle $\phi$,
+cadrum is the geometry engine of alphastell [@alphastell], an open workflow that assesses the feasibility of stellarator fusion reactors from a VMEC equilibrium [@hirshman1983vmec]. VMEC gives the plasma boundary as a Fourier series in the poloidal angle $\theta$ and the toroidal angle $\phi$,
 
 $$\mathbf{x}(\theta,\phi) = (R\cos\phi,\ R\sin\phi,\ Z),\quad R = \sum_{m,n} R_{mn}\cos(m\theta - n\phi),\quad Z = \sum_{m,n} Z_{mn}\sin(m\theta - n\phi),$$
 
-where $n$ runs over multiples of the number of field periods. Modular coil filaments are optimized with SIMSOPT [@landreman2021simsopt] so that the field $\mathbf{B}$ of the coils is tangent to this surface $S$ with unit normal $\mathbf{n}$,
-
-$$\int_S \frac{(\mathbf{B}\cdot\mathbf{n})^2}{|\mathbf{B}|^2}\,dA \to 0.$$
-
-For each point $\mathbf{c}_i$ on a coil centerline, the nearest surface point $\mathbf{x}_i = \mathbf{x}(\theta_i,\phi_i)$ satisfies
-
-$$(\nabla\mathbf{x})^\top(\mathbf{c}_i - \mathbf{x}_i) = \mathbf{0},\qquad \nabla\mathbf{x} = (\partial_\theta\mathbf{x},\ \partial_\phi\mathbf{x}),$$
-
-so that $\mathbf{c}_i - \mathbf{x}_i$ is parallel to the three-dimensional surface normal $\mathbf{n}_i = \partial_\phi\mathbf{x} \times \partial_\theta\mathbf{x} \,/\, |\partial_\phi\mathbf{x} \times \partial_\theta\mathbf{x}|$ at $\mathbf{x}_i$. The auxiliary guide point is placed from the coil toward the surface along this normal, at half the diagonal of the $w \times h = 0.40\ \mathrm{m} \times 0.50\ \mathrm{m}$ cross-section,
-
-$$\mathbf{g}_i = \mathbf{c}_i - \frac{\sqrt{w^2 + h^2}}{2}\,\mathbf{n}_i.$$
-
-B-spline curves through $\mathbf{c}_i$ and $\mathbf{g}_i$ become the spine and the auxiliary guide of a cadrum sweep, which keeps the rectangular cross-section normal to the spine and turns it toward the plasma. A breeding blanket shell of thickness $t$ is the Boolean difference of two B-spline solids bounded by $\mathbf{x}$ and $\mathbf{x} + t\,\hat{\mathbf{n}}_\phi$, where $\hat{\mathbf{n}}_\phi \propto (\partial_\theta Z\cos\phi,\ \partial_\theta Z\sin\phi,\ -\partial_\theta R)$ is the outward normal within each constant-$\phi$ cross-section. The solids are written to STEP, converted to DAGMC geometry, and transported with OpenMC [@romano2015openmc] including secondary photons.
+where $n$ runs over multiples of the number of field periods. alphastell samples this series on a grid of $(\theta,\phi)$ points, and cadrum's Solid::bspline interpolates the grid with a B-spline surface periodic in both angles, giving an exact closed solid whose surface passes through every sampled point. The breeding blanket is the Boolean difference of two such solids, the boundary and a copy offset outward from it. Coil filaments optimized with SIMSOPT [@landreman2021simsopt] are interpolated as periodic B-spline curves in the same way, and Solid::sweep sweeps a rectangular cross-section along each of them. Its auxiliary-spine mode takes a second B-spline curve offset from the filament toward the plasma, so the cross-section stays normal to the filament and keeps facing the plasma, where a Frenet frame would flip at inflection points. The solids are written to STEP, converted to DAGMC geometry, and transported with OpenMC [@romano2015openmc] including secondary photons.
 
 ![Modular coils and plasma of a four-period quasi-helically symmetric stellarator built with cadrum in alphastell, shown in four views.\label{fig:coils}](al_09_coil_heating.geometry.png)
 
@@ -86,7 +72,7 @@ The calculation shows that a neutron shield is mandatory. With only a 50 cm lead
 
 ![Nuclear heating in the coils of \autoref{fig:coils} at 3.1 GW fusion power, computed with OpenMC on the geometry built by cadrum (logarithmic color scale).\label{fig:heating}](al_09_coil_heating.heating.png)
 
-The whole chain is reproducible in continuous integration. From the equilibrium file to the heating tallies it is rerun by the repository's continuous integration, which is possible because the geometry step is an ordinary, deterministic program.
+Because the geometry step is an ordinary, deterministic program, the whole chain from the equilibrium file to the heating tallies is rerun in continuous integration.
 
 ## Use outside the author's projects
 
