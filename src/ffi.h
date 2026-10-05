@@ -4,7 +4,7 @@
 
 // Types used directly in function signatures — keep minimal so that
 // the cxx-generated bridge objects do not compile heavy OCCT headers.
-#include <TopoDS_Shape.hxx>
+#include <TopoDS_Solid.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
 
@@ -13,7 +13,7 @@ namespace cadrum {
 
 // Type aliases to bring OCCT global types into cadrum namespace.
 // Required because the cxx bridge uses namespace = "cadrum".
-using TopoDS_Shape = ::TopoDS_Shape;
+using TopoDS_Solid = ::TopoDS_Solid;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
 
@@ -29,46 +29,45 @@ struct MeshData;
 // Plain STEP I/O — only built without FEATURE_COLOR; with color, STEP goes
 // through XCAF (`read_step_color_stream` etc.) instead.
 #ifndef FEATURE_COLOR
-std::unique_ptr<TopoDS_Shape> read_step_stream(RustReader& reader);
-void write_step_stream(const TopoDS_Shape& shape, RustWriter& writer);
+std::unique_ptr<std::vector<TopoDS_Solid>> read_step_stream(RustReader& reader);
+void write_step_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer);
 #endif
 // `out_consumed` = length of the BinTools payload, where Rust's color trailer
 // begins. Written ONLY on success; a throw leaves it untouched.
-std::unique_ptr<TopoDS_Shape> read_brep_stream(
+std::unique_ptr<std::vector<TopoDS_Solid>> read_brep_stream(
     rust::Slice<const uint8_t> data, size_t& out_consumed);
-void write_brep_stream(const TopoDS_Shape& shape, RustWriter& writer);
+void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer);
 
 // ==================== Shape Constructors ====================
 
-std::unique_ptr<TopoDS_Shape> make_half_space(
+std::unique_ptr<TopoDS_Solid> make_half_space(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-std::unique_ptr<TopoDS_Shape> make_box(
+std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
     double x2, double y2, double z2);
 
-std::unique_ptr<TopoDS_Shape> make_cylinder(
+std::unique_ptr<TopoDS_Solid> make_cylinder(
     double px, double py, double pz,
     double dx, double dy, double dz,
     double radius, double height);
 
-std::unique_ptr<TopoDS_Shape> make_sphere(
+std::unique_ptr<TopoDS_Solid> make_sphere(
     double cx, double cy, double cz,
     double radius);
 
-std::unique_ptr<TopoDS_Shape> make_cone(
+std::unique_ptr<TopoDS_Solid> make_cone(
     double px, double py, double pz,
     double dx, double dy, double dz,
     double r1, double r2, double height);
 
-std::unique_ptr<TopoDS_Shape> make_torus(
+std::unique_ptr<TopoDS_Solid> make_torus(
     double px, double py, double pz,
     double dx, double dy, double dz,
     double r1, double r2);
 
-std::unique_ptr<TopoDS_Shape> make_empty();
-std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Solid> deep_copy(const TopoDS_Solid& shape);
 
 // ==================== Builders (solid → solid with history) ====================
 //
@@ -84,16 +83,16 @@ std::unique_ptr<TopoDS_Shape> deep_copy(const TopoDS_Shape& shape);
 // 例: (A ∪ B) − C → solids=[A,B,C], clauses=[1,-3, 0, 2,-3, 0]
 // 全 clause で同一 material を使い RemoveInternalBoundaries() で内部境界を除去。
 // `out_history` の形式は builder_boolean と同じ。
-std::unique_ptr<TopoDS_Shape> builder_cells(
-    const std::vector<TopoDS_Shape>& solids,
+std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
+    const std::vector<TopoDS_Solid>& solids,
     rust::Slice<const int64_t> clauses,
     rust::Vec<uint64_t>& out_history);
 
 // Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
 // `out_history` encodes how each old face maps onto the unified result.
 // Rust uses it to remap the colormap when the `color` feature is enabled.
-std::unique_ptr<TopoDS_Shape> builder_clean(
-    const TopoDS_Shape& shape,
+std::unique_ptr<TopoDS_Solid> builder_clean(
+    const TopoDS_Solid& shape,
     rust::Vec<uint64_t>& out_history);
 
 // Shell (hollow) the solid by removing `open_faces` and offsetting the
@@ -103,8 +102,8 @@ std::unique_ptr<TopoDS_Shape> builder_clean(
 //
 // `out_history`: flat [post_id, src_id] face-derivation pairs (Modified(),
 // identity for pass-through). Generated walls have no face source, absent.
-std::unique_ptr<TopoDS_Shape> builder_thick_solid(
-    const TopoDS_Shape& solid,
+std::unique_ptr<TopoDS_Solid> builder_thick_solid(
+    const TopoDS_Solid& solid,
     const std::vector<TopoDS_Face>& open_faces,
     double thickness,
     rust::Vec<uint64_t>& out_history);
@@ -116,8 +115,8 @@ std::unique_ptr<TopoDS_Shape> builder_thick_solid(
 //
 // `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
 // untouched). Generated fillet arc faces come from edges, absent.
-std::unique_ptr<TopoDS_Shape> builder_fillet(
-    const TopoDS_Shape& solid,
+std::unique_ptr<TopoDS_Solid> builder_fillet(
+    const TopoDS_Solid& solid,
     const std::vector<TopoDS_Edge>& edges,
     double radius,
     rust::Vec<uint64_t>& out_history);
@@ -130,8 +129,8 @@ std::unique_ptr<TopoDS_Shape> builder_fillet(
 //
 // `out_history`: flat [post_id, src_id] pairs (Modified(), identity for
 // untouched). Generated chamfer faces come from edges, absent.
-std::unique_ptr<TopoDS_Shape> builder_chamfer(
-    const TopoDS_Shape& solid,
+std::unique_ptr<TopoDS_Solid> builder_chamfer(
+    const TopoDS_Solid& solid,
     const std::vector<TopoDS_Edge>& edges,
     double distance,
     rust::Vec<uint64_t>& out_history);
@@ -144,54 +143,47 @@ std::unique_ptr<TopoDS_Shape> builder_chamfer(
 // derivation table, so out_history is intentionally absent and the Rust
 // side clears Solid::history (colormap is remapped by face order instead).
 
-std::unique_ptr<TopoDS_Shape> transform_translate(
-    const TopoDS_Shape& shape, double tx, double ty, double tz);
-std::unique_ptr<TopoDS_Shape> transform_rotate(
-    const TopoDS_Shape& shape,
+std::unique_ptr<TopoDS_Solid> transform_translate(
+    const TopoDS_Solid& shape, double tx, double ty, double tz);
+std::unique_ptr<TopoDS_Solid> transform_rotate(
+    const TopoDS_Solid& shape,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
     double angle);
-std::unique_ptr<TopoDS_Shape> transform_scale(
-    const TopoDS_Shape& shape,
+std::unique_ptr<TopoDS_Solid> transform_scale(
+    const TopoDS_Solid& shape,
     double cx, double cy, double cz,
     double factor);
-std::unique_ptr<TopoDS_Shape> transform_mirror(
-    const TopoDS_Shape& shape,
+std::unique_ptr<TopoDS_Solid> transform_mirror(
+    const TopoDS_Solid& shape,
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
 // ==================== Shape Queries ====================
 
-bool shape_is_null(const TopoDS_Shape& shape);
-bool shape_is_solid(const TopoDS_Shape& shape);
-double shape_volume(const TopoDS_Shape& shape);
-void shape_center_of_mass(const TopoDS_Shape& shape,
+double shape_volume(const TopoDS_Solid& shape);
+void shape_center_of_mass(const TopoDS_Solid& shape,
     double& x, double& y, double& z);
-void shape_inertia_tensor(const TopoDS_Shape& shape,
+void shape_inertia_tensor(const TopoDS_Solid& shape,
     double& m00, double& m01, double& m02,
     double& m10, double& m11, double& m12,
     double& m20, double& m21, double& m22);
-bool shape_contains_point(const TopoDS_Shape& shape, double x, double y, double z);
-void shape_bounding_box(const TopoDS_Shape& shape,
+bool shape_contains_point(const TopoDS_Solid& shape, double x, double y, double z);
+void shape_bounding_box(const TopoDS_Solid& shape,
     double& xmin, double& ymin, double& zmin,
     double& xmax, double& ymax, double& zmax);
 
-// ==================== Compound Decompose/Compose ====================
-
-std::unique_ptr<std::vector<TopoDS_Shape>> decompose_into_solids(const TopoDS_Shape& shape);
-void compound_add(TopoDS_Shape& compound, const TopoDS_Shape& child);
-
 // ==================== Meshing ====================
 
-MeshData mesh_shape(const TopoDS_Shape& shape, double linear, double angular, bool relative);
+MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, double angular, bool relative);
 
 // ==================== Topology enumeration ====================
 
-// One-shot enumeration of unique sub-shapes. `shape_edges` deduplicates
+// One-shot enumeration of unique sub-shapes. `solid_edges` deduplicates
 // edges shared between faces (so each edge appears exactly once).
 // Callers typically cache the result in a Rust-side OnceLock<Vec<Edge>>.
-std::unique_ptr<std::vector<TopoDS_Edge>> shape_edges(const TopoDS_Shape& shape);
-std::unique_ptr<std::vector<TopoDS_Face>> shape_faces(const TopoDS_Shape& shape);
+std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape);
+std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape);
 
 // One-shot enumeration of the boundary edges of a single face. Edges shared
 // between this face's wires are deduplicated so each edge appears once.
@@ -202,7 +194,7 @@ std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face);
 // `Face` wrappers from the `&TopoDS_*` references yielded by
 // `CxxVector::iter()`. Distinct from `deep_copy` / `deep_copy_edge` which
 // create new TShapes.
-std::unique_ptr<TopoDS_Shape> clone_shape_handle(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Solid> clone_solid_handle(const TopoDS_Solid& solid);
 std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
 std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);
 
@@ -307,13 +299,13 @@ std::unique_ptr<TopoDS_Edge> mirror_edge(
 // Extrude a closed profile into a solid using BRepPrimAPI_MakePrism.
 // `profile_edges` holds one or more loops separated by null-edge sentinels
 // (TopoDS_Edge().IsNull()); the extra loops become holes.
-std::unique_ptr<TopoDS_Shape> make_extrude(
+std::unique_ptr<TopoDS_Solid> make_extrude(
     const std::vector<TopoDS_Edge>& profile_edges,
     double dx, double dy, double dz);
 
 // Revolve the same sentinel-separated profile about the axis through
 // (ox,oy,oz) along (dx,dy,dz) by `angle` radians using BRepPrimAPI_MakeRevol.
-std::unique_ptr<TopoDS_Shape> make_revolve(
+std::unique_ptr<TopoDS_Solid> make_revolve(
     const std::vector<TopoDS_Edge>& profile_edges,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
@@ -332,7 +324,7 @@ std::unique_ptr<TopoDS_Shape> make_revolve(
 //   2 = Up      — keep `(ux, uy, uz)` as the constant binormal direction
 //   3 = Auxiliary — use `aux_spine_edges` as auxiliary spine for twist control
 // Any other value falls back to Torsion.
-std::unique_ptr<TopoDS_Shape> make_pipe_shell(
+std::unique_ptr<TopoDS_Solid> make_pipe_shell(
     const std::vector<TopoDS_Edge>& all_edges,
     const std::vector<TopoDS_Edge>& spine_edges,
     uint32_t orient,
@@ -348,16 +340,16 @@ void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
 void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
 
-// Helpers for the Rust side to construct a std::vector<TopoDS_Shape>.
+// Helpers for the Rust side to construct a std::vector<TopoDS_Solid>.
 // builder_cells に渡すための入力 solids ベクタを Rust 側から組み立てる。
-std::unique_ptr<std::vector<TopoDS_Shape>> shape_vec_new();
-void shape_vec_push(std::vector<TopoDS_Shape>& v, const TopoDS_Shape& s);
+std::unique_ptr<std::vector<TopoDS_Solid>> shape_vec_new();
+void shape_vec_push(std::vector<TopoDS_Solid>& v, const TopoDS_Solid& s);
 
 // Loft (skin) a solid through N cross-section wires.
 // Sections in `all_edges` are separated by null-edge sentinels.
 // `ruled=false` interpolates a smooth B-spline surface through all sections;
 // `ruled=true` connects adjacent sections with straight ruled panels.
-std::unique_ptr<TopoDS_Shape> make_loft(
+std::unique_ptr<TopoDS_Solid> make_loft(
     const std::vector<TopoDS_Edge>& all_edges,
     bool ruled);
 
@@ -367,14 +359,14 @@ std::unique_ptr<TopoDS_Shape> make_loft(
 // faces, or multiple disconnected shells all throw. The solid is
 // oriented with BRepLib::OrientClosedSolid so the enclosed volume is
 // positive regardless of input face orientation.
-std::unique_ptr<TopoDS_Shape> make_sewn_solid(
+std::unique_ptr<TopoDS_Solid> make_sewn_solid(
     const std::vector<TopoDS_Face>& faces,
     double tolerance);
 
 // Offset the given faces of `shape` by signed `offset` along their normals,
 // extending their neighbours; throws when OCCT rejects a self-intersecting offset.
-std::unique_ptr<TopoDS_Shape> make_offset(
-    const TopoDS_Shape& shape,
+std::unique_ptr<TopoDS_Solid> make_offset(
+    const TopoDS_Solid& shape,
     const std::vector<TopoDS_Face>& faces,
     double offset,
     double tolerance);
@@ -385,7 +377,7 @@ std::unique_ptr<TopoDS_Shape> make_offset(
 // U direction (longitudinal, i index) is periodic iff `u_periodic=true`
 // (producing a torus); otherwise the U-ends are capped with planar faces
 // (producing a pipe). Throws on any OCCT failure.
-std::unique_ptr<TopoDS_Shape> make_bspline_solid(
+std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     rust::Slice<const double> coords,
     uint32_t nu, uint32_t nv,
     bool u_periodic);
@@ -395,7 +387,7 @@ std::unique_ptr<TopoDS_Shape> make_bspline_solid(
 // Both helpers return the underlying TopoDS_TShape* address as a u64 — used
 // to track face/solid/edge identity across boolean ops, color maps, and BREP I/O.
 uint64_t face_tshape_id(const TopoDS_Face& face);
-uint64_t shape_tshape_id(const TopoDS_Shape& shape);
+uint64_t solid_tshape_id(const TopoDS_Solid& shape);
 uint64_t edge_tshape_id(const TopoDS_Edge& edge);
 
 double face_surface_area(const TopoDS_Face& face);
@@ -432,7 +424,7 @@ namespace cadrum {
 // `out_ids` = TShape* of each colored sub-shape, `out_rgb` = flat [r,g,b,...] in
 // OCC native space. An id is a FACE's or a SOLID's — a styled_item targets either.
 // Throws on failure.
-std::unique_ptr<TopoDS_Shape> read_step_color_stream(
+std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,
     rust::Vec<float>&    out_rgb);
@@ -440,10 +432,10 @@ std::unique_ptr<TopoDS_Shape> read_step_color_stream(
 // A solid id is written as one styled_item on that solid; a face style, being the
 // more specific one, overrides it.
 void write_step_color_stream(
-    const TopoDS_Shape&         shape,
-    rust::Slice<const uint64_t> ids,
-    rust::Slice<const float>    rgb,
-    RustWriter&                 writer);
+    const std::vector<TopoDS_Solid>& solids,
+    rust::Slice<const uint64_t>      ids,
+    rust::Slice<const float>         rgb,
+    RustWriter&                      writer);
 
 } // namespace cadrum
 
