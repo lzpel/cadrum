@@ -1,4 +1,3 @@
-mod compound;
 pub mod edge;
 pub mod face;
 // cxx bridge to the OCCT wrapper; the file lives at src/ffi.rs next to

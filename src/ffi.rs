@@ -2,8 +2,6 @@ use std::io::{Read, Write};
 
 #[cxx::bridge(namespace = "cadrum")]
 mod ffi_bridge {
-	#[cfg(feature = "color")]
-	use cxx::CxxVector;
 
 	// Shared struct for mesh data returned from C++
 	struct MeshData {

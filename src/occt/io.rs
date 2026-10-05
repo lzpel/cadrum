@@ -1,7 +1,6 @@
 //! I/O helpers for `Solid`. Exposed via `impl SolidStruct for Solid` in
 //! `super::solid` (e.g. `Solid::read_step`, `Solid::write_step`, `Solid::mesh`).
 
-use super::compound::CompoundShape;
 use super::ffi;
 use super::ffi::{RustReader, RustWriter};
 use super::solid::Solid;
@@ -48,19 +47,19 @@ fn read_color_trailer(tail: &[u8]) -> std::collections::HashMap<u32, Color> {
 /// STEP cannot index like this — `try_sew_orphan_faces` shifts every index, so it
 /// carries explicit ids instead.
 #[cfg(feature = "color")]
-fn trailer_ids(shape: &ffi::TopoDS_Shape) -> Vec<u64> {
-	// Bound to locals: both are `UniquePtr<CxxVector<..>>` that the iterators borrow.
-	let solids = ffi::decompose_into_solids(shape);
-	let faces = ffi::shape_faces(shape);
-	solids.iter().map(ffi::shape_tshape_id).chain(faces.iter().map(ffi::face_tshape_id)).collect()
+fn trailer_ids(solids: &cxx::CxxVector<ffi::TopoDS_Solid>) -> Vec<u64> {
+	// Every solid first, then every solid's faces in the same solid order.
+	let faces = solids.iter().flat_map(|s| ffi::solid_faces(s).iter().map(ffi::face_tshape_id).collect::<Vec<_>>());
+	solids.iter().map(ffi::solid_tshape_id).chain(faces).collect()
 }
 
 #[cfg(feature = "color")]
-fn write_color_trailer<W: Write>(compound: &CompoundShape, writer: &mut W) -> Result<(), Error> {
-	let id_to_index: std::collections::HashMap<u64, u32> = trailer_ids(compound.inner()).into_iter().enumerate().map(|(i, id)| (id, i as u32)).collect();
-	// `CompoundShape::decompose` gives every solid a clone of the merged colormap, so
-	// a solid carries its siblings' keys too; those have no index and drop out here.
-	let mut entries: Vec<(u32, f32, f32, f32)> = compound.colormap().iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
+fn write_color_trailer<W: Write>(solids: &[&Solid], vec: &cxx::CxxVector<ffi::TopoDS_Solid>, writer: &mut W) -> Result<(), Error> {
+	let id_to_index: std::collections::HashMap<u64, u32> = trailer_ids(vec).into_iter().enumerate().map(|(i, id)| (id, i as u32)).collect();
+	let colormap: std::collections::HashMap<u64, Color> = solids.iter().flat_map(|s| s.colormap().iter().map(|(&k, &v)| (k, v))).collect();
+	// `Solid::from_ffi` gives every solid a clone of the shared colormap, so a solid
+	// may carry keys of solids not written here; those have no index and drop out.
+	let mut entries: Vec<(u32, f32, f32, f32)> = colormap.iter().filter_map(|(id, rgb)| id_to_index.get(id).map(|&idx| (idx, rgb.r, rgb.g, rgb.b))).collect();
 	if entries.is_empty() {
 		return Ok(());
 	}
@@ -90,15 +89,15 @@ pub(super) fn read_step<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 		let mut rust_reader = RustReader::from_ref(reader);
 		let mut ids: Vec<u64> = Default::default();
 		let mut rgb: Vec<f32> = Default::default();
-		let inner = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("step: {}", e.what()))))?;
+		let solids = ffi::read_step_color_stream(&mut rust_reader, &mut ids, &mut rgb).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("step: {}", e.what()))))?;
 		let colormap: std::collections::HashMap<u64, Color> = ids.into_iter().zip(rgb.chunks_exact(3)).map(|(id, c)| (id, Color { r: c[0], g: c[1], b: c[2] })).collect();
-		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
+		Ok(Solid::from_ffi(&solids, &colormap, &[]))
 	}
 	#[cfg(not(feature = "color"))]
 	{
 		let mut rust_reader = RustReader::from_ref(reader);
-		let inner = ffi::read_step_stream(&mut rust_reader).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("step: {}", e.what()))))?;
-		Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
+		let solids = ffi::read_step_stream(&mut rust_reader).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("step: {}", e.what()))))?;
+		Ok(Solid::from_ffi(&solids, &[]))
 	}
 }
 
@@ -110,17 +109,17 @@ pub(super) fn read_brep<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 
 	// Payload length — where a trailer would begin. Unwritten, and unread, on error.
 	let mut consumed = 0usize;
-	let inner = ffi::read_brep_stream(&buf, &mut consumed).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("brep: {}", e.what()))))?;
+	let solids = ffi::read_brep_stream(&buf, &mut consumed).map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("brep: {}", e.what()))))?;
 
 	#[cfg(feature = "color")]
 	{
-		let ids = trailer_ids(&inner);
+		let ids = trailer_ids(&solids);
 		let colormap = read_color_trailer(buf.get(consumed..).unwrap_or_default()).into_iter().filter_map(|(idx, color)| ids.get(idx as usize).map(|&id| (id, color))).collect();
-		Ok(CompoundShape::from_raw(inner, colormap, Default::default()).decompose())
+		Ok(Solid::from_ffi(&solids, &colormap, &[]))
 	}
 	#[cfg(not(feature = "color"))]
 	{
-		Ok(CompoundShape::from_raw(inner, Default::default()).decompose())
+		Ok(Solid::from_ffi(&solids, &[]))
 	}
 }
 
@@ -129,35 +128,37 @@ pub(super) fn read_brep<R: Read>(reader: &mut R) -> Result<Vec<Solid>, Error> {
 /// With the `color` feature enabled, face colors are automatically embedded
 /// in the STEP file (XDE / AP214 styled items).
 pub(super) fn write_step<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
-	let compound = CompoundShape::new(solids);
+	let solids: Vec<&Solid> = solids.into_iter().collect();
+	let vec = Solid::to_ffi(solids.iter().copied());
 	#[cfg(feature = "color")]
 	{
-		let colormap = compound.colormap();
-		let mut ids: Vec<u64> = Vec::with_capacity(colormap.len());
-		let mut rgb: Vec<f32> = Vec::with_capacity(colormap.len() * 3);
-		for (&id, c) in colormap {
+		// A key repeated across solids is sent twice; C++ keeps the later one.
+		let mut ids: Vec<u64> = Vec::new();
+		let mut rgb: Vec<f32> = Vec::new();
+		for (&id, c) in solids.iter().flat_map(|s| s.colormap()) {
 			ids.push(id);
 			rgb.extend_from_slice(&[c.r, c.g, c.b]);
 		}
 		let mut rust_writer = RustWriter::from_ref(writer);
-		ffi::write_step_color_stream(compound.inner(), &ids, &rgb, &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("step: {}", e.what()))))
+		ffi::write_step_color_stream(&vec, &ids, &rgb, &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("step: {}", e.what()))))
 	}
 	#[cfg(not(feature = "color"))]
 	{
 		let mut rust_writer = RustWriter::from_ref(writer);
-		ffi::write_step_stream(compound.inner(), &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("step: {}", e.what()))))
+		ffi::write_step_stream(&vec, &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("step: {}", e.what()))))
 	}
 }
 
 pub(super) fn write_brep<'a, W: Write>(solids: impl IntoIterator<Item = &'a Solid>, writer: &mut W) -> Result<(), Error> {
-	let compound = CompoundShape::new(solids);
+	let solids: Vec<&Solid> = solids.into_iter().collect();
+	let vec = Solid::to_ffi(solids.iter().copied());
 	{
 		// Scoped: the streambuf flushes on drop, so the payload lands before the trailer.
 		let mut rust_writer = RustWriter::from_ref(writer);
-		ffi::write_brep_stream(compound.inner(), &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("brep: {}", e.what()))))?;
+		ffi::write_brep_stream(&vec, &mut rust_writer).map_err(|e| Error::Io(std::io::Error::other(format!("brep: {}", e.what()))))?;
 	}
 	#[cfg(feature = "color")]
-	write_color_trailer(&compound, writer)?;
+	write_color_trailer(&solids, &vec, writer)?;
 	Ok(())
 }
 
@@ -165,7 +166,6 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	use crate::common::mesh::Mesh;
 	use glam::DVec3;
 
-	#[cfg(feature = "color")]
 	let solids: Vec<&Solid> = solids.into_iter().collect();
 	// `Mesh` has only a face level, so a solid-level colour is expanded onto its faces
 	// here. STEP and the BRep trailer keep the distinction; the renderers cannot.
@@ -174,7 +174,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		let mut map = std::collections::HashMap::new();
 		for s in solids.iter().copied() {
 			if let Some(&c) = s.colormap().get(&s.id()) {
-				for f in ffi::shape_faces(s.inner()).iter() {
+				for f in ffi::solid_faces(s.inner()).iter() {
 					map.insert(ffi::face_tshape_id(f), c);
 				}
 			}
@@ -184,8 +184,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		map
 	};
 
-	let compound = CompoundShape::new(solids);
-	let data = ffi::mesh_shape(compound.inner(), options.deflection_linear, options.deflection_angular, options.relative_linear);
+	let data = ffi::mesh_shape(&Solid::to_ffi(solids.iter().copied()), options.deflection_linear, options.deflection_angular, options.relative_linear);
 	if !data.success {
 		return Err(Error::Tesselation);
 	}
@@ -200,7 +199,8 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	// surface triangulation only; edges use `deflection_linear` as an absolute
 	// chord here.
 	let mut edges: Vec<DVec3> = Vec::new();
-	for e in ffi::shape_edges(compound.inner()).iter() {
+	let solid_edges: Vec<_> = solids.iter().map(|s| ffi::solid_edges(s.inner())).collect();
+	for e in solid_edges.iter().flat_map(|v| v.iter()) {
 		let segs = ffi::edge_approximation_segments(e, options.deflection_linear, options.deflection_angular, options.relative_linear);
 		if segs.len() < 6 {
 			continue; // fewer than 2 points — nothing to draw
