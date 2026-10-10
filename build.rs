@@ -193,10 +193,6 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		build.flag(s);
 	});
 
-	// Mirror every enabled cargo feature as a FEATURE_<NAME> define so C++
-	for name in env::vars().filter_map(|kv| kv.0.strip_prefix("CARGO_FEATURE_").map(str::to_owned)) {
-		build.define(&format!("FEATURE_{name}"), None);
-	}
 	build.compile(&release_name(Some(target)));
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=src/ffi.h");

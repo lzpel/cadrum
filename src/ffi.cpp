@@ -2060,33 +2060,7 @@ void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writ
     if (!os.good()) throw std::runtime_error("stream write failed");
 }
 
-#ifndef FEATURE_COLOR
-// Plain STEP I/O — used only when FEATURE_COLOR is not defined.
-std::unique_ptr<std::vector<TopoDS_Solid>> read_step_stream(RustReader& reader) {
-    RustReadStreambuf sbuf(reader);
-    std::istream is(&sbuf);
-
-    STEPControl_Reader step_reader;
-    IFSelect_ReturnStatus status = step_reader.ReadStream("stream", is);
-
-    if (status != IFSelect_RetDone) throw std::runtime_error("STEPControl_Reader could not read the stream");
-
-    step_reader.TransferRoots(Message_ProgressRange());
-    return solids_of(try_sew_orphan_faces(step_reader.OneShape(), nullptr));
-}
-
-void write_step_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer) {
-    RustWriteStreambuf sbuf(writer);
-    std::ostream os(&sbuf);
-    STEPControl_Writer step_writer;
-    if (step_writer.Transfer(compound_of(solids), STEPControl_AsIs) != IFSelect_RetDone) throw std::runtime_error("STEPControl_Writer could not transfer the shape");
-    if (step_writer.WriteStream(os) != IFSelect_RetDone) throw std::runtime_error("STEPControl_Writer could not write the stream");
-}
-#endif // !FEATURE_COLOR
-
 } // namespace cadrum
-
-#ifdef FEATURE_COLOR
 
 #include <StepVisual_OverRidingStyledItem.hxx>
 #include <StepShape_ShapeRepresentation.hxx>
@@ -2365,4 +2339,3 @@ void write_step_color_stream(
 
 } // namespace cadrum
 
-#endif // FEATURE_COLOR

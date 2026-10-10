@@ -68,7 +68,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-cadrum = { path = "../..", default-features = false, features = ["color"] }
+cadrum = { path = "../..", default-features = false }
 
 # An empty [workspace] keeps this a standalone workspace root, without which cargo would ignore the
 # [profile] below. The optimizations only reach the Rust side -- the OCCT/libc++ archives are

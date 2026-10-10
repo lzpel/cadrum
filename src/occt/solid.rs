@@ -32,7 +32,6 @@ fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<c
 	(kind, ux, uy, uz, aux_vec)
 }
 
-#[cfg(feature = "color")]
 fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Solid, new_inner: &ffi::TopoDS_Solid, old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
 	let mut colormap = std::collections::HashMap::new();
 	let old_faces = ffi::solid_faces(old_inner);
@@ -66,7 +65,6 @@ pub struct Solid {
 	faces: OnceLock<Vec<Face>>,
 	/// Keyed by a face's TShape id, or by `Solid::id()` for the solid as a whole; a face
 	/// colour wins over the solid's. Other solids' keys may be present (`from_ffi`).
-	#[cfg(feature = "color")]
 	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
 	/// Face-derivation history from the most recent boolean operation.
 	///
@@ -86,15 +84,8 @@ pub struct Solid {
 
 impl Solid {
 	/// Create a `Solid` from a `TopoDS_Solid`.
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Solid>, #[cfg(feature = "color")] colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
-		Solid {
-			inner,
-			edges: OnceLock::new(),
-			faces: OnceLock::new(),
-			#[cfg(feature = "color")]
-			colormap,
-			history,
-		}
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Solid>, colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<u64>) -> Self {
+		Solid { inner, edges: OnceLock::new(), faces: OnceLock::new(), colormap, history }
 	}
 
 	// ==================== Internal accessors ====================
@@ -115,18 +106,13 @@ impl Solid {
 
 	/// Wrap the solids of one FFI result. Each gets a clone of the whole `colormap`
 	/// and the `history` pairs whose post face it owns.
-	pub(super) fn from_ffi(solids: &cxx::CxxVector<ffi::TopoDS_Solid>, #[cfg(feature = "color")] colormap: &std::collections::HashMap<u64, crate::common::color::Color>, history: &[u64]) -> Vec<Solid> {
+	pub(super) fn from_ffi(solids: &cxx::CxxVector<ffi::TopoDS_Solid>, colormap: &std::collections::HashMap<u64, crate::common::color::Color>, history: &[u64]) -> Vec<Solid> {
 		solids
 			.iter()
 			.map(|s| {
 				let local: std::collections::HashSet<u64> = ffi::solid_faces(s).iter().map(ffi::face_tshape_id).collect();
 				let history = history.chunks_exact(2).filter(|p| local.contains(&p[0])).flatten().copied().collect();
-				Solid::new(
-					ffi::clone_solid_handle(s),
-					#[cfg(feature = "color")]
-					colormap.clone(),
-					history,
-				)
+				Solid::new(ffi::clone_solid_handle(s), colormap.clone(), history)
 			})
 			.collect()
 	}
@@ -134,20 +120,17 @@ impl Solid {
 	// ==================== Color accessors ====================
 
 	/// Read-only access to the per-face colormap.
-	#[cfg(feature = "color")]
 	pub fn colormap(&self) -> &std::collections::HashMap<u64, crate::common::color::Color> {
 		&self.colormap
 	}
 
 	/// Mutable access to the per-face colormap.
-	#[cfg(feature = "color")]
 	pub fn colormap_mut(&mut self) -> &mut std::collections::HashMap<u64, crate::common::color::Color> {
 		&mut self.colormap
 	}
 
 	/// Carry face colours across `history` `[post_id, src_id]` pairs, and the solid's
 	/// own colour onto the new solid (shell/fillet/chamfer/clean).
-	#[cfg(feature = "color")]
 	fn remap_colormap(&self, new_inner: &ffi::TopoDS_Solid, history: &[u64]) -> std::collections::HashMap<u64, crate::common::color::Color> {
 		let mut colormap: std::collections::HashMap<u64, crate::common::color::Color> = history.chunks_exact(2).filter_map(|p| Some((p[0], *self.colormap.get(&p[1])?))).collect();
 		// `history` is a face→face relation and has no entry for the solid, whose
@@ -179,62 +162,32 @@ impl SolidStruct for Solid {
 
 	fn cube(corner0: DVec3, corner1: DVec3) -> Solid {
 		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn cylinder(r: f64, height: DVec3) -> Solid {
 		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length());
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn sphere(radius: f64) -> Solid {
 		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn cone(r1: f64, r2: f64, height: DVec3) -> Solid {
 		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length());
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn torus(r1: f64, r2: f64, axis: DVec3) -> Solid {
 		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
 		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		)
+		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	// ==================== Topology iteration ====================
@@ -262,23 +215,13 @@ impl SolidStruct for Solid {
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
 		let edges = loops_to_ffi(profile)?;
 		let shape = ffi::make_extrude(&edges, dir.x, dir.y, dir.z).map_err(|e| Error::Extrude(e.what().into()))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	fn revolve<'a>(profile: impl IntoIterator<Item = &'a Edge>, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
 		let edges = loops_to_ffi(profile)?;
 		let shape = ffi::make_revolve(&edges, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Shell ====================
@@ -290,14 +233,8 @@ impl SolidStruct for Solid {
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_thick_solid(&self.inner, &face_vec, thickness, &mut history).map_err(|e| Error::Shell(format!("thickness={thickness} incompatible with the geometry, or self-intersecting offset ({} open face(s)): {}", face_vec.len(), e.what())))?;
-		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			colormap,
-			history,
-		))
+		Ok(Solid::new(shape, colormap, history))
 	}
 
 	// ==================== Fillet / Chamfer ====================
@@ -309,14 +246,8 @@ impl SolidStruct for Solid {
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history).map_err(|e| Error::Fillet(format!("radius={radius} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
-		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			colormap,
-			history,
-		))
+		Ok(Solid::new(shape, colormap, history))
 	}
 
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
@@ -326,14 +257,8 @@ impl SolidStruct for Solid {
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history).map_err(|e| Error::Chamfer(format!("distance={distance} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
-		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&shape, &history);
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			colormap,
-			history,
-		))
+		Ok(Solid::new(shape, colormap, history))
 	}
 
 	// ==================== Sweep ====================
@@ -349,12 +274,7 @@ impl SolidStruct for Solid {
 		}
 		let (kind, ux, uy, uz, aux_vec) = encode_orient(orient);
 		let shape = ffi::make_pipe_shell(&profile_vec, &spine_vec, kind, ux, uy, uz, &aux_vec).map_err(|e| Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s)): {}", profile_vec.len(), spine_vec.len(), e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Loft / ThruSections ====================
@@ -388,12 +308,7 @@ impl SolidStruct for Solid {
 		}
 
 		let shape = ffi::make_loft(&all_edges, ruled).map_err(|e| Error::Loft(format!("loft: OCCT BRepOffsetAPI_ThruSections failed (sections={section_count}, ruled={ruled}): {}", e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Sew ====================
@@ -412,12 +327,7 @@ impl SolidStruct for Solid {
 			return Err(Error::Sew("sew: no faces given (need a face set forming one closed shell)".into()));
 		}
 		let shape = ffi::make_sewn_solid(&face_vec, tolerance).map_err(|e| Error::Sew(format!("sew: {count} faces do not form exactly one closed shell within tolerance {tolerance}: {}", e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Offset surface ====================
@@ -428,12 +338,7 @@ impl SolidStruct for Solid {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
 		}
 		let shape = ffi::make_offset(&self.inner, &face_vec, offset, tolerance).map_err(|e| Error::Offset(format!("offset: OCCT BRepOffset_MakeOffset failed (offset={offset}, tolerance={tolerance}): {}", e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Bspline ====================
@@ -454,12 +359,7 @@ impl SolidStruct for Solid {
 		}
 
 		let shape = ffi::make_bspline_solid(&coords, u as u32, v as u32, u_periodic).map_err(|e| Error::Bspline(format!("OCCT construction failed (u={u}, v={v}, u_periodic={u_periodic}): {}", e.what())))?;
-		Ok(Solid::new(
-			shape,
-			#[cfg(feature = "color")]
-			std::collections::HashMap::new(),
-			Default::default(),
-		))
+		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Clean ====================
@@ -467,14 +367,8 @@ impl SolidStruct for Solid {
 	fn clean(&self) -> Result<Self, Error> {
 		let mut history: Vec<u64> = Default::default();
 		let inner = ffi::builder_clean(&self.inner, &mut history).map_err(|e| Error::Clean(e.what().into()))?;
-		#[cfg(feature = "color")]
 		let colormap = self.remap_colormap(&inner, &history);
-		Ok(Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			colormap,
-			history,
-		))
+		Ok(Solid::new(inner, colormap, history))
 	}
 
 	// ==================== Boolean primitive ====================
@@ -487,17 +381,7 @@ impl SolidStruct for Solid {
 		// BRepBuilderAPI_Copy) と違い、各 face の id() が元と一致するため
 		// boolean 結果の history (post_id, src_id) を呼び出し側の face id と
 		// 照合できる。
-		let solids: Vec<Solid> = solids
-			.into_iter()
-			.map(|s| Solid {
-				inner: ffi::clone_solid_handle(&s.inner),
-				edges: OnceLock::new(),
-				faces: OnceLock::new(),
-				#[cfg(feature = "color")]
-				colormap: s.colormap.clone(),
-				history: s.history.clone(),
-			})
-			.collect();
+		let solids: Vec<Solid> = solids.into_iter().map(|s| Solid { inner: ffi::clone_solid_handle(&s.inner), edges: OnceLock::new(), faces: OnceLock::new(), colormap: s.colormap.clone(), history: s.history.clone() }).collect();
 		Boolean::from_parts(solids, clauses.into_iter().collect())
 	}
 	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error> {
@@ -512,7 +396,6 @@ impl SolidStruct for Solid {
 		let mut history: Vec<u64> = Default::default();
 		let result = ffi::builder_cells(&solid_vec, clauses, &mut history).map_err(|e| Error::Boolean(e.what().into()))?;
 
-		#[cfg(feature = "color")]
 		let colormap = {
 			let mut m = std::collections::HashMap::new();
 			for pair in history.chunks_exact(2) {
@@ -528,18 +411,10 @@ impl SolidStruct for Solid {
 
 		// No history carries a solid colour — the result volume descends from no single
 		// operand. Take the left operand's, as Fusion 360 does.
-		#[cfg(feature = "color")]
 		let solid_color = solids[0].colormap.get(&solids[0].id()).copied();
 
-		#[cfg_attr(not(feature = "color"), allow(unused_mut))]
-		let mut out = Solid::from_ffi(
-			&result,
-			#[cfg(feature = "color")]
-			&colormap,
-			&history,
-		);
+		let mut out = Solid::from_ffi(&result, &colormap, &history);
 		// Only now do the result solids exist, so only now can their ids be keyed.
-		#[cfg(feature = "color")]
 		if let Some(c) = solid_color {
 			for s in &mut out {
 				let id = s.id();
@@ -615,7 +490,6 @@ impl SolidStruct for Solid {
 
 	// ==================== Color ====================
 
-	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<crate::common::color::Color>) -> Self {
 		let c = color.into();
 		// Existing face colours are dropped: painting the whole solid is a statement
@@ -624,7 +498,6 @@ impl SolidStruct for Solid {
 		Self::new(self.inner, colormap, self.history)
 	}
 
-	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self {
 		Self::new(self.inner, std::collections::HashMap::new(), self.history)
 	}
@@ -639,22 +512,12 @@ impl Transform for Solid {
 		// changes, so cached edges/faces (which embed Location) would go stale.
 		// Solid::new gives a fresh OnceLock::new() cache matching the new Location.
 		// `history` is preserved because TShape* (= post_id) is unchanged.
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			self.colormap,
-			self.history,
-		)
+		Solid::new(inner, self.colormap, self.history)
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
 		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Solid::rotate: {}", e.what()));
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			self.colormap,
-			self.history,
-		)
+		Solid::new(inner, self.colormap, self.history)
 	}
 
 	// scale/mirror consume self for API consistency, but internally clone the geometry.
@@ -669,44 +532,26 @@ impl Transform for Solid {
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
 		let inner = ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Solid::scale: {}", e.what()));
-		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// scale/mirror rebuild topology via BRepBuilderAPI_Transform → post_ids
 		// in old `history` no longer exist. Drop history (caller must re-derive
 		// from a fresh boolean call).
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			colormap,
-			Default::default(),
-		)
+		Solid::new(inner, colormap, Default::default())
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
 		let inner = ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Solid::mirror: {}", e.what()));
-		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			colormap,
-			Default::default(),
-		)
+		Solid::new(inner, colormap, Default::default())
 	}
 }
 
 impl Clone for Solid {
 	fn clone(&self) -> Self {
 		let inner = ffi::deep_copy(&self.inner);
-		#[cfg(feature = "color")]
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// deep_copy rebuilds topology — post_ids in `history` no longer point
 		// to faces of the new shape. Drop history rather than remapping.
-		Solid::new(
-			inner,
-			#[cfg(feature = "color")]
-			colormap,
-			Default::default(),
-		)
+		Solid::new(inner, colormap, Default::default())
 	}
 }

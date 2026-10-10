@@ -119,7 +119,6 @@ fn test_chamfer_history_modifies_adjacent_identity_elsewhere() {
 
 /// color: fillet 後も Modified/identity 面が src 面の色を history 経由で引き継ぐ。面色を
 /// `colormap_mut` で直接置くのは、`Solid::color` がソリッド単位の色を塗るため。
-#[cfg(feature = "color")]
 #[test]
 fn test_fillet_carries_face_color_via_history() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");

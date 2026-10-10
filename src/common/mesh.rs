@@ -1,4 +1,3 @@
-#[cfg(feature = "color")]
 use super::color::Color;
 use glam::{DVec2, DVec3};
 use std::collections::HashMap;
@@ -20,7 +19,6 @@ pub struct Mesh {
 	/// Per-triangle face ID. Length equals `indices.len() / 3`.
 	pub face_ids: Vec<u64>,
 	/// Per-face color map (face_id → Color).
-	#[cfg(feature = "color")]
 	pub colormap: HashMap<u64, Color>,
 	/// Topological edge polylines, NaN-separated (same convention as
 	/// `Scene2D::edges_visible`): a single `DVec3::NAN` separates consecutive
@@ -112,10 +110,7 @@ impl Mesh {
 				}
 			}
 			// Attribute byte count — RGB555 color (SolidView/MeshLab convention)
-			#[cfg(feature = "color")]
 			let attr = self.colormap.get(&self.face_ids[ti]).map_or(0, Color::as_u16);
-			#[cfg(not(feature = "color"))]
-			let attr = 0u16;
 			writer.write_all(&attr.to_le_bytes())?;
 		}
 		Ok(())
@@ -125,10 +120,9 @@ impl Mesh {
 	/// このメッシュをバイナリ glTF (GLB) 形式で書き出す。
 	///
 	/// Emits a single mesh whose primitives are:
-	/// - triangles (`mode` TRIANGLES) carrying POSITION and NORMAL — with the
-	///   `color` feature, one primitive per distinct face color, each backed by a
-	///   lit metallic-roughness material (same-color faces share one material);
-	///   otherwise a single uncolored primitive on the glTF default material.
+	/// - triangles (`mode` TRIANGLES) carrying POSITION and NORMAL — one primitive
+	///   per distinct face color, each backed by a lit metallic-roughness material
+	///   (same-color faces share one material).
 	/// - edges (`mode` LINES, `extras: {"cadrum":"edges"}`) built from
 	///   `self.edges`, so viewers render the wireframe and `cadrum` readers can
 	///   identify it. POSITION only — a normal means nothing on a line.
@@ -229,7 +223,6 @@ impl Mesh {
 	///
 	/// `metallicFactor: 0` + `roughnessFactor: 1` is pure Lambertian diffuse, the
 	/// same shading model `Scene2D` uses for SVG / PNG.
-	#[cfg(feature = "color")]
 	fn gltf_triangle_groups(&self, materials: &mut Vec<String>) -> Vec<(Vec<u32>, Option<usize>)> {
 		const DEFAULT: [f32; 3] = [0.8667, 0.8667, 0.8667]; // 0xdd, matches scene fallback
 		let tri_count = self.indices.len() / 3;
@@ -252,17 +245,6 @@ impl Mesh {
 				(indices, Some(mat))
 			})
 			.collect()
-	}
-
-	/// Without the `color` feature: a single uncolored triangle group.
-	#[cfg(not(feature = "color"))]
-	fn gltf_triangle_groups(&self, _materials: &mut Vec<String>) -> Vec<(Vec<u32>, Option<usize>)> {
-		let indices: Vec<u32> = self.indices.iter().map(|&i| i as u32).collect();
-		if indices.is_empty() {
-			Vec::new()
-		} else {
-			vec![(indices, None)]
-		}
 	}
 
 	/// Expand the NaN-separated `edges` into a flat LINES position list plus a
@@ -461,7 +443,6 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 		};
 
 		let gray = 0xdd as f64 / 255.0;
-		#[cfg(feature = "color")]
 		let (base_r, base_g, base_b) = {
 			let face_id = mesh.face_ids[ti];
 			if let Some(c) = mesh.colormap.get(&face_id) {
@@ -470,8 +451,6 @@ fn project_and_sort_triangles(mesh: &Mesh, dir: DVec3, u: DVec3, v: DVec3, shadi
 				(gray, gray, gray)
 			}
 		};
-		#[cfg(not(feature = "color"))]
-		let (base_r, base_g, base_b) = (gray, gray, gray);
 
 		let color = [(base_r * shade * 255.0) as u8, (base_g * shade * 255.0) as u8, (base_b * shade * 255.0) as u8];
 

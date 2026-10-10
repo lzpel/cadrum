@@ -101,7 +101,6 @@
 //! - `type Foo;` などの associated type 宣言は無視される（メソッド生成対象外）
 
 use crate::common::boolean::Boolean;
-#[cfg(feature = "color")]
 use crate::common::color::Color;
 use crate::common::error::Error;
 use crate::common::mesh::Mesh;
@@ -555,10 +554,8 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// Colour the solid as a whole, dropping any per-face colours it carried: one entry
 	/// keyed by `self.id()`, which STEP and BRep keep and `Mesh` expands onto the faces.
 	/// A boolean result inherits it from the left operand alone.
-	#[cfg(feature = "color")]
 	fn color(self, color: impl Into<Color>) -> Self;
 	/// Drop this solid's colour and all of its per-face colours.
-	#[cfg(feature = "color")]
 	fn color_clear(self) -> Self;
 
 	/// Heal/regularize this solid (fuse coplanar faces, drop micro-edges,
