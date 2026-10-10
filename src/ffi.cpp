@@ -101,15 +101,10 @@
 #include <Precision.hxx>
 
 // --- I/O (BREP / STEP / progress) ---
-// STEP-specific headers are only needed by the non-color STEP path
-// (`read_step_stream` / `write_step_stream`); with color, STEP routes
-// through XCAF in the FEATURE_COLOR section below.
 #include <BinTools.hxx>
-#ifndef FEATURE_COLOR
 #include <STEPControl_Reader.hxx>
 #include <STEPControl_Writer.hxx>
 #include <Message_ProgressRange.hxx>
-#endif
 #include <Message.hxx>
 
 // --- C++ standard library ---
@@ -2093,50 +2088,100 @@ void write_step_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writ
 
 #ifdef FEATURE_COLOR
 
-#include <XCAFDoc_DocumentTool.hxx>
-#include <XCAFDoc_ShapeTool.hxx>
-#include <XCAFDoc_ColorTool.hxx>
-#include <STEPCAFControl_Reader.hxx>
-#include <STEPCAFControl_Writer.hxx>
-#include <TDocStd_Document.hxx>
-#include <TDF_ChildIterator.hxx>
-#include <NCollection_Sequence.hxx>
-#include <TDF_Label.hxx>
+#include <StepVisual_OverRidingStyledItem.hxx>
+#include <StepShape_ShapeRepresentation.hxx>
+#include <Transfer_TransientProcess.hxx>
+#include <Interface_Graph.hxx>
+#include <Interface_EntityIterator.hxx>
 #include <Quantity_Color.hxx>
+#include <NCollection_Sequence.hxx>
+#include <STEPControl_Controller.hxx>
+#include <STEPControl_ActorWrite.hxx>
+#include <STEPConstruct.hxx>
+#include <STEPConstruct_Styles.hxx>
+#include <STEPConstruct_RenderingProperties.hxx>
+#include <StepVisual_MechanicalDesignGeometricPresentationRepresentation.hxx>
+#include <StepVisual_StyledItem.hxx>
+#include <StepVisual_Colour.hxx>
+#include <StepRepr_RepresentationContext.hxx>
+#include <StepData_StepModel.hxx>
+#include <Transfer_FinderProcess.hxx>
+#include <Transfer_TransientListBinder.hxx>
+#include <TransferBRep.hxx>
+#include <TransferBRep_ShapeMapper.hxx>
+#include <XSControl_WorkSession.hxx>
+#include <XSControl_TransferWriter.hxx>
+#include <StepShape_ShapeDefinitionRepresentation.hxx>
+#include <StepRepr_PropertyDefinition.hxx>
+#include <StepBasic_ProductDefinition.hxx>
+#include <StepBasic_ProductDefinitionFormation.hxx>
+#include <StepBasic_Product.hxx>
+#include <TCollection_HAsciiString.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
+#include <NCollection_Map.hxx>
+#include <NCollection_DataMap.hxx>
+#include <TCollection_AsciiString.hxx>
+#include <optional>
 
 namespace cadrum {
 
-// Face and solid keys share one map: a TShape* is unique across shape types. Solid
-// color is NOT expanded onto faces — that would turn one STYLED_ITEM into N on write.
+// IsOverriden in STEPCAFControl_Reader.cxx: a root style yields only to another root style.
+static bool is_overridden(const Interface_Graph& graph, const Handle(StepVisual_StyledItem)& style, bool root)
+{
+    for (Interface_EntityIterator it = graph.Sharings(style); it.More(); it.Next()) {
+        Handle(StepVisual_OverRidingStyledItem) over = Handle(StepVisual_OverRidingStyledItem)::DownCast(it.Value());
+        if (over.IsNull()) continue;
+        if (!root) return true;
+        Handle(Standard_Transient) item = over->ItemAP242().Value();
+        if (!item.IsNull() && item->IsKind(STANDARD_TYPE(StepShape_ShapeRepresentation))) return true;
+    }
+    return false;
+}
+
+// SetStyle in STEPCAFControl_Reader.cxx reduced to surface colors, the only ones cadrum keeps.
+// Instances share their TShape with the part, so component styles need no instance lookup.
+static void paint(const STEPConstruct_Styles& styles, const Handle(StepVisual_StyledItem)& style,
+                  std::vector<std::pair<TopoDS_Shape, Quantity_Color>>& painted)
+{
+    if (style.IsNull()) return;
+    Handle(StepVisual_OverRidingStyledItem) over = Handle(StepVisual_OverRidingStyledItem)::DownCast(style);
+    if (!over.IsNull()) paint(styles, over->OverRiddenStyle(), painted);
+
+    Handle(StepVisual_Colour) surf, bound, curve;
+    STEPConstruct_RenderingProperties props;
+    bool component = false;
+    styles.GetColors(style, surf, bound, curve, props, component);
+    Quantity_Color color;
+    if (props.IsDefined()) color = props.GetRGBAColor().GetRGB();
+    else if (!surf.IsNull()) STEPConstruct_Styles::DecodeColor(surf, color);
+    else return;
+
+    const Handle(Transfer_TransientProcess)& tp = styles.TransientProcess();
+    int index = tp->MapIndex(style->ItemAP242().Value());
+    if (index <= 0) return;
+    TopoDS_Shape shape = TransferBRep::ShapeResult(tp->MapItem(index));
+    if (!shape.IsNull()) painted.emplace_back(shape, color);
+}
+
+// Face and solid keys share one map: a TShape* is unique across shape types. A color on a
+// compound reaches its solids unless a solid has its own; it is not expanded onto faces.
 static void collect_colors(
-    const Handle(TDocStd_Document)& doc,
-    const Handle(XCAFDoc_ColorTool)& colorTool,
+    const std::vector<std::pair<TopoDS_Shape, Quantity_Color>>& painted,
     std::unordered_map<uint64_t, std::array<float, 3>>& colorMap)
 {
-    for (TDF_ChildIterator it(doc->Main(), true); it.More(); it.Next()) {
-        const TDF_Label& label = it.Value();
-        if (!XCAFDoc_ShapeTool::IsShape(label)) continue;
-
-        TopoDS_Shape s = XCAFDoc_ShapeTool::GetShape(label);
-        if (s.IsNull()) continue;
-
-        // Surface style first, generic style as the fallback.
-        Quantity_Color color;
-        if (colorTool->GetColor(label, XCAFDoc_ColorSurf, color) ||
-            colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
-            if (s.ShapeType() == TopAbs_FACE) {
-                colorMap[reinterpret_cast<uint64_t>(s.TShape().get())] = {
-                    (float)color.Red(), (float)color.Green(), (float)color.Blue()};
-            } else {
-                // A label's shape may be a COMPOUND/COMPSOLID — an assembly, or a
-                // product of several bodies — which is a level STEP often styles.
-                for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
-                    colorMap[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = {
-                        (float)color.Red(), (float)color.Green(), (float)color.Blue()};
-                }
-            }
+    std::unordered_map<uint64_t, std::array<float, 3>> inherited;
+    for (const auto& [shape, color] : painted) {
+        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
+        TopAbs_ShapeEnum type = shape.ShapeType();
+        if (type == TopAbs_FACE || type == TopAbs_SOLID) {
+            colorMap[reinterpret_cast<uint64_t>(shape.TShape().get())] = rgb;
+            continue;
+        }
+        for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
+            inherited[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = rgb;
         }
     }
+    colorMap.insert(inherited.begin(), inherited.end());
 }
 
 std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
@@ -2144,37 +2189,34 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
     rust::Vec<uint64_t>& out_ids,
     rust::Vec<float>&    out_rgb)
 {
-    // Create XDE document directly — avoids XCAFApp_Application which
-    // pulls in visualization libs (TKXCAFPrs/TKTPrsStd) built with
-    // BUILD_MODULE_Visualization=OFF.  Handle<> ref-counts ownership.
-    Handle(TDocStd_Document) doc = new TDocStd_Document("XmlXCAF");
-
-    STEPCAFControl_Reader cafreader;
-    cafreader.SetColorMode(true);
-
+    STEPControl_Reader step_reader;
     RustReadStreambuf sbuf(reader);
     std::istream is(&sbuf);
-    if (cafreader.ReadStream("stream", is) != IFSelect_RetDone) throw std::runtime_error("STEPCAFControl_Reader could not read the stream");
-    if (!cafreader.Transfer(doc)) throw std::runtime_error("STEPCAFControl_Reader could not transfer to the document");
-
-    Handle(XCAFDoc_ShapeTool) shapeTool =
-        XCAFDoc_DocumentTool::ShapeTool(doc->Main());
-    Handle(XCAFDoc_ColorTool) colorTool =
-        XCAFDoc_DocumentTool::ColorTool(doc->Main());
-
-    // Collect all free shapes into a compound.
-    NCollection_Sequence<TDF_Label> roots;
-    shapeTool->GetFreeShapes(roots);
+    if (step_reader.ReadStream("stream", is) != IFSelect_RetDone) throw std::runtime_error("STEPControl_Reader could not read the stream");
+    step_reader.TransferRoots(Message_ProgressRange());
 
     BRep_Builder builder;
     TopoDS_Compound compound;
     builder.MakeCompound(compound);
-    for (int i = 1; i <= roots.Length(); i++) {
-        builder.Add(compound, shapeTool->GetShape(roots.Value(i)));
+    for (int i = 1; i <= step_reader.NbShapes(); i++) {
+        builder.Add(compound, step_reader.Shape(i));
+    }
+
+    // Root styles first, as leaf styles override them; a later style wins on the same shape.
+    std::vector<std::pair<TopoDS_Shape, Quantity_Color>> painted;
+    STEPConstruct_Styles styles(step_reader.WS());
+    if (styles.LoadStyles()) {
+        const Interface_Graph& graph = styles.Graph();
+        for (int i = 1; i <= styles.NbRootStyles(); i++) {
+            if (!is_overridden(graph, styles.RootStyle(i), true)) paint(styles, styles.RootStyle(i), painted);
+        }
+        for (int i = 1; i <= styles.NbStyles(); i++) {
+            if (!is_overridden(graph, styles.Style(i), false)) paint(styles, styles.Style(i), painted);
+        }
     }
 
     std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
-    collect_colors(doc, colorTool, colorMap);
+    collect_colors(painted, colorMap);
 
     // Recover Solids from disjoint shells / loose faces (#129); also remaps
     // colorMap keys for faces whose TShape* changed during sewing.
@@ -2201,6 +2243,83 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
     return solids_of(post);
 }
 
+// STEPCAFControl_ActorWrite with no registered assembly: a compound is never
+// split into an assembly, so the solids share one shape representation.
+class FlatActorWrite : public STEPControl_ActorWrite {
+public:
+    bool IsAssembly(const Handle(StepData_StepModel)&, TopoDS_Shape&) const override { return false; }
+};
+
+class FlatController : public STEPControl_Controller {
+public:
+    FlatController() { myAdaptorWrite = new FlatActorWrite; }
+};
+
+// Copy of FindEntities in STEPCAFControl_Writer.cxx: falls back to the pieces a
+// shape was split into during shape processing.
+static void find_entities(const Handle(Transfer_FinderProcess)& fp, const TopoDS_Shape& shape,
+                          NCollection_Sequence<Handle(StepRepr_RepresentationItem)>& items)
+{
+    TopLoc_Location loc;
+    Handle(StepRepr_RepresentationItem) item = STEPConstruct::FindEntity(fp, shape, loc);
+    if (!item.IsNull()) {
+        items.Append(item);
+        return;
+    }
+    Handle(Transfer_Binder) binder = fp->Find(TransferBRep::ShapeMapper(fp, shape));
+    if (binder.IsNull()) return;
+    Handle(Transfer_TransientListBinder) list = Handle(Transfer_TransientListBinder)::DownCast(binder);
+    if (list.IsNull()) {
+        for (TopoDS_Iterator it(shape); it.More(); it.Next()) {
+            Handle(StepRepr_RepresentationItem) sub = STEPConstruct::FindEntity(fp, it.Value(), loc);
+            if (!sub.IsNull()) items.Append(sub);
+        }
+        return;
+    }
+    for (int i = 1; i <= list->NbTransients(); i++) {
+        Handle(StepRepr_RepresentationItem) sub = Handle(StepRepr_RepresentationItem)::DownCast(list->Transient(i));
+        if (!sub.IsNull()) items.Append(sub);
+    }
+}
+
+struct StyleWriter {
+    STEPConstruct_Styles& styles;
+    const std::unordered_map<uint64_t, Quantity_Color>& colors;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    NCollection_DataMap<TCollection_AsciiString, Handle(Standard_Transient)> dpdcs;
+    NCollection_DataMap<gp_Pnt, Handle(Standard_Transient)> rgbs;
+
+    // MakeSTEPStyles in STEPCAFControl_Writer.cxx for a visible, non-component shape
+    // with surface colors only: a style on a solid overrides into its faces.
+    void walk(const TopoDS_Shape& shape, const Handle(StepVisual_StyledItem)& over, const Quantity_Color* inherit) {
+        if (!seen.Add(shape)) return;
+        std::optional<Quantity_Color> color;
+        if (inherit) color = *inherit;
+        TopAbs_ShapeEnum type = shape.ShapeType();
+        if (type == TopAbs_SOLID || type == TopAbs_FACE) {
+            auto it = colors.find(reinterpret_cast<uint64_t>(shape.TShape().get()));
+            if (it != colors.end()) color = it->second;
+        }
+        Handle(StepVisual_StyledItem) style = over;
+        bool own = color.has_value();
+        if (own && type != TopAbs_COMPOUND) {
+            Handle(StepVisual_Colour) surf = STEPConstruct_Styles::EncodeColor(*color, dpdcs, rgbs);
+            NCollection_Sequence<Handle(StepRepr_RepresentationItem)> items;
+            find_entities(styles.FinderProcess(), shape, items);
+            for (const Handle(StepRepr_RepresentationItem)& item : items) {
+                Handle(StepVisual_PresentationStyleAssignment) psa =
+                    styles.MakeColorPSA(item, surf, nullptr, STEPConstruct_RenderingProperties());
+                style = styles.AddStyle(item, psa, over);
+                own = false;
+            }
+        }
+        if (type == TopAbs_EDGE) return;
+        for (TopoDS_Iterator it(shape); it.More(); it.Next()) {
+            walk(it.Value(), style, own ? &*color : nullptr);
+        }
+    }
+};
+
 void write_step_color_stream(
     const std::vector<TopoDS_Solid>& solids,
     rust::Slice<const uint64_t>      ids,
@@ -2208,58 +2327,40 @@ void write_step_color_stream(
     RustWriter&                      writer)
 {
     TopoDS_Compound shape = compound_of(solids);
-    Handle(TDocStd_Document) doc = new TDocStd_Document("XmlXCAF");
-
-    Handle(XCAFDoc_ShapeTool) shapeTool =
-        XCAFDoc_DocumentTool::ShapeTool(doc->Main());
-    Handle(XCAFDoc_ColorTool) colorTool =
-        XCAFDoc_DocumentTool::ColorTool(doc->Main());
-
-    // Register the root shape.
-    TDF_Label rootLabel = shapeTool->AddShape(shape, false);
-
-    // One lookup for both levels: which explorer finds an id decides the level
-    // it is written at.
-    std::unordered_map<uint64_t, std::array<float, 3>> colorLookup;
+    std::unordered_map<uint64_t, Quantity_Color> colors;
     for (size_t i = 0; i < ids.size(); i++) {
-        colorLookup[ids[i]] = {rgb[3*i], rgb[3*i+1], rgb[3*i+2]};
+        colors[ids[i]] = Quantity_Color(rgb[3*i], rgb[3*i+1], rgb[3*i+2], Quantity_TOC_RGB);
     }
 
-    // Find/create the sub-shape label of `sub` and paint it.
-    auto set_color = [&](const TopoDS_Shape& sub, const std::array<float, 3>& c) {
-        TDF_Label label;
-        if (!shapeTool->FindSubShape(rootLabel, sub, label)) {
-            label = shapeTool->AddSubShape(rootLabel, sub);
-        }
-        Quantity_Color color(c[0], c[1], c[2], Quantity_TOC_RGB);
-        colorTool->SetColor(label, color, XCAFDoc_ColorSurf);
-    };
+    STEPControl_Writer step_writer;
+    Handle(XSControl_WorkSession) ws = step_writer.WS();
+    ws->SetController(new FlatController);
+    if (step_writer.Transfer(shape, STEPControl_AsIs, false) != IFSelect_RetDone) throw std::runtime_error("STEPControl_Writer could not transfer the shape");
+    ws->ComputeGraph(true);
 
-    // Solids first: a face style is the more specific one and must be set after.
-    for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
-        const TopoDS_Shape& solid = ex.Current();
-        auto it = colorLookup.find(
-            reinterpret_cast<uint64_t>(solid.TShape().get()));
-        if (it == colorLookup.end()) continue;
-        set_color(solid, it->second);
+    // XCAF names a shape label after its type, and STEPCAFControl_Writer writes that name to the product.
+    Handle(Transfer_FinderProcess) fp = ws->TransferWriter()->FinderProcess();
+    Handle(StepShape_ShapeDefinitionRepresentation) sdr;
+    if (fp->FindTypedTransient(TransferBRep::ShapeMapper(fp, shape), STANDARD_TYPE(StepShape_ShapeDefinitionRepresentation), sdr)) {
+        Handle(StepBasic_Product) product = sdr->Definition().PropertyDefinition()->Definition().ProductDefinition()->Formation()->OfProduct();
+        Handle(TCollection_HAsciiString) name = new TCollection_HAsciiString("COMPOUND");
+        product->SetId(name);
+        product->SetName(name);
     }
 
-    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
-        const TopoDS_Shape& face = ex.Current();
-        auto it = colorLookup.find(
-            reinterpret_cast<uint64_t>(face.TShape().get()));
-        if (it == colorLookup.end()) continue;
-        set_color(face, it->second);
+    STEPConstruct_Styles styles(ws);
+    Handle(StepRepr_RepresentationContext) context = styles.FindContext(shape);
+    if (!context.IsNull()) {
+        StyleWriter{styles, colors, {}, {}, {}}.walk(shape, nullptr, nullptr);
+        Handle(StepData_StepModel) model = step_writer.Model();
+        Handle(StepVisual_MechanicalDesignGeometricPresentationRepresentation) mdgpr;
+        if (styles.CreateMDGPR(context, mdgpr, model)) model->AddWithRefs(mdgpr);
     }
-
-    // Transfer XDE doc to STEP model and write to stream.
-    STEPCAFControl_Writer cafwriter;
-    cafwriter.SetColorMode(true);
-    if (!cafwriter.Transfer(doc)) throw std::runtime_error("STEPCAFControl_Writer could not transfer the document");
+    ws->ComputeGraph(true);
 
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
-    if (cafwriter.ChangeWriter().WriteStream(os) != IFSelect_RetDone) throw std::runtime_error("STEPCAFControl_Writer could not write the stream");
+    if (step_writer.WriteStream(os) != IFSelect_RetDone) throw std::runtime_error("STEPControl_Writer could not write the stream");
 }
 
 } // namespace cadrum
