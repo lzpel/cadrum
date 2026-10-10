@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_1";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev2";
+const BUILD_REVISION: &str = "rev3";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -137,36 +137,7 @@ fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>> {
 }
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
-const OCC_LIBS: &[&str] = &[
-	"TKernel",
-	"TKMath",
-	"TKBRep",
-	"TKTopAlgo",
-	"TKPrim",
-	"TKBO",
-	"TKBool",
-	"TKShHealing",
-	"TKMesh",
-	"TKGeomBase",
-	"TKGeomAlgo",
-	"TKG3d",
-	"TKG2d",
-	"TKBin",
-	"TKXSBase",
-	"TKDE",
-	"TKDECascade",
-	"TKOffset",
-	"TKFillet",
-	"TKDESTEP",
-	#[cfg(feature = "color")]
-	"TKLCAF",
-	#[cfg(feature = "color")]
-	"TKXCAF",
-	#[cfg(feature = "color")]
-	"TKCAF",
-	#[cfg(feature = "color")]
-	"TKCDF",
-];
+const OCC_LIBS: &[&str] = &["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim", "TKBO", "TKBool", "TKShHealing", "TKMesh", "TKGeomBase", "TKGeomAlgo", "TKG3d", "TKG2d", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKFillet", "TKDESTEP"];
 
 /// Apply target-conditional C++ compiler flags through `apply`, which forwards each flag
 /// to the concrete builder (`cc::Build::flag` for the wrapper, `cmake::Config::cxxflag` for
@@ -605,6 +576,13 @@ mod source {
 				} else {
 					None
 				}
+			}
+
+			// Drop the only TKXCAF symbol TKDESTEP's STEP path pulls in, so TKXCAF and its OCAF
+			// chain stay out of the link; cadrum never passes an XCAFDoc_VisMaterial.
+			"STEPConstruct_RenderingProperties.cxx" => {
+				let content = std::fs::read_to_string(path).ok()?;
+				Some(content.replace("Init(theMaterial->ConvertToCommonMaterial());", "// Init(theMaterial->ConvertToCommonMaterial());  // patched out by cadrum build.rs"))
 			}
 
 			_ => None,
