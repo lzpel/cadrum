@@ -1,5 +1,14 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.9.0
+
+- #305 Breaking: Remove the `color` feature; color support is always on and STEP has one write path
+- #304 Read and write colored STEP without XCAF; TKBin, TKLCAF, TKXCAF, TKCAF and TKCDF leave the link and the prebuilt (rev3)
+- #302 Pass TopoDS_Solid instead of TopoDS_Shape through the cxx bridge where the value is always a solid
+- #301 Run cargo test in CI on pushes to main and on pull requests
+- #298 Move book.toml into docs/
+- #297 Keep mdbook sources in docs/ and fill tagged blocks
+
 ### 0.8.20
 
 - #296 Fold the Moebius band into the sweep example, replacing the twisted ribbon; 16_multiview renumbered to 15_multiview
