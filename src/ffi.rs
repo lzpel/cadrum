@@ -32,7 +32,6 @@ mod ffi_bridge {
 		// ==================== Shape I/O (streambuf callback) ====================
 
 		// Plain STEP I/O — used only without `color` feature.
-		// With color, STEP goes through XCAF (`read_step_color_stream` etc.).
 		#[cfg(not(feature = "color"))]
 		fn read_step_stream(reader: &mut RustReader) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
 		#[cfg(not(feature = "color"))]
