@@ -3,12 +3,8 @@
 pub mod common;
 #[cfg(not(feature = "pure"))]
 pub mod occt;
-// The pure-Rust backend is not implemented yet (`src/pure.rs` does not exist).
-// Keep it commented out: an unresolved `mod pure` makes `cargo fmt` fail for
-// everyone (rustfmt resolves modules regardless of `cfg`). Re-enable once the
-// module exists.
-// #[cfg(feature = "pure")]
-// pub mod pure;
+#[cfg(feature = "pure")]
+pub mod pure;
 #[cfg(not(feature = "pure"))]
 pub use occt::{edge::Edge, face::Face, solid::Solid};
 pub(crate) mod traits;
