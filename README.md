@@ -139,13 +139,10 @@ statically, so no OpenCASCADE installation is needed. `make test` is an alias.
 | **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` |
 | **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep` / `Solid::write_brep` (BRep = OCCT's `BinTools` binary format) |
 | **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_gltf_binary`, `Mesh::scene` → `Scene2D`, `Scene2D::write_svg`, `Scene2D::write_png` *(png)*, `Solid::write_multiview_png` *(png)* |
-| **Color** *(feature `color`)* | per-face and per-solid color preserved across STEP / BRep / STL / glTF / SVG round-trips |
+| **Color** | per-face and per-solid color preserved across STEP / BRep / STL / glTF / SVG round-trips |
 
 ## Features
 
-- **`color`** *(default)*: Enables `Solid::color` and colormap propagation
-  through STEP / BRep / STL / glTF / SVG I/O via OCCT's XDE document model.
-  Disable for a smaller binary if shape color is irrelevant.
 - **`png`** *(default)*: PNG raster output — `Scene2D::write_png` and
   `Solid::write_multiview_png` — via the pure-Rust `tiny-skia` rasterizer.
   Disable to drop the `tiny-skia` dependency when SVG / STL / glTF output is
