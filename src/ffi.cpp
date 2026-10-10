@@ -2163,6 +2163,27 @@ static void paint(const STEPConstruct_Styles& styles, const Handle(StepVisual_St
     if (!shape.IsNull()) painted.emplace_back(shape, color);
 }
 
+// Face and solid keys share one map: a TShape* is unique across shape types. A color on a
+// compound reaches its solids unless a solid has its own; it is not expanded onto faces.
+static void collect_colors(
+    const std::vector<std::pair<TopoDS_Shape, Quantity_Color>>& painted,
+    std::unordered_map<uint64_t, std::array<float, 3>>& colorMap)
+{
+    std::unordered_map<uint64_t, std::array<float, 3>> inherited;
+    for (const auto& [shape, color] : painted) {
+        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
+        TopAbs_ShapeEnum type = shape.ShapeType();
+        if (type == TopAbs_FACE || type == TopAbs_SOLID) {
+            colorMap[reinterpret_cast<uint64_t>(shape.TShape().get())] = rgb;
+            continue;
+        }
+        for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
+            inherited[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = rgb;
+        }
+    }
+    colorMap.insert(inherited.begin(), inherited.end());
+}
+
 std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,
@@ -2194,21 +2215,8 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
         }
     }
 
-    // Face and solid keys share one map: a TShape* is unique across shape types. A color on a
-    // compound reaches its solids unless a solid has its own; it is not expanded onto faces.
-    std::unordered_map<uint64_t, std::array<float, 3>> colorMap, inherited;
-    for (const auto& [shape, color] : painted) {
-        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
-        TopAbs_ShapeEnum type = shape.ShapeType();
-        if (type == TopAbs_FACE || type == TopAbs_SOLID) {
-            colorMap[reinterpret_cast<uint64_t>(shape.TShape().get())] = rgb;
-            continue;
-        }
-        for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
-            inherited[reinterpret_cast<uint64_t>(ex.Current().TShape().get())] = rgb;
-        }
-    }
-    colorMap.insert(inherited.begin(), inherited.end());
+    std::unordered_map<uint64_t, std::array<float, 3>> colorMap;
+    collect_colors(painted, colorMap);
 
     // Recover Solids from disjoint shells / loose faces (#129); also remaps
     // colorMap keys for faces whose TShape* changed during sewing.
