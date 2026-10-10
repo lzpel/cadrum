@@ -31,11 +31,6 @@ mod ffi_bridge {
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
-		// Plain STEP I/O — used only without `color` feature.
-		#[cfg(not(feature = "color"))]
-		fn read_step_stream(reader: &mut RustReader) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
-		#[cfg(not(feature = "color"))]
-		fn write_step_stream(shape: &CxxVector<TopoDS_Solid>, writer: &mut RustWriter) -> Result<()>;
 		// `out_consumed` = payload length, where the color trailer begins. Written only
 		// when the returned pointer is non-null.
 		fn read_brep_stream(data: &[u8], out_consumed: &mut usize) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
@@ -57,12 +52,10 @@ mod ffi_bridge {
 
 		fn deep_copy(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
 
-		// ==================== Colored STEP I/O (color feature only) ====================
+		// ==================== STEP I/O ====================
 
-		#[cfg(feature = "color")]
 		fn read_step_color_stream(reader: &mut RustReader, out_ids: &mut Vec<u64>, out_rgb: &mut Vec<f32>) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
 
-		#[cfg(feature = "color")]
 		fn write_step_color_stream(shape: &CxxVector<TopoDS_Solid>, ids: &[u64], rgb: &[f32], writer: &mut RustWriter) -> Result<()>;
 
 		// ==================== Builders (solid → solid with history) ====================

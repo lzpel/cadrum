@@ -26,12 +26,6 @@ struct MeshData;
 
 // ==================== Shape I/O (streambuf callback) ====================
 
-// Plain STEP I/O — only built without FEATURE_COLOR; with color, STEP goes
-// through XCAF (`read_step_color_stream` etc.) instead.
-#ifndef FEATURE_COLOR
-std::unique_ptr<std::vector<TopoDS_Solid>> read_step_stream(RustReader& reader);
-void write_step_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer);
-#endif
 // `out_consumed` = length of the BinTools payload, where Rust's color trailer
 // begins. Written ONLY on success; a throw leaves it untouched.
 std::unique_ptr<std::vector<TopoDS_Solid>> read_brep_stream(
@@ -90,7 +84,7 @@ std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
 
 // Unify shared faces / collinear edges via ShapeUpgrade_UnifySameDomain.
 // `out_history` encodes how each old face maps onto the unified result.
-// Rust uses it to remap the colormap when the `color` feature is enabled.
+// Rust uses it to remap the colormap.
 std::unique_ptr<TopoDS_Solid> builder_clean(
     const TopoDS_Solid& shape,
     rust::Vec<uint64_t>& out_history);
@@ -413,12 +407,6 @@ bool face_project_point(const TopoDS_Face& face,
     double& cpx, double& cpy, double& cpz,
     double& nx, double& ny, double& nz);
 
-} // namespace cadrum
-
-#ifdef FEATURE_COLOR
-
-namespace cadrum {
-
 // ==================== Colored STEP I/O ====================
 
 // `out_ids` = TShape* of each colored sub-shape, `out_rgb` = flat [r,g,b,...] in
@@ -438,5 +426,3 @@ void write_step_color_stream(
     RustWriter&                      writer);
 
 } // namespace cadrum
-
-#endif // FEATURE_COLOR

@@ -1,4 +1,3 @@
-#[cfg(feature = "color")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
 	pub r: f32,
@@ -6,7 +5,6 @@ pub struct Color {
 	pub b: f32,
 }
 
-#[cfg(feature = "color")]
 impl std::str::FromStr for Color {
 	type Err = super::error::Error;
 
@@ -49,14 +47,12 @@ impl std::str::FromStr for Color {
 	}
 }
 
-#[cfg(feature = "color")]
 impl From<&str> for Color {
 	fn from(s: &str) -> Self {
 		s.parse().unwrap_or_else(|_| panic!("invalid color: {s:?} (expected a CSS name like \"red\" or hex like \"#f00\" / \"#ff0000\")"))
 	}
 }
 
-#[cfg(feature = "color")]
 impl Color {
 	/// Parse a hex color string like `"#ff8800"` or `"#f80"`.
 	///h

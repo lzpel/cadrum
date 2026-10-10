@@ -27,7 +27,6 @@ pub use wasi_stub::anchor as __anchor_wasi_stub;
 pub use traits::{BSplineEnd, ProfileOrient, Tessellation};
 
 // Re-export common types
-#[cfg(feature = "color")]
 pub use common::color::Color;
 pub use common::{
 	boolean::Boolean,
@@ -195,11 +194,9 @@ impl Solid {
 	pub fn bounding_box(&self) -> [DVec3; 2] {
 		<Self as crate::traits::SolidStruct>::bounding_box(self)
 	}
-	#[cfg(feature = "color")]
 	pub fn color(self, color: impl Into<Color>) -> crate::Solid {
 		<Self as crate::traits::SolidStruct>::color(self, color)
 	}
-	#[cfg(feature = "color")]
 	pub fn color_clear(self) -> crate::Solid {
 		<Self as crate::traits::SolidStruct>::color_clear(self)
 	}
