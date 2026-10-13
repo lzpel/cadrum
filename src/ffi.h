@@ -38,6 +38,17 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
+// `kind`, placement and `p1` / `p2` follow `face_surface`. The face covers
+// [u0, u1] x [v0, v1] of the surface's own parameters. Throws on an empty
+// range, a bad radius or angle, or an unknown kind.
+std::unique_ptr<TopoDS_Face> make_bounded_face(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2,
+    double u0, double u1, double v0, double v1);
+
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
     double x2, double y2, double z2);
