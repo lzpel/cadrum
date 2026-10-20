@@ -332,12 +332,12 @@ impl SolidStruct for Solid {
 
 	// ==================== Offset surface ====================
 
-	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>, tolerance: f64) -> Result<Self, Error> {
+	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>) -> Result<Self, Error> {
 		let mut face_vec = ffi::face_vec_new();
 		for f in faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
 		}
-		let shape = ffi::make_offset(&self.inner, &face_vec, offset, tolerance).map_err(|e| Error::Offset(format!("offset: OCCT BRepOffset_MakeOffset failed (offset={offset}, tolerance={tolerance}): {}", e.what())))?;
+		let shape = ffi::make_offset(&self.inner, &face_vec, offset).map_err(|e| Error::Offset(format!("offset: OCCT BRepOffset_MakeOffset failed (offset={offset}): {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 

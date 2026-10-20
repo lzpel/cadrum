@@ -1749,13 +1749,12 @@ std::unique_ptr<TopoDS_Solid> make_sewn_solid(
 std::unique_ptr<TopoDS_Solid> make_offset(
     const TopoDS_Solid& shape,
     const std::vector<TopoDS_Face>& faces,
-    double offset,
-    double tolerance)
+    double offset)
 {
     // Per-face offsets need the Intersection join; Arc rejects them.
     BRepOffset_MakeOffset offsetter;
     offsetter.Initialize(
-        shape, /*offset=*/ 0.0, tolerance,
+        shape, /*offset=*/ 0.0, /*tolerance=*/ 1.0e-6,
         /*mode=*/ BRepOffset_Skin,
         /*intersection=*/ true,
         /*selfInter=*/ false,
