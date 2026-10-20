@@ -127,9 +127,7 @@ fn test_fillet_carries_face_color_via_history() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
 	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let face_ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
-	for id in face_ids {
-		cube.colormap_mut().insert(id, red);
-	}
+	cube.colormap_mut().extend(face_ids.into_iter().map(|id| (id, red)));
 
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let filleted = cube.fillet_edges(0.5, [edge]).expect("fillet");
@@ -147,9 +145,7 @@ fn test_offset_carries_face_color_via_history() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
 	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let face_ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
-	for id in face_ids {
-		cube.colormap_mut().insert(id, red);
-	}
+	cube.colormap_mut().extend(face_ids.into_iter().map(|id| (id, red)));
 
 	let top = cube.iter_face().last().expect("cube has faces");
 	for (name, offset) in [("all faces", cube.offset(1.0, cube.iter_face()).expect("offset all")), ("top face", cube.offset(2.0, [top]).expect("offset top"))] {

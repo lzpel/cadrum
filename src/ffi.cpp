@@ -1742,9 +1742,8 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     if (!offsetter.IsDone()) throw std::runtime_error("BRepOffset_MakeOffset did not complete");
     TopoDS_Shape result = offsetter.Shape();
     if (result.IsNull()) throw std::runtime_error("BRepOffset_MakeOffset produced no shape");
-    // Offset faces are Generated, not Modified; MakeSolid below reuses them.
     std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(offsetter, shape, result, relay, BRepTools_History::TRelationType_Generated);
+    relay_from_builder(offsetter, shape, result, relay, BRepTools_History::TRelationType_Generated); // offset faces are Generated, not Modified; MakeSolid below reuses them
     relay_into_history(&relay, nullptr, out_history);
 
     if (result.ShapeType() == TopAbs_COMPOUND) {
