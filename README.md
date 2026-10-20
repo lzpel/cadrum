@@ -867,7 +867,7 @@ fn point(i: usize, j: usize) -> DVec3 {
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let plasma = Solid::bspline(M, N, true, point).expect("2-period bspline torus should succeed");
+	let plasma = Solid::bspline(M, N, true, true, point).expect("2-period bspline torus should succeed");
 	let objects = [plasma.color("cyan")];
 
 	Solid::write_step(&objects, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
