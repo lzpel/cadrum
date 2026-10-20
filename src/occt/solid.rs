@@ -345,22 +345,25 @@ impl SolidStruct for Solid {
 
 	// ==================== Bspline ====================
 
-	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error> {
-		if u < 2 || v < 3 {
-			return Err(Error::Bspline(format!("grid must be at least 2x3 (u={}, v={})", u, v)));
+	fn bspline(u: usize, v: usize, u_periodic: bool, v_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error> {
+		// The builder caps open U ends only, so a U-closed, V-open grid is transposed.
+		let swap = u_periodic && !v_periodic;
+		let (nu, nv, up, vp) = if swap { (v, u, false, true) } else { (u, v, u_periodic, v_periodic) };
+		if nu < 2 || nv < if vp { 3 } else { 2 } {
+			return Err(Error::Bspline(format!("grid is too small (u={u}, v={v}, u_periodic={u_periodic}, v_periodic={v_periodic})")));
 		}
 
 		let mut coords = Vec::with_capacity(3 * u * v);
-		for i in 0..u {
-			for j in 0..v {
-				let p = point(i, j);
+		for i in 0..nu {
+			for j in 0..nv {
+				let p = if swap { point(j, i) } else { point(i, j) };
 				coords.push(p.x);
 				coords.push(p.y);
 				coords.push(p.z);
 			}
 		}
 
-		let shape = ffi::make_bspline_solid(&coords, u as u32, v as u32, u_periodic).map_err(|e| Error::Bspline(format!("OCCT construction failed (u={u}, v={v}, u_periodic={u_periodic}): {}", e.what())))?;
+		let shape = ffi::make_bspline_solid(&coords, nu as u32, nv as u32, up, vp).map_err(|e| Error::Bspline(format!("OCCT construction failed (u={u}, v={v}, u_periodic={u_periodic}, v_periodic={v_periodic}): {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 

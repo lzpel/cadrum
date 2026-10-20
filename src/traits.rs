@@ -731,22 +731,24 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	where
 		Self::Face: 'a;
 
-	/// Build a B-spline surface solid from a 2D control-point grid.
+	/// Build a solid from a B-spline surface through a `u` × `v` grid of points.
 	///
-	/// `grid[i][j]` — index `i` (0..M) runs along the longitudinal (U) direction,
-	/// index `j` (0..N) runs along the cross-section (V) direction. V is always
-	/// periodic (the cross-section is a closed loop); U is periodic iff
-	/// `periodic=true`, producing a torus. When `periodic=false` the U-ends are
-	/// capped with planar faces, producing a pipe.
+	/// `point(i, j)` gives the grid for `i ∈ 0..u` and `j ∈ 0..v`. The surface
+	/// passes through every point (they are interpolated, not control points),
+	/// with uniform parameters and C^(degree-1) continuity across a periodic seam.
+	/// The periodic flags choose the solid:
+	/// - both periodic: the closed surface itself, such as a torus
+	/// - one periodic: a pipe, its open ends capped with planar faces (each end
+	///   loop must be planar)
+	/// - neither: the half-space on the side the normal `∂σ/∂u × ∂σ/∂v` points
+	///   to, like [`half_space`](Self::half_space) with a free-form boundary.
+	///   The patch is finite, so it must pass completely through any solid it
+	///   cuts; where a solid sticks out past its edge the boolean result is
+	///   meaningless (an intersection silently keeps the whole solid).
 	///
-	/// Internally builds a `Geom_BSplineSurface` via tensor-product periodic
-	/// curve interpolation: per-V-column then per-U-row `GeomAPI_Interpolate`
-	/// with explicit uniform parameters. Yields C^(degree-1) continuity at
-	/// both seams. The closure `point(i, j)` is called for `i ∈ 0..u`,
-	/// `j ∈ 0..v` to produce the M×N control grid, where `u` is the
-	/// toroidal direction (closed iff `u_periodic`) and `v` is the
-	/// cross-section direction (always closed).
-	fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error>;
+	/// Fails with [`Error::Bspline`] when the grid is too small (2 along an open
+	/// direction, 3 along a periodic one) or OCCT cannot build the surface.
+	fn bspline(u: usize, v: usize, u_periodic: bool, v_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error>;
 
 	// --- Boolean primitive (FFI への唯一の通路) ---
 	// Per-result-Solid face derivation history is attached to each Solid via

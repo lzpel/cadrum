@@ -387,7 +387,7 @@ std::unique_ptr<TopoDS_Solid> make_offset(
 std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     rust::Slice<const double> coords,
     uint32_t nu, uint32_t nv,
-    bool u_periodic);
+    bool u_periodic, bool v_periodic);
 
 // ==================== Face Methods ====================
 

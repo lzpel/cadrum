@@ -233,8 +233,8 @@ impl Solid {
 	pub fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::offset(self, offset, faces)
 	}
-	pub fn bspline(u: usize, v: usize, u_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {
-		<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, point)
+	pub fn bspline(u: usize, v: usize, u_periodic: bool, v_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<crate::Solid, Error> {
+		<Self as crate::traits::SolidStruct>::bspline(u, v, u_periodic, v_periodic, point)
 	}
 	pub fn boolean<'a>(solids: impl IntoIterator<Item = &'a crate::Solid>, clauses: impl IntoIterator<Item = i64>) -> Boolean<crate::Solid> {
 		<Self as crate::traits::SolidStruct>::boolean(solids, clauses)

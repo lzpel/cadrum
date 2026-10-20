@@ -1778,10 +1778,10 @@ std::unique_ptr<TopoDS_Solid> make_offset(
 std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     rust::Slice<const double> coords,
     uint32_t nu, uint32_t nv,
-    bool u_periodic)
+    bool u_periodic, bool v_periodic)
 {
     if (coords.size() != static_cast<size_t>(nu) * nv * 3) throw std::runtime_error("coordinate count does not match the grid");
-    if (nu < 2 || nv < 3) throw std::runtime_error("grid must be at least 2x3");
+    if (nu < 2 || nv < (v_periodic ? 3u : 2u)) throw std::runtime_error("grid is too small");
 
     // Tensor-product truly-periodic interpolation (#120).
     //
@@ -1812,10 +1812,10 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     for (int k = 0; k < u_param_count; ++k) {
         u_params->SetValue(k + 1, static_cast<double>(k) / static_cast<double>(nu));
     }
-    Handle(HRealArray) v_params = new HRealArray(1, static_cast<int>(nv + 1));
-    for (uint32_t k = 0; k <= nv; ++k) {
-        v_params->SetValue(static_cast<int>(k) + 1,
-                           static_cast<double>(k) / static_cast<double>(nv));
+    const int v_param_count = static_cast<int>(v_periodic ? nv + 1 : nv);
+    Handle(HRealArray) v_params = new HRealArray(1, v_param_count);
+    for (int k = 0; k < v_param_count; ++k) {
+        v_params->SetValue(k + 1, static_cast<double>(k) / static_cast<double>(nv));
     }
 
     // Stage 1: per-V-column interpolation along U with uniform params.
@@ -1857,7 +1857,7 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
         for (uint32_t j = 0; j < nv; ++j) {
             row->SetValue(static_cast<int>(j) + 1, intermediate(i, static_cast<int>(j) + 1));
         }
-        GeomAPI_Interpolate interp(row, v_params, /*periodic=*/true, tol);
+        GeomAPI_Interpolate interp(row, v_params, v_periodic, tol);
         interp.Perform();
         if (!interp.IsDone()) throw std::runtime_error("GeomAPI_Interpolate did not complete along V");
         v_curves.push_back(interp.Curve());
@@ -1883,7 +1883,7 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
         u_mults, v_mults,
         u_degree, v_degree,
         /*UPeriodic=*/u_periodic,
-        /*VPeriodic=*/true);
+        /*VPeriodic=*/v_periodic);
     if (surface.IsNull()) throw std::runtime_error("Geom_BSplineSurface construction failed");
 
     // Side face spans the full parametric domain.
@@ -1892,6 +1892,19 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     BRepBuilderAPI_MakeFace face_maker(surface, Precision::Confusion());
     if (!face_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeFace did not complete");
     TopoDS_Face side_face = face_maker.Face();
+
+    // Open in both directions: the solid is the side the normal du x dv points to.
+    if (!u_periodic && !v_periodic) {
+        gp_Pnt p;
+        gp_Vec du, dv;
+        surface->D1((u1 + u2) / 2, (v1 + v2) / 2, p, du, dv);
+        gp_Vec n = du.Crossed(dv);
+        if (n.Magnitude() < tol) throw std::runtime_error("degenerate normal at the middle of the surface");
+        Bnd_Box box;
+        BRepBndLib::Add(side_face, box);
+        BRepPrimAPI_MakeHalfSpace maker(side_face, p.Translated(n.Normalized() * (1e-3 * std::sqrt(box.SquareExtent()))));
+        return std::make_unique<TopoDS_Solid>(maker.Solid());
+    }
 
     BRepBuilderAPI_Sewing sewing(1.0e-3);
     sewing.Add(side_face);
@@ -1944,13 +1957,7 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
     TopoDS_Solid solid = solid_maker.Solid();
 
-    // Ensure outward-facing orientation.
-    BRepClass3d_SolidClassifier classifier(
-        solid, gp_Pnt(0, 0, 0), Precision::Confusion());
-    if (classifier.State() == TopAbs_IN) {
-        solid.Reverse();
-    }
-
+    BRepLib::OrientClosedSolid(solid);
     return std::make_unique<TopoDS_Solid>(solid);
 }
 
