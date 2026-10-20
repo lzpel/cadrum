@@ -337,7 +337,7 @@ impl SolidStruct for Solid {
 		for f in faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
 		}
-		let shape = ffi::make_offset(&self.inner, &face_vec, offset).map_err(|e| Error::Offset(format!("offset: OCCT BRepOffset_MakeOffset failed (offset={offset}): {}", e.what())))?;
+		let shape = ffi::make_offset(&self.inner, &face_vec, offset, Edge::precision_distance()).map_err(|e| Error::Offset(format!("offset: OCCT BRepOffset_MakeOffset failed (offset={offset}): {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
