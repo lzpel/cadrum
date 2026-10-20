@@ -17,7 +17,7 @@ fn test_offset_01_sphere_outward_volume_matches_analytical() {
 	let (r, t) = (2.0, 0.5);
 	let sphere = Solid::sphere(r);
 
-	let grown = sphere.offset(t, sphere.iter_face(), 1.0e-6).expect("outward sphere offset should succeed");
+	let grown = sphere.offset(t, sphere.iter_face()).expect("outward sphere offset should succeed");
 
 	let expected = 4.0 / 3.0 * PI * (r + t).powi(3);
 	let rel_err = (grown.volume() - expected).abs() / expected;
@@ -35,7 +35,7 @@ fn test_offset_01_sphere_outward_volume_matches_analytical() {
 fn test_offset_02_sphere_inward_volume_matches_analytical() {
 	let (r, t) = (2.0, -0.5);
 	let sphere = Solid::sphere(r);
-	let shrunk = sphere.offset(t, sphere.iter_face(), 1.0e-6).expect("inward sphere offset should succeed");
+	let shrunk = sphere.offset(t, sphere.iter_face()).expect("inward sphere offset should succeed");
 
 	let expected = 4.0 / 3.0 * PI * (r + t).powi(3);
 	let rel_err = (shrunk.volume() - expected).abs() / expected;
@@ -49,7 +49,7 @@ fn test_offset_03_cube_outward_volume_matches_analytical() {
 	let (a, t) = (2.0, 0.5);
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
 
-	let grown = cube.offset(t, cube.iter_face(), 1.0e-6).expect("outward cube offset should succeed");
+	let grown = cube.offset(t, cube.iter_face()).expect("outward cube offset should succeed");
 
 	// Intersection join: 隣接面が延長交差して角が保たれ、一辺 a+2t の立方体になる
 	let expected = (a + 2.0 * t).powi(3);
@@ -65,7 +65,7 @@ fn test_offset_04_thin_plate_inward_returns_offset_failed() {
 	// (doc コメントに記載の thin-feature 失敗モード)
 	let plate = Solid::cube(DVec3::ZERO, DVec3::new(10.0, 10.0, 0.4));
 
-	let result = plate.offset(-0.5, plate.iter_face(), 1.0e-6);
+	let result = plate.offset(-0.5, plate.iter_face());
 	match result {
 		Err(Error::Offset(msg)) => assert!(msg.contains("offset"), "got: {}", msg),
 		Err(other) => panic!("expected Error::Offset, got {:?}", other),
@@ -82,7 +82,7 @@ fn test_offset_05_top_face_pad_extends_prism() {
 	let top: Vec<&Face> = cube.iter_face().filter(|f| f.project(DVec3::splat(5.0)).0.z > 9.9).collect();
 	assert_eq!(top.len(), 1);
 
-	let padded = cube.offset(5.0, top, 1.0e-6).expect("padding the top face should succeed");
+	let padded = cube.offset(5.0, top).expect("padding the top face should succeed");
 	assert!((padded.volume() - 1500.0).abs() < 1.0e-6, "volume {:.6} must be 10*10*15", padded.volume());
 	let bbox = padded.bounding_box();
 	assert!((bbox[0] - DVec3::ZERO).length() < 1.0e-6 && (bbox[1] - DVec3::new(10.0, 10.0, 15.0)).length() < 1.0e-6, "bbox must be the padded prism, got {:?}", bbox);

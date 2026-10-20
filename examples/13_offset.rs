@@ -10,8 +10,8 @@ fn main() -> Result<(), cadrum::Error> {
 	let part = (&block - &hole).build()?.color("#4a90d9");
 
 	// offset > 0 grows outward (hole tightens), offset < 0 shrinks inward (hole widens).
-	let grown = part.offset(3.0, part.iter_face(), 1.0e-6)?.translate(-DVec3::X * 50.0).color("#e67e22");
-	let shrunk = part.offset(-3.0, part.iter_face(), 1.0e-6)?.translate(DVec3::X * 50.0).color("#2ecc71");
+	let grown = part.offset(3.0, part.iter_face())?.translate(-DVec3::X * 50.0).color("#e67e22");
+	let shrunk = part.offset(-3.0, part.iter_face())?.translate(DVec3::X * 50.0).color("#2ecc71");
 
 	let solids = [grown, part, shrunk];
 	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;

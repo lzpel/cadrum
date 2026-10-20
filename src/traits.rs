@@ -722,13 +722,12 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// (`offset > 0` outward, `offset < 0` inward); neighbours are extended or
 	/// trimmed to follow, so convex edges stay sharp (join=Intersection).
 	/// `self.iter_face()` offsets every face — the mold/tooling primitive;
-	/// a subset is direct-modeling push-pull. `tolerance` is the working
-	/// precision (`1e-6` suits millimeter scale).
+	/// a subset is direct-modeling push-pull.
 	///
 	/// Fails with [`Error::Offset`] when the offset self-intersects: an inward
 	/// offset reaching half the local wall thickness, or a concave slot
 	/// narrower than `2·offset` pinching shut.
-	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Self::Face>, tolerance: f64) -> Result<Self, Error>
+	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Self::Face>) -> Result<Self, Error>
 	where
 		Self::Face: 'a;
 
