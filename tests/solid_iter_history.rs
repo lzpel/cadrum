@@ -138,6 +138,24 @@ fn test_fillet_carries_face_color_via_history() {
 	}
 }
 
+/// offset は全面でも一部の面でも、結果の全 face が history 経由で元の色を継ぐ。
+#[test]
+fn test_offset_carries_face_color_via_history() {
+	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
+	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let face_ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
+	for id in face_ids {
+		cube.colormap_mut().insert(id, red);
+	}
+
+	let top = cube.iter_face().last().expect("cube has faces");
+	for (name, offset) in [("all faces", cube.offset(1.0, cube.iter_face()).expect("offset all")), ("top face", cube.offset(2.0, [top]).expect("offset top"))] {
+		let post: Vec<u64> = offset.iter_face().map(|f| f.id()).collect();
+		assert!(offset.iter_history().all(|[p, _]| post.contains(&p)), "{name}: history names a face outside the result");
+		assert!(post.iter().all(|id| offset.colormap().get(id) == Some(&red)), "{name}: every face should inherit red");
+	}
+}
+
 /// boolean が複数ピースに割れたとき、各ピースの history は自分の face だけを
 /// `post_id` に持つ（兄弟ピースの由来を主張しない）。
 #[test]

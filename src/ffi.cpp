@@ -1750,7 +1750,8 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     const TopoDS_Solid& shape,
     const std::vector<TopoDS_Face>& faces,
     double offset,
-    double tolerance)
+    double tolerance,
+    rust::Vec<uint64_t>& out_history)
 {
     // Per-face offsets need the Intersection join; Arc rejects them.
     BRepOffset_MakeOffset offsetter;
@@ -1763,6 +1764,17 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     for (const TopoDS_Face& f : faces) offsetter.SetOffsetOnFace(f, offset);
     offsetter.MakeOffsetShape();
     if (!offsetter.IsDone()) throw std::runtime_error("BRepOffset_MakeOffset did not complete");
+    // BRepOffset_MakeOffset reports offset faces as Generated, not Modified;
+    // MakeSolid below reuses them, so relay keys are final faces.
+    std::unordered_map<uint64_t, uint64_t> relay;
+    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+        uint64_t src_id = reinterpret_cast<uint64_t>(ex.Current().TShape().get());
+        const NCollection_List<TopoDS_Shape>& gens = offsetter.Generated(ex.Current());
+        for (NCollection_List<TopoDS_Shape>::Iterator it(gens); it.More(); it.Next()) {
+            relay[reinterpret_cast<uint64_t>(it.Value().TShape().get())] = src_id;
+        }
+    }
+    relay_into_history(&relay, nullptr, out_history);
     TopoDS_Shape result = offsetter.Shape();
     if (result.IsNull()) throw std::runtime_error("BRepOffset_MakeOffset produced no shape");
 

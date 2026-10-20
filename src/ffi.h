@@ -375,7 +375,8 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     const TopoDS_Solid& shape,
     const std::vector<TopoDS_Face>& faces,
     double offset,
-    double tolerance);
+    double tolerance,
+    rust::Vec<uint64_t>& out_history);
 
 // Build a B-spline surface solid from a 2D point grid.
 // `coords` is a flat array of xyz triples, length = 3 * nu * nv.
