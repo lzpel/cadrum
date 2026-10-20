@@ -125,6 +125,9 @@ impl Edge {
 }
 impl Face {
 	////////// codegen.rs
+	pub fn face(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<crate::Face, Error> {
+		<Self as crate::traits::FaceStruct>::face(surface, u, v)
+	}
 	pub fn id(&self) -> u64 {
 		<Self as crate::traits::FaceStruct>::id(self)
 	}

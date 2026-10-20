@@ -32,6 +32,10 @@
 #include <gp_Torus.hxx>
 #include <gp_Trsf.hxx>
 #include <Geom_CylindricalSurface.hxx>
+#include <Geom_Plane.hxx>
+#include <Geom_ConicalSurface.hxx>
+#include <Geom_SphericalSurface.hxx>
+#include <Geom_ToroidalSurface.hxx>
 #include <Geom2d_Line.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 
@@ -181,6 +185,40 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
 
     BRepPrimAPI_MakeHalfSpace maker(face, ref_point);
     return std::make_unique<TopoDS_Solid>(maker.Solid());
+}
+
+std::unique_ptr<TopoDS_Face> make_face(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2,
+    double u0, double u1, double v0, double v1)
+{
+    if (!(u1 > u0) || !(v1 > v0)) throw std::runtime_error("empty parameter range");
+    // OCCT only rejects negative radii; a zero one gives a face with no area.
+    const bool has_radius = kind != 1 && kind != 3;
+    if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
+    if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
+    // Same placement and kind codes as face_surface, so a face round-trips through it.
+    const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
+    Handle(Geom_Surface) surface;
+    switch (kind) {
+        case 1: surface = new Geom_Plane(pos); break;
+        case 2: surface = new Geom_CylindricalSurface(pos, p1); break;
+        case 3:
+            surface = new Geom_ConicalSurface(pos, p2, p1);
+            // STEP measures a cone's v along the axis, OCCT along the generatrix.
+            v0 /= std::cos(p2);
+            v1 /= std::cos(p2);
+            break;
+        case 4: surface = new Geom_SphericalSurface(pos, p1); break;
+        case 5: surface = new Geom_ToroidalSurface(pos, p1, p2); break;
+        default: throw std::runtime_error("unknown surface kind");
+    }
+    BRepBuilderAPI_MakeFace maker(surface, u0, u1, v0, v1, Precision::Confusion());
+    if (!maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeFace did not complete");
+    return std::make_unique<TopoDS_Face>(maker.Face());
 }
 
 std::unique_ptr<TopoDS_Solid> make_box(
