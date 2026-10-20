@@ -446,8 +446,8 @@ pub trait FaceStruct: Sized + Debug {
 	/// `u` and `v` are the surface's own parameters, as in STEP:
 	/// - plane: lengths along `axis_x` and `axis_z x axis_x`
 	/// - cylinder: angle about `axis_z` from `axis_x`, and height along `axis_z`
-	/// - cone: angle as for the cylinder, and distance from the reference
-	///   circle along the generatrix (`radius` 0 puts it at `origin`, the apex)
+	/// - cone: angle as for the cylinder, and height along `axis_z` from the
+	///   reference circle (`radius` 0 puts it at `origin`, the apex)
 	/// - sphere: longitude as for the cylinder, and latitude from the equator
 	///   in `-PI/2..=PI/2`
 	/// - torus: the angle round `axis_z`, and the angle round the tube

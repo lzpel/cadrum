@@ -9,7 +9,7 @@
 
 use cadrum::{Error, Face, Solid, Surface, SurfaceKind};
 use glam::DVec3;
-use std::f64::consts::{FRAC_PI_2, PI, TAU};
+use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI, SQRT_2, TAU};
 
 const REL: f64 = 1e-9;
 
@@ -49,14 +49,12 @@ fn cylinder_partial_turn_covers_its_fraction() {
 }
 
 #[test]
-fn cone_band_is_measured_along_the_generatrix() {
-	let a = 0.4_f64;
-	let f = Face::face(&at_origin(SurfaceKind::Cone { radius: 0.0, semi_angle: a }), [0.0, TAU], [1.0, 3.0]).unwrap();
-	assert_close(f.area(), PI * a.sin() * (9.0 - 1.0), "area");
-	match f.surface().unwrap().kind {
-		SurfaceKind::Cone { radius, semi_angle } => assert!(radius.abs() < 1e-9 && (semi_angle - a).abs() < 1e-12, "{radius} {semi_angle}"),
-		other => panic!("{other:?}"),
-	}
+fn cone_band_is_measured_along_the_axis() {
+	// at 45 degrees, heights 1..3 are radii 1..3 and a slant of 2 sqrt 2
+	let kind = SurfaceKind::Cone { radius: 0.0, semi_angle: FRAC_PI_4 };
+	let f = Face::face(&at_origin(kind), [0.0, TAU], [1.0, 3.0]).unwrap();
+	assert_close(f.area(), PI * (1.0 + 3.0) * 2.0 * SQRT_2, "area");
+	assert_eq!(f.surface().unwrap().kind, kind);
 }
 
 #[test]

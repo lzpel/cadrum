@@ -39,8 +39,9 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double nx, double ny, double nz);
 
 // `kind`, placement and `p1` / `p2` follow `face_surface`. The face covers
-// [u0, u1] x [v0, v1] of the surface's own parameters. Throws on an empty
-// range, a bad radius or angle, or an unknown kind.
+// [u0, u1] x [v0, v1] of the surface's STEP parameters (a cone's v is a
+// height along its axis). Throws on an empty range, a bad radius or angle,
+// or an unknown kind.
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
