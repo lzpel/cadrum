@@ -493,9 +493,8 @@ std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
     cb.RemoveInternalBoundaries();
 
     std::unordered_map<uint64_t, uint64_t> relay1, relay2;
-    for (const auto& s : solids) {
-        relay_from_builder(cb, s, cb.Shape(), relay1, BRepTools_History::TRelationType_Modified);
-    }
+    // One call over all operands maps cb.Shape()'s faces once, not once per operand.
+    relay_from_builder(cb, compound_of(solids), cb.Shape(), relay1, BRepTools_History::TRelationType_Modified);
 
     BRepBuilderAPI_Copy copier(cb.Shape(), true, false);
     relay_from_pair(cb.Shape(), copier.Shape(), relay2);
