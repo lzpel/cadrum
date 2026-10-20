@@ -440,9 +440,8 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 pub trait FaceStruct: Sized + Debug {
 	type Edge: EdgeStruct;
 
-	/// The part of `surface` over the parameter rectangle `u` x `v`, as one
-	/// bounded face. The inverse of [`surface`](Self::surface): a face built here
-	/// reports the same `Surface` back.
+	/// The part of `surface` over the parameter rectangle `u` x `v`, as one face.
+	/// The inverse of Self::surface: a face built here reports the same `Surface` back.
 	///
 	/// `u` and `v` are the surface's own parameters, as in STEP:
 	/// - plane: lengths along `axis_x` and `axis_z x axis_x`
@@ -457,7 +456,7 @@ pub trait FaceStruct: Sized + Debug {
 	/// Fails with `Error::Validation` on an empty range (`u[1] <= u[0]`), or on
 	/// a surface that cannot be built: a non-positive radius (a cone's `radius`
 	/// may be 0), or a cone angle of 0 or beyond a right angle.
-	fn bounded(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<Self, Error>;
+	fn face(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<Self, Error>;
 
 	/// Stable, backend-defined identity for this face. Two `Face` values
 	/// returning the same `id()` refer to the same topology element. Used

@@ -187,7 +187,7 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     return std::make_unique<TopoDS_Solid>(maker.Solid());
 }
 
-std::unique_ptr<TopoDS_Face> make_bounded_face(
+std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
