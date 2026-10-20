@@ -375,19 +375,6 @@ static TopoDS_Shape try_sew_orphan_faces(
 }
 
 // ==================== Builders (solid → solid with history) ====================
-// Bug 1 fix: All boolean results are deep-copied via BRepBuilderAPI_Copy
-// so the result shares no Handle<Geom_XXX> with the input shapes.
-// This prevents STATUS_HEAP_CORRUPTION when shapes are dropped in any order.
-//
-// Cross-section face collection: Modified() is called BEFORE BRepBuilderAPI_Copy
-// because the copy severs the history table. Each collected face is then
-// individually deep-copied so it is independent of the operator object.
-//
-// Why Modified() and not Generated():
-//   The cross-section face is the tool's boundary face trimmed (bounded) to fit
-//   inside the shape operand.  OCCT records this as Modified(tool_face) because
-//   the face still represents the same plane — it just has smaller bounds.
-//   Generated(tool_face) returns empty because no wholly NEW face was created.
 //
 // out_history is built from composable relay maps shared by boolean (copy-based)
 // and shell/fillet/chamfer (no copy):
@@ -397,26 +384,25 @@ static TopoDS_Shape try_sew_orphan_faces(
 // relay_into_history emits only the outermost map's keys (the real result
 // faces), so no bogus pre/src-only ids leak in.
 
-// {result/pre → src}: Modified() empty ⇒ identity, else each split target → src.
-// Modified()/IsDeleted() are non-const, so Builder& (not const).
+// {dest face → src face} for the faces of `dest` that `relation` (Modified or
+// Generated) derives from `src`, plus src faces kept unchanged in `dest`.
 template <typename Builder>
 static void relay_from_builder(
     Builder& builder,
     const TopoDS_Shape& src,
-    std::unordered_map<uint64_t, uint64_t>& relay)
+    const TopoDS_Shape& dest,
+    std::unordered_map<uint64_t, uint64_t>& relay,
+    BRepTools_History::TRelationType relation)
 {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> dest_faces;
+    TopExp::MapShapes(dest, TopAbs_FACE, dest_faces);
     for (TopExp_Explorer ex(src, TopAbs_FACE); ex.More(); ex.Next()) {
         const TopoDS_Shape& sf = ex.Current();
         uint64_t src_id = reinterpret_cast<uint64_t>(sf.TShape().get());
-        if (builder.IsDeleted(sf)) continue;
-        const NCollection_List<TopoDS_Shape>& mods = builder.Modified(sf);
-        if (mods.IsEmpty()) {
-            relay[src_id] = src_id;
-        } else {
-            for (NCollection_List<TopoDS_Shape>::Iterator it(mods); it.More(); it.Next()) {
-                uint64_t pre_id = reinterpret_cast<uint64_t>(it.Value().TShape().get());
-                relay[pre_id] = src_id;
-            }
+        if (dest_faces.Contains(sf)) relay[src_id] = src_id;
+        const NCollection_List<TopoDS_Shape>& images = relation == BRepTools_History::TRelationType_Generated ? builder.Generated(sf) : builder.Modified(sf);
+        for (NCollection_List<TopoDS_Shape>::Iterator it(images); it.More(); it.Next()) {
+            if (dest_faces.Contains(it.Value())) relay[reinterpret_cast<uint64_t>(it.Value().TShape().get())] = src_id;
         }
     }
 }
@@ -508,7 +494,7 @@ std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
 
     std::unordered_map<uint64_t, uint64_t> relay1, relay2;
     for (const auto& s : solids) {
-        relay_from_builder(cb, s, relay1);
+        relay_from_builder(cb, s, cb.Shape(), relay1, BRepTools_History::TRelationType_Modified);
     }
 
     BRepBuilderAPI_Copy copier(cb.Shape(), true, false);
@@ -1394,16 +1380,7 @@ std::unique_ptr<TopoDS_Solid> builder_thick_solid(
     if (!builder.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakeThickSolid did not complete");
     // No copy, so relay keys are final faces.
     std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(builder, solid, relay);
-    // MakeThickSolid does not flag removed open faces as IsDeleted; drop
-    // their (identity) pairs since those faces are absent from the result.
-    for (const auto& f : open_faces) {
-        uint64_t removed_id = reinterpret_cast<uint64_t>(f.TShape().get());
-        for (auto it = relay.begin(); it != relay.end(); ) {
-            if (it->second == removed_id) it = relay.erase(it);
-            else ++it;
-        }
-    }
+    relay_from_builder(builder, solid, builder.Shape(), relay, BRepTools_History::TRelationType_Modified);
     relay_into_history(&relay, nullptr, out_history);
     return to_solid(builder.Shape());
 }
@@ -1434,7 +1411,7 @@ std::unique_ptr<TopoDS_Solid> builder_fillet(
     auto out = to_solid(result);
     // No copy, so relay keys are final faces (identity for untouched).
     std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(mk, solid, relay);
+    relay_from_builder(mk, solid, result, relay, BRepTools_History::TRelationType_Modified);
     relay_into_history(&relay, nullptr, out_history);
     return out;
 }
@@ -1465,7 +1442,7 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
     auto out = to_solid(result);
     // No copy, so relay keys are final faces (identity for untouched).
     std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(mk, solid, relay);
+    relay_from_builder(mk, solid, result, relay, BRepTools_History::TRelationType_Modified);
     relay_into_history(&relay, nullptr, out_history);
     return out;
 }
@@ -1764,19 +1741,12 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     for (const TopoDS_Face& f : faces) offsetter.SetOffsetOnFace(f, offset);
     offsetter.MakeOffsetShape();
     if (!offsetter.IsDone()) throw std::runtime_error("BRepOffset_MakeOffset did not complete");
-    // BRepOffset_MakeOffset reports offset faces as Generated, not Modified;
-    // MakeSolid below reuses them, so relay keys are final faces.
-    std::unordered_map<uint64_t, uint64_t> relay;
-    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
-        uint64_t src_id = reinterpret_cast<uint64_t>(ex.Current().TShape().get());
-        const NCollection_List<TopoDS_Shape>& gens = offsetter.Generated(ex.Current());
-        for (NCollection_List<TopoDS_Shape>::Iterator it(gens); it.More(); it.Next()) {
-            relay[reinterpret_cast<uint64_t>(it.Value().TShape().get())] = src_id;
-        }
-    }
-    relay_into_history(&relay, nullptr, out_history);
     TopoDS_Shape result = offsetter.Shape();
     if (result.IsNull()) throw std::runtime_error("BRepOffset_MakeOffset produced no shape");
+    // Offset faces are Generated, not Modified; MakeSolid below reuses them.
+    std::unordered_map<uint64_t, uint64_t> relay;
+    relay_from_builder(offsetter, shape, result, relay, BRepTools_History::TRelationType_Generated);
+    relay_into_history(&relay, nullptr, out_history);
 
     if (result.ShapeType() == TopAbs_COMPOUND) {
         // Unwrap a one-solid (or one-shell) compound.

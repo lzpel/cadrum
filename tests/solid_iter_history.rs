@@ -44,11 +44,11 @@ fn test_no_face_source_ops_have_empty_history() {
 	assert_eq!(bspline.iter_history().count(), 0, "bspline");
 }
 
-/// shell: cube の top を開けて内側 offset。残り 5 面は Modified されて outer wall
-/// になる。除去された top は Deleted で history に出ない。inner wall は Generated
-/// なので出ない。
+/// shell: cube の top を開けて内側 offset。残り 5 面はそのまま outer wall になり、
+/// 除去された top は開口の縁 (同じ平面の額縁) へ Modified される。inner wall は
+/// Generated なので出ない。
 #[test]
-fn test_shell_history_maps_five_retained_faces() {
+fn test_shell_history_maps_retained_faces_and_rim() {
 	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
 	let original: HashSet<u64> = cube.iter_face().map(|f| f.id()).collect();
 	let top = cube.iter_face().last().expect("cube has faces");
@@ -61,8 +61,11 @@ fn test_shell_history_maps_five_retained_faces() {
 		assert!(original.contains(src), "src {src} is not an original cube face");
 	}
 	let srcs: HashSet<u64> = hist.iter().map(|[_, s]| *s).collect();
-	assert_eq!(srcs.len(), 5, "5 retained faces should map (top removed); got {}", srcs.len());
-	assert!(!srcs.contains(&top_id), "removed top face must not appear as src");
+	assert_eq!(srcs.len(), 6, "5 retained faces and the removed top should map; got {}", srcs.len());
+	let rim: Vec<u64> = hist.iter().filter(|[_, s]| *s == top_id).map(|[p, _]| *p).collect();
+	assert_eq!(rim.len(), 1, "the top maps to exactly the rim");
+	let rim = shelled.iter_face().find(|f| f.id() == rim[0]).expect("rim is a result face");
+	assert!((rim.area() - (100.0 - 64.0)).abs() < 1e-9, "rim is the 10x10 top minus the 8x8 opening: {}", rim.area());
 }
 
 /// fillet: cube の edge 1 本を fillet → その edge を共有する 2 面が Modified
