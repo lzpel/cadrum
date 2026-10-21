@@ -5,15 +5,7 @@ use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::traits::{ProfileOrient, SolidStruct, Transform};
 use glam::DVec3;
-use std::sync::{Mutex, OnceLock};
-
-// OCCT の BRepOffsetAPI_ThruSections は内部で global state (おそらく
-// BSplCLib のキャッシュや GeomFill_AppSurf の作業バッファ) を使うため、
-// 複数スレッドから同時に呼び出すと heap corruption を起こす。
-// 並列テスト実行下で再現する症状で、loft 呼び出し全体を Mutex で
-// serialize すれば回避できる。性能劣化はあるが loft は重い操作なので
-// ロック粒度の粗さは現実的に問題にならない。
-static LOFT_LOCK: Mutex<()> = Mutex::new(());
+use std::sync::OnceLock;
 
 /// Encode `ProfileOrient` into FFI arguments: (kind, ux, uy, uz, aux_spine_edges).
 fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>) {
@@ -283,8 +275,6 @@ impl SolidStruct for Solid {
 	where
 		Edge: 'a,
 	{
-		let _guard = LOFT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
 		let mut all_edges = ffi::edge_vec_new();
 		let mut section_count = 0usize;
 
