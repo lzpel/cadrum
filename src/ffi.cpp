@@ -2095,6 +2095,7 @@ void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writ
 #include <StepVisual_MechanicalDesignGeometricPresentationRepresentation.hxx>
 #include <StepVisual_StyledItem.hxx>
 #include <StepVisual_Colour.hxx>
+#include <StepVisual_ColourRgb.hxx>
 #include <StepRepr_RepresentationContext.hxx>
 #include <StepData_StepModel.hxx>
 #include <Transfer_FinderProcess.hxx>
@@ -2143,10 +2144,19 @@ static void paint(const STEPConstruct_Styles& styles, const Handle(StepVisual_St
     STEPConstruct_RenderingProperties props;
     bool component = false;
     styles.GetColors(style, surf, bound, curve, props, component);
+    // Quantity_Color holds sRGB as stored, bypassing DecodeColor's sRGB-to-linear step.
     Quantity_Color color;
-    if (props.IsDefined()) color = props.GetRGBAColor().GetRGB();
-    else if (!surf.IsNull()) STEPConstruct_Styles::DecodeColor(surf, color);
-    else return;
+    Handle(StepVisual_ColourRgb) rgb = Handle(StepVisual_ColourRgb)::DownCast(surf);
+    if (!rgb.IsNull()) {
+        color.SetValues(rgb->Red(), rgb->Green(), rgb->Blue(), Quantity_TOC_RGB);
+    } else {
+        if (!surf.IsNull()) STEPConstruct_Styles::DecodeColor(surf, color);
+        else if (props.IsDefined()) color = props.GetRGBAColor().GetRGB();
+        else return;
+        double r, g, b;
+        color.Values(r, g, b, Quantity_TOC_sRGB);
+        color.SetValues(r, g, b, Quantity_TOC_RGB);
+    }
 
     const Handle(Transfer_TransientProcess)& tp = styles.TransientProcess();
     int index = tp->MapIndex(style->ItemAP242().Value());
@@ -2163,9 +2173,7 @@ static void collect_colors(
 {
     std::unordered_map<uint64_t, std::array<float, 3>> inherited;
     for (const auto& [shape, color] : painted) {
-        double r, g, b;
-        color.Values(r, g, b, Quantity_TOC_sRGB);
-        std::array<float, 3> rgb = {(float)r, (float)g, (float)b};
+        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
         TopAbs_ShapeEnum type = shape.ShapeType();
         if (type == TopAbs_FACE || type == TopAbs_SOLID) {
             colorMap[reinterpret_cast<uint64_t>(shape.TShape().get())] = rgb;
@@ -2280,8 +2288,7 @@ struct StyleWriter {
     STEPConstruct_Styles& styles;
     const std::unordered_map<uint64_t, Quantity_Color>& colors;
     NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
-    NCollection_DataMap<TCollection_AsciiString, Handle(Standard_Transient)> dpdcs;
-    NCollection_DataMap<gp_Pnt, Handle(Standard_Transient)> rgbs;
+    NCollection_DataMap<gp_Pnt, Handle(StepVisual_Colour)> rgbs;
 
     // MakeSTEPStyles in STEPCAFControl_Writer.cxx for a visible, non-component shape
     // with surface colors only: a style on a solid overrides into its faces.
@@ -2297,7 +2304,14 @@ struct StyleWriter {
         Handle(StepVisual_StyledItem) style = over;
         bool own = color.has_value();
         if (own && type != TopAbs_COMPOUND) {
-            Handle(StepVisual_Colour) surf = STEPConstruct_Styles::EncodeColor(*color, dpdcs, rgbs);
+            // EncodeColor would gamma-shift the sRGB that Quantity_Color holds.
+            gp_Pnt key(color->Red(), color->Green(), color->Blue());
+            Handle(StepVisual_Colour) surf;
+            if (!rgbs.Find(key, surf)) {
+                Handle(StepVisual_ColourRgb) rgb = new StepVisual_ColourRgb;
+                rgb->Init(new TCollection_HAsciiString(""), key.X(), key.Y(), key.Z());
+                surf = *rgbs.Bound(key, rgb);
+            }
             NCollection_Sequence<Handle(StepRepr_RepresentationItem)> items;
             find_entities(styles.FinderProcess(), shape, items);
             for (const Handle(StepRepr_RepresentationItem)& item : items) {
@@ -2323,7 +2337,7 @@ void write_step_color_stream(
     TopoDS_Compound shape = compound_of(solids);
     std::unordered_map<uint64_t, Quantity_Color> colors;
     for (size_t i = 0; i < ids.size(); i++) {
-        colors[ids[i]] = Quantity_Color(rgb[3*i], rgb[3*i+1], rgb[3*i+2], Quantity_TOC_sRGB);
+        colors[ids[i]] = Quantity_Color(rgb[3*i], rgb[3*i+1], rgb[3*i+2], Quantity_TOC_RGB);
     }
 
     STEPControl_Writer step_writer;
@@ -2345,7 +2359,7 @@ void write_step_color_stream(
     STEPConstruct_Styles styles(ws);
     Handle(StepRepr_RepresentationContext) context = styles.FindContext(shape);
     if (!context.IsNull()) {
-        StyleWriter{styles, colors, {}, {}, {}}.walk(shape, nullptr, nullptr);
+        StyleWriter{styles, colors, {}, {}}.walk(shape, nullptr, nullptr);
         Handle(StepData_StepModel) model = step_writer.Model();
         Handle(StepVisual_MechanicalDesignGeometricPresentationRepresentation) mdgpr;
         if (styles.CreateMDGPR(context, mdgpr, model)) model->AddWithRefs(mdgpr);
