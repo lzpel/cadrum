@@ -1,5 +1,15 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.9.1
+
+- #315 Share wire splitting and shell-to-solid upgrading across ffi.cpp; make_pipe_shell skips empty sections and make_offset takes the first solid instead of throwing
+- #314 Pass STEP COLOUR_RGB through to Color unconverted and assume sRGB only for SVG, PNG and glTF
+- #313 Remove LOFT_LOCK and test loft under parallel threads
+- #312 Breaking: Solid::bspline takes v_periodic; an open grid is a half-space and a V-periodic grid a capped pipe, both built without sewing
+- #311 Breaking: Solid::offset drops its tolerance argument and carries face history
+- #310 Rewrite the sew example with faces cut by Face::face
+- #309 Add Face::face, the inverse of Face::surface
+
 ### 0.9.0
 
 - #305 Breaking: Remove the `color` feature; color support is always on and STEP has one write path

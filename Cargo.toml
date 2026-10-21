@@ -1,6 +1,6 @@
 [package]
 name = "cadrum"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 description = "cadrum is a Rust CAD crate using statically-linked, headless OpenCASCADE. Runs natively and in WebAssembly"
 license = "MIT"
