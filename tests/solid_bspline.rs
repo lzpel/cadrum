@@ -137,8 +137,11 @@ fn test_bspline_03_pipe_volume_is_positive_either_way() {
 	let expected = std::f64::consts::PI * r * r * h;
 	for turn in [1.0, -1.0] {
 		let p = ring(turn);
-		let volume = Solid::bspline(5, m, false, true, |i, j| p(j, i)).expect("v periodic").volume();
+		let pipe = Solid::bspline(5, m, false, true, |i, j| p(j, i)).expect("v periodic");
+		let volume = pipe.volume();
 		assert!((volume - expected).abs() / expected < 1e-3, "turn {turn}: {volume} vs {expected}");
+		let half = (&pipe * &Solid::half_space(DVec3::Z * (h / 2.0), DVec3::Z)).build().expect("cut pipe").volume();
+		assert!((half - volume / 2.0).abs() / volume < 1e-3, "turn {turn}: cut {half} vs {volume}");
 		assert!(matches!(Solid::bspline(m, 5, true, false, |i, j| p(i, j)), Err(Error::Bspline(_))), "u periodic only is not supported yet");
 	}
 }
