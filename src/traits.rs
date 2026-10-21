@@ -738,16 +738,16 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	/// with uniform parameters and C^(degree-1) continuity across a periodic seam.
 	/// The periodic flags choose the solid:
 	/// - both periodic: the closed surface itself, such as a torus
-	/// - one periodic: a pipe, its open ends capped with planar faces (each end
-	///   loop must be planar)
+	/// - `v_periodic` only: a pipe, its open U ends capped with planar faces
+	///   (each end loop must be planar); `u_periodic` only is an error for now
 	/// - neither: the half-space on the side the normal `∂σ/∂u × ∂σ/∂v` points
 	///   to, like [`half_space`](Self::half_space) with a free-form boundary.
 	///   The patch is finite, so it must pass completely through any solid it
 	///   cuts; where a solid sticks out past its edge the boolean result is
 	///   meaningless (an intersection silently keeps the whole solid).
 	///
-	/// Fails with [`Error::Bspline`] when the grid is too small (2 along an open
-	/// direction, 3 along a periodic one) or OCCT cannot build the surface.
+	/// Fails with [`Error::Bspline`] when either direction has fewer than 3
+	/// points or OCCT cannot build the surface.
 	fn bspline(u: usize, v: usize, u_periodic: bool, v_periodic: bool, point: impl Fn(usize, usize) -> DVec3) -> Result<Self, Error>;
 
 	// --- Boolean primitive (FFI への唯一の通路) ---

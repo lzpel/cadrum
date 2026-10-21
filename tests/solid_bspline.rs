@@ -6,7 +6,7 @@
 //! `phi → phi + π` のシフトが離散グリッドを完全に保存する → 近似誤差を
 //! 導入しないので、対称性は boolean op の数値ノイズ分しか揺れない想定。
 
-use cadrum::Solid;
+use cadrum::{Error, Solid};
 use glam::{DQuat, DVec3};
 use std::f64::consts::TAU;
 
@@ -123,8 +123,8 @@ fn test_bspline_02_open_grid_is_a_half_space() {
 	}
 }
 
-/// 片方向だけ周期的な格子はパイプになり、断面の回る向きや周期方向が U か V かに
-/// よらず体積は正 (OrientClosedSolid)。
+/// V だけ周期的な格子はパイプになり、断面の回る向きによらず体積は正
+/// (OrientClosedSolid)。U だけ周期的な格子は今のところエラー。
 #[test]
 fn test_bspline_03_pipe_volume_is_positive_either_way() {
 	let (r, h, m) = (1.5_f64, 4.0, 24);
@@ -137,9 +137,8 @@ fn test_bspline_03_pipe_volume_is_positive_either_way() {
 	let expected = std::f64::consts::PI * r * r * h;
 	for turn in [1.0, -1.0] {
 		let p = ring(turn);
-		for (name, pipe) in [("v periodic", Solid::bspline(5, m, false, true, |i, j| p(j, i))), ("u periodic", Solid::bspline(m, 5, true, false, |i, j| p(i, j)))] {
-			let volume = pipe.expect(name).volume();
-			assert!((volume - expected).abs() / expected < 1e-3, "{name}, turn {turn}: {volume} vs {expected}");
-		}
+		let volume = Solid::bspline(5, m, false, true, |i, j| p(j, i)).expect("v periodic").volume();
+		assert!((volume - expected).abs() / expected < 1e-3, "turn {turn}: {volume} vs {expected}");
+		assert!(matches!(Solid::bspline(m, 5, true, false, |i, j| p(i, j)), Err(Error::Bspline(_))), "u periodic only is not supported yet");
 	}
 }

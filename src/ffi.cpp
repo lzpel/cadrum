@@ -1780,8 +1780,7 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     uint32_t nu, uint32_t nv,
     bool u_periodic, bool v_periodic)
 {
-    if (coords.size() != static_cast<size_t>(nu) * nv * 3) throw std::runtime_error("coordinate count does not match the grid");
-    if (nu < 2 || nv < (v_periodic ? 3u : 2u)) throw std::runtime_error("grid is too small");
+    if (u_periodic && !v_periodic) throw std::runtime_error("a U-periodic grid needs a periodic V; only open U ends are capped");
 
     // Tensor-product truly-periodic interpolation (#120).
     //
