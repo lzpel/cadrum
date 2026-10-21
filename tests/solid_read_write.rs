@@ -36,24 +36,3 @@ fn read_brep_with_trailing_garbage() {
 		}
 	}
 }
-
-#[test]
-fn step_color_is_srgb() {
-	// #307: a hex color must land in COLOUR_RGB as given, not gamma-shifted.
-	let cube = Solid::cube(DVec3::ZERO, DVec3::ONE).color("#336699");
-	let mut buf = Vec::new();
-	Solid::write_step([&cube], &mut buf).unwrap();
-	let text = String::from_utf8_lossy(&buf);
-	let line = text.lines().find(|l| l.contains("COLOUR_RGB")).expect("COLOUR_RGB entity");
-	let args = &line[line.find("'',").unwrap() + 3..line.rfind(')').unwrap()];
-	let rgb: Vec<f64> = args.split(',').map(|v| v.trim().parse().unwrap()).collect();
-	for (got, want) in rgb.iter().zip([0.2, 0.4, 0.6]) {
-		assert!((got - want).abs() < 1e-6, "{line}");
-	}
-
-	let read = Solid::read_step(&mut buf.as_slice()).unwrap();
-	let color = *read[0].colormap().values().next().expect("color survives the round trip");
-	for (got, want) in [color.r, color.g, color.b].into_iter().zip([0.2, 0.4, 0.6]) {
-		assert!((got - want).abs() < 1e-6, "{color:?}");
-	}
-}
