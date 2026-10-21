@@ -2163,7 +2163,9 @@ static void collect_colors(
 {
     std::unordered_map<uint64_t, std::array<float, 3>> inherited;
     for (const auto& [shape, color] : painted) {
-        std::array<float, 3> rgb = {(float)color.Red(), (float)color.Green(), (float)color.Blue()};
+        double r, g, b;
+        color.Values(r, g, b, Quantity_TOC_sRGB);
+        std::array<float, 3> rgb = {(float)r, (float)g, (float)b};
         TopAbs_ShapeEnum type = shape.ShapeType();
         if (type == TopAbs_FACE || type == TopAbs_SOLID) {
             colorMap[reinterpret_cast<uint64_t>(shape.TShape().get())] = rgb;
@@ -2321,7 +2323,7 @@ void write_step_color_stream(
     TopoDS_Compound shape = compound_of(solids);
     std::unordered_map<uint64_t, Quantity_Color> colors;
     for (size_t i = 0; i < ids.size(); i++) {
-        colors[ids[i]] = Quantity_Color(rgb[3*i], rgb[3*i+1], rgb[3*i+2], Quantity_TOC_RGB);
+        colors[ids[i]] = Quantity_Color(rgb[3*i], rgb[3*i+1], rgb[3*i+2], Quantity_TOC_sRGB);
     }
 
     STEPControl_Writer step_writer;

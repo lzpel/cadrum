@@ -1,3 +1,4 @@
+/// An sRGB color with components in `0.0..=1.0`, as CSS names and hex strings mean.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
 	pub r: f32,
