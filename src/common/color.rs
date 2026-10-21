@@ -1,4 +1,5 @@
-/// An sRGB color with components in `0.0..=1.0`, as CSS names and hex strings mean.
+/// RGB components in `0.0..=1.0`, in whatever color space STEP's `COLOUR_RGB` holds them.
+/// SVG, PNG and glTF output assume sRGB.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
 	pub r: f32,
@@ -83,7 +84,7 @@ impl Color {
 		Ok(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0 })
 	}
 
-	/// Linear-light components, as glTF's `baseColorFactor` expects.
+	/// Read the components as sRGB and return them linear, as glTF's `baseColorFactor` expects.
 	pub fn to_linear(&self) -> [f32; 3] {
 		let f = |c: f32| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
 		[f(self.r), f(self.g), f(self.b)]
