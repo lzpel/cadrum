@@ -1897,7 +1897,8 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_brep_stream(
 void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
-    BinTools::Write(compound_of(solids), os);
+    // Without triangles: BRepMesh reuses a stored triangulation and ignores a coarser request.
+    BinTools::Write(compound_of(solids), os, false, false, BinTools_FormatVersion_CURRENT);
     if (!os.good()) throw std::runtime_error("stream write failed");
 }
 
