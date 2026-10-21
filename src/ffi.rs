@@ -149,7 +149,7 @@ mod ffi_bridge {
 		fn make_loft(all_edges: &CxxVector<TopoDS_Edge>, ruled: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_sewn_solid(faces: &CxxVector<TopoDS_Face>, tolerance: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_offset(shape: &TopoDS_Solid, faces: &CxxVector<TopoDS_Face>, offset: f64, tolerance: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_bspline_solid(coords: &[f64], nu: u32, nv: u32, u_periodic: bool) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_bspline_solid(coords: &[f64], nu: u32, nv: u32, u_periodic: bool, v_periodic: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
 		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);

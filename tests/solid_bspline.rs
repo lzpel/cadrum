@@ -6,7 +6,7 @@
 //! `phi → phi + π` のシフトが離散グリッドを完全に保存する → 近似誤差を
 //! 導入しないので、対称性は boolean op の数値ノイズ分しか揺れない想定。
 
-use cadrum::Solid;
+use cadrum::{Error, Solid};
 use glam::{DQuat, DVec3};
 use std::f64::consts::TAU;
 
@@ -98,10 +98,50 @@ fn test_bspline_01_two_period_torus_point_symmetry() {
 		DQuat::from_axis_angle(DVec3::Z, phi) * translated
 	};
 
-	let plasma = Solid::bspline(M, N, true, &point).expect("2-period bspline torus should succeed");
+	let plasma = Solid::bspline(M, N, true, true, &point).expect("2-period bspline torus should succeed");
 	assert!(plasma.volume() > 0.0);
 
 	assert_quadrant_point_symmetry(&plasma, 0.01);
 
-	write_outputs(&[plasma, Solid::bspline(M, N, false, &point).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
+	write_outputs(&[plasma, Solid::bspline(M, N, false, true, &point).unwrap().translate(DVec3::Z * -10.0)], "test_bspline_01_two_period_torus");
+}
+
+/// 両方向とも開いた格子は法線 ∂σ/∂u × ∂σ/∂v の側の半空間になり、立方体を完全に
+/// 横切る波面で切ると上下の体積が解析値 (sin の項は対称に消える) に一致する。
+#[test]
+fn test_bspline_02_open_grid_is_a_half_space() {
+	let at = |k: usize| -3.0 + 6.0 * k as f64 / 12.0;
+	let wave = |x: f64, y: f64| DVec3::new(x, y, 1.0 + 0.3 * x.sin() * y.cos());
+	let above = Solid::bspline(13, 13, false, false, |i, j| wave(at(i), at(j))).expect("open grid");
+	let below = Solid::bspline(13, 13, false, false, |i, j| wave(at(j), at(i))).expect("transposed open grid");
+	assert!(above.contains(DVec3::new(0.0, 0.0, 2.0)) && !above.contains(DVec3::new(0.0, 0.0, 0.2)));
+
+	let cube = Solid::cube(DVec3::new(-2.0, -2.0, 0.0), DVec3::new(2.0, 2.0, 3.0));
+	for (name, solid, expected) in [("cube * above", (&cube * &above).build(), 32.0), ("cube - above", (&cube - &above).build(), 16.0), ("cube * below", (&cube * &below).build(), 16.0)] {
+		let volume = solid.expect(name).volume();
+		assert!((volume - expected).abs() < 1e-6, "{name}: {volume} vs {expected}");
+	}
+}
+
+/// V だけ周期的な格子はパイプになり、断面の回る向きによらず体積は正
+/// (OrientClosedSolid)。U だけ周期的な格子は今のところエラー。
+#[test]
+fn test_bspline_03_pipe_volume_is_positive_either_way() {
+	let (r, h, m) = (1.5_f64, 4.0, 24);
+	let ring = |turn: f64| {
+		move |k: usize, z: usize| {
+			let t = turn * TAU * k as f64 / m as f64;
+			DVec3::new(r * t.cos(), r * t.sin(), h * z as f64 / 4.0)
+		}
+	};
+	let expected = std::f64::consts::PI * r * r * h;
+	for turn in [1.0, -1.0] {
+		let p = ring(turn);
+		let pipe = Solid::bspline(5, m, false, true, |i, j| p(j, i)).expect("v periodic");
+		let volume = pipe.volume();
+		assert!((volume - expected).abs() / expected < 1e-3, "turn {turn}: {volume} vs {expected}");
+		let half = (&pipe * &Solid::half_space(DVec3::Z * (h / 2.0), DVec3::Z)).build().expect("cut pipe").volume();
+		assert!((half - volume / 2.0).abs() / volume < 1e-3, "turn {turn}: cut {half} vs {volume}");
+		assert!(matches!(Solid::bspline(m, 5, true, false, |i, j| p(i, j)), Err(Error::Bspline(_))), "u periodic only is not supported yet");
+	}
 }

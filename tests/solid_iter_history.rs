@@ -34,7 +34,7 @@ fn test_no_face_source_ops_have_empty_history() {
 	let lofted = Solid::loft(&[lower, upper], false).expect("loft");
 	assert_eq!(lofted.iter_history().count(), 0, "loft");
 
-	let bspline = Solid::bspline(16, 8, true, |i, j| {
+	let bspline = Solid::bspline(16, 8, true, true, |i, j| {
 		let phi = TAU * i as f64 / 16.0;
 		let theta = TAU * j as f64 / 8.0;
 		let r = 3.0 + theta.cos();

@@ -96,7 +96,6 @@
 #include <BRepAdaptor_Curve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
-#include <GeomAPI_PointsToBSplineSurface.hxx>
 #include <Extrema_ExtPC.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
@@ -1775,182 +1774,94 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     throw std::runtime_error("offset produced an open shell");
 }
 
+// Interpolate each column of `points` along its first index at uniform
+// parameters and return the poles transposed, so applying this twice yields the
+// tensor-product pole grid of a surface interpolating the grid in both
+// directions. GeomAPI_Interpolate's periodic solve gives C^(degree-1) seams;
+// the non-periodic interpolator picks independent end derivatives, so wrapping
+// an open interpolation with SetUPeriodic would leave a C^0 seam.
+static NCollection_Array2<gp_Pnt> interpolate_columns(
+    const NCollection_Array2<gp_Pnt>& points, bool periodic, Handle(Geom_BSplineCurve)& sample)
+{
+    const int n = points.NbRows(), m = points.NbColumns();
+    Handle(NCollection_HArray1<double>) params = new NCollection_HArray1<double>(1, n + periodic);
+    for (int k = 1; k <= params->Length(); ++k) params->SetValue(k, double(k - 1) / n);
+    NCollection_Array2<gp_Pnt> poles;
+    for (int j = 1; j <= m; ++j) {
+        Handle(NCollection_HArray1<gp_Pnt>) column = new NCollection_HArray1<gp_Pnt>(1, n);
+        for (int i = 1; i <= n; ++i) column->SetValue(i, points(i, j));
+        GeomAPI_Interpolate interp(column, params, periodic, Precision::Confusion());
+        interp.Perform();
+        if (!interp.IsDone()) throw std::runtime_error("GeomAPI_Interpolate did not complete");
+        sample = interp.Curve();
+        if (j == 1) poles.Resize(1, m, 1, sample->NbPoles(), false);
+        for (int i = 1; i <= sample->NbPoles(); ++i) poles.SetValue(j, i, sample->Pole(i));
+    }
+    return poles;
+}
+
 std::unique_ptr<TopoDS_Solid> make_bspline_solid(
     rust::Slice<const double> coords,
     uint32_t nu, uint32_t nv,
-    bool u_periodic)
+    bool u_periodic, bool v_periodic)
 {
-    if (coords.size() != static_cast<size_t>(nu) * nv * 3) throw std::runtime_error("coordinate count does not match the grid");
-    if (nu < 2 || nv < 3) throw std::runtime_error("grid must be at least 2x3");
+    if (u_periodic && !v_periodic) throw std::runtime_error("a U-periodic grid needs a periodic V; only open U ends are capped");
 
-    // Tensor-product truly-periodic interpolation (#120).
-    //
-    // Naive approach (Interpolate over augmented grid → SetUPeriodic) only
-    // delivers C^0 at the seam: the non-periodic interpolator picks
-    // independent boundary derivatives at u_min vs u_max, and SetUPeriodic
-    // just relabels topology without fixing the derivative mismatch.
-    //
-    // Instead we apply GeomAPI_Interpolate (which honors a true periodic
-    // boundary by solving a circulant linear system) once per V column,
-    // then once per U row of the resulting intermediate poles. The final
-    // poles array feeds Geom_BSplineSurface(...) directly with the
-    // UPeriodic / VPeriodic flags, yielding C^(degree-1) continuity at
-    // both seams.
-    using HPntArray  = NCollection_HArray1<gp_Pnt>;
-    using HRealArray = NCollection_HArray1<double>;
-    const double tol = Precision::Confusion();
-
-    // Build uniform parameter arrays so that every column / row uses the
-    // SAME parametrization. With chord-length (the Interpolate default),
-    // columns of different total length get different knot vectors and
-    // the resulting tensor surface has parameter mismatches at +X axis
-    // (visible as boolean-intersect degeneracies). Uniform params avoid
-    // this since the input grid samples φ / θ at constant fractional
-    // intervals along each direction.
-    const int u_param_count = static_cast<int>(u_periodic ? nu + 1 : nu);
-    Handle(HRealArray) u_params = new HRealArray(1, u_param_count);
-    for (int k = 0; k < u_param_count; ++k) {
-        u_params->SetValue(k + 1, static_cast<double>(k) / static_cast<double>(nu));
-    }
-    Handle(HRealArray) v_params = new HRealArray(1, static_cast<int>(nv + 1));
-    for (uint32_t k = 0; k <= nv; ++k) {
-        v_params->SetValue(static_cast<int>(k) + 1,
-                           static_cast<double>(k) / static_cast<double>(nv));
-    }
-
-    // Stage 1: per-V-column interpolation along U with uniform params.
-    std::vector<Handle(Geom_BSplineCurve)> u_curves;
-    u_curves.reserve(nv);
-    for (uint32_t j = 0; j < nv; ++j) {
-        Handle(HPntArray) col = new HPntArray(1, static_cast<int>(nu));
-        for (uint32_t i = 0; i < nu; ++i) {
-            const size_t idx = (static_cast<size_t>(i) * nv + j) * 3;
-            col->SetValue(static_cast<int>(i) + 1,
-                          gp_Pnt(coords[idx], coords[idx + 1], coords[idx + 2]));
-        }
-        GeomAPI_Interpolate interp(col, u_params, u_periodic, tol);
-        interp.Perform();
-        if (!interp.IsDone()) throw std::runtime_error("GeomAPI_Interpolate did not complete along U");
-        u_curves.push_back(interp.Curve());
-    }
-
-    // Capture U knot vector / multiplicities / degree from any column;
-    // GeomAPI_Interpolate uses the same chord-length parametrization for
-    // all columns since the V coordinate is uniform per column.
-    const int u_degree = u_curves[0]->Degree();
-    const int u_npoles = u_curves[0]->NbPoles();
-    const NCollection_Array1<double>& u_knots = u_curves[0]->Knots();
-    const NCollection_Array1<int>&    u_mults = u_curves[0]->Multiplicities();
-
-    NCollection_Array2<gp_Pnt> intermediate(1, u_npoles, 1, static_cast<int>(nv));
-    for (uint32_t j = 0; j < nv; ++j) {
-        for (int i = 1; i <= u_npoles; ++i) {
-            intermediate.SetValue(i, static_cast<int>(j) + 1, u_curves[j]->Pole(i));
+    NCollection_Array2<gp_Pnt> grid(1, nu, 1, nv);
+    for (int i = 1; i <= int(nu); ++i) {
+        for (int j = 1; j <= int(nv); ++j) {
+            const double* p = &coords[(size_t(i - 1) * nv + (j - 1)) * 3];
+            grid.SetValue(i, j, gp_Pnt(p[0], p[1], p[2]));
         }
     }
-
-    // Stage 2: per-U-row interpolation along V (V is always periodic).
-    std::vector<Handle(Geom_BSplineCurve)> v_curves;
-    v_curves.reserve(u_npoles);
-    for (int i = 1; i <= u_npoles; ++i) {
-        Handle(HPntArray) row = new HPntArray(1, static_cast<int>(nv));
-        for (uint32_t j = 0; j < nv; ++j) {
-            row->SetValue(static_cast<int>(j) + 1, intermediate(i, static_cast<int>(j) + 1));
-        }
-        GeomAPI_Interpolate interp(row, v_params, /*periodic=*/true, tol);
-        interp.Perform();
-        if (!interp.IsDone()) throw std::runtime_error("GeomAPI_Interpolate did not complete along V");
-        v_curves.push_back(interp.Curve());
-    }
-
-    const int v_degree = v_curves[0]->Degree();
-    const int v_npoles = v_curves[0]->NbPoles();
-    const NCollection_Array1<double>& v_knots = v_curves[0]->Knots();
-    const NCollection_Array1<int>&    v_mults = v_curves[0]->Multiplicities();
-
-    // Stage 3: assemble final M_pole × N_pole pole grid and build the
-    // surface with explicit periodic flags.
-    NCollection_Array2<gp_Pnt> final_poles(1, u_npoles, 1, v_npoles);
-    for (int i = 1; i <= u_npoles; ++i) {
-        for (int j = 1; j <= v_npoles; ++j) {
-            final_poles.SetValue(i, j, v_curves[i - 1]->Pole(j));
-        }
-    }
-
+    Handle(Geom_BSplineCurve) u_sample, v_sample;
+    NCollection_Array2<gp_Pnt> poles = interpolate_columns(interpolate_columns(grid, u_periodic, u_sample), v_periodic, v_sample);
     Handle(Geom_BSplineSurface) surface = new Geom_BSplineSurface(
-        final_poles,
-        u_knots, v_knots,
-        u_mults, v_mults,
-        u_degree, v_degree,
-        /*UPeriodic=*/u_periodic,
-        /*VPeriodic=*/true);
-    if (surface.IsNull()) throw std::runtime_error("Geom_BSplineSurface construction failed");
+        poles, u_sample->Knots(), v_sample->Knots(), u_sample->Multiplicities(), v_sample->Multiplicities(),
+        u_sample->Degree(), v_sample->Degree(), u_periodic, v_periodic);
 
-    // Side face spans the full parametric domain.
-    double u1, u2, v1, v2;
-    surface->Bounds(u1, u2, v1, v2);
     BRepBuilderAPI_MakeFace face_maker(surface, Precision::Confusion());
     if (!face_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeFace did not complete");
-    TopoDS_Face side_face = face_maker.Face();
+    TopoDS_Face side = face_maker.Face();
 
-    BRepBuilderAPI_Sewing sewing(1.0e-3);
-    sewing.Add(side_face);
-
-    // For non-periodic U, cap the two U-boundary loops with planar faces.
-    // For periodic U the surface is already closed into a torus — no caps.
-    if (!u_periodic) {
-        auto make_cap = [&](double u_at) -> TopoDS_Face {
-            Handle(Geom_Curve) iso = surface->UIso(u_at);
-            if (iso.IsNull()) return TopoDS_Face();
-            BRepBuilderAPI_MakeEdge em(iso, v1, v2);
-            if (!em.IsDone()) return TopoDS_Face();
-            BRepBuilderAPI_MakeWire wm(em.Edge());
-            if (!wm.IsDone()) return TopoDS_Face();
-            BRepBuilderAPI_MakeFace mf(wm.Wire(), true);
-            return mf.IsDone() ? mf.Face() : TopoDS_Face();
-        };
-        TopoDS_Face cap1 = make_cap(u1);
-        TopoDS_Face cap2 = make_cap(u2);
-        if (cap1.IsNull() || cap2.IsNull()) throw std::runtime_error("could not cap the U boundaries");
-        sewing.Add(cap1);
-        sewing.Add(cap2);
+    // Open in both directions: the solid is the side the normal du x dv points to.
+    if (!u_periodic && !v_periodic) {
+        double u1, u2, v1, v2;
+        surface->Bounds(u1, u2, v1, v2);
+        gp_Pnt p;
+        gp_Vec du, dv;
+        surface->D1((u1 + u2) / 2, (v1 + v2) / 2, p, du, dv);
+        gp_Vec n = du.Crossed(dv);
+        if (n.Magnitude() < Precision::Confusion()) throw std::runtime_error("degenerate normal at the middle of the surface");
+        Bnd_Box box;
+        BRepBndLib::Add(side, box);
+        BRepPrimAPI_MakeHalfSpace maker(side, p.Translated(n.Normalized() * (1e-3 * std::sqrt(box.SquareExtent()))));
+        return std::make_unique<TopoDS_Solid>(maker.Solid());
     }
 
-    sewing.Perform();
-    TopoDS_Shape sewn = sewing.SewedShape();
-    if (sewn.IsNull()) throw std::runtime_error("BRepBuilderAPI_Sewing produced no shape");
-
+    // Cap each open U end with a plane on the side face's own boundary edge; the
+    // seam edges are skipped, so a torus is the side face alone.
+    BRep_Builder builder;
     TopoDS_Shell shell;
-    if (sewn.ShapeType() == TopAbs_SHELL) {
-        shell = TopoDS::Shell(sewn);
-    } else if (sewn.ShapeType() == TopAbs_SOLID) {
-        return to_solid(sewn);
-    } else if (sewn.ShapeType() == TopAbs_FACE && u_periodic) {
-        // Full torus: single closed face → wrap manually.
-        BRep_Builder bb;
-        bb.MakeShell(shell);
-        bb.Add(shell, TopoDS::Face(sewn));
-        shell.Closed(true);
-    } else {
-        TopExp_Explorer exp(sewn, TopAbs_SHELL);
-        if (exp.More()) {
-            shell = TopoDS::Shell(exp.Current());
-        } else {
-            throw std::runtime_error("sewing produced no shell");
-        }
+    builder.MakeShell(shell);
+    builder.Add(shell, side);
+    for (TopExp_Explorer ex(side, TopAbs_EDGE); ex.More(); ex.Next()) {
+        const TopoDS_Edge& edge = TopoDS::Edge(ex.Current());
+        if (BRep_Tool::IsClosed(edge, side)) continue;
+        BRepBuilderAPI_MakeFace cap_maker(BRepBuilderAPI_MakeWire(edge).Wire(), /*OnlyPlane=*/true);
+        if (!cap_maker.IsDone()) throw std::runtime_error("could not cap the U boundaries");
+        TopoDS_Face cap = cap_maker.Face();
+        // The shared edge must run opposite ways in the two faces.
+        if (TopExp_Explorer(cap, TopAbs_EDGE).Current().Orientation() == edge.Orientation()) cap.Reverse();
+        builder.Add(shell, cap);
     }
+    shell.Closed(BRep_Tool::IsClosed(shell));
+    if (!shell.Closed()) throw std::runtime_error("the capped shell is not closed");
 
     BRepBuilderAPI_MakeSolid solid_maker(shell);
     if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
     TopoDS_Solid solid = solid_maker.Solid();
-
-    // Ensure outward-facing orientation.
-    BRepClass3d_SolidClassifier classifier(
-        solid, gp_Pnt(0, 0, 0), Precision::Confusion());
-    if (classifier.State() == TopAbs_IN) {
-        solid.Reverse();
-    }
-
+    BRepLib::OrientClosedSolid(solid);
     return std::make_unique<TopoDS_Solid>(solid);
 }
 
