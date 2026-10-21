@@ -145,6 +145,29 @@ static std::unique_ptr<TopoDS_Solid> to_solid(const TopoDS_Shape& shape) {
     throw std::runtime_error("result contains no solid");
 }
 
+// The one closed shell under `shape`; a solid with voids or a partial shell is rejected.
+static TopoDS_Shell closed_shell_of(const TopoDS_Shape& shape) {
+    TopExp_Explorer ex(shape, TopAbs_SHELL);
+    if (!ex.More()) throw std::runtime_error("result contains no shell");
+    TopoDS_Shell shell = TopoDS::Shell(ex.Current());
+    ex.Next();
+    if (ex.More()) throw std::runtime_error("result contains more than one shell");
+    if (!BRep_Tool::IsClosed(shell)) throw std::runtime_error("the shell is not closed");
+    shell.Closed(true);
+    return shell;
+}
+
+// The solid under `shape`, or its closed shell upgraded to a positively oriented
+// solid. Face handles are kept, so face history computed on `shape` stays valid.
+static std::unique_ptr<TopoDS_Solid> solid_from_shell(const TopoDS_Shape& shape) {
+    if (TopExp_Explorer(shape, TopAbs_SOLID).More()) return to_solid(shape);
+    BRepBuilderAPI_MakeSolid solid_maker(closed_shell_of(shape));
+    if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
+    TopoDS_Solid solid = solid_maker.Solid();
+    BRepLib::OrientClosedSolid(solid);
+    return std::make_unique<TopoDS_Solid>(solid);
+}
+
 // Every SOLID under `shape` as shallow handle copies; anything else is dropped.
 static std::unique_ptr<std::vector<TopoDS_Solid>> solids_of(const TopoDS_Shape& shape) {
     auto out = std::make_unique<std::vector<TopoDS_Solid>>();
@@ -1335,20 +1358,8 @@ std::unique_ptr<TopoDS_Solid> builder_thick_solid(
         if (!offset.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakeOffsetShape did not complete");
         TopoDS_Shape offset_shape = offset.Shape();
 
-        auto extract_shell = [](const TopoDS_Shape& s) -> TopoDS_Shell {
-            if (s.ShapeType() == TopAbs_SHELL) return TopoDS::Shell(s);
-            TopExp_Explorer ex(s, TopAbs_SHELL);
-            if (!ex.More()) return TopoDS_Shell();
-            return TopoDS::Shell(ex.Current());
-        };
-
-        TopoDS_Shell original_shell = extract_shell(solid);
-        TopoDS_Shell offset_shell = extract_shell(offset_shape);
-        if (original_shell.IsNull() || offset_shell.IsNull()) throw std::runtime_error("no shell in the solid or its offset");
-
-        // thickness sign determines which shell is outer:
-        //   negative → offset shrinks inward: original = outer, offset = inner cavity
-        //   positive → offset expands outward: offset = outer, original = inner cavity
+        // A negative thickness shrinks inward, so the original shell stays outer.
+        TopoDS_Shell original_shell = closed_shell_of(solid), offset_shell = closed_shell_of(offset_shape);
         TopoDS_Shell outer = thickness < 0.0 ? original_shell : offset_shell;
         TopoDS_Shell inner = thickness < 0.0 ? offset_shell : original_shell;
 
@@ -1654,26 +1665,8 @@ std::unique_ptr<TopoDS_Solid> make_sewn_solid(
     sewing.Perform();
     const TopoDS_Shape& sewn = sewing.SewedShape();
     if (sewn.IsNull()) throw std::runtime_error("BRepBuilderAPI_Sewing produced no shape");
-
-    // A fully sewn input comes back as a single TopAbs_SHELL; partial
-    // sewing yields a compound mixing shells and free faces, in which
-    // case requiring exactly one shell rejects the stray-face cases.
-    std::vector<TopoDS_Shell> shells;
-    if (sewn.ShapeType() == TopAbs_SHELL) {
-        shells.push_back(TopoDS::Shell(sewn));
-    } else {
-        for (TopExp_Explorer ex(sewn, TopAbs_SHELL); ex.More(); ex.Next()) {
-            shells.push_back(TopoDS::Shell(ex.Current()));
-        }
-    }
-    if (shells.size() != 1) throw std::runtime_error("faces do not form exactly one shell");
-    if (!BRep_Tool::IsClosed(shells.front())) throw std::runtime_error("the sewn shell is not closed");
-
-    BRepBuilderAPI_MakeSolid solid_maker(shells.front());
-    if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
-    TopoDS_Solid solid = solid_maker.Solid();
-    BRepLib::OrientClosedSolid(solid);
-    return std::make_unique<TopoDS_Solid>(solid);
+    // Partial sewing leaves stray faces beside the shell; requiring one closed shell rejects them.
+    return solid_from_shell(sewn);
 }
 
 // Offset the given faces of `shape` by signed `offset` along their normals; a
@@ -1701,34 +1694,7 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     std::unordered_map<uint64_t, uint64_t> relay;
     relay_from_builder(offsetter, shape, result, relay, BRepTools_History::TRelationType_Generated); // offset faces are Generated, not Modified; MakeSolid below reuses them
     relay_into_history(&relay, nullptr, out_history);
-
-    if (result.ShapeType() == TopAbs_COMPOUND) {
-        // Unwrap a one-solid (or one-shell) compound.
-        TopExp_Explorer solid_ex(result, TopAbs_SOLID);
-        if (solid_ex.More()) {
-            result = solid_ex.Current();
-            solid_ex.Next();
-            if (solid_ex.More()) throw std::runtime_error("offset produced more than one solid");
-        } else {
-            TopExp_Explorer shell_ex(result, TopAbs_SHELL);
-            if (!shell_ex.More()) throw std::runtime_error("offset produced neither a solid nor a shell");
-            result = shell_ex.Current();
-            shell_ex.Next();
-            if (shell_ex.More()) throw std::runtime_error("offset produced more than one shell");
-        }
-    }
-
-    if (result.ShapeType() == TopAbs_SOLID) {
-        return to_solid(result);
-    }
-    if (result.ShapeType() == TopAbs_SHELL && BRep_Tool::IsClosed(result)) {
-        BRepBuilderAPI_MakeSolid solid_maker(TopoDS::Shell(result));
-        if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
-        TopoDS_Solid solid = solid_maker.Solid();
-        BRepLib::OrientClosedSolid(solid);
-        return std::make_unique<TopoDS_Solid>(solid);
-    }
-    throw std::runtime_error("offset produced an open shell");
+    return solid_from_shell(result);
 }
 
 // Interpolate each column of `points` along its first index at uniform
@@ -1812,14 +1778,7 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
         if (TopExp_Explorer(cap, TopAbs_EDGE).Current().Orientation() == edge.Orientation()) cap.Reverse();
         builder.Add(shell, cap);
     }
-    shell.Closed(BRep_Tool::IsClosed(shell));
-    if (!shell.Closed()) throw std::runtime_error("the capped shell is not closed");
-
-    BRepBuilderAPI_MakeSolid solid_maker(shell);
-    if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
-    TopoDS_Solid solid = solid_maker.Solid();
-    BRepLib::OrientClosedSolid(solid);
-    return std::make_unique<TopoDS_Solid>(solid);
+    return solid_from_shell(shell);
 }
 
 // ==================== Streambuf bridges (ffi.cpp-internal) ====================
