@@ -83,6 +83,12 @@ impl Color {
 		Ok(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0 })
 	}
 
+	/// Linear-light components, as glTF's `baseColorFactor` expects.
+	pub fn to_linear(&self) -> [f32; 3] {
+		let f = |c: f32| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+		[f(self.r), f(self.g), f(self.b)]
+	}
+
 	/// Encode this color as a 16-bit RGB555 value with the high bit set
 	/// (SolidView/MeshLab convention for the STL "attribute byte count" slot).
 	pub fn as_u16(&self) -> u16 {

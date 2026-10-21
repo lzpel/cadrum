@@ -241,9 +241,8 @@ impl Mesh {
 			.into_iter()
 			.map(|(indices, col)| {
 				let mat = materials.len();
-				// baseColorFactor is linear while Color is sRGB.
-				let lin = |c: f32| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
-				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true}}"#, lin(col[0]), lin(col[1]), lin(col[2])));
+				let [r, g, b] = Color { r: col[0], g: col[1], b: col[2] }.to_linear();
+				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true}}"#, r, g, b));
 				(indices, Some(mat))
 			})
 			.collect()
