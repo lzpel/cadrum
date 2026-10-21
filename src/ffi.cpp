@@ -145,8 +145,10 @@ static std::unique_ptr<TopoDS_Solid> to_solid(const TopoDS_Shape& shape) {
     throw std::runtime_error("result contains no solid");
 }
 
-// The one closed shell under `shape`; a solid with voids or a partial shell is rejected.
-static TopoDS_Shell closed_shell_of(const TopoDS_Shape& shape) {
+// The solid under `shape`, or its one closed shell upgraded to a positively oriented
+// solid. Face handles are kept, so face history computed on `shape` stays valid.
+static std::unique_ptr<TopoDS_Solid> solid_from_shell(const TopoDS_Shape& shape) {
+    if (TopExp_Explorer(shape, TopAbs_SOLID).More()) return to_solid(shape);
     TopExp_Explorer ex(shape, TopAbs_SHELL);
     if (!ex.More()) throw std::runtime_error("result contains no shell");
     TopoDS_Shell shell = TopoDS::Shell(ex.Current());
@@ -154,14 +156,7 @@ static TopoDS_Shell closed_shell_of(const TopoDS_Shape& shape) {
     if (ex.More()) throw std::runtime_error("result contains more than one shell");
     if (!BRep_Tool::IsClosed(shell)) throw std::runtime_error("the shell is not closed");
     shell.Closed(true);
-    return shell;
-}
-
-// The solid under `shape`, or its closed shell upgraded to a positively oriented
-// solid. Face handles are kept, so face history computed on `shape` stays valid.
-static std::unique_ptr<TopoDS_Solid> solid_from_shell(const TopoDS_Shape& shape) {
-    if (TopExp_Explorer(shape, TopAbs_SOLID).More()) return to_solid(shape);
-    BRepBuilderAPI_MakeSolid solid_maker(closed_shell_of(shape));
+    BRepBuilderAPI_MakeSolid solid_maker(shell);
     if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
     TopoDS_Solid solid = solid_maker.Solid();
     BRepLib::OrientClosedSolid(solid);
@@ -1359,7 +1354,8 @@ std::unique_ptr<TopoDS_Solid> builder_thick_solid(
         TopoDS_Shape offset_shape = offset.Shape();
 
         // A negative thickness shrinks inward, so the original shell stays outer.
-        TopoDS_Shell original_shell = closed_shell_of(solid), offset_shell = closed_shell_of(offset_shape);
+        TopoDS_Shell original_shell = TopoDS::Shell(TopoDS_Iterator(solid).Value());
+        TopoDS_Shell offset_shell = TopoDS::Shell(TopoDS_Iterator(*to_solid(offset_shape)).Value());
         TopoDS_Shell outer = thickness < 0.0 ? original_shell : offset_shell;
         TopoDS_Shell inner = thickness < 0.0 ? offset_shell : original_shell;
 
