@@ -1449,28 +1449,26 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
 // Edges → Wire → Face → Prism (solid).
 // Build the profile face shared by make_extrude and make_revolve. `profile_edges`
 // holds loops separated by null-edge sentinels; the first is the outer boundary.
-static TopoDS_Face face_from_loops(const std::vector<TopoDS_Edge>& profile_edges)
+// Split `edges` at null sentinels into wires, skipping empty sections.
+static std::vector<TopoDS_Wire> wires_of(const std::vector<TopoDS_Edge>& edges)
 {
     std::vector<TopoDS_Wire> wires;
-    BRepBuilderAPI_MakeWire wire_maker;
-    bool has_edges = false;
-    auto flush_wire = [&]() -> bool {
-        if (!has_edges) return true;
-        if (!wire_maker.IsDone()) return false;
-        wires.push_back(wire_maker.Wire());
-        wire_maker = BRepBuilderAPI_MakeWire();
-        has_edges = false;
-        return true;
-    };
-    for (const auto& e : profile_edges) {
-        if (e.IsNull()) {
-            if (!flush_wire()) throw std::runtime_error("edges do not connect into a wire");
-        } else {
-            wire_maker.Add(e);
-            has_edges = true;
+    for (auto begin = edges.begin(); begin != edges.end();) {
+        auto end = std::find_if(begin, edges.end(), [](const TopoDS_Edge& e) { return e.IsNull(); });
+        if (begin != end) {
+            BRepBuilderAPI_MakeWire wire_maker;
+            for (auto it = begin; it != end; ++it) wire_maker.Add(*it);
+            if (!wire_maker.IsDone()) throw std::runtime_error("edges do not connect into a wire");
+            wires.push_back(wire_maker.Wire());
         }
+        begin = end == edges.end() ? end : end + 1;
     }
-    if (!flush_wire()) throw std::runtime_error("edges do not connect into a wire");
+    return wires;
+}
+
+static TopoDS_Face face_from_loops(const std::vector<TopoDS_Edge>& profile_edges)
+{
+    std::vector<TopoDS_Wire> wires = wires_of(profile_edges);
     if (wires.empty()) throw std::runtime_error("empty profile");
 
     auto face_area = [](const TopoDS_Face& f) {
@@ -1606,25 +1604,7 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
         }
     }
 
-    // Split all_edges by null sentinels into profile wires and Add each.
-    BRepBuilderAPI_MakeWire wire_maker;
-    bool has_edges = false;
-    for (const auto& e : all_edges) {
-        if (e.IsNull()) {
-            if (!wire_maker.IsDone()) throw std::runtime_error("profile edges do not connect into a wire");
-            shell.Add(wire_maker.Wire(), false, false);
-            wire_maker = BRepBuilderAPI_MakeWire();
-            has_edges = false;
-        } else {
-            wire_maker.Add(e);
-            has_edges = true;
-        }
-    }
-    // Last section (after final sentinel or single section with no sentinel).
-    if (has_edges) {
-        if (!wire_maker.IsDone()) throw std::runtime_error("profile edges do not connect into a wire");
-        shell.Add(wire_maker.Wire(), false, false);
-    }
+    for (const TopoDS_Wire& w : wires_of(all_edges)) shell.Add(w, false, false);
 
     shell.Build();
     if (!shell.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakePipeShell did not complete");
@@ -1649,32 +1629,9 @@ std::unique_ptr<TopoDS_Solid> make_loft(
         /*isRuled=*/ruled,
         Precision::Confusion());
 
-    // Split all_edges by null sentinels into section wires.
-    size_t wire_count = 0;
-    BRepBuilderAPI_MakeWire wire_maker;
-    bool has_edges = false;
-
-    auto flush_wire = [&]() -> bool {
-        if (!has_edges) return true;
-        if (!wire_maker.IsDone()) return false;
-        loft.AddWire(wire_maker.Wire());
-        wire_count++;
-        wire_maker = BRepBuilderAPI_MakeWire();
-        has_edges = false;
-        return true;
-    };
-
-    for (const auto& e : all_edges) {
-        if (e.IsNull()) {
-            if (!flush_wire()) throw std::runtime_error("section edges do not connect into a wire");
-        } else {
-            wire_maker.Add(e);
-            has_edges = true;
-        }
-    }
-    if (!flush_wire()) throw std::runtime_error("section edges do not connect into a wire");
-
-    if (wire_count < 2) throw std::runtime_error("need at least 2 sections");
+    std::vector<TopoDS_Wire> wires = wires_of(all_edges);
+    if (wires.size() < 2) throw std::runtime_error("need at least 2 sections");
+    for (const TopoDS_Wire& w : wires) loft.AddWire(w);
 
     loft.Build();
     if (!loft.IsDone()) throw std::runtime_error("BRepOffsetAPI_ThruSections did not complete");
