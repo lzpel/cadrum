@@ -219,3 +219,21 @@ fn test_loft_07_ruled_matches_piecewise_estimate() {
 	assert!((0.85..1.15).contains(&ratio), "smooth/ruled volume ratio {:.4} out of sanity band", ratio);
 	println!("ruled = {:.6}, smooth = {:.6}, estimate = {:.6}", actual, mesh_volume(&smooth), expected);
 }
+
+// ==================== (8) 並列 loft: ロックなしでも結果が一致する ====================
+
+#[test]
+fn test_loft_08_parallel_threads_agree() {
+	let run = || {
+		let sections: Vec<Vec<Edge>> = [(1.0, 0.0), (0.6, 2.0), (0.5, 4.0)].iter().map(|&(c, z)| naca_section(c, z, 40)).collect();
+		let frustum = [vec![Edge::circle(3.0, DVec3::Z).unwrap()], vec![Edge::circle(2.0, DVec3::Z).unwrap().translate(DVec3::Z * 10.0)]];
+		let ellipse = |a: f64, z: f64| vec![Edge::bspline(&(0..16).map(|i| DVec3::new(a * (PI * i as f64 / 8.0).cos(), (PI * i as f64 / 8.0).sin(), z)).collect::<Vec<_>>(), BSplineEnd::Periodic).unwrap()];
+		let ribs = [ellipse(2.0, 0.0), ellipse(1.5, 3.0), ellipse(2.5, 6.0)];
+		[Solid::loft(&sections, false), Solid::loft(&sections, true), Solid::loft(&frustum, false), Solid::loft(&ribs, false)].map(|r| r.expect("loft").volume())
+	};
+	let expected = run();
+	let results: Vec<[f64; 4]> = std::thread::scope(|s| (0..16).map(|_| s.spawn(|| (0..8).map(|_| run()).collect::<Vec<_>>())).collect::<Vec<_>>().into_iter().flat_map(|h| h.join().unwrap()).collect());
+	for r in results {
+		assert_eq!(r, expected, "parallel loft volumes must match the serial run");
+	}
+}
