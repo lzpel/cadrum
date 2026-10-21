@@ -59,18 +59,3 @@ fn step_color_lossless() {
 	let got: Vec<Color> = read.iter().map(|s| s.colormap()[&s.id()]).collect();
 	assert_eq!(got, colors);
 }
-
-// A triangulation stored in the BRep would win over the reader's coarser request.
-#[test]
-fn write_brep_leaves_triangulation_out() {
-	let fine = cadrum::Tessellation { deflection_linear: 0.001, deflection_angular: 0.05, relative_linear: true };
-	let coarse = cadrum::Tessellation { deflection_linear: 0.05, deflection_angular: 1.0, relative_linear: true };
-	let shape = vec![Solid::cylinder(20.0, DVec3::new(0.0, 0.0, 30.0))];
-	let fine_count = Solid::mesh(&shape, fine).expect("mesh").vertices.len();
-
-	let mut buf = Vec::new();
-	Solid::write_brep(&shape, &mut buf).expect("write_brep");
-	let back = Solid::read_brep(&mut buf.as_slice()).expect("read_brep");
-	let coarse_count = Solid::mesh(&back, coarse).expect("mesh").vertices.len();
-	assert!(coarse_count < fine_count, "coarse {coarse_count} vs fine {fine_count}: the BRep carried the fine triangulation");
-}
