@@ -2288,7 +2288,8 @@ struct StyleWriter {
     STEPConstruct_Styles& styles;
     const std::unordered_map<uint64_t, Quantity_Color>& colors;
     NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
-    NCollection_DataMap<gp_Pnt, Handle(StepVisual_Colour)> rgbs;
+    NCollection_DataMap<TCollection_AsciiString, Handle(Standard_Transient)> dpdcs;
+    NCollection_DataMap<gp_Pnt, Handle(Standard_Transient)> rgbs;
 
     // MakeSTEPStyles in STEPCAFControl_Writer.cxx for a visible, non-component shape
     // with surface colors only: a style on a solid overrides into its faces.
@@ -2304,10 +2305,14 @@ struct StyleWriter {
         Handle(StepVisual_StyledItem) style = over;
         bool own = color.has_value();
         if (own && type != TopAbs_COMPOUND) {
-            // EncodeColor would gamma-shift the sRGB that Quantity_Color holds.
+            // EncodeColor gamma-shifts COLOUR_RGB, so it only writes 0/1 colors: the eight
+            // pre-defined ones, which gamma leaves unchanged.
             gp_Pnt key(color->Red(), color->Green(), color->Blue());
-            Handle(StepVisual_Colour) surf;
-            if (!rgbs.Find(key, surf)) {
+            auto unit = [](double c) { return c == 0.0 || c == 1.0; };
+            Handle(Standard_Transient) surf;
+            if (unit(key.X()) && unit(key.Y()) && unit(key.Z())) {
+                surf = STEPConstruct_Styles::EncodeColor(*color, dpdcs, rgbs);
+            } else if (!rgbs.Find(key, surf)) {
                 Handle(StepVisual_ColourRgb) rgb = new StepVisual_ColourRgb;
                 rgb->Init(new TCollection_HAsciiString(""), key.X(), key.Y(), key.Z());
                 surf = *rgbs.Bound(key, rgb);
@@ -2316,7 +2321,7 @@ struct StyleWriter {
             find_entities(styles.FinderProcess(), shape, items);
             for (const Handle(StepRepr_RepresentationItem)& item : items) {
                 Handle(StepVisual_PresentationStyleAssignment) psa =
-                    styles.MakeColorPSA(item, surf, nullptr, STEPConstruct_RenderingProperties());
+                    styles.MakeColorPSA(item, Handle(StepVisual_Colour)::DownCast(surf), nullptr, STEPConstruct_RenderingProperties());
                 style = styles.AddStyle(item, psa, over);
                 own = false;
             }
@@ -2359,7 +2364,7 @@ void write_step_color_stream(
     STEPConstruct_Styles styles(ws);
     Handle(StepRepr_RepresentationContext) context = styles.FindContext(shape);
     if (!context.IsNull()) {
-        StyleWriter{styles, colors, {}, {}}.walk(shape, nullptr, nullptr);
+        StyleWriter{styles, colors, {}, {}, {}}.walk(shape, nullptr, nullptr);
         Handle(StepData_StepModel) model = step_writer.Model();
         Handle(StepVisual_MechanicalDesignGeometricPresentationRepresentation) mdgpr;
         if (styles.CreateMDGPR(context, mdgpr, model)) model->AddWithRefs(mdgpr);
