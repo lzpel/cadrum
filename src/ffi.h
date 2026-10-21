@@ -422,9 +422,7 @@ bool face_project_point(const TopoDS_Face& face,
 
 // ==================== Colored STEP I/O ====================
 
-// `out_ids` = TShape* of each colored sub-shape, `out_rgb` = flat [r,g,b,...] in
-// OCC native space. An id is a FACE's or a SOLID's — a styled_item targets either.
-// Throws on failure.
+// Reads a STEP file from `reader` and returns the solids
 std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
     RustReader&          reader,
     rust::Vec<uint64_t>& out_ids,

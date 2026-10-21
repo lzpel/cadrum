@@ -241,7 +241,8 @@ impl Mesh {
 			.into_iter()
 			.map(|(indices, col)| {
 				let mat = materials.len();
-				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true}}"#, col[0], col[1], col[2]));
+				let [r, g, b] = Color { r: col[0], g: col[1], b: col[2] }.to_linear();
+				materials.push(format!(r#"{{"pbrMetallicRoughness":{{"baseColorFactor":[{},{},{},1.0],"metallicFactor":0.0,"roughnessFactor":1.0}},"alphaMode":"OPAQUE","doubleSided":true}}"#, r, g, b));
 				(indices, Some(mat))
 			})
 			.collect()

@@ -2095,6 +2095,7 @@ void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writ
 #include <StepVisual_MechanicalDesignGeometricPresentationRepresentation.hxx>
 #include <StepVisual_StyledItem.hxx>
 #include <StepVisual_Colour.hxx>
+#include <StepVisual_ColourRgb.hxx>
 #include <StepRepr_RepresentationContext.hxx>
 #include <StepData_StepModel.hxx>
 #include <Transfer_FinderProcess.hxx>
@@ -2143,10 +2144,19 @@ static void paint(const STEPConstruct_Styles& styles, const Handle(StepVisual_St
     STEPConstruct_RenderingProperties props;
     bool component = false;
     styles.GetColors(style, surf, bound, curve, props, component);
+    // Quantity_Color holds sRGB as stored, bypassing DecodeColor's sRGB-to-linear step.
     Quantity_Color color;
-    if (props.IsDefined()) color = props.GetRGBAColor().GetRGB();
-    else if (!surf.IsNull()) STEPConstruct_Styles::DecodeColor(surf, color);
-    else return;
+    Handle(StepVisual_ColourRgb) rgb = Handle(StepVisual_ColourRgb)::DownCast(surf);
+    if (!rgb.IsNull()) {
+        color.SetValues(rgb->Red(), rgb->Green(), rgb->Blue(), Quantity_TOC_RGB);
+    } else {
+        if (!surf.IsNull()) STEPConstruct_Styles::DecodeColor(surf, color);
+        else if (props.IsDefined()) color = props.GetRGBAColor().GetRGB();
+        else return;
+        double r, g, b;
+        color.Values(r, g, b, Quantity_TOC_sRGB);
+        color.SetValues(r, g, b, Quantity_TOC_RGB);
+    }
 
     const Handle(Transfer_TransientProcess)& tp = styles.TransientProcess();
     int index = tp->MapIndex(style->ItemAP242().Value());
@@ -2295,12 +2305,23 @@ struct StyleWriter {
         Handle(StepVisual_StyledItem) style = over;
         bool own = color.has_value();
         if (own && type != TopAbs_COMPOUND) {
-            Handle(StepVisual_Colour) surf = STEPConstruct_Styles::EncodeColor(*color, dpdcs, rgbs);
+            // EncodeColor gamma-shifts COLOUR_RGB, so it only writes 0/1 colors: the eight
+            // pre-defined ones, which gamma leaves unchanged.
+            gp_Pnt key(color->Red(), color->Green(), color->Blue());
+            auto unit = [](double c) { return c == 0.0 || c == 1.0; };
+            Handle(Standard_Transient) surf;
+            if (unit(key.X()) && unit(key.Y()) && unit(key.Z())) {
+                surf = STEPConstruct_Styles::EncodeColor(*color, dpdcs, rgbs);
+            } else if (!rgbs.Find(key, surf)) {
+                Handle(StepVisual_ColourRgb) rgb = new StepVisual_ColourRgb;
+                rgb->Init(new TCollection_HAsciiString(""), key.X(), key.Y(), key.Z());
+                surf = *rgbs.Bound(key, rgb);
+            }
             NCollection_Sequence<Handle(StepRepr_RepresentationItem)> items;
             find_entities(styles.FinderProcess(), shape, items);
             for (const Handle(StepRepr_RepresentationItem)& item : items) {
                 Handle(StepVisual_PresentationStyleAssignment) psa =
-                    styles.MakeColorPSA(item, surf, nullptr, STEPConstruct_RenderingProperties());
+                    styles.MakeColorPSA(item, Handle(StepVisual_Colour)::DownCast(surf), nullptr, STEPConstruct_RenderingProperties());
                 style = styles.AddStyle(item, psa, over);
                 own = false;
             }
