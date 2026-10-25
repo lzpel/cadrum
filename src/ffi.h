@@ -7,6 +7,7 @@
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
+#include <TopoDS_Wire.hxx>
 
 
 namespace cadrum {
@@ -16,6 +17,7 @@ namespace cadrum {
 using TopoDS_Solid = ::TopoDS_Solid;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
+using TopoDS_Wire = ::TopoDS_Wire;
 
 // Forward-declare the Rust opaque types (defined by cxx in ffi.rs.h)
 struct RustReader;
@@ -39,14 +41,18 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double nx, double ny, double nz);
 
 // `kind`, placement and `p1` / `p2` follow `face_surface`. The face lies left of
-// each loop of `profile_edges` (split at null sentinels) seen from the normal.
+// each closed loop of `wires` seen from the normal.
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    const std::vector<TopoDS_Edge>& profile_edges);
+    const std::vector<TopoDS_Wire>& wires);
+
+// Chain `edges` into wires, each edge taken whichever way meets the chain. A wire
+// closes when it returns to its start; trailing edges make an open last wire.
+std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges);
 
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
@@ -301,44 +307,38 @@ std::unique_ptr<TopoDS_Edge> mirror_edge(
     double nx, double ny, double nz);
 
 // Extrude a closed profile into a solid using BRepPrimAPI_MakePrism.
-// `profile_edges` holds one or more loops separated by null-edge sentinels
-// (TopoDS_Edge().IsNull()); the extra loops become holes.
+// `wires` are one or more closed loops; the extra loops become holes.
 std::unique_ptr<TopoDS_Solid> make_extrude(
-    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Wire>& wires,
     double dx, double dy, double dz);
 
-// Revolve the same sentinel-separated profile about the axis through
+// Revolve the same loops about the axis through
 // (ox,oy,oz) along (dx,dy,dz) by `angle` radians using BRepPrimAPI_MakeRevol.
 std::unique_ptr<TopoDS_Solid> make_revolve(
-    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Wire>& wires,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
     double angle);
 
-// Sweep a closed profile wire (built from `profile_edges`) along a spine
-// wire (built from `spine_edges`) using BRepOffsetAPI_MakePipeShell. The
-// profile is wrapped in a face before sweeping so the result is a Solid.
-// Unified MakePipeShell wrapper.  Supports single-profile sweep and
-// multi-profile morphing.  Profile sections in `all_edges` are separated
-// by null-edge sentinels (TopoDS_Edge().IsNull() == true).
+// Sweep the closed `profile` wires along the single wire of `spine_wires` using
+// BRepOffsetAPI_MakePipeShell; several profile wires morph from one to the next.
 //
 // `orient` selects how the profile is oriented along the spine:
 //   0 = Fixed   — fix the trihedron to the spine-start frame (no rotation)
 //   1 = Torsion — raw Frenet trihedron (helices, springs)
 //   2 = Up      — keep `(ux, uy, uz)` as the constant binormal direction
-//   3 = Auxiliary — use `aux_spine_edges` as auxiliary spine for twist control
+//   3 = Auxiliary — use `aux_spine` as auxiliary spine for twist control
 // Any other value falls back to Torsion.
 std::unique_ptr<TopoDS_Solid> make_pipe_shell(
-    const std::vector<TopoDS_Edge>& all_edges,
-    const std::vector<TopoDS_Edge>& spine_edges,
+    const std::vector<TopoDS_Wire>& profile,
+    const std::vector<TopoDS_Wire>& spine_wires,
     uint32_t orient,
     double ux, double uy, double uz,
-    const std::vector<TopoDS_Edge>& aux_spine_edges);
+    const std::vector<TopoDS_Wire>& aux_spine);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Edge>.
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
-void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed);
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
@@ -350,11 +350,10 @@ std::unique_ptr<std::vector<TopoDS_Solid>> shape_vec_new();
 void shape_vec_push(std::vector<TopoDS_Solid>& v, const TopoDS_Solid& s);
 
 // Loft (skin) a solid through N cross-section wires.
-// Sections in `all_edges` are separated by null-edge sentinels.
 // `ruled=false` interpolates a smooth B-spline surface through all sections;
 // `ruled=true` connects adjacent sections with straight ruled panels.
 std::unique_ptr<TopoDS_Solid> make_loft(
-    const std::vector<TopoDS_Edge>& all_edges,
+    const std::vector<TopoDS_Wire>& wires,
     bool ruled);
 
 // Sew (stitch) free faces into a single closed shell and upgrade it to a

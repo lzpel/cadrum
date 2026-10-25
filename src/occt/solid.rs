@@ -1,4 +1,4 @@
-use super::edge::{loops_to_ffi, Edge};
+use super::edge::{wires, Edge};
 use super::face::Face;
 use super::ffi;
 use crate::common::boolean::Boolean;
@@ -8,20 +8,13 @@ use glam::DVec3;
 use std::sync::OnceLock;
 
 /// Encode `ProfileOrient` into FFI arguments: (kind, ux, uy, uz, aux_spine_edges).
-fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>) {
-	let mut aux_vec = ffi::edge_vec_new();
-	let (kind, ux, uy, uz) = match orient {
-		ProfileOrient::Fixed => (0u32, 0.0, 0.0, 0.0),
-		ProfileOrient::Torsion => (1u32, 0.0, 0.0, 0.0),
-		ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
-		ProfileOrient::Auxiliary(edges) => {
-			for e in edges {
-				ffi::edge_vec_push(aux_vec.pin_mut(), &e.inner, false);
-			}
-			(3u32, 0.0, 0.0, 0.0)
-		}
-	};
-	(kind, ux, uy, uz, aux_vec)
+fn encode_orient(orient: ProfileOrient<'_>) -> (u32, f64, f64, f64, &[Edge]) {
+	match orient {
+		ProfileOrient::Fixed => (0, 0.0, 0.0, 0.0, &[]),
+		ProfileOrient::Torsion => (1, 0.0, 0.0, 0.0, &[]),
+		ProfileOrient::Up(v) => (2, v.x, v.y, v.z, &[]),
+		ProfileOrient::Auxiliary(edges) => (3, 0.0, 0.0, 0.0, edges),
+	}
 }
 
 fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Solid, new_inner: &ffi::TopoDS_Solid, old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
@@ -205,14 +198,12 @@ impl SolidStruct for Solid {
 	// ==================== Extrude ====================
 
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
-		let edges = loops_to_ffi(profile)?;
-		let shape = ffi::make_extrude(&edges, dir.x, dir.y, dir.z).map_err(|e| Error::Extrude(e.what().into()))?;
+		let shape = wires(profile).and_then(|w| ffi::make_extrude(&w, dir.x, dir.y, dir.z)).map_err(|e| Error::Extrude(e.what().into()))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	fn revolve<'a>(profile: impl IntoIterator<Item = &'a Edge>, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
-		let edges = loops_to_ffi(profile)?;
-		let shape = ffi::make_revolve(&edges, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
+		let shape = wires(profile).and_then(|w| ffi::make_revolve(&w, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle)).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
@@ -234,7 +225,7 @@ impl SolidStruct for Solid {
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner, false);
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history).map_err(|e| Error::Fillet(format!("radius={radius} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
@@ -245,7 +236,7 @@ impl SolidStruct for Solid {
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner, false);
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history).map_err(|e| Error::Chamfer(format!("distance={distance} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
@@ -256,16 +247,13 @@ impl SolidStruct for Solid {
 	// ==================== Sweep ====================
 
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {
-		let mut profile_vec = ffi::edge_vec_new();
-		for e in profile {
-			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner, false);
-		}
-		let mut spine_vec = ffi::edge_vec_new();
-		for e in spine {
-			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner, false);
-		}
-		let (kind, ux, uy, uz, aux_vec) = encode_orient(orient);
-		let shape = ffi::make_pipe_shell(&profile_vec, &spine_vec, kind, ux, uy, uz, &aux_vec).map_err(|e| Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s)): {}", profile_vec.len(), spine_vec.len(), e.what())))?;
+		let (profile, spine): (Vec<&Edge>, Vec<&Edge>) = (profile.into_iter().collect(), spine.into_iter().collect());
+		let (kind, ux, uy, uz, aux) = encode_orient(orient);
+		let shape = (|| {
+			let (p, s, a) = (wires(profile.iter().copied())?, wires(spine.iter().copied())?, wires(aux)?);
+			ffi::make_pipe_shell(&p, &s, kind, ux, uy, uz, &a)
+		})()
+		.map_err(|e| Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s)): {}", profile.len(), spine.len(), e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
@@ -275,16 +263,13 @@ impl SolidStruct for Solid {
 	where
 		Edge: 'a,
 	{
-		let mut all_edges = ffi::edge_vec_new();
+		let mut all_edges: Vec<&Edge> = Vec::new();
 		let mut section_count = 0usize;
 
 		for sec in sections {
-			if section_count > 0 {
-				ffi::edge_vec_push_null(all_edges.pin_mut());
-			}
 			let mut count = 0u32;
 			for edge in sec {
-				ffi::edge_vec_push(all_edges.pin_mut(), &edge.inner, false);
+				all_edges.push(edge);
 				count += 1;
 			}
 			if count == 0 {
@@ -297,7 +282,12 @@ impl SolidStruct for Solid {
 			return Err(Error::Loft(format!("loft: need ≥2 sections, got {} (a single section has no thickness to skin across)", section_count)));
 		}
 
-		let shape = ffi::make_loft(&all_edges, ruled).map_err(|e| Error::Loft(format!("loft: OCCT BRepOffsetAPI_ThruSections failed (sections={section_count}, ruled={ruled}): {}", e.what())))?;
+		// Each section closes on itself, so the flattened edges chain back into one wire per section.
+		let sections = wires(all_edges).map_err(|e| Error::Loft(format!("loft: {}", e.what())))?;
+		if sections.len() != section_count {
+			return Err(Error::Loft(format!("loft: {section_count} sections chain into {} wires; each section must close a loop", sections.len())));
+		}
+		let shape = ffi::make_loft(&sections, ruled).map_err(|e| Error::Loft(format!("loft: OCCT BRepOffsetAPI_ThruSections failed (sections={section_count}, ruled={ruled}): {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 

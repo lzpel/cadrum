@@ -99,6 +99,7 @@
 
 // --- Curve adaptation / approximation ---
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_CompCurve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomAPI_Interpolate.hxx>
 #include <Extrema_ExtPC.hxx>
@@ -209,7 +210,6 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     return std::make_unique<TopoDS_Solid>(maker.Solid());
 }
 
-static std::vector<TopoDS_Wire> wires_of(const std::vector<TopoDS_Edge>& edges);
 static Handle(Geom_Surface) surface_of(uint32_t kind, double ox, double oy, double oz, double zx, double zy, double zz, double xx, double xy, double xz, double p1, double p2);
 
 std::unique_ptr<TopoDS_Face> make_face(
@@ -218,10 +218,10 @@ std::unique_ptr<TopoDS_Face> make_face(
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    const std::vector<TopoDS_Edge>& profile_edges)
+    const std::vector<TopoDS_Wire>& wires)
 {
     Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
-    std::vector<TopoDS_Wire> wires = wires_of(profile_edges);
+    if (!wires.empty() && !BRep_Tool::IsClosed(wires.back())) throw std::runtime_error("trailing edges do not close a loop");
     if (wires.empty()) {
         // Only a sphere or torus closes on itself without a boundary.
         if (kind != 4 && kind != 5) throw std::runtime_error("empty profile on an unbounded surface");
@@ -1375,13 +1375,8 @@ std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new() {
 }
 
 
-void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
-    v.push_back(TopoDS_Edge());
-}
-
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed) {
-    // Edge::start_point reads the curve, whatever the orientation, so set it outright.
-    v.push_back(TopoDS::Edge(e.Oriented(reversed ? TopAbs_REVERSED : TopAbs_FORWARD)));
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
+    v.push_back(e);
 }
 
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {
@@ -1522,31 +1517,55 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
     return out;
 }
 
-// Extrude a closed profile wire into a solid via BRepPrimAPI_MakePrism.
-// Edges → Wire → Face → Prism (solid).
-// Build the profile face shared by make_extrude and make_revolve. `profile_edges`
-// holds loops separated by null-edge sentinels; the first is the outer boundary.
-// Split `edges` at null sentinels into wires, skipping empty sections.
-static std::vector<TopoDS_Wire> wires_of(const std::vector<TopoDS_Edge>& edges)
+std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges)
 {
-    std::vector<TopoDS_Wire> wires;
-    for (auto begin = edges.begin(); begin != edges.end();) {
-        auto end = std::find_if(begin, edges.end(), [](const TopoDS_Edge& e) { return e.IsNull(); });
-        if (begin != end) {
-            BRepBuilderAPI_MakeWire wire_maker;
-            for (auto it = begin; it != end; ++it) wire_maker.Add(*it);
-            if (!wire_maker.IsDone()) throw std::runtime_error("edges do not connect into a wire");
-            wires.push_back(wire_maker.Wire());
+    auto near = [](const gp_Pnt& p, const gp_Pnt& q) { return p.Distance(q) <= Precision::Confusion(); };
+    auto wires = std::make_unique<std::vector<TopoDS_Wire>>();
+    std::vector<TopoDS_Edge> chain;
+    gp_Pnt start, end;
+    auto flush = [&]() {
+        BRepBuilderAPI_MakeWire maker;
+        for (const TopoDS_Edge& e : chain) maker.Add(e);
+        if (!maker.IsDone()) throw std::runtime_error("edges do not connect into a wire");
+        wires->push_back(maker.Wire());
+        chain.clear();
+    };
+    for (const TopoDS_Edge& edge : edges) {
+        // Edge::start_point reads the curve whatever the orientation, so orient from the curve.
+        BRepAdaptor_Curve curve(edge);
+        const gp_Pnt a = curve.Value(curve.FirstParameter()), b = curve.Value(curve.LastParameter());
+        TopoDS_Edge e = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
+        if (chain.empty()) {
+            start = a;
+            end = b;
+        } else {
+            // The first edge's direction is settled by the second.
+            if (chain.size() == 1 && !near(end, a) && !near(end, b) && (near(start, a) || near(start, b))) {
+                chain.front().Reverse();
+                std::swap(start, end);
+            }
+            if (near(end, a)) {
+                end = b;
+            } else if (near(end, b)) {
+                e.Reverse();
+                end = a;
+            } else {
+                throw std::runtime_error("an edge meets neither end of the previous one");
+            }
         }
-        begin = end == edges.end() ? end : end + 1;
+        chain.push_back(e);
+        if (near(end, start)) flush();
     }
+    if (!chain.empty()) flush();
     return wires;
 }
 
-static TopoDS_Face face_from_loops(const std::vector<TopoDS_Edge>& profile_edges)
+// Build the profile face shared by make_extrude and make_revolve from closed
+// loops; the first is the outer boundary.
+static TopoDS_Face face_from_loops(const std::vector<TopoDS_Wire>& wires)
 {
-    std::vector<TopoDS_Wire> wires = wires_of(profile_edges);
     if (wires.empty()) throw std::runtime_error("empty profile");
+    if (!wires.empty() && !BRep_Tool::IsClosed(wires.back())) throw std::runtime_error("trailing edges do not close a loop");
 
     auto face_area = [](const TopoDS_Face& f) {
         GProp_GProps props;
@@ -1585,13 +1604,13 @@ static TopoDS_Face face_from_loops(const std::vector<TopoDS_Edge>& profile_edges
 }
 
 std::unique_ptr<TopoDS_Solid> make_extrude(
-    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Wire>& wires,
     double dx, double dy, double dz)
 {
     // MakePrism accepts a zero vector and returns a degenerate solid.
     const gp_Vec dir(dx, dy, dz);
     if (dir.Magnitude() < Precision::Confusion()) throw std::runtime_error("direction is zero-length");
-    TopoDS_Face face = face_from_loops(profile_edges);
+    TopoDS_Face face = face_from_loops(wires);
     BRepPrimAPI_MakePrism prism(face, dir);
     prism.Build();
     if (!prism.IsDone()) throw std::runtime_error("BRepPrimAPI_MakePrism did not complete");
@@ -1599,7 +1618,7 @@ std::unique_ptr<TopoDS_Solid> make_extrude(
 }
 
 std::unique_ptr<TopoDS_Solid> make_revolve(
-    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Wire>& wires,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
     double angle)
@@ -1608,7 +1627,7 @@ std::unique_ptr<TopoDS_Solid> make_revolve(
     if (axis_vec.Magnitude() < Precision::Confusion()) throw std::runtime_error("axis is zero-length");
     // MakeRevol takes an angle in [0, 2pi]; a negative angle turns the other way.
     if (std::abs(angle) < Precision::Angular() || std::abs(angle) > 2.0 * M_PI + Precision::Angular()) throw std::runtime_error("angle must be within (0, 2pi]");
-    TopoDS_Face face = face_from_loops(profile_edges);
+    TopoDS_Face face = face_from_loops(wires);
     gp_Ax1 axis(gp_Pnt(ox, oy, oz), gp_Dir(axis_vec));
     if (angle < 0.0) axis.Reverse();
     BRepPrimAPI_MakeRevol revol(face, axis, std::abs(angle));
@@ -1618,24 +1637,18 @@ std::unique_ptr<TopoDS_Solid> make_revolve(
 }
 
 // Unified MakePipeShell wrapper.  Handles both single-profile sweep and
-// multi-profile morphing sweep.  Profile sections in `all_edges` are
-// separated by null-edge sentinels (TopoDS_Edge().IsNull() == true).
-// `aux_spine_edges` is used only when orient == 3 (Auxiliary); pass an
-// empty vector for other modes.
+// multi-profile morphing sweep: each wire of `profile` is a section.
+// `spine_wires` and, when orient == 3 (Auxiliary), `aux_spine` hold one wire.
 std::unique_ptr<TopoDS_Solid> make_pipe_shell(
-    const std::vector<TopoDS_Edge>& all_edges,
-    const std::vector<TopoDS_Edge>& spine_edges,
+    const std::vector<TopoDS_Wire>& profile,
+    const std::vector<TopoDS_Wire>& spine_wires,
     uint32_t orient,
     double ux, double uy, double uz,
-    const std::vector<TopoDS_Edge>& aux_spine_edges)
+    const std::vector<TopoDS_Wire>& aux_spine)
 {
-    if (all_edges.empty() || spine_edges.empty()) throw std::runtime_error("empty profile or spine");
-
-    // Build the spine wire.
-    BRepBuilderAPI_MakeWire spineMaker;
-    for (const auto& e : spine_edges) spineMaker.Add(e);
-    if (!spineMaker.IsDone()) throw std::runtime_error("spine edges do not connect into a wire");
-    TopoDS_Wire spine = spineMaker.Wire();
+    if (profile.empty()) throw std::runtime_error("empty profile");
+    if (spine_wires.size() != 1) throw std::runtime_error("spine edges do not connect into one wire");
+    const TopoDS_Wire& spine = spine_wires.front();
 
     BRepOffsetAPI_MakePipeShell shell(spine);
 
@@ -1643,7 +1656,7 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
     switch (orient) {
         case 0: {
             // Fixed: lock the trihedron to the spine-start frame.
-            BRepAdaptor_Curve curve(spine_edges.front());
+            BRepAdaptor_CompCurve curve(spine);
             gp_Pnt start_pnt;
             gp_Vec start_tan;
             curve.D1(curve.FirstParameter(), start_pnt, start_tan);
@@ -1668,11 +1681,8 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
         }
         case 3: {
             // Auxiliary: build aux spine wire and use it for twist control.
-            if (aux_spine_edges.empty()) throw std::runtime_error("auxiliary spine is empty");
-            BRepBuilderAPI_MakeWire auxMaker;
-            for (const auto& e : aux_spine_edges) auxMaker.Add(e);
-            if (!auxMaker.IsDone()) throw std::runtime_error("auxiliary spine edges do not connect into a wire");
-            shell.SetMode(auxMaker.Wire(), true);
+            if (aux_spine.size() != 1) throw std::runtime_error("auxiliary spine edges do not connect into one wire");
+            shell.SetMode(aux_spine.front(), true);
             break;
         }
         default: {
@@ -1681,7 +1691,7 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
         }
     }
 
-    for (const TopoDS_Wire& w : wires_of(all_edges)) shell.Add(w, false, false);
+    for (const TopoDS_Wire& w : profile) shell.Add(w, false, false);
 
     shell.Build();
     if (!shell.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakePipeShell did not complete");
@@ -1691,14 +1701,13 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
 
 // Loft (skin) a solid through a sequence of cross-section wires.
 //
-// `all_edges` is a flat edge list with sections delimited by null-edge
-// sentinels (TopoDS_Edge().IsNull()); ≥2 sections required. Built via
+// `wires` are the sections; ≥2 required. Built via
 // BRepOffsetAPI_ThruSections with isSolid=true (cap open ends with planar
 // faces). `ruled=false` gives B-spline / C² smoothed interpolation through
 // all sections; `ruled=true` gives per-panel ruled (straight-line) surfaces
 // between adjacent sections. Both pass through every section wire exactly.
 std::unique_ptr<TopoDS_Solid> make_loft(
-    const std::vector<TopoDS_Edge>& all_edges,
+    const std::vector<TopoDS_Wire>& wires,
     bool ruled)
 {
     BRepOffsetAPI_ThruSections loft(
@@ -1706,7 +1715,6 @@ std::unique_ptr<TopoDS_Solid> make_loft(
         /*isRuled=*/ruled,
         Precision::Confusion());
 
-    std::vector<TopoDS_Wire> wires = wires_of(all_edges);
     if (wires.size() < 2) throw std::runtime_error("need at least 2 sections");
     for (const TopoDS_Wire& w : wires) loft.AddWire(w);
 
