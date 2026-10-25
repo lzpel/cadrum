@@ -46,6 +46,8 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <ShapeFix_Edge.hxx>
 #include <ShapeFix_Face.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
@@ -205,6 +207,29 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     return std::make_unique<TopoDS_Solid>(maker.Solid());
 }
 
+// Same placement and kind codes as face_surface, so a face round-trips through it.
+static Handle(Geom_Surface) surface_of(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2)
+{
+    // OCCT only rejects negative radii; a zero one gives a face with no area.
+    const bool has_radius = kind != 1 && kind != 3;
+    if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
+    if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
+    const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
+    switch (kind) {
+        case 1: return new Geom_Plane(pos);
+        case 2: return new Geom_CylindricalSurface(pos, p1);
+        case 3: return new Geom_ConicalSurface(pos, p2, p1);
+        case 4: return new Geom_SphericalSurface(pos, p1);
+        case 5: return new Geom_ToroidalSurface(pos, p1, p2);
+        default: throw std::runtime_error("unknown surface kind");
+    }
+}
+
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
@@ -214,25 +239,11 @@ std::unique_ptr<TopoDS_Face> make_face(
     double u0, double u1, double v0, double v1)
 {
     if (!(u1 > u0) || !(v1 > v0)) throw std::runtime_error("empty parameter range");
-    // OCCT only rejects negative radii; a zero one gives a face with no area.
-    const bool has_radius = kind != 1 && kind != 3;
-    if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
-    if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
-    // Same placement and kind codes as face_surface, so a face round-trips through it.
-    const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
-    Handle(Geom_Surface) surface;
-    switch (kind) {
-        case 1: surface = new Geom_Plane(pos); break;
-        case 2: surface = new Geom_CylindricalSurface(pos, p1); break;
-        case 3:
-            surface = new Geom_ConicalSurface(pos, p2, p1);
-            // STEP measures a cone's v along the axis, OCCT along the generatrix.
-            v0 /= std::cos(p2);
-            v1 /= std::cos(p2);
-            break;
-        case 4: surface = new Geom_SphericalSurface(pos, p1); break;
-        case 5: surface = new Geom_ToroidalSurface(pos, p1, p2); break;
-        default: throw std::runtime_error("unknown surface kind");
+    Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
+    if (kind == 3) {
+        // STEP measures a cone's v along the axis, OCCT along the generatrix.
+        v0 /= std::cos(p2);
+        v1 /= std::cos(p2);
     }
     BRepBuilderAPI_MakeFace maker(surface, u0, u1, v0, v1, Precision::Confusion());
     if (!maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeFace did not complete");
@@ -1317,6 +1328,11 @@ void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
     v.push_back(TopoDS_Edge());
 }
 
+void edge_vec_push_oriented(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed) {
+    // Edge::start_point reads the curve, whatever the orientation, so set it outright.
+    v.push_back(TopoDS::Edge(e.Oriented(reversed ? TopAbs_REVERSED : TopAbs_FORWARD)));
+}
+
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {
     return std::make_unique<std::vector<TopoDS_Face>>();
 }
@@ -1515,6 +1531,41 @@ static TopoDS_Face face_from_loops(const std::vector<TopoDS_Edge>& profile_edges
         face = TopoDS::Face(fixed);
     }
     return face;
+}
+
+std::unique_ptr<TopoDS_Face> make_trimmed_face(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2,
+    const std::vector<TopoDS_Edge>& profile_edges)
+{
+    std::vector<TopoDS_Wire> wires = wires_of(profile_edges);
+    if (wires.empty()) throw std::runtime_error("empty profile");
+    Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
+    BRep_Builder builder;
+    TopoDS_Face bare;
+    builder.MakeFace(bare, surface, Precision::Confusion());
+    for (const TopoDS_Wire& w : wires) builder.Add(bare, w);
+    ShapeFix_Edge edge_fixer;
+    for (TopExp_Explorer x(bare, TopAbs_EDGE); x.More(); x.Next()) edge_fixer.FixAddPCurve(TopoDS::Edge(x.Current()), bare, false);
+    // A loop round a periodic direction needs a seam, and Perform alters the
+    // wires so that FixMissingSeam no longer recognises them; seam first.
+    ShapeFix_Face fixer(bare);
+    fixer.FixMissingSeam();
+    // As in STEP, the face lies left of each loop seen from the surface normal.
+    fixer.FixOrientationMode() = 0;
+    fixer.Perform();
+    TopoDS_Shape fixed = fixer.Result();
+    if (fixed.IsNull() || fixed.ShapeType() != TopAbs_FACE) throw std::runtime_error("loops bound no single region");
+    const TopoDS_Face& face = TopoDS::Face(fixed);
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    if (!(props.Mass() > 0) || !BRepCheck_Analyzer(face).IsValid()) throw std::runtime_error("loops bound no finite region: wind the outer loop counterclockwise about the surface normal, holes clockwise, inside it");
+    // The fix widens an edge's tolerance to cover its distance from the surface.
+    if (BRep_Tool::MaxTolerance(face, TopAbs_EDGE) > 1.0e-4) throw std::runtime_error("profile does not lie on the surface");
+    return std::make_unique<TopoDS_Face>(face);
 }
 
 std::unique_ptr<TopoDS_Solid> make_extrude(

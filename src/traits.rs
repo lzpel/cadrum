@@ -458,6 +458,20 @@ pub trait FaceStruct: Sized + Debug {
 	/// may be 0), or a cone angle of 0 or beyond a right angle.
 	fn face(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<Self, Error>;
 
+	/// The part of `surface` bounded by `profile`, as one face.
+	///
+	/// `profile` is split into closed loops as in `Solid::extrude`, and unlike there
+	/// winding matters: as in STEP, the face lies left of every loop seen from the
+	/// surface normal, so an outer loop runs counterclockwise and a hole clockwise.
+	/// On a sphere or torus this picks which of the two regions a loop splits off.
+	/// Edges of `Solid`s keep their identity in the face, since they share vertices.
+	///
+	/// Fails with `Error::Validation` on an empty or non-loop profile, a loop off
+	/// the surface, loops bounding no finite region, or a surface `face` rejects.
+	fn trim<'a>(surface: &Surface, profile: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
+
 	/// Stable, backend-defined identity for this face. Two `Face` values
 	/// returning the same `id()` refer to the same topology element. Used
 	/// to look up entries in `Solid::colormap` or to match faces against
@@ -584,9 +598,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	///
 	/// `profile` is split into closed loops wherever an edge returns to the
 	/// loop's start: the first loop bounds the solid and any further loop
-	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. Loop
-	/// winding does not matter — each hole is oriented to remove material
-	/// whichever way it was traced.
+	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. An
+	/// edge may run either way along its loop, and loop winding does not matter —
+	/// each hole is oriented to remove material whichever way it was traced.
 	///
 	/// Internally builds a face from the loops and uses `BRepPrimAPI_MakePrism`.
 	/// Fails if the profile is empty, does not split into closed loops, a hole

@@ -50,6 +50,16 @@ std::unique_ptr<TopoDS_Face> make_face(
     double p1, double p2,
     double u0, double u1, double v0, double v1);
 
+// The part of the same surface bounded by `profile_edges`, loops split at
+// null sentinels with the outer one first. Throws when a loop leaves the surface.
+std::unique_ptr<TopoDS_Face> make_trimmed_face(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2,
+    const std::vector<TopoDS_Edge>& profile_edges);
+
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
     double x2, double y2, double z2);
@@ -341,6 +351,7 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
 void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
+void edge_vec_push_oriented(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();
