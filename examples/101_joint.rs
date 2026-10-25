@@ -1,17 +1,18 @@
 use cadrum::{Boolean, Edge, Error, Solid};
 use glam::DVec3;
 fn part(inner: f64, outer: f64, height: f64) -> Result<[Solid; 3], Error> {
-	let outer_solid = Solid::cube(DVec3::ZERO, DVec3::new(outer, outer, height)).translate(DVec3::ONE * -outer / 2.0);
+	let outer_solid = Solid::cube(DVec3::ZERO, DVec3::new(outer, outer, height))?.translate(DVec3::ONE * -outer / 2.0);
 	let between_edge = Edge::polygon(&[DVec3::new(outer / 2.0, height - outer / 2.0, 0.0), DVec3::new(outer / 2.0, outer / 2.0, 0.0), DVec3::new(height - outer / 2.0, outer / 2.0, 0.0)])?;
 	let between_solid = Solid::extrude(&between_edge, DVec3::Z * outer / 2.0)?;
-	let inner_solid = Solid::cylinder(inner / 2.0, DVec3::Z * height * 1000.0);
+	let inner_solid = Solid::cylinder(inner / 2.0, DVec3::Z * height * 1000.0)?;
 	Ok([outer_solid, between_solid, inner_solid])
 }
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 	let (inner, outer, height) = (8.1, 20., 60.0);
 	let base = part(inner, outer, height)?;
-	let parts = [base.clone(), base.clone().map(|s| s.rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU / 3.0)), base.clone().map(|s| s.rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU * 2.0 / 3.0))];
+	let turn = |third: f64| -> Result<Vec<Solid>, Error> { base.iter().cloned().map(|s| s.rotate(DVec3::ZERO, DVec3::ONE, std::f64::consts::TAU * third)).collect() };
+	let parts = [base.to_vec(), turn(1.0 / 3.0)?, turn(2.0 / 3.0)?];
 	// positive = 各 part の [outer, between] (= p[0], p[1]) を全部 union
 	let positive: Solid = parts.iter().flat_map(|p| [&p[0], &p[1]]).map(Boolean::from).reduce(|a, b| a + b).unwrap().build()?;
 	// negative = 各 part の inner cylinder (= p[2]) を全部 union

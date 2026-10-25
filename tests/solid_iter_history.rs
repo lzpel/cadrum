@@ -31,8 +31,8 @@ fn assert_posts_in(s: &Solid) {
 /// 入力に面も辺も持たない演算（プリミティブ / grid ソースの builder）は履歴が空。
 #[test]
 fn test_no_sub_shape_source_ops_have_empty_history() {
-	assert_eq!(Solid::cube(DVec3::ZERO, DVec3::splat(1.0)).iter_history().count(), 0, "cube");
-	assert_eq!(Solid::sphere(1.0).iter_history().count(), 0, "sphere");
+	assert_eq!(Solid::cube(DVec3::ZERO, DVec3::splat(1.0)).unwrap().iter_history().count(), 0, "cube");
+	assert_eq!(Solid::sphere(1.0).unwrap().iter_history().count(), 0, "sphere");
 
 	let bspline = Solid::bspline(16, 8, true, true, |i, j| {
 		let phi = TAU * i as f64 / 16.0;
@@ -114,7 +114,7 @@ fn test_revolve_sweep_loft_generate_a_face_per_profile_edge() {
 /// 面がある）か Kept、除去された top は開口の縁 (同じ平面の額縁) へ Modified される。
 #[test]
 fn test_shell_history_maps_retained_faces_and_rim() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let original = face_ids(&cube);
 	let top = cube.iter_face().last().expect("cube has faces");
 	let top_id = top.id();
@@ -136,7 +136,7 @@ fn test_shell_history_maps_retained_faces_and_rim() {
 /// edge を共有する 2 面が Modified、残り 4 面は Kept。
 #[test]
 fn test_fillet_history_generates_blend_from_edge() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let original = face_ids(&cube);
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
@@ -173,7 +173,7 @@ fn test_fillet_history_generates_blend_from_edge() {
 /// chamfer: fillet と同形（辺は Deleted されて面を Generated、隣接 2 面が Modified）。
 #[test]
 fn test_chamfer_history_generates_bevel_from_edge() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let edge = cube.iter_edge().next().expect("cube has edges");
 	let edge_id = edge.id();
 	let adjacent: HashSet<u64> = cube.iter_face().filter(|f| f.iter_edge().any(|e| e.id() == edge_id)).map(|f| f.id()).collect();
@@ -198,7 +198,7 @@ fn test_chamfer_history_generates_bevel_from_edge() {
 #[test]
 fn test_fillet_carries_face_color_via_history() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
-	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
 	cube.colormap_mut().extend(ids.into_iter().map(|id| (id, red)));
 
@@ -217,7 +217,7 @@ fn test_fillet_carries_face_color_via_history() {
 #[test]
 fn test_offset_carries_face_color_via_history() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
-	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
 	cube.colormap_mut().extend(ids.into_iter().map(|id| (id, red)));
 
@@ -232,8 +232,8 @@ fn test_offset_carries_face_color_via_history() {
 /// clean: 同一平面の 2 面を併合すると、両方の元面がその 1 面へ Modified される。
 #[test]
 fn test_clean_merges_coplanar_faces_as_modified() {
-	let left = Solid::cube(DVec3::ZERO, DVec3::new(5.0, 10.0, 10.0));
-	let right = Solid::cube(DVec3::new(5.0, 0.0, 0.0), DVec3::new(10.0, 10.0, 10.0));
+	let left = Solid::cube(DVec3::ZERO, DVec3::new(5.0, 10.0, 10.0)).unwrap();
+	let right = Solid::cube(DVec3::new(5.0, 0.0, 0.0), DVec3::new(10.0, 10.0, 10.0)).unwrap();
 	let fused = (&left + &right).build().expect("fuse");
 	let cleaned = fused.clean().expect("clean");
 	assert_posts_in(&cleaned);
@@ -257,8 +257,8 @@ fn test_clean_merges_coplanar_faces_as_modified() {
 /// tool の面から Modified、新しい辺は Generated される。
 #[test]
 fn test_boolean_keeps_untouched_faces_by_history() {
-	let big = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
-	let hole = Solid::cube(DVec3::new(3.0, 3.0, -1.0), DVec3::new(7.0, 7.0, 11.0));
+	let big = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
+	let hole = Solid::cube(DVec3::new(3.0, 3.0, -1.0), DVec3::new(7.0, 7.0, 11.0)).unwrap();
 	let (big_ids, hole_ids) = (face_ids(&big), face_ids(&hole));
 	let cut = (&big - &hole).build().expect("cut");
 	assert_posts_in(&cut);
@@ -297,8 +297,8 @@ fn test_boolean_keeps_untouched_faces_by_history() {
 /// `post` に持つ（兄弟ピースの由来を主張しない）。Deleted は全ピースに付く。
 #[test]
 fn test_split_boolean_pieces_own_disjoint_history() {
-	let block = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
-	let slab = Solid::cube(DVec3::new(-1.0, -1.0, 4.0), DVec3::new(11.0, 11.0, 6.0));
+	let block = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
+	let slab = Solid::cube(DVec3::new(-1.0, -1.0, 4.0), DVec3::new(11.0, 11.0, 6.0)).unwrap();
 	let pieces = (&block - &slab).build_vec().expect("cut splits the block");
 	assert_eq!(pieces.len(), 2, "the slab must cut the block in two");
 
@@ -318,10 +318,10 @@ fn test_split_boolean_pieces_own_disjoint_history() {
 #[test]
 fn test_scale_and_mirror_report_modified_faces() {
 	let red = "#ff0000".parse::<cadrum::Color>().expect("valid hex");
-	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let mut cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let ids: Vec<u64> = cube.iter_face().map(|f| f.id()).collect();
 	cube.colormap_mut().extend(ids.iter().map(|&id| (id, red)));
-	for (name, s) in [("scale", cube.clone().scale(DVec3::ZERO, 2.0)), ("mirror", cube.clone().mirror(DVec3::ZERO, DVec3::X))] {
+	for (name, s) in [("scale", cube.clone().scale(DVec3::ZERO, 2.0).unwrap()), ("mirror", cube.clone().mirror(DVec3::ZERO, DVec3::X).unwrap())] {
 		assert_posts_in(&s);
 		let faces = face_ids(&s);
 		let modified: HashSet<u64> = s

@@ -28,10 +28,10 @@ fn assert_quadrant_point_symmetry(solid: &Solid, tol: f64) {
 	assert!(total > 0.0, "volume should be positive, got {}", total);
 
 	// 各 half_space は法線の向きに solid が満ちる。
-	let plus_x = Solid::half_space(DVec3::ZERO, DVec3::X);
-	let minus_x = Solid::half_space(DVec3::ZERO, -DVec3::X);
-	let plus_y = Solid::half_space(DVec3::ZERO, DVec3::Y);
-	let minus_y = Solid::half_space(DVec3::ZERO, -DVec3::Y);
+	let plus_x = Solid::half_space(DVec3::ZERO, DVec3::X).unwrap();
+	let minus_x = Solid::half_space(DVec3::ZERO, -DVec3::X).unwrap();
+	let plus_y = Solid::half_space(DVec3::ZERO, DVec3::Y).unwrap();
+	let minus_y = Solid::half_space(DVec3::ZERO, -DVec3::Y).unwrap();
 
 	// half_space × half_space の連鎖 intersect は CellsBuilder が
 	// 「半無限 cell」を生成する場合に空結果を返すので、逐次 intersect で
@@ -116,7 +116,7 @@ fn test_bspline_02_open_grid_is_a_half_space() {
 	let below = Solid::bspline(13, 13, false, false, |i, j| wave(at(j), at(i))).expect("transposed open grid");
 	assert!(above.contains(DVec3::new(0.0, 0.0, 2.0)) && !above.contains(DVec3::new(0.0, 0.0, 0.2)));
 
-	let cube = Solid::cube(DVec3::new(-2.0, -2.0, 0.0), DVec3::new(2.0, 2.0, 3.0));
+	let cube = Solid::cube(DVec3::new(-2.0, -2.0, 0.0), DVec3::new(2.0, 2.0, 3.0)).unwrap();
 	for (name, solid, expected) in [("cube * above", (&cube * &above).build(), 32.0), ("cube - above", (&cube - &above).build(), 16.0), ("cube * below", (&cube * &below).build(), 16.0)] {
 		let volume = solid.expect(name).volume();
 		assert!((volume - expected).abs() < 1e-6, "{name}: {volume} vs {expected}");
@@ -140,7 +140,7 @@ fn test_bspline_03_pipe_volume_is_positive_either_way() {
 		let pipe = Solid::bspline(5, m, false, true, |i, j| p(j, i)).expect("v periodic");
 		let volume = pipe.volume();
 		assert!((volume - expected).abs() / expected < 1e-3, "turn {turn}: {volume} vs {expected}");
-		let half = (&pipe * &Solid::half_space(DVec3::Z * (h / 2.0), DVec3::Z)).build().expect("cut pipe").volume();
+		let half = (&pipe * &Solid::half_space(DVec3::Z * (h / 2.0), DVec3::Z).unwrap()).build().expect("cut pipe").volume();
 		assert!((half - volume / 2.0).abs() / volume < 1e-3, "turn {turn}: cut {half} vs {volume}");
 		assert!(matches!(Solid::bspline(m, 5, true, false, |i, j| p(i, j)), Err(Error::Bspline(_))), "u periodic only is not supported yet");
 	}

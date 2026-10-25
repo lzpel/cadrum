@@ -13,12 +13,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let original = Solid::read_step(&mut std::fs::File::open(format!("{manifest_dir}/steps/colored_box.step")).expect("open file"))?;
 
 	// 1. STEP round-trip: rotate 30° → write → read
-	let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect::<Result<_, _>>()?;
 	Solid::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
 	let a = Solid::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
 
 	// 2. BRep round-trip: rotate another 30° → write → read
-	let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect::<Result<_, _>>()?;
 	Solid::write_brep(&b_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
 	let b = Solid::read_brep(&mut std::fs::File::open(&brep_path).expect("open file"))?;
 

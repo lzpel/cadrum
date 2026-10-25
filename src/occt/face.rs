@@ -98,12 +98,11 @@ impl FaceStruct for Face {
 		DVec3::new(x, y, z)
 	}
 
-	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+	fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error> {
 		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		// A bounded face always has a boundary to fall back on, so a failure is a bug.
-		ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz).unwrap_or_else(|e| panic!("Face::project: {}", e.what()));
-		(DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz))
+		ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz).map_err(|e| Error::Query(format!("project: {}", e.what())))?;
+		Ok((DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz)))
 	}
 
 	fn iter_loop(&self) -> impl Iterator<Item = &[Edge]> + '_ {

@@ -19,7 +19,7 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 #[test]
 fn sphere_normals_come_from_the_surface() {
 	let tess = Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() };
-	let mesh = Solid::mesh(&[Solid::sphere(5.0)], tess).unwrap();
+	let mesh = Solid::mesh(&[Solid::sphere(5.0).unwrap()], tess).unwrap();
 
 	assert_eq!(mesh.normals.len(), mesh.vertices.len(), "one normal per vertex");
 	assert!(!mesh.normals.is_empty(), "sphere must produce vertices");
@@ -38,14 +38,14 @@ fn sphere_normals_come_from_the_surface() {
 fn mesh_leaves_the_solid_untouched() {
 	let tess = |d| Tessellation { deflection_linear: d, relative_linear: false, ..Default::default() };
 	let count = |s: &Solid, d| Solid::mesh([s], tess(d)).unwrap().indices.len() / 3;
-	let coarse = count(&Solid::sphere(10.0), 1.0);
+	let coarse = count(&Solid::sphere(10.0).unwrap(), 1.0);
 
-	let s = Solid::torus(10.0, 3.0, dvec3(1.0, 1.0, 0.3));
+	let s = Solid::torus(10.0, 3.0, dvec3(1.0, 1.0, 0.3)).unwrap();
 	let before = s.bounding_box();
 	count(&s, 0.01);
 	assert_eq!(s.bounding_box(), before, "a stored triangulation would tighten the box");
 
-	let s = Solid::sphere(10.0);
+	let s = Solid::sphere(10.0).unwrap();
 	count(&s, 0.01);
 	assert_eq!(count(&s, 1.0), coarse, "a stored fine triangulation would be reused");
 	assert_eq!(count(&s.translate(dvec3(5.0, 0.0, 0.0)), 1.0), coarse);
@@ -72,7 +72,7 @@ mod svg {
 
 	#[test]
 	fn box_isometric() {
-		let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
+		let shape = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()];
 		let svg = svg_string(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1);
 
 		assert!(svg.starts_with("<svg"), "should start with <svg tag");
@@ -88,7 +88,7 @@ mod svg {
 
 	#[test]
 	fn cylinder() {
-		let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0)];
+		let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0).unwrap()];
 		let svg = svg_string(&shape, dvec3(1.0, 0.5, 0.3).normalize(), 0.1);
 
 		assert!(svg.contains("<polyline"));
@@ -98,8 +98,8 @@ mod svg {
 
 	#[test]
 	fn has_hidden_lines() {
-		let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-		let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(5.0, 5.0, 0.0))];
+		let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()];
+		let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap().translate(dvec3(5.0, 5.0, 0.0))];
 		let shape: Vec<Solid> = (&a[0] + &b[0]).build_vec().unwrap();
 		let svg = svg_string(&shape, dvec3(1.0, 1.0, 1.0).normalize(), 0.1);
 
@@ -117,11 +117,11 @@ mod svg {
 			svg.matches("<polygon ").count()
 		}
 
-		let shape = [Solid::sphere(5.0)];
+		let shape = [Solid::sphere(5.0).unwrap()];
 		let svg_a = svg_string(&shape, DVec3::X, 0.1);
 		let count_a = count_polygons(&svg_a);
 
-		let rotated = shape.map(|s| s.rotate_y(std::f64::consts::PI));
+		let rotated = shape.map(|s| s.rotate_y(std::f64::consts::PI).unwrap());
 		let svg_b = svg_string(&rotated, DVec3::X, 0.1);
 		let count_b = count_polygons(&svg_b);
 
@@ -162,7 +162,7 @@ mod glb {
 
 	#[test]
 	fn header_and_chunks() {
-		let glb = glb_to_file(&[Solid::cube(DVec3::ZERO, DVec3::splat(10.0))], Default::default(), "glb_header_and_chunks");
+		let glb = glb_to_file(&[Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()], Default::default(), "glb_header_and_chunks");
 		assert!(glb.len() >= 20, "GLB must hold a 12-byte header + JSON chunk header");
 
 		// 12-byte header
@@ -196,7 +196,7 @@ mod glb {
 	/// UNSIGNED_INT (5125) must not appear (issue #181).
 	#[test]
 	fn small_u16_indices() {
-		let glb = glb_to_file(&[Solid::cube(DVec3::ZERO, DVec3::splat(10.0))], Default::default(), "glb_small_u16_indices");
+		let glb = glb_to_file(&[Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()], Default::default(), "glb_small_u16_indices");
 		let json = glb_json(&glb);
 		assert!(json.contains(r#""componentType":5123"#), "small mesh must use UNSIGNED_SHORT index accessors");
 		assert!(!json.contains(r#""componentType":5125"#), "small mesh must not emit UNSIGNED_INT index accessors");
@@ -206,7 +206,7 @@ mod glb {
 	#[test]
 	fn large_u32_indices() {
 		let tess = Tessellation { deflection_linear: 0.0038, relative_linear: false, ..Default::default() }; // ≈66632 verts > 65535
-		let glb = glb_to_file(&[Solid::sphere(50.0)], tess, "glb_large_u32_indices");
+		let glb = glb_to_file(&[Solid::sphere(50.0).unwrap()], tess, "glb_large_u32_indices");
 		assert!(glb_json(&glb).contains(r#""componentType":5125"#), "mesh with >65535 vertices must use UNSIGNED_INT index accessors");
 	}
 }
@@ -234,7 +234,7 @@ mod png {
 
 	#[test]
 	fn cylinder_shaded() {
-		let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0)];
+		let shape = [Solid::cylinder(5.0, DVec3::Z * 10.0).unwrap()];
 		let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.1, relative_linear: false, ..Default::default() }).unwrap();
 		let scene = mesh.scene(cadrum::SceneOption { view: dvec3(1.0, 0.5, 0.3).normalize(), shading: true, ..Default::default() });
 
@@ -251,7 +251,7 @@ mod png {
 	fn dimensions_are_exact() {
 		// User-specified [width, height] must appear verbatim in the IHDR,
 		// regardless of viewbox aspect (letterboxed when aspects differ).
-		let shape = [Solid::cube(DVec3::ZERO, DVec3::new(50.0, 10.0, 10.0))];
+		let shape = [Solid::cube(DVec3::ZERO, DVec3::new(50.0, 10.0, 10.0)).unwrap()];
 		let mesh = Solid::mesh(&shape, cadrum::Tessellation { deflection_linear: 0.5, relative_linear: false, ..Default::default() }).unwrap();
 		let scene = mesh.scene(cadrum::SceneOption { view: DVec3::Z, up: DVec3::Y, hidden_edges: false, shading: false });
 
@@ -275,7 +275,7 @@ fn mesh_keeps_brep_bytes_and_gives_uvs() {
 		Solid::write_brep([s], &mut bytes).unwrap();
 		bytes
 	};
-	let s = Solid::sphere(10.0);
+	let s = Solid::sphere(10.0).unwrap();
 	let before = brep(&s);
 	let mesh = Solid::mesh([&s], Tessellation::default()).unwrap();
 	assert_eq!(brep(&s), before, "meshing must not change what write_brep writes");

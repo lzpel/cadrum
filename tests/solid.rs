@@ -7,7 +7,7 @@ fn dvec3(x: f64, y: f64, z: f64) -> DVec3 {
 
 /// 10×10×10 ボックス（体積 1000）
 fn test_box() -> Solid {
-	Solid::cube(DVec3::ZERO, DVec3::splat(10.0))
+	Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()
 }
 
 // ==================== translated ====================
@@ -23,8 +23,8 @@ fn test_translated_preserves_volume() {
 fn test_union_of_translated_overlapping_solids_has_single_volume() {
 	// 異なる場所に同じ大きさの立方体を2つ作り、translatedで同じ場所に重ねてからunionする。
 	// 結果のvolumeは1つ分（1000）になるはず。
-	let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-	let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).translate(dvec3(100.0, 0.0, 0.0))];
+	let a = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()];
+	let b = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap().translate(dvec3(100.0, 0.0, 0.0))];
 	let b_moved: Vec<Solid> = b.clone().into_iter().map(|s| s.translate(dvec3(-100.0, 0.0, 0.0))).collect();
 
 	// b と b_moved は実態が別であることを確認: a と b（移動前）を union するとvolumeは2つ分（2000）。
@@ -50,14 +50,14 @@ fn test_union_of_translated_overlapping_solids_has_single_volume() {
 fn test_rotated_preserves_volume() {
 	let shape = test_box();
 	// Z 軸周りに 45° 回転
-	let rotated = shape.rotate_z(std::f64::consts::FRAC_PI_4);
+	let rotated = shape.rotate_z(std::f64::consts::FRAC_PI_4).unwrap();
 	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
 }
 
 #[test]
 fn test_rotated_y_preserves_volume() {
 	let shape = test_box();
-	let rotated = shape.rotate_y(std::f64::consts::FRAC_PI_2);
+	let rotated = shape.rotate_y(std::f64::consts::FRAC_PI_2).unwrap();
 	assert!((rotated.volume() - 1000.0).abs() < 1e-3);
 }
 
@@ -67,7 +67,7 @@ fn test_rotated_y_preserves_volume() {
 fn test_scale_volume() {
 	let shape = test_box();
 	// 均一 2 倍スケール → 体積は 2³ = 8 倍
-	let scaled = shape.scale(DVec3::ZERO, 2.0);
+	let scaled = shape.scale(DVec3::ZERO, 2.0).unwrap();
 	assert!((scaled.volume() - 8000.0).abs() < 1e-3);
 }
 
@@ -89,7 +89,7 @@ fn test_preserves_face_ids() {
 	let shape = test_box();
 	let solid_id = shape.id();
 	let ids = face_ids([&shape]);
-	let rotated = shape.rotate_z(std::f64::consts::FRAC_PI_4);
+	let rotated = shape.rotate_z(std::f64::consts::FRAC_PI_4).unwrap();
 	assert_eq!(solid_id, rotated.id(), "rotate should preserve solid tshape_id");
 	assert_eq!(ids, face_ids([&rotated]), "rotate should preserve face IDs");
 }
@@ -118,8 +118,8 @@ fn test_face_edge_incidence_via_id() {
 fn test_new_faces_subtract_b_inside_a() {
 	// small_box が big_box に完全に収まる → small の 6 面は手つかずのまま内壁になる。
 	// 被演算子が translate されていても、Kept の src/post ペアで追える。
-	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
+	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()];
+	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).unwrap().translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] - &small[0]).build_vec().unwrap();
 	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter(|l| small_face_ids.contains(&l.src())).filter_map(|l| l.post()).collect();
@@ -130,8 +130,8 @@ fn test_new_faces_subtract_b_inside_a() {
 fn test_new_faces_intersect_b_inside_a() {
 	// intersect(big, small) の結果は small そのもの
 	// small の 6 面はすべて unchanged → tool faces = 結果の全フェイス = 6
-	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
-	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
+	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap()];
+	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).unwrap().translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] * &small[0]).build_vec().unwrap();
 	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter(|l| small_face_ids.contains(&l.src())).filter_map(|l| l.post()).collect();
@@ -146,8 +146,8 @@ fn test_new_faces_intersect_b_inside_a() {
 fn cube_corner_order_independent() {
 	// cube は対角の 2 隅で定義され、どちらが +x+y+z 側かは無関係。
 	// cube(ZERO, ONE) と cube(ONE, ZERO) は完全に同一の立方体になる。
-	let a = Solid::cube(DVec3::ZERO, DVec3::ONE);
-	let b = Solid::cube(DVec3::ONE, DVec3::ZERO);
+	let a = Solid::cube(DVec3::ZERO, DVec3::ONE).unwrap();
+	let b = Solid::cube(DVec3::ONE, DVec3::ZERO).unwrap();
 	assert_eq!(a.bounding_box(), b.bounding_box(), "corner order must not change the box");
 	assert!((a.volume() - b.volume()).abs() < 1e-9);
 	assert!((a.volume() - 1.0).abs() < 1e-9, "unit cube volume should be 1");
@@ -158,12 +158,12 @@ fn cube_corner_order_independent() {
 #[test]
 fn test_bounding_box() {
 	// 単一 solid
-	let [min, max] = Solid::cube(DVec3::ZERO, DVec3::new(3.0, 4.0, 5.0)).translate(dvec3(1.0, 2.0, 3.0)).bounding_box();
+	let [min, max] = Solid::cube(DVec3::ZERO, DVec3::new(3.0, 4.0, 5.0)).unwrap().translate(dvec3(1.0, 2.0, 3.0)).bounding_box();
 	assert!((min - dvec3(1.0, 2.0, 3.0)).length() < 1e-6);
 	assert!((max - dvec3(4.0, 6.0, 8.0)).length() < 1e-6);
 
 	// 複数 solid のマージ
-	let solids = [Solid::cube(DVec3::ZERO, DVec3::splat(2.0)), Solid::cube(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0)).translate(dvec3(5.0, 5.0, 5.0))];
+	let solids = [Solid::cube(DVec3::ZERO, DVec3::splat(2.0)).unwrap(), Solid::cube(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0)).unwrap().translate(dvec3(5.0, 5.0, 5.0))];
 	let bboxes: Vec<[DVec3; 2]> = solids.iter().map(|s| s.bounding_box()).collect();
 	let min = bboxes.iter().map(|b| b[0]).reduce(|a, b| a.min(b)).unwrap();
 	let max = bboxes.iter().map(|b| b[1]).reduce(|a, b| a.max(b)).unwrap();
@@ -177,7 +177,7 @@ fn test_bounding_box() {
 	assert!((max - dvec3(20.0, 30.0, 40.0)).length() < 1e-6);
 
 	// half-space は無限ソリッド — bbox がどう返るか確認
-	let [min, max] = Solid::half_space(dvec3(0.0, 0.0, 0.0), dvec3(0.0, 0.0, 1.0)).bounding_box();
+	let [min, max] = Solid::half_space(dvec3(0.0, 0.0, 0.0), dvec3(0.0, 0.0, 1.0)).unwrap().bounding_box();
 	println!("half_space bbox: min={min:?} max={max:?}");
 }
 

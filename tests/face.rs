@@ -74,7 +74,7 @@ fn cylinder_patch_and_band() {
 	// closed on its seam: a point on the far side projects onto the band itself
 	let band = Face::face(&s, [&ring(r, 0.0, true), &ring(r, h, false)]).unwrap();
 	assert_close(band.area(), TAU * r * h, "band");
-	let (cp, _) = band.project(DVec3::new(-5.0, 0.0, 1.0));
+	let (cp, _) = band.project(DVec3::new(-5.0, 0.0, 1.0)).unwrap();
 	assert!((cp - DVec3::new(-r, 0.0, 1.0)).length() < 1e-6, "{cp:?}");
 }
 
@@ -196,7 +196,7 @@ fn loops_list_the_outer_boundary_first() {
 		assert!(ends.iter().any(|&p| (p - pair[1].start_point()).length() < 1e-9 || (p - pair[1].end_point()).length() < 1e-9));
 	}
 	// A cube face has one loop of four edges, all of them edges of the cube.
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0)).unwrap();
 	let cube_edges: std::collections::HashSet<u64> = cube.iter_edge().map(|e| e.id()).collect();
 	for face in cube.iter_face() {
 		let loops: Vec<&[Edge]> = face.iter_loop().collect();
@@ -238,7 +238,7 @@ fn bspline_surface_reads_back_and_rebuilds() {
 /// Vertices of a solid are reported once each.
 #[test]
 fn cube_has_eight_vertices() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0)).unwrap();
 	let vertices: Vec<&DVec3> = cube.iter_vertex().collect();
 	assert_eq!(vertices.len(), 8);
 	assert!(vertices.iter().all(|v| v.to_array().iter().all(|&c| c == 0.0 || c == 2.0)));

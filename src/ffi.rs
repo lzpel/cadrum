@@ -103,6 +103,7 @@ mod ffi_bridge {
 		fn solid_vertices(shape: &TopoDS_Solid) -> Result<Vec<f64>>;
 		fn local_face(face: &TopoDS_Face, owner: &TopoDS_Solid) -> UniquePtr<TopoDS_Face>;
 
+		fn shape_is_valid(shape: &TopoDS_Solid) -> Result<bool>;
 		fn clone_solid_handle(solid: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
 		fn clone_edge_handle(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
 		fn clone_face_handle(face: &TopoDS_Face) -> UniquePtr<TopoDS_Face>;

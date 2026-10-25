@@ -205,6 +205,9 @@ std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_So
 // OCCT's ref count. Needed when Rust materializes owned `Shape` / `Edge` /
 // `Face` wrappers from the `&TopoDS_*` references yielded by
 // `CxxVector::iter()`.
+// BRepCheck_Analyzer's verdict on the solid.
+bool shape_is_valid(const TopoDS_Solid& shape);
+
 std::unique_ptr<TopoDS_Solid> clone_solid_handle(const TopoDS_Solid& solid);
 std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
 std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);

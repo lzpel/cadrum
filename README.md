@@ -171,7 +171,7 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let solids = [Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).color("#4a90d9"), Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 30.0).color("#e67e22"), Solid::sphere(8.0).translate(DVec3::X * 60.0 + DVec3::Z * 15.0).color("#2ecc71"), Solid::cone(8.0, 1.0, DVec3::Z * 30.0).translate(DVec3::X * 90.0).color("#e74c3c"), Solid::torus(12.0, 4.0, DVec3::Z).translate(DVec3::X * 130.0 + DVec3::Z * 15.0).color("#9b59b6")];
+	let solids = [Solid::cube(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0))?.color("#4a90d9"), Solid::cylinder(8.0, DVec3::Z * 30.0)?.translate(DVec3::X * 30.0).color("#e67e22"), Solid::sphere(8.0)?.translate(DVec3::X * 60.0 + DVec3::Z * 15.0).color("#2ecc71"), Solid::cone(8.0, 1.0, DVec3::Z * 30.0)?.translate(DVec3::X * 90.0).color("#e74c3c"), Solid::torus(12.0, 4.0, DVec3::Z)?.translate(DVec3::X * 130.0 + DVec3::Z * 15.0).color("#9b59b6")];
 
 	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 
@@ -216,12 +216,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let original = Solid::read_step(&mut std::fs::File::open(format!("{manifest_dir}/steps/colored_box.step")).expect("open file"))?;
 
 	// 1. STEP round-trip: rotate 30° → write → read
-	let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	let a_written: Vec<Solid> = original.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect::<Result<_, _>>()?;
 	Solid::write_step(&a_written, &mut std::fs::File::create(&step_path).expect("create file"))?;
 	let a = Solid::read_step(&mut std::fs::File::open(&step_path).expect("open file"))?;
 
 	// 2. BRep round-trip: rotate another 30° → write → read
-	let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect();
+	let b_written: Vec<Solid> = a.clone().into_iter().map(|s| s.rotate_x(FRAC_PI_8)).collect::<Result<_, _>>()?;
 	Solid::write_brep(&b_written, &mut std::fs::File::create(&brep_path).expect("create file"))?;
 	let b = Solid::read_brep(&mut std::fs::File::open(&brep_path).expect("open file"))?;
 
@@ -271,7 +271,7 @@ use std::f64::consts::PI;
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let base = Solid::cone(8.0, 0.0, DVec3::Z * 20.0).color("#888888");
+	let base = Solid::cone(8.0, 0.0, DVec3::Z * 20.0)?.color("#888888");
 
 	let solids = [
 		// original — reference, no transform
@@ -279,11 +279,11 @@ fn main() -> Result<(), cadrum::Error> {
 		// translate — shift +20 along Z
 		base.clone().color("#4a90d9").translate(DVec3::X * 40.0 + DVec3::Z * 20.0),
 		// rotate — 90° around X axis so the cone tips toward Y
-		base.clone().color("#e67e22").rotate_x(PI / 2.0).translate(DVec3::X * 80.0),
+		base.clone().color("#e67e22").rotate_x(PI / 2.0)?.translate(DVec3::X * 80.0),
 		// scaled — 1.5x from its local origin
-		base.clone().color("#2ecc71").scale(DVec3::ZERO, 1.5).translate(DVec3::X * 120.0),
+		base.clone().color("#2ecc71").scale(DVec3::ZERO, 1.5)?.translate(DVec3::X * 120.0),
 		// mirror — flip across Z=0 plane so the tip points down
-		base.clone().color("#e74c3c").mirror(DVec3::ZERO, DVec3::Z).translate(DVec3::X * 160.0),
+		base.clone().color("#e74c3c").mirror(DVec3::ZERO, DVec3::Z)?.translate(DVec3::X * 160.0),
 	];
 
 	Solid::write_step(&solids, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
@@ -321,8 +321,8 @@ use cadrum::{Boolean, DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let make_box = Solid::cube(DVec3::ZERO, DVec3::splat(20.0)).translate(DVec3::X * -10. + DVec3::Y * -10.).color("#4a90d9");
-	let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::Z * -5.);
+	let make_box = Solid::cube(DVec3::ZERO, DVec3::splat(20.0))?.translate(DVec3::X * -10. + DVec3::Y * -10.).color("#4a90d9");
+	let make_cyl = Solid::cylinder(8.0, DVec3::Z * 30.0)?.translate(DVec3::Z * -5.);
 
 	// union: merge both shapes into one — offset X=0
 	let union: Solid = (&make_box + &make_cyl).build()?;
@@ -333,8 +333,8 @@ fn main() -> Result<(), cadrum::Error> {
 	// intersect: only the overlapping volume — offset X=80
 	let intersect: Solid = (&make_box * &make_cyl).build()?;
 
-	let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0).translate(DVec3::X * 5.);
-	let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU / 3.), cylinder.clone().rotate_z(-std::f64::consts::TAU / 3.)];
+	let cylinder = Solid::cylinder(8.0, DVec3::Z * 30.0)?.translate(DVec3::X * 5.);
+	let [cylinder0, cylinder1, cylinder2] = [cylinder.clone(), cylinder.clone().rotate_z(std::f64::consts::TAU / 3.)?, cylinder.clone().rotate_z(-std::f64::consts::TAU / 3.)?];
 
 	// union of all cylinders (fold from Boolean::default() = ⊥)
 	let sum: Solid = [&cylinder0, &cylinder1, &cylinder2].into_iter().map(Boolean::from).reduce(|a, s| a + s).unwrap().build()?.clean()?;
@@ -589,7 +589,7 @@ fn main() -> Result<(), Error> {
 	let frustum = build_frustum()?;
 	let morph = build_morph()?.translate(DVec3::X * 10.0);
 	let tilted = build_tilted()?.translate(DVec3::X * 20.0);
-	let wing = build_wing(10.0)?.align_z(-DVec3::X, -DVec3::Y).translate(DVec3::X * 20.0 + DVec3::Y * 12.0);
+	let wing = build_wing(10.0)?.align_z(-DVec3::X, -DVec3::Y)?.translate(DVec3::X * 20.0 + DVec3::Y * 12.0);
 
 	let result = [frustum, morph, tilted, wing];
 
@@ -661,7 +661,7 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	let profile = Edge::polygon(&[DVec3::new(0.0, -h_pitch / 2.0, 0.0), DVec3::new(r_delta, 0.0, 0.0), DVec3::new(0.0, h_pitch / 2.0, 0.0)])?;
 
 	// Align profile +Z with the helix start tangent, then translate to the start point.
-	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(helix.start_tangent(), helix.start_point()).translate(helix.start_point())).collect();
+	let profile: Vec<Edge> = profile.into_iter().map(|e| Ok(e.align_z(helix.start_tangent(), helix.start_point())?.translate(helix.start_point()))).collect::<Result<_, Error>>()?;
 
 	// Sweep along the helix. Up(+Z) ≡ Torsion for a helix and yields a correct thread.
 	let thread = Solid::sweep(&profile, &[helix], ProfileOrient::Up(DVec3::Z))?;
@@ -669,12 +669,12 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	// Reconstruct the ISO 68-1 basic profile (trapezoid) from the sharp triangle:
 	//   union(shaft) fills the bottom H/4 → P/4-wide flat at the root
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
-	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z * h_thread);
-	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z * h_thread);
+	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z * h_thread)?;
+	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z * h_thread)?;
 	let thread_shaft: Solid = ((&thread + &shaft) * &crest).build()?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
-	let head = Solid::cylinder(r_head, DVec3::Z * h_head).translate(DVec3::Z * h_thread);
+	let head = Solid::cylinder(r_head, DVec3::Z * h_head)?.translate(DVec3::Z * h_thread);
 	let res: Solid = (&thread_shaft + &head).build()?;
 	Ok(res.color("red"))
 }
@@ -721,9 +721,9 @@ fn build_moebius(r: f64) -> Result<Solid, Error> {
 	let spine = Edge::bspline(&(ring.map(|v| v[0])), BSplineEnd::Periodic)?;
 	let aux = Edge::bspline(&(ring.map(|v| v[1])), BSplineEnd::Periodic)?;
 	let profile = Edge::polygon(&[DVec3::new(-0.3, -0.3, 0.0), DVec3::new(0.5, -0.5, 0.0), DVec3::new(0.3, 0.3, 0.0), DVec3::new(-0.3, 0.3, 0.0)])?;
-	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point())).collect();
+	let profile: Vec<Edge> = profile.into_iter().map(|e| Ok(e.align_z(spine.start_tangent(), DVec3::Y)?.translate(spine.start_point()))).collect::<Result<_, Error>>()?;
 	let band = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(band.align_z(DVec3::X, DVec3::Z).translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
+	Ok(band.align_z(DVec3::X, DVec3::Z)?.translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
 }
 
 fn main() -> Result<(), Error> {
@@ -770,21 +770,21 @@ cargo run --example 09_shell
 use cadrum::{DVec3, Error, Solid};
 
 fn hollow_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0))?;
 	// TopExp_Explorer order on a box is stable; +Z face ends up last.
 	let top = cube.iter_face().last().expect("cube has faces");
 	cube.shell(-1.0, [top])
 }
 
 fn sealed_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0))?;
 	cube.shell(-1.0, std::iter::empty::<&cadrum::Face>())
 }
 
 fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
-	let torus = Solid::torus(6.0, 2.0, DVec3::Y);
+	let torus = Solid::torus(6.0, 2.0, DVec3::Y)?;
 	// Bisect with Y=0 half-space (normal +Y): keep the +Y half of the ring — always 1 solid.
-	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z);
+	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z)?;
 	// `iter_history()` tells how each result face descends from an operand face.
 	// The faces descending from the cutter's faces are the planar cut faces in the
 	// result that we want to use as shell openings.
@@ -905,13 +905,13 @@ cargo run --example 11_fillet
 use cadrum::{DVec3, Error, Solid};
 
 fn rounded_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size))?.translate(-DVec3::ONE * (size / 2.0));
 	let radius = size * 0.2;
 	cube.fillet_edges(radius, cube.iter_edge())
 }
 
 fn soft_top_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size))?.translate(-DVec3::ONE * (size / 2.0));
 	let radius = size * 0.2;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_edges = cube.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
@@ -919,7 +919,7 @@ fn soft_top_cube(size: f64) -> Result<Solid, Error> {
 }
 
 fn coin(radius: f64, height: f64) -> Result<Solid, Error> {
-	let cyl = Solid::cylinder(radius, DVec3::Z * height);
+	let cyl = Solid::cylinder(radius, DVec3::Z * height)?;
 	let radius = height * 0.3;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_circle = cyl.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
@@ -967,13 +967,13 @@ cargo run --example 12_chamfer
 use cadrum::{DVec3, Error, Solid};
 
 fn beveled_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size))?.translate(-DVec3::ONE * (size / 2.0));
 	let distance = size * 0.2;
 	cube.chamfer_edges(distance, cube.iter_edge())
 }
 
 fn beveled_top_cube(size: f64) -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size)).translate(-DVec3::ONE * (size / 2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(size))?.translate(-DVec3::ONE * (size / 2.0));
 	let distance = size * 0.2;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_edges = cube.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - size / 2.0).abs() < 1e-6));
@@ -981,7 +981,7 @@ fn beveled_top_cube(size: f64) -> Result<Solid, Error> {
 }
 
 fn beveled_coin(radius: f64, height: f64) -> Result<Solid, Error> {
-	let cyl = Solid::cylinder(radius, DVec3::Z * height);
+	let cyl = Solid::cylinder(radius, DVec3::Z * height)?;
 	let distance = height * 0.3;
 	// Top cap boundary: a closed circular edge whose start == end lives at z = h.
 	let top_circle = cyl.iter_edge().filter(|e| [e.start_point(), e.end_point()].iter().all(|p| (p.z - height).abs() < 1e-6));
@@ -1028,8 +1028,8 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let block = Solid::cube(DVec3::ZERO, DVec3::new(24.0, 40.0, 16.0));
-	let hole = Solid::cylinder(5.0, DVec3::Z * 16.0).translate(DVec3::new(12.0, 20.0, 0.0));
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(24.0, 40.0, 16.0))?;
+	let hole = Solid::cylinder(5.0, DVec3::Z * 16.0)?.translate(DVec3::new(12.0, 20.0, 0.0));
 	let part = (&block - &hole).build()?.color("#4a90d9");
 
 	// offset > 0 grows outward (hole tightens), offset < 0 shrinks inward (hole widens).
@@ -1112,7 +1112,7 @@ fn sew_ice_cream_cone() -> Result<Solid, Error> {
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let result = [sew_tetrahedron(2.0)?.color("#b0d4f1").rotate_z(FRAC_PI_2), sew_napkin_ring()?.color("#f1c8b0").translate(DVec3::X * 10.0), sew_ice_cream_cone()?.color("#b0f1c8").translate(DVec3::new(20.0, 0.0, 5.2))];
+	let result = [sew_tetrahedron(2.0)?.color("#b0d4f1").rotate_z(FRAC_PI_2)?, sew_napkin_ring()?.color("#f1c8b0").translate(DVec3::X * 10.0), sew_ice_cream_cone()?.color("#b0f1c8").translate(DVec3::new(20.0, 0.0, 5.2))];
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(SceneOption { view: DVec3::X + DVec3::Y + DVec3::Z * 1.5, ..Default::default() });
@@ -1151,11 +1151,11 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let block = Solid::cube(DVec3::ZERO, DVec3::new(40.0, 30.0, 20.0)).translate(-DVec3::new(20.0, 15.0, 10.0));
-	let hole = Solid::cylinder(5.0, DVec3::Z * 30.0).translate(-DVec3::Z * 15.0);
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(40.0, 30.0, 20.0))?.translate(-DVec3::new(20.0, 15.0, 10.0));
+	let hole = Solid::cylinder(5.0, DVec3::Z * 30.0)?.translate(-DVec3::Z * 15.0);
 	// Axis-orientation check: carve only the +X+Y+Z corner with a sphere.
 	// Which corner the notch appears in on each panel uniquely confirms the gnomon's direction.
-	let corner_cut = Solid::sphere(10.0).translate(DVec3::new(20.0, 15.0, 10.0));
+	let corner_cut = Solid::sphere(10.0)?.translate(DVec3::new(20.0, 15.0, 10.0));
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
@@ -1191,8 +1191,11 @@ needed:
 
 ```rust,no_run
 # use cadrum::{DVec3, Solid};
-let s = Solid::cube(DVec3::ZERO, DVec3::ONE).rotate_z(0.5).translate(DVec3::X);
+# fn main() -> Result<(), cadrum::Error> {
+let s = Solid::cube(DVec3::ZERO, DVec3::ONE)?.rotate_z(0.5)?.translate(DVec3::X);
 let v = s.volume();
+# Ok(())
+# }
 ```
 
 ## Errors

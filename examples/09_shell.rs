@@ -9,21 +9,21 @@
 use cadrum::{DVec3, Error, Solid};
 
 fn hollow_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0))?;
 	// TopExp_Explorer order on a box is stable; +Z face ends up last.
 	let top = cube.iter_face().last().expect("cube has faces");
 	cube.shell(-1.0, [top])
 }
 
 fn sealed_cube() -> Result<Solid, Error> {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(8.0))?;
 	cube.shell(-1.0, std::iter::empty::<&cadrum::Face>())
 }
 
 fn halved_shelled_torus(thickness: f64) -> Result<Solid, Error> {
-	let torus = Solid::torus(6.0, 2.0, DVec3::Y);
+	let torus = Solid::torus(6.0, 2.0, DVec3::Y)?;
 	// Bisect with Y=0 half-space (normal +Y): keep the +Y half of the ring — always 1 solid.
-	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z);
+	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z)?;
 	// `iter_history()` tells how each result face descends from an operand face.
 	// The faces descending from the cutter's faces are the planar cut faces in the
 	// result that we want to use as shell openings.

@@ -12,7 +12,7 @@ use glam::DVec3;
 
 #[test]
 fn test_sew_01_box_faces_recover_volume() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0)).unwrap();
 	let expected = cube.volume();
 
 	let sewn = Solid::sew(cube.iter_face(), 1.0e-6).expect("sewing 6 box faces should succeed");
@@ -29,7 +29,7 @@ fn test_sew_01_box_faces_recover_volume() {
 
 #[test]
 fn test_sew_02_open_shell_returns_sew_failed() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	let five: Vec<&Face> = cube.iter_face().take(5).collect();
 
 	let err = Solid::sew(five, 1.0e-6).err().expect("5 of 6 faces must not sew into a solid");

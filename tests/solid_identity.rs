@@ -33,7 +33,7 @@ fn prism_caps_have_distinct_ids() {
 fn moves_and_clones_keep_ids() {
 	let prism = square_prism();
 	let (faces, edges) = (face_ids(&prism), edge_ids(&prism));
-	let moved = prism.clone().translate(DVec3::new(5.0, -3.0, 20.0)).rotate_z(0.7);
+	let moved = prism.clone().translate(DVec3::new(5.0, -3.0, 20.0)).rotate_z(0.7).unwrap();
 	assert_eq!(face_ids(&moved), faces, "translate/rotate keep face ids, the top included");
 	assert_eq!(edge_ids(&moved), edges, "translate/rotate keep edge ids");
 	assert_eq!(moved.id(), prism.id());
@@ -70,6 +70,6 @@ fn mesh_face_ids_tell_the_caps_apart() {
 fn standalone_edges_keep_their_id_when_moved() {
 	let e = Edge::line(DVec3::ZERO, DVec3::X).unwrap();
 	let id = e.id();
-	assert_eq!(e.clone().translate(DVec3::Y).rotate_x(1.0).id(), id);
+	assert_eq!(e.clone().translate(DVec3::Y).rotate_x(1.0).unwrap().id(), id);
 	assert_eq!(e.clone().id(), id);
 }

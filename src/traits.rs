@@ -150,40 +150,47 @@ impl Default for Tessellation {
 /// same methods as inherent methods on `Solid` / `Edge`, which
 /// `examples/codegen.rs` emits by walking the supertrait chain.
 pub trait Transform: Sized {
+	/// Move by `translation`. Ids, colours and history are kept: only the placement changes.
 	fn translate(self, translation: DVec3) -> Self;
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self;
-	fn rotate_x(self, angle: f64) -> Self {
+	/// Rotate by `angle` radians about the axis through `axis_origin` along `axis_direction`.
+	/// Ids, colours and history are kept. Fails with [`Error::Transform`] on a zero axis.
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error>;
+	fn rotate_x(self, angle: f64) -> Result<Self, Error> {
 		self.rotate(DVec3::ZERO, DVec3::X, angle)
 	}
-	fn rotate_y(self, angle: f64) -> Self {
+	fn rotate_y(self, angle: f64) -> Result<Self, Error> {
 		self.rotate(DVec3::ZERO, DVec3::Y, angle)
 	}
-	fn rotate_z(self, angle: f64) -> Self {
+	fn rotate_z(self, angle: f64) -> Result<Self, Error> {
 		self.rotate(DVec3::ZERO, DVec3::Z, angle)
 	}
-	fn scale(self, center: DVec3, factor: f64) -> Self;
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self;
+	/// Scale about `center`. The topology is rebuilt, so ids change and a solid's history
+	/// reports every face and edge `Modified`. Fails with [`Error::Transform`] on a zero factor.
+	fn scale(self, center: DVec3, factor: f64) -> Result<Self, Error>;
+	/// Mirror in the plane through `plane_origin` with `plane_normal`. Rebuilt like `scale`.
+	/// Fails with [`Error::Transform`] on a zero normal.
+	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Result<Self, Error>;
 	/// Rotate so that local +X axis aligns with `new_x`, with local +Y projected toward `y_hint`.
-	/// Rotation is around the world origin. Panics on degenerate input (zero or parallel vectors).
-	fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Self {
-		let x = new_x.try_normalize().expect("align_x: new_x is zero");
-		let z = x.cross(y_hint).try_normalize().expect("align_x: y_hint parallel to new_x");
+	/// Rotation is around the world origin. Fails on degenerate input (zero or parallel vectors).
+	fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Result<Self, Error> {
+		let x = new_x.try_normalize().ok_or_else(|| Error::Transform("align_x: new_x is zero".into()))?;
+		let z = x.cross(y_hint).try_normalize().ok_or_else(|| Error::Transform("align_x: y_hint parallel to new_x".into()))?;
 		let (axis, angle) = DQuat::from_mat3(&DMat3::from_cols(x, z.cross(x), z)).to_axis_angle();
 		self.rotate(DVec3::ZERO, axis, angle)
 	}
 	/// Rotate so that local +Y axis aligns with `new_y`, with local +Z projected toward `z_hint`.
-	/// Rotation is around the world origin. Panics on degenerate input (zero or parallel vectors).
-	fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Self {
-		let y = new_y.try_normalize().expect("align_y: new_y is zero");
-		let x = y.cross(z_hint).try_normalize().expect("align_y: z_hint parallel to new_y");
+	/// Rotation is around the world origin. Fails on degenerate input (zero or parallel vectors).
+	fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Result<Self, Error> {
+		let y = new_y.try_normalize().ok_or_else(|| Error::Transform("align_y: new_y is zero".into()))?;
+		let x = y.cross(z_hint).try_normalize().ok_or_else(|| Error::Transform("align_y: z_hint parallel to new_y".into()))?;
 		let (axis, angle) = DQuat::from_mat3(&DMat3::from_cols(x, y, x.cross(y))).to_axis_angle();
 		self.rotate(DVec3::ZERO, axis, angle)
 	}
 	/// Rotate so that local +Z axis aligns with `new_z`, with local +X projected toward `x_hint`.
-	/// Rotation is around the world origin. Panics on degenerate input (zero or parallel vectors).
-	fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Self {
-		let z = new_z.try_normalize().expect("align_z: new_z is zero");
-		let y = z.cross(x_hint).try_normalize().expect("align_z: x_hint parallel to new_z");
+	/// Rotation is around the world origin. Fails on degenerate input (zero or parallel vectors).
+	fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Result<Self, Error> {
+		let z = new_z.try_normalize().ok_or_else(|| Error::Transform("align_z: new_z is zero".into()))?;
+		let y = z.cross(x_hint).try_normalize().ok_or_else(|| Error::Transform("align_z: x_hint parallel to new_z".into()))?;
 		let (axis, angle) = DQuat::from_mat3(&DMat3::from_cols(y.cross(z), y, z)).to_axis_angle();
 		self.rotate(DVec3::ZERO, axis, angle)
 	}
@@ -369,8 +376,9 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	/// Project `p` onto the edge and return `(closest_point, unit_tangent)`.
 	/// The tangent follows the direction the edge runs, and is the zero vector on a
 	/// degenerate edge (a sphere pole or cone apex, which collapses to a single
-	/// point); callers detect it via `tangent.length() == 0`.
-	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+	/// point); callers detect it via `tangent.length() == 0`. Fails with
+	/// [`Error::Query`] when the kernel's projector refuses the edge.
+	fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error>;
 
 	/// Distance below which two points are the same point, for every edge this
 	/// backend builds. Wraps OCCT's `Precision::Confusion()` (1e-7).
@@ -547,7 +555,8 @@ pub trait FaceStruct: Sized + Clone + Debug {
 	/// `outward_normal` is the zero vector when the surface evaluator
 	/// cannot define a normal at the closest hit (degenerate surface
 	/// point); callers can detect this case via `normal.length() == 0`.
-	fn project(&self, p: DVec3) -> (DVec3, DVec3);
+	/// Fails with [`Error::Query`] when the kernel's projector refuses the face.
+	fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error>;
 
 	/// Iterate this face's boundary loops: the outer loop first, then one per hole,
 	/// STEP's `face_outer_bound` and `face_bound`s. Each loop lists its edges head to
@@ -593,12 +602,21 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn id(&self) -> u64;
 
 	// --- Constructors ---
-	fn cube(corner0: DVec3, corner1: DVec3) -> Self;
-	fn sphere(radius: f64) -> Self;
-	fn cylinder(r: f64, height: DVec3) -> Self;
-	fn cone(r1: f64, r2: f64, height: DVec3) -> Self;
-	fn torus(r1: f64, r2: f64, axis: DVec3) -> Self;
-	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Self;
+	// Each fails with `Error::Validation` on a degenerate input: a box with a zero
+	// extent, a non-positive radius or height, a cone with equal radii, a torus whose
+	// minor radius is not below its major one, a zero axis or normal.
+	/// The axis-aligned box spanning the two corners.
+	fn cube(corner0: DVec3, corner1: DVec3) -> Result<Self, Error>;
+	/// A sphere about the origin.
+	fn sphere(radius: f64) -> Result<Self, Error>;
+	/// A cylinder from the origin along `height`.
+	fn cylinder(r: f64, height: DVec3) -> Result<Self, Error>;
+	/// A cone from radius `r1` at the origin to `r2` at `height`; one radius may be 0.
+	fn cone(r1: f64, r2: f64, height: DVec3) -> Result<Self, Error>;
+	/// A torus about `axis` through the origin: major radius `r1`, minor radius `r2`.
+	fn torus(r1: f64, r2: f64, axis: DVec3) -> Result<Self, Error>;
+	/// The half of space on the side of the plane its normal points to.
+	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Result<Self, Error>;
 
 	// --- Topology iteration ---
 	/// Iterate this solid's unique edges. Each OCCT edge appears once even
@@ -629,6 +647,10 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn inertia(&self) -> DMat3;
 	/// Whether `point` lies inside (or on) the solid.
 	fn contains(&self, point: DVec3) -> bool;
+	/// Whether OCCT's `BRepCheck_Analyzer` finds the solid well-formed. The measures
+	/// above return `NaN` on a solid the kernel rejects; this says why in advance. An
+	/// imported or sewn solid can fail the check and still build.
+	fn is_valid(&self) -> bool;
 	/// Axis-aligned bounding box as `[min, max]`.
 	fn bounding_box(&self) -> [DVec3; 2];
 

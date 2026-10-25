@@ -614,6 +614,7 @@ std::unique_ptr<TopoDS_Solid> make_box(
     double dx = maxx - minx;
     double dy = maxy - miny;
     double dz = maxz - minz;
+    if (dx < Precision::Confusion() || dy < Precision::Confusion() || dz < Precision::Confusion()) throw std::runtime_error("the box has a zero extent");
 
     BRepPrimAPI_MakeBox maker(p_min, dx, dy, dz);
     return std::make_unique<TopoDS_Solid>(maker.Solid());
@@ -624,6 +625,8 @@ std::unique_ptr<TopoDS_Solid> make_cylinder(
     double dx, double dy, double dz,
     double radius, double height)
 {
+    if (!(radius > 0.0)) throw std::runtime_error("the radius must be positive");
+    if (!(height > Precision::Confusion())) throw std::runtime_error("the height must be positive");
     gp_Pnt center(px, py, pz);
     gp_Dir direction(dx, dy, dz);
     gp_Ax2 axis(center, direction);
@@ -636,6 +639,7 @@ std::unique_ptr<TopoDS_Solid> make_sphere(
     double cx, double cy, double cz,
     double radius)
 {
+    if (!(radius > 0.0)) throw std::runtime_error("the radius must be positive");
     gp_Pnt center(cx, cy, cz);
     BRepPrimAPI_MakeSphere maker(center, radius);
     return std::make_unique<TopoDS_Solid>(maker.Solid());
@@ -646,6 +650,9 @@ std::unique_ptr<TopoDS_Solid> make_cone(
     double dx, double dy, double dz,
     double r1, double r2, double height)
 {
+    if (r1 < 0.0 || r2 < 0.0 || !(r1 > 0.0 || r2 > 0.0)) throw std::runtime_error("a cone needs non-negative radii, one of them positive");
+    if (std::abs(r1 - r2) < Precision::Confusion()) throw std::runtime_error("equal radii make a cylinder, not a cone");
+    if (!(height > Precision::Confusion())) throw std::runtime_error("the height must be positive");
     gp_Pnt center(px, py, pz);
     gp_Dir direction(dx, dy, dz);
     gp_Ax2 axis(center, direction);
@@ -658,6 +665,7 @@ std::unique_ptr<TopoDS_Solid> make_torus(
     double dx, double dy, double dz,
     double r1, double r2)
 {
+    if (!(r2 > 0.0) || !(r1 > r2)) throw std::runtime_error("a torus needs 0 < minor radius < major radius");
     gp_Pnt center(px, py, pz);
     gp_Dir direction(dx, dy, dz);
     gp_Ax2 axis(center, direction);
@@ -855,6 +863,7 @@ std::unique_ptr<TopoDS_Solid> transform_scale(
     double factor,
     rust::Vec<uint64_t>& out_history)
 {
+    if (std::abs(factor) < Precision::Confusion()) throw std::runtime_error("the scale factor is zero");
     gp_Trsf trsf;
     trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
     BRepBuilderAPI_Transform transform(shape, trsf, true);
@@ -1114,6 +1123,10 @@ rust::Vec<double> solid_vertices(const TopoDS_Solid& shape) {
 
 std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_Solid& owner) {
     return std::make_unique<TopoDS_Face>(TopoDS::Face(face.Located(face.Location().Predivided(owner.Location()))));
+}
+
+bool shape_is_valid(const TopoDS_Solid& shape) {
+    return BRepCheck_Analyzer(shape).IsValid();
 }
 
 std::unique_ptr<TopoDS_Solid> clone_solid_handle(const TopoDS_Solid& solid) {
@@ -1683,6 +1696,7 @@ std::unique_ptr<TopoDS_Edge> scale_edge(
     double cx, double cy, double cz,
     double factor)
 {
+    if (std::abs(factor) < Precision::Confusion()) throw std::runtime_error("the scale factor is zero");
     gp_Trsf trsf;
     trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
     return transform_edge_impl(edge, trsf);

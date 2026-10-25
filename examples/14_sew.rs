@@ -45,7 +45,7 @@ fn sew_ice_cream_cone() -> Result<Solid, Error> {
 
 fn main() -> Result<(), Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
-	let result = [sew_tetrahedron(2.0)?.color("#b0d4f1").rotate_z(FRAC_PI_2), sew_napkin_ring()?.color("#f1c8b0").translate(DVec3::X * 10.0), sew_ice_cream_cone()?.color("#b0f1c8").translate(DVec3::new(20.0, 0.0, 5.2))];
+	let result = [sew_tetrahedron(2.0)?.color("#b0d4f1").rotate_z(FRAC_PI_2)?, sew_napkin_ring()?.color("#f1c8b0").translate(DVec3::X * 10.0), sew_ice_cream_cone()?.color("#b0f1c8").translate(DVec3::new(20.0, 0.0, 5.2))];
 	Solid::write_step(&result, &mut std::fs::File::create(format!("{example_name}.step")).unwrap())?;
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(SceneOption { view: DVec3::X + DVec3::Y + DVec3::Z * 1.5, ..Default::default() });

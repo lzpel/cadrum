@@ -72,7 +72,7 @@ fn main() -> Result<(), Error> {
 	let frustum = build_frustum()?;
 	let morph = build_morph()?.translate(DVec3::X * 10.0);
 	let tilted = build_tilted()?.translate(DVec3::X * 20.0);
-	let wing = build_wing(10.0)?.align_z(-DVec3::X, -DVec3::Y).translate(DVec3::X * 20.0 + DVec3::Y * 12.0);
+	let wing = build_wing(10.0)?.align_z(-DVec3::X, -DVec3::Y)?.translate(DVec3::X * 20.0 + DVec3::Y * 12.0);
 
 	let result = [frustum, morph, tilted, wing];
 

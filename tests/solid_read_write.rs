@@ -4,7 +4,7 @@
 use cadrum::{Color, DVec3, Solid};
 
 fn test_box() -> Vec<Solid> {
-	vec![Solid::cube(DVec3::ZERO, DVec3::ONE)]
+	vec![Solid::cube(DVec3::ZERO, DVec3::ONE).unwrap()]
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn read_brep_with_trailing_garbage() {
 fn step_color_lossless() {
 	// Color space policy: STEP and Color share one color space, so a round trip changes no bit.
 	let colors = [Color::from("#336699"), Color::from("#f00"), Color { r: 0.0123457, g: 0.7654321, b: 0.03 }];
-	let solids: Vec<Solid> = colors.iter().enumerate().map(|(i, &c)| Solid::cube(DVec3::splat(2.0 * i as f64), DVec3::splat(2.0 * i as f64 + 1.0)).color(c)).collect();
+	let solids: Vec<Solid> = colors.iter().enumerate().map(|(i, &c)| Solid::cube(DVec3::splat(2.0 * i as f64), DVec3::splat(2.0 * i as f64 + 1.0)).unwrap().color(c)).collect();
 	let mut buf = Vec::new();
 	Solid::write_step(&solids, &mut buf).unwrap();
 	// STEP wraps long lines, so an entity's values may span two lines.

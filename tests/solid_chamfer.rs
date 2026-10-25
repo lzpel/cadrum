@@ -15,7 +15,7 @@ const EPS: f64 = 1e-6;
 fn test_chamfer_cube_reduces_volume_and_area() {
 	let a = 10.0_f64;
 	let d = 1.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 	let original_volume = cube.volume();
 	let original_area = cube.area();
 	let edges: Vec<_> = cube.iter_edge().collect();
@@ -29,7 +29,7 @@ fn test_chamfer_cube_reduces_volume_and_area() {
 fn test_chamfer_cube_matches_analytical_volume() {
 	let a = 10.0_f64;
 	let d = 1.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 	let edges: Vec<_> = cube.iter_edge().collect();
 	let beveled = cube.chamfer_edges(d, edges).expect("chamfer cube");
 
@@ -45,7 +45,7 @@ fn test_chamfer_cube_matches_analytical_volume() {
 
 #[test]
 fn test_chamfer_empty_edges_is_noop() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(5.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(5.0)).unwrap();
 	let original_volume = cube.volume();
 	let unchanged = cube.chamfer_edges(0.5, std::iter::empty::<&cadrum::Edge>()).expect("empty chamfer is a no-op, not an error");
 	assert!((unchanged.volume() - original_volume).abs() < EPS, "no-op chamfer should preserve volume exactly, got {}", unchanged.volume());
@@ -53,7 +53,7 @@ fn test_chamfer_empty_edges_is_noop() {
 
 #[test]
 fn test_chamfer_distance_too_large_returns_err() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0)).unwrap();
 	let edges: Vec<_> = cube.iter_edge().collect();
 	// d = 5 > a/2 = 1 → geometrically impossible; OCCT reports not-done.
 	let err = cube.chamfer_edges(5.0, edges).err().expect("oversized distance must fail");

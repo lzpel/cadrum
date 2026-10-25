@@ -31,7 +31,7 @@ fn sample(idx: usize, n: usize) -> Vec<DVec3> {
 fn square_profile(spine: &Edge) -> Result<Vec<Edge>, Error> {
 	let h = SIDE / 2.;
 	let square = Edge::polygon(&[DVec3::new(-h, -h, 0.), DVec3::new(h, -h, 0.), DVec3::new(h, h, 0.), DVec3::new(-h, h, 0.)])?;
-	Ok(square.into_iter().map(|e| e.align_z(spine.start_tangent(), spine.start_point()).translate(spine.start_point())).collect())
+	Ok(square.into_iter().map(|e| e.align_z(spine.start_tangent(), spine.start_point()).unwrap().translate(spine.start_point())).collect())
 }
 
 /// spine も aux も periodic B-spline 1 本のまま `ProfileOrient::Auxiliary` で sweep。

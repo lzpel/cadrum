@@ -15,7 +15,7 @@ use std::f64::consts::PI;
 #[test]
 fn test_offset_01_sphere_outward_volume_matches_analytical() {
 	let (r, t) = (2.0, 0.5);
-	let sphere = Solid::sphere(r);
+	let sphere = Solid::sphere(r).unwrap();
 
 	let grown = sphere.offset(t, sphere.iter_face()).expect("outward sphere offset should succeed");
 
@@ -34,7 +34,7 @@ fn test_offset_01_sphere_outward_volume_matches_analytical() {
 #[test]
 fn test_offset_02_sphere_inward_volume_matches_analytical() {
 	let (r, t) = (2.0, -0.5);
-	let sphere = Solid::sphere(r);
+	let sphere = Solid::sphere(r).unwrap();
 	let shrunk = sphere.offset(t, sphere.iter_face()).expect("inward sphere offset should succeed");
 
 	let expected = 4.0 / 3.0 * PI * (r + t).powi(3);
@@ -47,7 +47,7 @@ fn test_offset_02_sphere_inward_volume_matches_analytical() {
 #[test]
 fn test_offset_03_cube_outward_volume_matches_analytical() {
 	let (a, t) = (2.0, 0.5);
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 
 	let grown = cube.offset(t, cube.iter_face()).expect("outward cube offset should succeed");
 
@@ -63,7 +63,7 @@ fn test_offset_03_cube_outward_volume_matches_analytical() {
 fn test_offset_04_thin_plate_inward_returns_offset_failed() {
 	// 厚さ 0.4 の板に -0.5 の offset: 対向 face の offset 面が交差する
 	// (doc コメントに記載の thin-feature 失敗モード)
-	let plate = Solid::cube(DVec3::ZERO, DVec3::new(10.0, 10.0, 0.4));
+	let plate = Solid::cube(DVec3::ZERO, DVec3::new(10.0, 10.0, 0.4)).unwrap();
 
 	let result = plate.offset(-0.5, plate.iter_face());
 	match result {
@@ -77,9 +77,9 @@ fn test_offset_04_thin_plate_inward_returns_offset_failed() {
 
 #[test]
 fn test_offset_05_top_face_pad_extends_prism() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	// 中心からの最近点が z=10 に乗る face は上面だけ
-	let top: Vec<&Face> = cube.iter_face().filter(|f| f.project(DVec3::splat(5.0)).0.z > 9.9).collect();
+	let top: Vec<&Face> = cube.iter_face().filter(|f| f.project(DVec3::splat(5.0)).unwrap().0.z > 9.9).collect();
 	assert_eq!(top.len(), 1);
 
 	let padded = cube.offset(5.0, top).expect("padding the top face should succeed");

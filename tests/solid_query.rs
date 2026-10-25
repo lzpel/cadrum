@@ -18,7 +18,7 @@ const EPS: f64 = 1e-6;
 #[test]
 fn test_cube_mass_properties_match_analytical() {
 	let a = 10.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 
 	assert!((cube.volume() - a.powi(3)).abs() < EPS);
 	assert!((cube.area() - 6.0 * a.powi(2)).abs() < EPS);
@@ -45,7 +45,7 @@ fn test_cube_mass_properties_match_analytical() {
 #[test]
 fn test_sphere_mass_properties_match_analytical() {
 	let r = 5.0_f64;
-	let sphere = Solid::sphere(r);
+	let sphere = Solid::sphere(r).unwrap();
 
 	let pi = std::f64::consts::PI;
 	assert!((sphere.volume() - 4.0 / 3.0 * pi * r.powi(3)).abs() < 1e-2);
@@ -68,7 +68,7 @@ fn test_sphere_mass_properties_match_analytical() {
 #[test]
 fn test_cube_face_centers_match_analytical() {
 	let a = 10.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 	let centers = cube.iter_face().map(|face| face.center()).collect::<Vec<_>>();
 
 	assert_eq!(centers.len(), 6);
@@ -79,7 +79,7 @@ fn test_cube_face_centers_match_analytical() {
 		assert!((max - a).abs() < EPS, "axis {axis} maximum = {max}, expected {a}");
 	}
 	for (face, center) in cube.iter_face().zip(&centers) {
-		assert!((face.project(*center).0 - *center).length() < EPS, "center {center} is off its own face");
+		assert!((face.project(*center).unwrap().0 - *center).length() < EPS, "center {center} is off its own face");
 	}
 }
 
@@ -87,7 +87,7 @@ fn test_cube_face_centers_match_analytical() {
 #[test]
 fn test_cube_face_areas_match_analytical() {
 	let a = 10.0_f64;
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(a)).unwrap();
 	let areas = cube.iter_face().map(|face| face.area()).collect::<Vec<_>>();
 
 	assert_eq!(areas.len(), 6);
@@ -101,7 +101,7 @@ fn test_cube_face_areas_match_analytical() {
 /// origin is the surface's, not a point on the face.
 #[test]
 fn test_primitive_surfaces_match_construction() {
-	let cylinder = Solid::cylinder(3.0, DVec3::Z * 10.0);
+	let cylinder = Solid::cylinder(3.0, DVec3::Z * 10.0).unwrap();
 	let radii = cylinder
 		.iter_face()
 		.filter_map(|f| match f.surface().expect("elementary").kind {
@@ -112,16 +112,16 @@ fn test_primitive_surfaces_match_construction() {
 	assert_eq!(radii.len(), 1, "a cylinder has one cylindrical face and two caps");
 	assert!((radii[0] - 3.0).abs() < EPS);
 
-	let sphere = Solid::sphere(5.0);
+	let sphere = Solid::sphere(5.0).unwrap();
 	let s = sphere.iter_face().next().unwrap().surface().expect("elementary");
 	assert!(matches!(s.kind, SurfaceKind::Sphere { radius } if (radius - 5.0).abs() < EPS));
 	assert!(s.origin.length() < EPS, "a sphere places its origin at the centre, off the face");
 
-	let torus = Solid::torus(10.0, 3.0, DVec3::Z);
+	let torus = Solid::torus(10.0, 3.0, DVec3::Z).unwrap();
 	let t = torus.iter_face().next().unwrap().surface().expect("elementary");
 	assert!(matches!(t.kind, SurfaceKind::Torus { major_radius, minor_radius } if (major_radius - 10.0).abs() < EPS && (minor_radius - 3.0).abs() < EPS));
 
-	let cone = Solid::cone(5.0, 2.0, DVec3::Z * 10.0);
+	let cone = Solid::cone(5.0, 2.0, DVec3::Z * 10.0).unwrap();
 	let angle = cone
 		.iter_face()
 		.find_map(|f| match f.surface().expect("elementary").kind {
@@ -136,7 +136,7 @@ fn test_primitive_surfaces_match_construction() {
 /// frame through the face, aligned with the face normal up to sign.
 #[test]
 fn test_cube_faces_report_planes() {
-	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0));
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
 	for face in cube.iter_face() {
 		let s = face.surface().expect("a cube face lies on a plane");
 		assert_eq!(s.kind, SurfaceKind::Plane);
@@ -145,7 +145,7 @@ fn test_cube_faces_report_planes() {
 		assert!(s.axis_z.dot(s.axis_x).abs() < EPS, "axis_x must be orthogonal to axis_z");
 		assert!((s.axis_z.cross(s.axis_x).length() - 1.0).abs() < EPS, "the frame must be orthonormal");
 
-		let (on_face, normal) = face.project(face.center());
+		let (on_face, normal) = face.project(face.center()).unwrap();
 		assert!((on_face - s.origin).dot(s.axis_z).abs() < EPS, "the face must lie on its own plane");
 		assert!((s.axis_z.dot(normal).abs() - 1.0).abs() < EPS, "the plane's axis is the face normal up to orientation");
 	}
@@ -155,7 +155,7 @@ fn test_cube_faces_report_planes() {
 /// placement's Y direction instead of flipping to its negation.
 #[test]
 fn test_mirrored_faces_keep_right_handed_frames() {
-	let mirrored = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).mirror(DVec3::ZERO, DVec3::X);
+	let mirrored = Solid::cube(DVec3::ZERO, DVec3::splat(10.0)).unwrap().mirror(DVec3::ZERO, DVec3::X).unwrap();
 	for face in mirrored.iter_face() {
 		let s = face.surface().expect("a cube face lies on a plane");
 		let y = s.axis_z.cross(s.axis_x);

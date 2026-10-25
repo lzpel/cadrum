@@ -148,34 +148,34 @@ impl SolidStruct for Solid {
 
 	// ==================== Constructors ====================
 
-	fn cube(corner0: DVec3, corner1: DVec3) -> Solid {
-		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z).unwrap_or_else(|e| panic!("Solid::cube: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn cube(corner0: DVec3, corner1: DVec3) -> Result<Solid, Error> {
+		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z).map_err(|e| Error::Validation(format!("cube: corners {corner0:?}, {corner1:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
-	fn cylinder(r: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length()).unwrap_or_else(|e| panic!("Solid::cylinder: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn cylinder(r: f64, height: DVec3) -> Result<Solid, Error> {
+		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length()).map_err(|e| Error::Validation(format!("cylinder: radius={r}, height={height:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
-	fn sphere(radius: f64) -> Solid {
-		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius).unwrap_or_else(|e| panic!("Solid::sphere: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn sphere(radius: f64) -> Result<Solid, Error> {
+		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius).map_err(|e| Error::Validation(format!("sphere: radius={radius}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
-	fn cone(r1: f64, r2: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length()).unwrap_or_else(|e| panic!("Solid::cone: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn cone(r1: f64, r2: f64, height: DVec3) -> Result<Solid, Error> {
+		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length()).map_err(|e| Error::Validation(format!("cone: radii {r1}, {r2}, height={height:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
-	fn torus(r1: f64, r2: f64, axis: DVec3) -> Solid {
-		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2).unwrap_or_else(|e| panic!("Solid::torus: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn torus(r1: f64, r2: f64, axis: DVec3) -> Result<Solid, Error> {
+		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2).map_err(|e| Error::Validation(format!("torus: radii {r1}, {r2}, axis={axis:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
-	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
-		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Solid::half_space: {}", e.what()));
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Result<Solid, Error> {
+		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).map_err(|e| Error::Validation(format!("half_space: normal {plane_normal:?} through {plane_origin:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, std::collections::HashMap::new(), Default::default()))
 	}
 
 	// ==================== Topology iteration ====================
@@ -445,6 +445,10 @@ impl SolidStruct for Solid {
 		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z).unwrap_or(false)
 	}
 
+	fn is_valid(&self) -> bool {
+		ffi::shape_is_valid(&self.inner).unwrap_or(false)
+	}
+
 	fn bounding_box(&self) -> [DVec3; 2] {
 		let (mut xmin, mut ymin, mut zmin) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut xmax, mut ymax, mut zmax) = (0.0_f64, 0.0_f64, 0.0_f64);
@@ -479,9 +483,9 @@ impl Transform for Solid {
 		Solid::new(inner, self.colormap, self.history)
 	}
 
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Solid::rotate: {}", e.what()));
-		Solid::new(inner, self.colormap, self.history)
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
+		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).map_err(|e| Error::Transform(format!("rotate: angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
+		Ok(Solid::new(inner, self.colormap, self.history))
 	}
 
 	// scale/mirror cannot use Moved(): since OCCT Fix 0027457 (v7.6), TopLoc_Location
@@ -489,12 +493,12 @@ impl Transform for Solid {
 	// rebuilds the topology and the result carries a Modified history instead.
 	// See: https://dev.opencascade.org/content/how-scale-or-mirror-shape
 
-	fn scale(self, center: DVec3, factor: f64) -> Self {
-		self.rebuilt(|h| ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor, h)).unwrap_or_else(|e| panic!("Solid::scale: {}", e.what()))
+	fn scale(self, center: DVec3, factor: f64) -> Result<Self, Error> {
+		self.rebuilt(|h| ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor, h)).map_err(|e| Error::Transform(format!("scale: factor={factor} about {center:?}: {}", e.what())))
 	}
 
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		self.rebuilt(|h| ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z, h)).unwrap_or_else(|e| panic!("Solid::mirror: {}", e.what()))
+	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Result<Self, Error> {
+		self.rebuilt(|h| ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z, h)).map_err(|e| Error::Transform(format!("mirror: plane {plane_normal:?} through {plane_origin:?}: {}", e.what())))
 	}
 }
 

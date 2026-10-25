@@ -38,7 +38,7 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	let profile = Edge::polygon(&[DVec3::new(0.0, -h_pitch / 2.0, 0.0), DVec3::new(r_delta, 0.0, 0.0), DVec3::new(0.0, h_pitch / 2.0, 0.0)])?;
 
 	// Align profile +Z with the helix start tangent, then translate to the start point.
-	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(helix.start_tangent(), helix.start_point()).translate(helix.start_point())).collect();
+	let profile: Vec<Edge> = profile.into_iter().map(|e| Ok(e.align_z(helix.start_tangent(), helix.start_point())?.translate(helix.start_point()))).collect::<Result<_, Error>>()?;
 
 	// Sweep along the helix. Up(+Z) ≡ Torsion for a helix and yields a correct thread.
 	let thread = Solid::sweep(&profile, &[helix], ProfileOrient::Up(DVec3::Z))?;
@@ -46,12 +46,12 @@ fn build_m2_screw() -> Result<Solid, Error> {
 	// Reconstruct the ISO 68-1 basic profile (trapezoid) from the sharp triangle:
 	//   union(shaft) fills the bottom H/4 → P/4-wide flat at the root
 	//   intersect(crest) trims the top H/8 → P/8-wide flat at the crest
-	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z * h_thread);
-	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z * h_thread);
+	let shaft = Solid::cylinder(r - r_delta * 6.0 / 8.0, DVec3::Z * h_thread)?;
+	let crest = Solid::cylinder(r - r_delta / 8.0, DVec3::Z * h_thread)?;
 	let thread_shaft: Solid = ((&thread + &shaft) * &crest).build()?;
 
 	// Stack the flat head on top. Screw ends up centered on the origin.
-	let head = Solid::cylinder(r_head, DVec3::Z * h_head).translate(DVec3::Z * h_thread);
+	let head = Solid::cylinder(r_head, DVec3::Z * h_head)?.translate(DVec3::Z * h_thread);
 	let res: Solid = (&thread_shaft + &head).build()?;
 	Ok(res.color("red"))
 }
@@ -98,9 +98,9 @@ fn build_moebius(r: f64) -> Result<Solid, Error> {
 	let spine = Edge::bspline(&(ring.map(|v| v[0])), BSplineEnd::Periodic)?;
 	let aux = Edge::bspline(&(ring.map(|v| v[1])), BSplineEnd::Periodic)?;
 	let profile = Edge::polygon(&[DVec3::new(-0.3, -0.3, 0.0), DVec3::new(0.5, -0.5, 0.0), DVec3::new(0.3, 0.3, 0.0), DVec3::new(-0.3, 0.3, 0.0)])?;
-	let profile: Vec<Edge> = profile.into_iter().map(|e| e.align_z(spine.start_tangent(), DVec3::Y).translate(spine.start_point())).collect();
+	let profile: Vec<Edge> = profile.into_iter().map(|e| Ok(e.align_z(spine.start_tangent(), DVec3::Y)?.translate(spine.start_point()))).collect::<Result<_, Error>>()?;
 	let band = Solid::sweep(&profile, &[spine], ProfileOrient::Auxiliary(&[aux]))?;
-	Ok(band.align_z(DVec3::X, DVec3::Z).translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
+	Ok(band.align_z(DVec3::X, DVec3::Z)?.translate(DVec3::X * 12.0 + DVec3::Z * r).color("#2ebc71"))
 }
 
 fn main() -> Result<(), Error> {

@@ -5,8 +5,8 @@ use cadrum::{DVec3, Solid};
 fn main() -> Result<(), cadrum::Error> {
 	let example_name = std::path::Path::new(file!()).file_stem().unwrap().to_str().unwrap();
 
-	let block = Solid::cube(DVec3::ZERO, DVec3::new(24.0, 40.0, 16.0));
-	let hole = Solid::cylinder(5.0, DVec3::Z * 16.0).translate(DVec3::new(12.0, 20.0, 0.0));
+	let block = Solid::cube(DVec3::ZERO, DVec3::new(24.0, 40.0, 16.0))?;
+	let hole = Solid::cylinder(5.0, DVec3::Z * 16.0)?.translate(DVec3::new(12.0, 20.0, 0.0));
 	let part = (&block - &hole).build()?.color("#4a90d9");
 
 	// offset > 0 grows outward (hole tightens), offset < 0 shrinks inward (hole widens).

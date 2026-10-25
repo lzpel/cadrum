@@ -65,7 +65,7 @@ impl Edge {
 	pub fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3> {
 		<Self as crate::traits::EdgeStruct>::approximation_segments(self, tessellation)
 	}
-	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+	pub fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error> {
 		<Self as crate::traits::EdgeStruct>::project(self, p)
 	}
 	pub fn precision_distance() -> f64 {
@@ -101,31 +101,31 @@ impl Edge {
 	pub fn translate(self, translation: DVec3) -> crate::Edge {
 		<Self as crate::traits::Transform>::translate(self, translation)
 	}
-	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Edge {
+	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)
 	}
-	pub fn rotate_x(self, angle: f64) -> crate::Edge {
+	pub fn rotate_x(self, angle: f64) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::rotate_x(self, angle)
 	}
-	pub fn rotate_y(self, angle: f64) -> crate::Edge {
+	pub fn rotate_y(self, angle: f64) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::rotate_y(self, angle)
 	}
-	pub fn rotate_z(self, angle: f64) -> crate::Edge {
+	pub fn rotate_z(self, angle: f64) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::rotate_z(self, angle)
 	}
-	pub fn scale(self, center: DVec3, factor: f64) -> crate::Edge {
+	pub fn scale(self, center: DVec3, factor: f64) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::scale(self, center, factor)
 	}
-	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Edge {
+	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)
 	}
-	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Edge {
+	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)
 	}
-	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Edge {
+	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)
 	}
-	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Edge {
+	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)
 	}
 }
@@ -146,7 +146,7 @@ impl Face {
 	pub fn center(&self) -> DVec3 {
 		<Self as crate::traits::FaceStruct>::center(self)
 	}
-	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+	pub fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error> {
 		<Self as crate::traits::FaceStruct>::project(self, p)
 	}
 	pub fn iter_loop(&self) -> impl Iterator<Item = &[Edge]> + '_ {
@@ -161,22 +161,22 @@ impl Solid {
 	pub fn id(&self) -> u64 {
 		<Self as crate::traits::SolidStruct>::id(self)
 	}
-	pub fn cube(corner0: DVec3, corner1: DVec3) -> crate::Solid {
+	pub fn cube(corner0: DVec3, corner1: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::cube(corner0, corner1)
 	}
-	pub fn sphere(radius: f64) -> crate::Solid {
+	pub fn sphere(radius: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::sphere(radius)
 	}
-	pub fn cylinder(r: f64, height: DVec3) -> crate::Solid {
+	pub fn cylinder(r: f64, height: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::cylinder(r, height)
 	}
-	pub fn cone(r1: f64, r2: f64, height: DVec3) -> crate::Solid {
+	pub fn cone(r1: f64, r2: f64, height: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::cone(r1, r2, height)
 	}
-	pub fn torus(r1: f64, r2: f64, axis: DVec3) -> crate::Solid {
+	pub fn torus(r1: f64, r2: f64, axis: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::torus(r1, r2, axis)
 	}
-	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {
+	pub fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::SolidStruct>::half_space(plane_origin, plane_normal)
 	}
 	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
@@ -205,6 +205,9 @@ impl Solid {
 	}
 	pub fn contains(&self, point: DVec3) -> bool {
 		<Self as crate::traits::SolidStruct>::contains(self, point)
+	}
+	pub fn is_valid(&self) -> bool {
+		<Self as crate::traits::SolidStruct>::is_valid(self)
 	}
 	pub fn bounding_box(&self) -> [DVec3; 2] {
 		<Self as crate::traits::SolidStruct>::bounding_box(self)
@@ -276,31 +279,31 @@ impl Solid {
 	pub fn translate(self, translation: DVec3) -> crate::Solid {
 		<Self as crate::traits::Transform>::translate(self, translation)
 	}
-	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> crate::Solid {
+	pub fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::rotate(self, axis_origin, axis_direction, angle)
 	}
-	pub fn rotate_x(self, angle: f64) -> crate::Solid {
+	pub fn rotate_x(self, angle: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::rotate_x(self, angle)
 	}
-	pub fn rotate_y(self, angle: f64) -> crate::Solid {
+	pub fn rotate_y(self, angle: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::rotate_y(self, angle)
 	}
-	pub fn rotate_z(self, angle: f64) -> crate::Solid {
+	pub fn rotate_z(self, angle: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::rotate_z(self, angle)
 	}
-	pub fn scale(self, center: DVec3, factor: f64) -> crate::Solid {
+	pub fn scale(self, center: DVec3, factor: f64) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::scale(self, center, factor)
 	}
-	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> crate::Solid {
+	pub fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::mirror(self, plane_origin, plane_normal)
 	}
-	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> crate::Solid {
+	pub fn align_x(self, new_x: DVec3, y_hint: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::align_x(self, new_x, y_hint)
 	}
-	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> crate::Solid {
+	pub fn align_y(self, new_y: DVec3, z_hint: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::align_y(self, new_y, z_hint)
 	}
-	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> crate::Solid {
+	pub fn align_z(self, new_z: DVec3, x_hint: DVec3) -> Result<crate::Solid, Error> {
 		<Self as crate::traits::Transform>::align_z(self, new_z, x_hint)
 	}
 }

@@ -91,13 +91,11 @@ impl EdgeStruct for Edge {
 		ffi::edge_approximation_segments(&self.inner, tessellation.deflection_linear, tessellation.deflection_angular, tessellation.relative_linear).unwrap_or_default().chunks_exact(3).map(|c| DVec3::new(c[0], c[1], c[2])).collect()
 	}
 
-	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
+	fn project(&self, p: DVec3) -> Result<(DVec3, DVec3), Error> {
 		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut tx, mut ty, mut tz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		// Degenerate edges (sphere pole, cone apex) go through the pcurve and yield
-		// the point with a zero tangent, so a failure here is a bug.
-		ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz).unwrap_or_else(|e| panic!("Edge::project: {}", e.what()));
-		(DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz))
+		ffi::edge_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut tx, &mut ty, &mut tz).map_err(|e| Error::Query(format!("project: {}", e.what())))?;
+		Ok((DVec3::new(cpx, cpy, cpz), DVec3::new(tx, ty, tz)))
 	}
 
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
@@ -189,27 +187,24 @@ impl EdgeStruct for Edge {
 	}
 }
 
-// `Transform` returns `Self`, and an affine transform of a valid edge only throws
-// on a degenerate axis or plane — a caller bug, so it panics with OCCT's message.
 // Translate and rotate move the edge and keep its id; scale and mirror rebuild it.
 impl Transform for Edge {
 	fn translate(self, t: DVec3) -> Self {
+		// Moving a shape cannot fail, so an error here is a logic bug.
 		Edge { inner: ffi::translate_edge(&self.inner, t.x, t.y, t.z).unwrap_or_else(|e| panic!("Edge::translate: {}", e.what())), id: self.id }
 	}
 
-	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		Edge {
-			inner: ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Edge::rotate: {}", e.what())),
-			id: self.id,
-		}
+	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
+		let inner = ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).map_err(|e| Error::Transform(format!("rotate: angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
+		Ok(Edge { inner, id: self.id })
 	}
 
-	fn scale(self, center: DVec3, factor: f64) -> Self {
-		Edge::new(ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Edge::scale: {}", e.what())))
+	fn scale(self, center: DVec3, factor: f64) -> Result<Self, Error> {
+		Ok(Edge::new(ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).map_err(|e| Error::Transform(format!("scale: factor={factor} about {center:?}: {}", e.what())))?))
 	}
 
-	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		Edge::new(ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Edge::mirror: {}", e.what())))
+	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Result<Self, Error> {
+		Ok(Edge::new(ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).map_err(|e| Error::Transform(format!("mirror: plane {plane_normal:?} through {plane_origin:?}: {}", e.what())))?))
 	}
 }
 
