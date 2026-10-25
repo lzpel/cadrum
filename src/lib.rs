@@ -31,8 +31,8 @@ pub use common::color::Color;
 pub use common::{
 	boolean::Boolean,
 	error::Error,
+	geometry::{Curve, CurveKind, NurbsCurve, NurbsSurface, Surface, SurfaceKind},
 	mesh::{Mesh, Scene2D, SceneOption},
-	surface::{Surface, SurfaceKind},
 };
 // Re-export glam types used in cadrum's public API. Users should reach glam
 // through these re-exports (or the `cadrum::glam` module below) instead of
@@ -92,6 +92,12 @@ impl Edge {
 	pub fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<crate::Edge, Error> {
 		<Self as crate::traits::EdgeStruct>::bspline(points, end)
 	}
+	pub fn curve(&self) -> Option<Curve> {
+		<Self as crate::traits::EdgeStruct>::curve(self)
+	}
+	pub fn edge(curve: &Curve) -> Result<crate::Edge, Error> {
+		<Self as crate::traits::EdgeStruct>::edge(curve)
+	}
 	pub fn translate(self, translation: DVec3) -> crate::Edge {
 		<Self as crate::traits::Transform>::translate(self, translation)
 	}
@@ -134,7 +140,7 @@ impl Face {
 	pub fn area(&self) -> f64 {
 		<Self as crate::traits::FaceStruct>::area(self)
 	}
-	pub fn surface(&self) -> Option<Surface> {
+	pub fn surface(&self) -> Result<Surface, Error> {
 		<Self as crate::traits::FaceStruct>::surface(self)
 	}
 	pub fn center(&self) -> DVec3 {
@@ -142,6 +148,9 @@ impl Face {
 	}
 	pub fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		<Self as crate::traits::FaceStruct>::project(self, p)
+	}
+	pub fn iter_loop(&self) -> impl Iterator<Item = &[Edge]> + '_ {
+		<Self as crate::traits::FaceStruct>::iter_loop(self)
 	}
 	pub fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
 		<Self as crate::traits::FaceStruct>::iter_edge(self)
@@ -175,6 +184,9 @@ impl Solid {
 	}
 	pub fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
 		<Self as crate::traits::SolidStruct>::iter_face(self)
+	}
+	pub fn iter_vertex(&self) -> impl Iterator<Item = &DVec3> + '_ {
+		<Self as crate::traits::SolidStruct>::iter_vertex(self)
 	}
 	pub fn iter_history(&self) -> impl Iterator<Item = Lineage> + '_ {
 		<Self as crate::traits::SolidStruct>::iter_history(self)

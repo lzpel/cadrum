@@ -82,7 +82,7 @@ fn cylinder_patch_and_band() {
 fn cone_band_and_tip() {
 	// at 45 degrees, heights 1..3 are radii 1..3 and a slant of 2 sqrt 2
 	let kind = SurfaceKind::Cone { radius: 0.0, semi_angle: FRAC_PI_4 };
-	let band = Face::face(&at_origin(kind), [&ring(1.0, 1.0, true), &ring(3.0, 3.0, false)]).unwrap();
+	let band = Face::face(&at_origin(kind.clone()), [&ring(1.0, 1.0, true), &ring(3.0, 3.0, false)]).unwrap();
 	assert_close(band.area(), PI * (1.0 + 3.0) * 2.0 * SQRT_2, "band");
 	assert_eq!(band.surface().unwrap().kind, kind);
 	// a single ring closes at the apex
@@ -160,7 +160,7 @@ fn cube_sews_from_twelve_lines() {
 #[test]
 fn bad_profiles_are_validation_errors() {
 	let s = at_origin(SurfaceKind::Plane);
-	let lifted = rectangle(&Surface { origin: DVec3::Z, ..s }, 1.0, 1.0);
+	let lifted = rectangle(&Surface { origin: DVec3::Z, ..s.clone() }, 1.0, 1.0);
 	let clockwise = Edge::polygon(&[DVec3::ZERO, DVec3::Y, DVec3::new(1.0, 1.0, 0.0), DVec3::X]).unwrap();
 	let open = Edge::polygon(&[DVec3::ZERO, DVec3::X, DVec3::Y]).unwrap()[..2].to_vec();
 	let mut hole_ccw = plate(4.0, 1.0, 0.0);
@@ -175,6 +175,71 @@ fn bad_profiles_are_validation_errors() {
 #[test]
 fn surfaces_occt_cannot_build_are_validation_errors() {
 	for kind in [SurfaceKind::Cylinder { radius: 0.0 }, SurfaceKind::Cylinder { radius: -1.0 }, SurfaceKind::Cone { radius: 0.0, semi_angle: 0.0 }, SurfaceKind::Sphere { radius: 0.0 }, SurfaceKind::Torus { major_radius: 5.0, minor_radius: 0.0 }] {
-		assert!(matches!(Face::face(&at_origin(kind), []), Err(Error::Validation(_))), "{kind:?}");
+		assert!(matches!(Face::face(&at_origin(kind.clone()), []), Err(Error::Validation(_))), "{kind:?}");
 	}
+}
+
+// ==================== loops and B-spline surfaces ====================
+
+/// A plate with a bore has two loops: the outer rectangle first, then the hole.
+#[test]
+fn loops_list_the_outer_boundary_first() {
+	let f = Face::face(&at_origin(SurfaceKind::Plane), &plate(4.0, 1.0, 0.0)).unwrap();
+	let loops: Vec<&[Edge]> = f.iter_loop().collect();
+	assert_eq!(loops.len(), 2);
+	assert_eq!(loops[0].len(), 4, "the outer square has four edges");
+	assert_eq!(loops[1].len(), 1, "the bore is one circle");
+	assert_eq!(f.iter_edge().count(), 5);
+	// Consecutive edges of the outer loop meet end to end, either way round.
+	for pair in loops[0].windows(2) {
+		let ends = [pair[0].start_point(), pair[0].end_point()];
+		assert!(ends.iter().any(|&p| (p - pair[1].start_point()).length() < 1e-9 || (p - pair[1].end_point()).length() < 1e-9));
+	}
+	// A cube face has one loop of four edges, all of them edges of the cube.
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
+	let cube_edges: std::collections::HashSet<u64> = cube.iter_edge().map(|e| e.id()).collect();
+	for face in cube.iter_face() {
+		let loops: Vec<&[Edge]> = face.iter_loop().collect();
+		assert_eq!(loops.len(), 1);
+		assert_eq!(loops[0].len(), 4);
+		assert!(loops[0].iter().all(|e| cube_edges.contains(&e.id())));
+	}
+}
+
+/// A lofted face reads back as a B-spline whose coefficients rebuild the same face.
+#[test]
+fn bspline_surface_reads_back_and_rebuilds() {
+	// Two circles loft into a cone, which reads back as one; a waist makes a true B-spline.
+	let lower = [Edge::circle(3.0, DVec3::Z).unwrap()];
+	let waist = [Edge::circle(1.0, DVec3::Z).unwrap().translate(DVec3::Z * 4.0)];
+	let upper = [Edge::circle(3.0, DVec3::Z).unwrap().translate(DVec3::Z * 8.0)];
+	let loft = Solid::loft([&lower[..], &waist[..], &upper[..]], false).unwrap();
+	let skin = loft.iter_face().max_by(|a, b| a.area().total_cmp(&b.area())).unwrap();
+	let surface = skin.surface().unwrap();
+	let SurfaceKind::Bspline(nurbs) = &surface.kind else { panic!("the skin is a B-spline: {surface:?}") };
+	assert_eq!(nurbs.poles.len(), nurbs.weights.len());
+	assert!(nurbs.poles.iter().all(|row| row.len() == nurbs.poles[0].len()));
+	assert_eq!(nurbs.knots[0].len(), nurbs.multiplicities[0].len());
+	assert_eq!(nurbs.knots[1].len(), nurbs.multiplicities[1].len());
+	// Every control point of a loft between two circles lies between the two planes.
+	assert!(nurbs.poles.iter().flatten().all(|p| p.z >= -1e-9 && p.z <= 8.0 + 1e-9));
+	// An open patch rebuilds from its own loop; the closed skin needs a seam, which
+	// `Face::face` adds only on a periodic surface, so it is rebuilt whole below.
+	let patch = Solid::bspline(4, 4, false, false, |i, j| DVec3::new(i as f64, j as f64, ((i * j) as f64 * 0.7).sin())).unwrap();
+	let patch_face = patch.iter_face().find(|f| matches!(f.surface().unwrap().kind, SurfaceKind::Bspline(_))).expect("the half-space keeps the patch as a face");
+	let rebuilt = Face::face(&patch_face.surface().unwrap(), patch_face.iter_loop().flatten()).unwrap();
+	assert_close(rebuilt.area(), patch_face.area(), "rebuilt patch area");
+	// The whole surface, with no loops, is the natural-bounds face.
+	let whole = Face::face(&surface, std::iter::empty()).unwrap();
+	assert_close(whole.area(), skin.area(), "natural bounds");
+	assert!(matches!(whole.surface().unwrap().kind, SurfaceKind::Bspline(_)));
+}
+
+/// Vertices of a solid are reported once each.
+#[test]
+fn cube_has_eight_vertices() {
+	let cube = Solid::cube(DVec3::ZERO, DVec3::splat(2.0));
+	let vertices: Vec<&DVec3> = cube.iter_vertex().collect();
+	assert_eq!(vertices.len(), 8);
+	assert!(vertices.iter().all(|v| v.to_array().iter().all(|&c| c == 0.0 || c == 2.0)));
 }

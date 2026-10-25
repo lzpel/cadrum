@@ -157,7 +157,7 @@ fn test_fillet_history_generates_blend_from_edge() {
 	assert_eq!(blend.len(), 1, "the edge generates one blend face");
 	assert!(filleted.iter_history().any(|l| l == Lineage::Deleted { src: edge_id }), "the filleted edge is gone");
 	let blend = filleted.iter_face().find(|f| f.id() == blend[0]).expect("blend is a result face");
-	assert!(blend.surface().is_some_and(|s| matches!(s.kind, cadrum::SurfaceKind::Cylinder { radius } if (radius - 0.5).abs() < 1e-9)), "the blend is a cylinder of the fillet radius");
+	assert!(blend.surface().is_ok_and(|s| matches!(s.kind, cadrum::SurfaceKind::Cylinder { radius } if (radius - 0.5).abs() < 1e-9)), "the blend is a cylinder of the fillet radius");
 
 	for id in &original {
 		let mine: Vec<Lineage> = filleted.iter_history().filter(|l| l.src() == *id).collect();

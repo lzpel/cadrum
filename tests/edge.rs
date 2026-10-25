@@ -106,3 +106,45 @@ fn is_loop_gap_at_precision_distance() {
 	let closed = [Edge::line(a, b).unwrap(), Edge::line(b, c).unwrap(), Edge::line(c, a).unwrap()];
 	assert!(Edge::is_loop(&closed));
 }
+
+// ==================== curve ====================
+
+/// Each edge kind reads back as its curve, and the curve rebuilds an equal edge.
+#[test]
+fn curve_reads_back_and_rebuilds() {
+	use cadrum::{Curve, CurveKind};
+	let same = |a: &Edge, b: &Edge| approx_eq(a.start_point(), b.start_point(), TOL) && approx_eq(a.end_point(), b.end_point(), TOL) && approx_eq(a.project(DVec3::new(0.3, 0.2, 0.1)).0, b.project(DVec3::new(0.3, 0.2, 0.1)).0, TOL);
+
+	let line = Edge::line(DVec3::new(1.0, 2.0, 3.0), DVec3::new(4.0, 6.0, 3.0)).unwrap();
+	let c = line.curve().unwrap();
+	assert_eq!(c.kind, CurveKind::Line);
+	assert!((c.range[1] - c.range[0] - 5.0).abs() < TOL, "a line's range is its length: {c:?}");
+	assert!(same(&line, &Edge::edge(&c).unwrap()));
+
+	let circle = Edge::circle(2.0, DVec3::Y).unwrap().translate(DVec3::X * 3.0);
+	let c = circle.curve().unwrap();
+	assert_eq!(c.kind, CurveKind::Circle { radius: 2.0 });
+	assert!(approx_eq(c.origin, DVec3::X * 3.0, TOL) && approx_eq(c.axis_z, DVec3::Y, TOL), "{c:?}");
+	assert!((c.range[1] - c.range[0] - std::f64::consts::TAU).abs() < TOL);
+	assert!(same(&circle, &Edge::edge(&c).unwrap()));
+
+	let ellipse = Edge::edge(&Curve { origin: DVec3::ZERO, axis_z: DVec3::Z, axis_x: DVec3::X, kind: CurveKind::Ellipse { major_radius: 10.0, minor_radius: 4.0 }, range: [0.0, std::f64::consts::PI] }).unwrap();
+	assert!(approx_eq(ellipse.start_point(), DVec3::X * 10.0, TOL) && approx_eq(ellipse.end_point(), DVec3::X * -10.0, TOL));
+	assert!(approx_eq(ellipse.project(DVec3::Y * 100.0).0, DVec3::Y * 4.0, TOL), "the minor axis is 4");
+	assert_eq!(ellipse.curve().unwrap().kind, CurveKind::Ellipse { major_radius: 10.0, minor_radius: 4.0 });
+
+	let spline = Edge::bspline(&[DVec3::ZERO, DVec3::new(1.0, 1.0, 0.0), DVec3::new(2.0, 0.0, 1.0), DVec3::new(3.0, 1.0, 1.0)], BSplineEnd::NotAKnot).unwrap();
+	let c = spline.curve().unwrap();
+	let CurveKind::Bspline(n) = &c.kind else { panic!("{c:?}") };
+	assert_eq!(n.degree, 3);
+	assert_eq!(n.poles.len(), n.weights.len());
+	assert_eq!(n.knots.len(), n.multiplicities.len());
+	assert!(same(&spline, &Edge::edge(&c).unwrap()));
+
+	// A degenerate edge has no curve: the pole of a sphere.
+	let sphere = cadrum::Solid::sphere(1.0);
+	assert!(sphere.iter_edge().any(|e| e.curve().is_none()), "a sphere has a degenerate edge at each pole");
+
+	// An empty range is refused.
+	assert!(Edge::edge(&Curve { range: [1.0, 1.0], ..c.clone() }).is_err());
+}

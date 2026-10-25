@@ -103,8 +103,8 @@
 use crate::common::boolean::Boolean;
 use crate::common::color::Color;
 use crate::common::error::Error;
+use crate::common::geometry::{Curve, Surface};
 use crate::common::mesh::Mesh;
-use crate::common::surface::Surface;
 use glam::{DMat3, DQuat, DVec3};
 use std::fmt::Debug;
 
@@ -351,20 +351,25 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	fn id(&self) -> u64;
 
 	// --- Per-edge queries ---
-	/// Start point of the edge (evaluated at the curve's first parameter).
+	//
+	// An edge runs one way: along its curve's parameter for an edge built here, and
+	// the way its loop traverses it for an edge of a face (`Face::iter_loop`), which
+	// may be against the curve, as STEP's `oriented_edge` has it. Every query below
+	// follows that direction, so a loop's edges run head to tail.
+	/// Start point of the edge.
 	fn start_point(&self) -> DVec3;
-	/// End point of the edge (evaluated at the curve's last parameter).
+	/// End point of the edge.
 	fn end_point(&self) -> DVec3;
-	/// Unit tangent at the start point, in the curve's native parameter direction.
+	/// Unit tangent at the start point, in the direction the edge runs.
 	fn start_tangent(&self) -> DVec3;
-	/// Unit tangent at the end point, in the curve's native parameter direction.
+	/// Unit tangent at the end point, in the direction the edge runs.
 	fn end_tangent(&self) -> DVec3;
-	/// Polyline approximation of the edge within `tolerance`, as ordered points.
+	/// Polyline approximation of the edge within `tolerance`, as ordered points from start to end.
 	fn approximation_segments(&self, tessellation: Tessellation) -> Vec<DVec3>;
 	/// Project `p` onto the edge and return `(closest_point, unit_tangent)`.
-	/// The tangent follows the curve's native parameter direction, and is the
-	/// zero vector on a degenerate edge (a sphere pole or cone apex, which
-	/// collapses to a single point); callers detect it via `tangent.length() == 0`.
+	/// The tangent follows the direction the edge runs, and is the zero vector on a
+	/// degenerate edge (a sphere pole or cone apex, which collapses to a single
+	/// point); callers detect it via `tangent.length() == 0`.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
 	/// Distance below which two points are the same point, for every edge this
@@ -383,8 +388,8 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	///
 	/// Edge direction must already run head-to-tail. `[line(a, b), line(c, b),
 	/// line(c, a)]` traces the same triangle but reports `false`, even though
-	/// `Solid::extrude` accepts it — OCCT reverses edges to connect them, this
-	/// does not.
+	/// `Solid::extrude` accepts it — the builders reverse edges to connect them, this
+	/// does not. A loop from `Face::iter_loop` runs head-to-tail already.
 	fn is_loop<'a>(edges: impl IntoIterator<Item = &'a Self>) -> bool
 	where
 		Self: 'a,
@@ -463,6 +468,17 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 	///   coincide (periodicity is encoded in the basis; do not duplicate)
 	/// - OCCT's interpolation fails (degenerate point distribution, etc.)
 	fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<Self, Error>;
+
+	/// The curve this edge lies on and the parameter range it covers: a line, circle or
+	/// ellipse with its placement, or else the B-spline OCCT converts it to
+	/// ([`CurveKind::Bspline`]). `None` for a degenerate edge (a sphere's pole, a cone's
+	/// apex), which has no 3D curve. `Edge::edge(&curve)` rebuilds the edge.
+	fn curve(&self) -> Option<Curve>;
+
+	/// The edge of `curve` over its `range`: an exact ellipse or NURBS edge, or any
+	/// edge read back with [`curve`](EdgeStruct::curve). Fails with `Error::Edge` on an
+	/// empty range, a degenerate placement or an inconsistent B-spline.
+	fn edge(curve: &Curve) -> Result<Self, Error>;
 }
 
 /// Backend-independent face trait (pub(crate) — not exposed to users).
@@ -503,9 +519,11 @@ pub trait FaceStruct: Sized + Clone + Debug {
 	/// Area of the trimmed face.
 	fn area(&self) -> f64;
 
-	/// The elementary surface this face lies on. `None` for B-spline, Bezier,
-	/// offset and other non-elementary surfaces.
-	fn surface(&self) -> Option<Surface>;
+	/// The surface this face lies on: an elementary surface with its placement, or
+	/// else the B-spline OCCT converts it to over the face's parameter range
+	/// ([`SurfaceKind::Bspline`]). `Face::face(&surface, loops)` rebuilds the face.
+	/// Fails with `Error::Query` when the conversion is refused.
+	fn surface(&self) -> Result<Surface, Error>;
 
 	/// Area-weighted center of the trimmed face, for directional face selection.
 	/// Curved or concave faces place it off the face, and on a closed surface
@@ -531,13 +549,21 @@ pub trait FaceStruct: Sized + Clone + Debug {
 	/// point); callers can detect this case via `normal.length() == 0`.
 	fn project(&self, p: DVec3) -> (DVec3, DVec3);
 
-	/// Iterate this face's boundary edges (outer wire and any inner wires).
-	/// Each edge appears once even when shared between wires. Backends may
-	/// cache the result internally; re-calls are expected to be cheap.
+	/// Iterate this face's boundary loops: the outer loop first, then one per hole,
+	/// STEP's `face_outer_bound` and `face_bound`s. Each loop lists its edges head to
+	/// tail round the loop with the face on the left, so `Face::face(&face.surface()?,
+	/// loop)` rebuilds the face; a seam edge appears twice in its loop, running both ways.
+	fn iter_loop(&self) -> impl Iterator<Item = &[Self::Edge]> + '_;
+
+	/// Iterate this face's boundary edges, each once even when shared between loops
+	/// or doubled on a seam.
 	///
 	/// Use with `Edge::id()` to test face/edge incidence:
 	/// `face.iter_edge().any(|e| e.id() == edge.id())`.
-	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_;
+	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_ {
+		let mut seen = std::collections::HashSet::new();
+		self.iter_loop().flatten().filter(move |e| seen.insert(e.id()))
+	}
 }
 
 /// Backend-independent solid trait (pub(crate) — not exposed to users).
@@ -581,6 +607,8 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_;
 	/// Iterate this solid's faces. Backends may cache the result internally.
 	fn iter_face(&self) -> impl Iterator<Item = &Self::Face> + '_;
+	/// Iterate this solid's unique vertices as points.
+	fn iter_vertex(&self) -> impl Iterator<Item = &DVec3> + '_;
 	/// How this solid's faces and edges descend from those of the operands of the
 	/// operation that built it; see [`Lineage`]. Every builder, boolean, `clean`,
 	/// `scale` and `mirror` fills it; translate, rotate, colour and `Clone` keep it;

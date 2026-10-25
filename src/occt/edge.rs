@@ -1,5 +1,6 @@
 use super::ffi;
 use crate::common::error::Error;
+use crate::common::geometry::{split_frame, Curve, CurveKind, NurbsCurve};
 use crate::traits::{BSplineEnd, EdgeStruct, Transform};
 use glam::DVec3;
 
@@ -153,6 +154,37 @@ impl EdgeStruct for Edge {
 		};
 
 		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez).map_err(|e| Error::Edge(format!("bspline: {} points, end={end:?}: {}", pts.len(), e.what())))?;
+		Ok(Edge::new(inner))
+	}
+
+	fn curve(&self) -> Option<Curve> {
+		let mut out = Vec::new();
+		let kind = ffi::edge_curve(&self.inner, &mut out).ok()?;
+		let ((origin, axis_z, axis_x, p1, p2), rest) = split_frame(&out)?;
+		let (range, rest) = rest.split_first_chunk::<2>()?;
+		let kind = match kind {
+			1 => CurveKind::Line,
+			2 => CurveKind::Circle { radius: p1 },
+			3 => CurveKind::Ellipse { major_radius: p1, minor_radius: p2 },
+			4 => CurveKind::Bspline(NurbsCurve::from_flat(rest)?),
+			_ => return None,
+		};
+		Some(Curve { origin, axis_z, axis_x, kind, range: *range })
+	}
+
+	fn edge(curve: &Curve) -> Result<Self, Error> {
+		let (kind, p1, p2, data) = match &curve.kind {
+			CurveKind::Line => (1, 0.0, 0.0, Vec::new()),
+			CurveKind::Circle { radius } => (2, *radius, 0.0, Vec::new()),
+			CurveKind::Ellipse { major_radius, minor_radius } => (3, *major_radius, *minor_radius, Vec::new()),
+			CurveKind::Bspline(nurbs) => {
+				let mut data = Vec::new();
+				nurbs.to_flat(&mut data);
+				(4, 0.0, 0.0, data)
+			}
+		};
+		let (o, z, x, [t0, t1]) = (curve.origin, curve.axis_z, curve.axis_x, curve.range);
+		let inner = ffi::make_curve_edge(kind, o.x, o.y, o.z, z.x, z.y, z.z, x.x, x.y, x.z, p1, p2, t0, t1, &data).map_err(|e| Error::Edge(format!("edge: {curve:?}: {}", e.what())))?;
 		Ok(Edge::new(inner))
 	}
 }

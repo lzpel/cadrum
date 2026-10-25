@@ -39,6 +39,16 @@
 #include <Geom_SphericalSurface.hxx>
 #include <Geom_ToroidalSurface.hxx>
 #include <Geom2d_Line.hxx>
+#include <Geom_RectangularTrimmedSurface.hxx>
+#include <Geom_Line.hxx>
+#include <Geom_Circle.hxx>
+#include <Geom_Ellipse.hxx>
+#include <Geom_TrimmedCurve.hxx>
+#include <GeomConvert.hxx>
+#include <GeomAdaptor_Curve.hxx>
+#include <gp_Elips.hxx>
+#include <gp_Lin.hxx>
+#include <BRepTools_WireExplorer.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 
 // --- BRep builders (faces / wires / edges / solid primitives) ---
@@ -355,10 +365,11 @@ static Chained chain(const std::vector<TopoDS_Edge>& edges, double tolerance)
         link.clear();
     };
     for (size_t i = 0; i < edges.size(); ++i) {
-        // Edge::start_point reads the curve whatever the orientation, so orient from the curve.
+        // An edge runs along its curve, or against it when a face's loop reversed it.
         BRepAdaptor_Curve curve(edges[i]);
-        const gp_Pnt a = curve.Value(curve.FirstParameter()), b = curve.Value(curve.LastParameter());
-        TopoDS_Edge e = TopoDS::Edge(BRepBuilderAPI_Copy(edges[i], false).Shape().Oriented(TopAbs_FORWARD));
+        const bool reversed = edges[i].Orientation() == TopAbs_REVERSED;
+        const gp_Pnt a = curve.Value(reversed ? curve.LastParameter() : curve.FirstParameter()), b = curve.Value(reversed ? curve.FirstParameter() : curve.LastParameter());
+        TopoDS_Edge e = TopoDS::Edge(BRepBuilderAPI_Copy(edges[i], false).Shape().Oriented(reversed ? TopAbs_REVERSED : TopAbs_FORWARD));
         if (link.empty()) {
             start = a;
             end = b;
@@ -382,6 +393,91 @@ static Chained chain(const std::vector<TopoDS_Edge>& edges, double tolerance)
     }
     if (!link.empty()) flush();
     return out;
+}
+
+// ==================== NURBS encoding ====================
+//
+// A B-spline crosses the bridge as one flat double vector; the layouts are mirrored
+// by `NurbsSurface::to_flat` / `NurbsCurve::to_flat` in src/common/geometry.rs.
+
+static int as_int(double v) { return static_cast<int>(std::llround(v)); }
+
+// Reads successive values of a flat vector, throwing once the data runs out.
+struct FlatReader {
+    rust::Slice<const double> data;
+    size_t at = 0;
+    double next() {
+        if (at >= data.size()) throw std::runtime_error("truncated NURBS data");
+        return data[at++];
+    }
+    int count() { return as_int(next()); }
+};
+
+// [udeg, vdeg, uper, vper, nuk, nvk, nu, nv, uknots, umults, vknots, vmults, poles xyz (u-major), weights]
+static void encode_bspline_surface(const Handle(Geom_BSplineSurface)& s, rust::Vec<double>& out) {
+    const int nu = s->NbUPoles(), nv = s->NbVPoles(), nuk = s->NbUKnots(), nvk = s->NbVKnots();
+    for (double v : {double(s->UDegree()), double(s->VDegree()), s->IsUPeriodic() ? 1.0 : 0.0, s->IsVPeriodic() ? 1.0 : 0.0, double(nuk), double(nvk), double(nu), double(nv)}) out.push_back(v);
+    for (double k : s->UKnots()) out.push_back(k);
+    for (int m : s->UMultiplicities()) out.push_back(m);
+    for (double k : s->VKnots()) out.push_back(k);
+    for (int m : s->VMultiplicities()) out.push_back(m);
+    const NCollection_Array2<gp_Pnt>& poles = s->Poles();
+    const NCollection_Array2<double>* weights = s->Weights();  // null when not rational
+    for (int i = 1; i <= nu; ++i) for (int j = 1; j <= nv; ++j) { const gp_Pnt& p = poles(i, j); out.push_back(p.X()); out.push_back(p.Y()); out.push_back(p.Z()); }
+    for (int i = 1; i <= nu; ++i) for (int j = 1; j <= nv; ++j) out.push_back(weights ? (*weights)(i, j) : 1.0);
+}
+
+static Handle(Geom_BSplineSurface) decode_bspline_surface(rust::Slice<const double> data) {
+    FlatReader r{data};
+    const int udeg = r.count(), vdeg = r.count();
+    const bool uper = r.next() != 0.0, vper = r.next() != 0.0;
+    const int nuk = r.count(), nvk = r.count(), nu = r.count(), nv = r.count();
+    if (nuk < 2 || nvk < 2 || nu < 2 || nv < 2) throw std::runtime_error("a B-spline surface needs at least two knots and two poles per direction");
+    NCollection_Array1<double> uk(1, nuk), vk(1, nvk);
+    NCollection_Array1<int> um(1, nuk), vm(1, nvk);
+    for (int i = 1; i <= nuk; ++i) uk(i) = r.next();
+    for (int i = 1; i <= nuk; ++i) um(i) = r.count();
+    for (int i = 1; i <= nvk; ++i) vk(i) = r.next();
+    for (int i = 1; i <= nvk; ++i) vm(i) = r.count();
+    NCollection_Array2<gp_Pnt> poles(1, nu, 1, nv);
+    for (int i = 1; i <= nu; ++i) for (int j = 1; j <= nv; ++j) { const double x = r.next(), y = r.next(), z = r.next(); poles(i, j) = gp_Pnt(x, y, z); }
+    NCollection_Array2<double> weights(1, nu, 1, nv);
+    for (int i = 1; i <= nu; ++i) for (int j = 1; j <= nv; ++j) weights(i, j) = r.next();
+    return new Geom_BSplineSurface(poles, weights, uk, vk, um, vm, udeg, vdeg, uper, vper);
+}
+
+// [deg, periodic, nk, np, knots, mults, poles xyz, weights]
+static void encode_bspline_curve(const Handle(Geom_BSplineCurve)& c, rust::Vec<double>& out) {
+    const int nk = c->NbKnots(), np = c->NbPoles();
+    for (double v : {double(c->Degree()), c->IsPeriodic() ? 1.0 : 0.0, double(nk), double(np)}) out.push_back(v);
+    for (double k : c->Knots()) out.push_back(k);
+    for (int m : c->Multiplicities()) out.push_back(m);
+    const NCollection_Array1<gp_Pnt>& poles = c->Poles();
+    const NCollection_Array1<double>* weights = c->Weights();  // null when not rational
+    for (int i = 1; i <= np; ++i) { out.push_back(poles(i).X()); out.push_back(poles(i).Y()); out.push_back(poles(i).Z()); }
+    for (int i = 1; i <= np; ++i) out.push_back(weights ? (*weights)(i) : 1.0);
+}
+
+static Handle(Geom_BSplineCurve) decode_bspline_curve(rust::Slice<const double> data) {
+    FlatReader r{data};
+    const int deg = r.count();
+    const bool periodic = r.next() != 0.0;
+    const int nk = r.count(), np = r.count();
+    if (nk < 2 || np < 2) throw std::runtime_error("a B-spline curve needs at least two knots and two poles");
+    NCollection_Array1<double> knots(1, nk);
+    NCollection_Array1<int> mults(1, nk);
+    for (int i = 1; i <= nk; ++i) knots(i) = r.next();
+    for (int i = 1; i <= nk; ++i) mults(i) = r.count();
+    NCollection_Array1<gp_Pnt> poles(1, np);
+    for (int i = 1; i <= np; ++i) { const double x = r.next(), y = r.next(), z = r.next(); poles(i) = gp_Pnt(x, y, z); }
+    NCollection_Array1<double> weights(1, np);
+    for (int i = 1; i <= np; ++i) weights(i) = r.next();
+    return new Geom_BSplineCurve(poles, weights, knots, mults, deg, periodic);
+}
+
+// Append a placement as [origin, z, x] and two parameters.
+static void push_frame(const gp_Pnt& o, const gp_Dir& z, const gp_Dir& x, double p1, double p2, rust::Vec<double>& out) {
+    for (double v : {o.X(), o.Y(), o.Z(), z.X(), z.Y(), z.Z(), x.X(), x.Y(), x.Z(), p1, p2}) out.push_back(v);
 }
 
 // ==================== Shape Constructors ====================
@@ -415,14 +511,15 @@ std::unique_ptr<TopoDS_Face> make_face(
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
+    rust::Slice<const double> data,
     const std::vector<TopoDS_Edge>& edges)
 {
     const std::vector<TopoDS_Wire> wires = chain(edges, Precision::Confusion()).wires;
-    Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
+    Handle(Geom_Surface) surface = kind == 6 ? Handle(Geom_Surface)(decode_bspline_surface(data)) : surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
     if (!wires.empty() && !BRep_Tool::IsClosed(wires.back())) throw std::runtime_error("trailing edges do not close a loop");
     if (wires.empty()) {
-        // Only a sphere or torus closes on itself without a boundary.
-        if (kind != 4 && kind != 5) throw std::runtime_error("empty profile on an unbounded surface");
+        // Only a sphere, a torus or a B-spline is bounded without a boundary.
+        if (kind != 4 && kind != 5 && kind != 6) throw std::runtime_error("empty profile on an unbounded surface");
         return std::make_unique<TopoDS_Face>(BRepBuilderAPI_MakeFace(surface, Precision::Confusion()).Face());
     }
     BRep_Builder builder;
@@ -970,8 +1067,49 @@ std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape,
 }
 
 // `local` is `face` placed relative to its owner, so the owner sits at `face / local`.
-std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids) {
-    return edges_of(face, face.Location().Divided(local.Location()), out_ids);
+std::unique_ptr<std::vector<TopoDS_Edge>> face_loops(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids, rust::Vec<uint32_t>& out_counts)
+{
+    const TopLoc_Location owner = face.Location().Divided(local.Location());
+    auto out = std::make_unique<std::vector<TopoDS_Edge>>();
+    // Loops run with the face on the left seen from the surface normal, whichever way
+    // the face itself is oriented in its shell, as `make_face` reads them.
+    const TopoDS_Face forward = TopoDS::Face(face.Oriented(TopAbs_FORWARD));
+    const TopoDS_Wire outer = BRepTools::OuterWire(forward);
+    std::vector<TopoDS_Wire> wires;
+    if (!outer.IsNull()) wires.push_back(outer);
+    for (TopExp_Explorer ex(forward, TopAbs_WIRE); ex.More(); ex.Next()) {
+        if (outer.IsNull() || !ex.Current().IsSame(outer)) wires.push_back(TopoDS::Wire(ex.Current()));
+    }
+    for (const TopoDS_Wire& wire : wires) {
+        std::vector<TopoDS_Edge> loop;
+        for (BRepTools_WireExplorer wx(wire, forward); wx.More(); wx.Next()) loop.push_back(wx.Current());
+        // The wire explorer stops early on a wire it cannot order; fall back to storage order.
+        size_t total = 0;
+        for (TopoDS_Iterator it(wire); it.More(); it.Next()) ++total;
+        if (loop.size() != total) {
+            loop.clear();
+            for (TopoDS_Iterator it(wire); it.More(); it.Next()) loop.push_back(TopoDS::Edge(it.Value()));
+        }
+        for (const TopoDS_Edge& e : loop) {
+            out->push_back(e);
+            out_ids.push_back(sub_id(e, owner));
+        }
+        out_counts.push_back(static_cast<uint32_t>(loop.size()));
+    }
+    return out;
+}
+
+rust::Vec<double> solid_vertices(const TopoDS_Solid& shape) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(shape, TopAbs_VERTEX, map);
+    rust::Vec<double> out;
+    for (int i = 1; i <= map.Extent(); i++) {
+        const gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(map(i)));
+        out.push_back(p.X());
+        out.push_back(p.Y());
+        out.push_back(p.Z());
+    }
+    return out;
 }
 
 std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_Solid& owner) {
@@ -1010,15 +1148,12 @@ double face_surface_area(const TopoDS_Face& face) {
     return props.Mass();
 }
 
-uint32_t face_surface(const TopoDS_Face& face,
-    double& ox, double& oy, double& oz,
-    double& zx, double& zy, double& zz,
-    double& xx, double& xy, double& xz,
-    double& p1, double& p2)
+uint32_t face_surface(const TopoDS_Face& face, rust::Vec<double>& out)
 {
     uint32_t kind = 0;
     gp_Ax3 pos;
-    p1 = 0.0; p2 = 0.0;
+    double p1 = 0.0, p2 = 0.0;
+    Handle(Geom_BSplineSurface) bspline;
     BRepAdaptor_Surface surf(face);
     switch (surf.GetType()) {
         case GeomAbs_Plane: {
@@ -1047,16 +1182,29 @@ uint32_t face_surface(const TopoDS_Face& face,
             p1 = tor.MajorRadius(); p2 = tor.MinorRadius();
             break;
         }
-        default: break;
+        default: {
+            // BRep_Tool::Surface applies the face's location. Anything that is not a
+            // B-spline already is converted over the face's own parameter range.
+            Handle(Geom_Surface) s = BRep_Tool::Surface(face);
+            bspline = Handle(Geom_BSplineSurface)::DownCast(s);
+            if (bspline.IsNull()) {
+                Handle(Geom_RectangularTrimmedSurface) trimmed = Handle(Geom_RectangularTrimmedSurface)::DownCast(s);
+                if (!trimmed.IsNull()) bspline = Handle(Geom_BSplineSurface)::DownCast(trimmed->BasisSurface());
+            }
+            if (bspline.IsNull()) {
+                double u1, u2, v1, v2;
+                BRepTools::UVBounds(face, u1, u2, v1, v2);
+                bspline = GeomConvert::SurfaceToBSplineSurface(new Geom_RectangularTrimmedSurface(s, u1, u2, v1, v2));
+            }
+            kind = 6;
+            break;
+        }
     }
-    const gp_Pnt origin = pos.Location();
-    const gp_Dir axis = pos.Direction();
     gp_Dir x = pos.XDirection();
     // Normalise a mirrored placement, so axis x X is always its Y direction.
     if (!pos.Direct()) x.Reverse();
-    ox = origin.X(); oy = origin.Y(); oz = origin.Z();
-    zx = axis.X(); zy = axis.Y(); zz = axis.Z();
-    xx = x.X(); xy = x.Y(); xz = x.Z();
+    push_frame(pos.Location(), pos.Direction(), x, p1, p2, out);
+    if (kind == 6) encode_bspline_surface(bspline, out);
     return kind;
 }
 
@@ -1180,9 +1328,10 @@ rust::Vec<double> edge_approximation_segments(
     BRepAdaptor_Curve curve(edge);
     GCPnts_TangentialDeflection approx(curve, angular, eff_chord);
 
-    int nb_points = approx.NbPoints();
-    for (int i = 1; i <= nb_points; i++) {
-        gp_Pnt p = approx.Value(i);
+    const int nb_points = approx.NbPoints();
+    const bool reversed = edge.Orientation() == TopAbs_REVERSED;
+    for (int k = 1; k <= nb_points; k++) {
+        gp_Pnt p = approx.Value(reversed ? nb_points + 1 - k : k);
         out.push_back(p.X());
         out.push_back(p.Y());
         out.push_back(p.Z());
@@ -1349,15 +1498,83 @@ std::unique_ptr<TopoDS_Edge> make_bspline_edge(
     return std::make_unique<TopoDS_Edge>(edgeMaker.Edge());
 }
 
+uint32_t edge_curve(const TopoDS_Edge& edge, rust::Vec<double>& out)
+{
+    double first, last;
+    // The 3-argument overload applies the edge's location; null on a degenerate edge.
+    Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, first, last);
+    if (curve.IsNull()) return 0;
+    GeomAdaptor_Curve adaptor(curve, first, last);
+    uint32_t kind = 0;
+    gp_Ax2 pos;
+    double p1 = 0.0, p2 = 0.0;
+    Handle(Geom_BSplineCurve) bspline;
+    switch (adaptor.GetType()) {
+        case GeomAbs_Line: {
+            const gp_Lin line = adaptor.Line();
+            kind = 1; pos = gp_Ax2(line.Location(), line.Direction());
+            break;
+        }
+        case GeomAbs_Circle: {
+            const gp_Circ circle = adaptor.Circle();
+            kind = 2; pos = circle.Position(); p1 = circle.Radius();
+            break;
+        }
+        case GeomAbs_Ellipse: {
+            const gp_Elips ellipse = adaptor.Ellipse();
+            kind = 3; pos = ellipse.Position(); p1 = ellipse.MajorRadius(); p2 = ellipse.MinorRadius();
+            break;
+        }
+        case GeomAbs_BSplineCurve: {
+            kind = 4; bspline = adaptor.BSpline();
+            break;
+        }
+        default: {
+            // Bezier, parabola, hyperbola, offset: converted over the edge's own range.
+            kind = 4; bspline = GeomConvert::CurveToBSplineCurve(new Geom_TrimmedCurve(curve, first, last));
+            first = bspline->FirstParameter(); last = bspline->LastParameter();
+            break;
+        }
+    }
+    push_frame(pos.Location(), pos.Direction(), pos.XDirection(), p1, p2, out);
+    out.push_back(first);
+    out.push_back(last);
+    if (kind == 4) encode_bspline_curve(bspline, out);
+    return kind;
+}
+
+std::unique_ptr<TopoDS_Edge> make_curve_edge(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2, double t0, double t1,
+    rust::Slice<const double> data)
+{
+    if (!(t1 > t0)) throw std::runtime_error("parameter range is empty");
+    const gp_Pnt origin(ox, oy, oz);
+    const gp_Dir z(zx, zy, zz);
+    BRepBuilderAPI_MakeEdge maker;
+    switch (kind) {
+        case 1: maker.Init(new Geom_Line(origin, z), t0, t1); break;
+        case 2: maker.Init(new Geom_Circle(gp_Ax2(origin, z, gp_Dir(xx, xy, xz)), p1), t0, t1); break;
+        case 3: maker.Init(new Geom_Ellipse(gp_Ax2(origin, z, gp_Dir(xx, xy, xz)), p1, p2), t0, t1); break;
+        case 4: maker.Init(decode_bspline_curve(data), t0, t1); break;
+        default: throw std::runtime_error("unknown curve kind");
+    }
+    if (!maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeEdge did not complete");
+    return std::make_unique<TopoDS_Edge>(maker.Edge());
+}
+
 void edge_endpoints(const TopoDS_Edge& edge,
     double& sx, double& sy, double& sz,
     double& ex, double& ey, double& ez)
 {
-    sx = 0.0; sy = 0.0; sz = 0.0;
-    ex = 0.0; ey = 0.0; ez = 0.0;
     BRepAdaptor_Curve curve(edge);
     gp_Pnt start = curve.Value(curve.FirstParameter());
     gp_Pnt end = curve.Value(curve.LastParameter());
+    // A reversed edge runs against its curve.
+    if (edge.Orientation() == TopAbs_REVERSED) std::swap(start, end);
     sx = start.X(); sy = start.Y(); sz = start.Z();
     ex = end.X();   ey = end.Y();   ez = end.Z();
 }
@@ -1373,6 +1590,12 @@ void edge_tangents(const TopoDS_Edge& edge,
     gp_Vec vs, ve;
     curve.D1(curve.FirstParameter(), p, vs);
     curve.D1(curve.LastParameter(), p, ve);
+    // A reversed edge runs against its curve: the ends swap and the tangents turn round.
+    if (edge.Orientation() == TopAbs_REVERSED) {
+        std::swap(vs, ve);
+        vs.Reverse();
+        ve.Reverse();
+    }
     if (vs.Magnitude() > Precision::Confusion()) {
         vs.Normalize();
         sx = vs.X(); sy = vs.Y(); sz = vs.Z();
@@ -1418,6 +1641,7 @@ bool edge_project_point(const TopoDS_Edge& edge,
     gp_Pnt p;
     gp_Vec v;
     curve.D1(u, p, v);
+    if (edge.Orientation() == TopAbs_REVERSED) v.Reverse();
     cpx = p.X(); cpy = p.Y(); cpz = p.Z();
     if (v.Magnitude() > Precision::Confusion()) {
         v.Normalize();

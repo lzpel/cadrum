@@ -38,14 +38,16 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-// `kind`, placement and `p1` / `p2` follow `face_surface`. `edges` chain into closed
-// loops as in `make_extrude`; the face lies left of each loop seen from the normal.
+// `kind`, placement and `p1` / `p2` follow `face_surface`; kind 6 takes the B-spline
+// from `data` instead. `edges` chain into closed loops as in `make_extrude`; the face
+// lies left of each loop seen from the normal.
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
+    rust::Slice<const double> data,
     const std::vector<TopoDS_Edge>& edges);
 
 std::unique_ptr<TopoDS_Solid> make_box(
@@ -190,9 +192,13 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
 std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids);
 std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids);
 
-// Unique boundary edges of `face`, ids relative to the owner that `local` encodes.
-std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids);
-// `face` placed relative to `owner`: what `face_edges` needs to id the edges like `solid_edges`.
+// The boundary edges of `face` loop by loop: the outer loop first, each loop in
+// traversal order, `out_counts` holding one length per loop. Ids are relative to the
+// owner that `local` encodes.
+std::unique_ptr<std::vector<TopoDS_Edge>> face_loops(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids, rust::Vec<uint32_t>& out_counts);
+// The unique vertices of `shape` as flat xyz.
+rust::Vec<double> solid_vertices(const TopoDS_Solid& shape);
+// `face` placed relative to `owner`: what `face_loops` needs to id the edges like `solid_edges`.
 std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_Solid& owner);
 
 // Shallow handle clone — C++ copy-ctor shares the underlying TShape via
@@ -204,6 +210,19 @@ std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
 std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);
 
 // ==================== Edge Methods ====================
+
+// The edge's curve: `out` gets the placement [origin, axis, x], `p1`, `p2`, the
+// parameter range, then for kind 4 the B-spline. Returns the kind: 0 none (a
+// degenerate edge), 1 line, 2 circle, 3 ellipse, 4 B-spline.
+uint32_t edge_curve(const TopoDS_Edge& edge, rust::Vec<double>& out);
+// The edge of the curve `edge_curve` describes, over [t0, t1].
+std::unique_ptr<TopoDS_Edge> make_curve_edge(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2, double t0, double t1,
+    rust::Slice<const double> data);
 
 // Approximate an edge as a polyline. Takes independent angular/chord
 // deflection bounds. Returns a flat xyz `Vec<f64>` (length = 3 * point count).
@@ -397,14 +416,11 @@ uint64_t solid_tshape_id(const TopoDS_Solid& shape);
 uint64_t edge_tshape_id(const TopoDS_Edge& edge);
 
 double face_surface_area(const TopoDS_Face& face);
-// The face's elementary surface as its STEP axis2_placement_3d-shaped
-// placement. Returns the kind: 0 other, 1 plane, 2 cylinder, 3 cone, 4 sphere,
-// 5 torus. A mirrored placement is normalised so that axis x X is its Y.
-uint32_t face_surface(const TopoDS_Face& face,
-    double& ox, double& oy, double& oz,
-    double& zx, double& zy, double& zz,
-    double& xx, double& xy, double& xz,
-    double& p1, double& p2);
+// The face's surface: `out` gets its STEP axis2_placement_3d-shaped placement
+// [origin, axis, x], then `p1`, `p2`, then for kind 6 the B-spline (see ffi.cpp
+// "NURBS encoding"). Returns the kind: 1 plane, 2 cylinder, 3 cone, 4 sphere, 5 torus,
+// 6 B-spline. A mirrored placement is normalised so that axis x X is its Y.
+uint32_t face_surface(const TopoDS_Face& face, rust::Vec<double>& out);
 // Area-weighted center of the trimmed face surface.
 void face_center_of_mass(const TopoDS_Face& face,
     double& x, double& y, double& z);

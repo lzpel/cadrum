@@ -41,7 +41,7 @@ mod ffi_bridge {
 
 		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<TopoDS_Face>>;
+		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, data: &[f64], edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
@@ -99,7 +99,8 @@ mod ffi_bridge {
 		// `out_ids` receives one owner-relative id per returned sub-shape (see ffi.h).
 		fn solid_edges(shape: &TopoDS_Solid, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
 		fn solid_faces(shape: &TopoDS_Solid, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Face>>>;
-		fn face_edges(face: &TopoDS_Face, local: &TopoDS_Face, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		fn face_loops(face: &TopoDS_Face, local: &TopoDS_Face, out_ids: &mut Vec<u64>, out_counts: &mut Vec<u32>) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		fn solid_vertices(shape: &TopoDS_Solid) -> Result<Vec<f64>>;
 		fn local_face(face: &TopoDS_Face, owner: &TopoDS_Solid) -> UniquePtr<TopoDS_Face>;
 
 		fn clone_solid_handle(solid: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
@@ -112,7 +113,7 @@ mod ffi_bridge {
 		fn solid_tshape_id(solid: &TopoDS_Solid) -> u64;
 		fn edge_tshape_id(edge: &TopoDS_Edge) -> u64;
 
-		fn face_surface(face: &TopoDS_Face, ox: &mut f64, oy: &mut f64, oz: &mut f64, zx: &mut f64, zy: &mut f64, zz: &mut f64, xx: &mut f64, xy: &mut f64, xz: &mut f64, p1: &mut f64, p2: &mut f64) -> Result<u32>;
+		fn face_surface(face: &TopoDS_Face, out: &mut Vec<f64>) -> Result<u32>;
 		fn face_surface_area(face: &TopoDS_Face) -> Result<f64>;
 		fn face_center_of_mass(face: &TopoDS_Face, x: &mut f64, y: &mut f64, z: &mut f64) -> Result<()>;
 		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> Result<bool>;
@@ -120,6 +121,8 @@ mod ffi_bridge {
 		// ==================== Edge Methods ====================
 
 		fn edge_approximation_segments(edge: &TopoDS_Edge, linear: f64, angular: f64, relative: bool) -> Result<Vec<f64>>;
+		fn edge_curve(edge: &TopoDS_Edge, out: &mut Vec<f64>) -> Result<u32>;
+		fn make_curve_edge(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, t0: f64, t1: f64, data: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
 
 		fn make_helix_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, radius: f64, pitch: f64, height: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn make_polygon_edges(coords: &[f64]) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;

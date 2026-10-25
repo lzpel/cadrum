@@ -16,6 +16,12 @@ pub enum Error {
 	/// Got not one solids although expecting one solid, typically as a result of boolean operation.
 	NotOne(usize),
 
+	/// A read-only query (`Face::surface`, `Face::project`, `Edge::project`) the kernel refused.
+	Query(String),
+
+	/// A spatial transform (`rotate`, `scale`, `mirror`, `align_*`) given a degenerate axis, plane or factor.
+	Transform(String),
+
 	/// Edge construction failed on degenerate input (collinear arc points, zero-length line, negative radius).
 	Edge(String),
 
@@ -61,6 +67,8 @@ impl std::fmt::Display for Error {
 			Error::Tesselation => write!(f, "Tesselation failed"),
 			Error::Boolean(msg) => write!(f, "Boolean operation failed: {msg}"),
 			Error::NotOne(n) => write!(f, "Expected exactly one resulting Solid, got {n}"),
+			Error::Query(msg) => write!(f, "Query failed: {msg}"),
+			Error::Transform(msg) => write!(f, "Transform failed: {msg}"),
 			Error::Edge(msg) => write!(f, "Edge failed: {msg}"),
 			Error::Clean(msg) => write!(f, "Clean failed: {msg}"),
 			Error::Extrude(msg) => write!(f, "Extrude failed: {msg}"),

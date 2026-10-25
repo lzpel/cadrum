@@ -50,6 +50,7 @@ pub struct Solid {
 	inner: cxx::UniquePtr<ffi::TopoDS_Solid>,
 	edges: OnceLock<Vec<Edge>>,
 	faces: OnceLock<Vec<Face>>,
+	vertices: OnceLock<Vec<DVec3>>,
 	/// Keyed by a face's id, or by `Solid::id()` for the solid as a whole; a face
 	/// colour wins over the solid's. Other solids' keys may be present (`from_ffi`).
 	colormap: std::collections::HashMap<u64, crate::common::color::Color>,
@@ -61,7 +62,7 @@ pub struct Solid {
 impl Solid {
 	/// Create a `Solid` from a `TopoDS_Solid`.
 	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Solid>, colormap: std::collections::HashMap<u64, crate::common::color::Color>, history: Vec<Lineage>) -> Self {
-		Solid { inner, edges: OnceLock::new(), faces: OnceLock::new(), colormap, history }
+		Solid { inner, edges: OnceLock::new(), faces: OnceLock::new(), vertices: OnceLock::new(), colormap, history }
 	}
 
 	// ==================== Internal accessors ====================
@@ -199,6 +200,10 @@ impl SolidStruct for Solid {
 				ffi::solid_faces(&self.inner, &mut ids).map(|v| v.iter().zip(ids).map(|(f, id)| Face::new(ffi::clone_face_handle(f), ffi::local_face(f, &self.inner), id)).collect()).unwrap_or_default()
 			})
 			.iter()
+	}
+
+	fn iter_vertex(&self) -> impl Iterator<Item = &DVec3> + '_ {
+		self.vertices.get_or_init(|| ffi::solid_vertices(&self.inner).unwrap_or_default().chunks_exact(3).map(|c| DVec3::new(c[0], c[1], c[2])).collect()).iter()
 	}
 
 	fn iter_history(&self) -> impl Iterator<Item = Lineage> + '_ {
