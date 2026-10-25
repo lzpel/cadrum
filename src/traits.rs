@@ -1,5 +1,15 @@
 //! Backend-independent trait definitions.
 //!
+//! The API has three layers, and the lower two are a contract every builder keeps:
+//!
+//! 1. **Builders** — `Solid::extrude`, `fillet_edges`, `Boolean`, … turn operands into
+//!    a new `Solid`. They never write into their operands.
+//! 2. **History** — every builder reports how the result's faces and edges descend from
+//!    the operands' (`Solid::iter_history`, [`Lineage`]), keyed by the ids below.
+//! 3. **Exploration** — `iter_face` / `iter_loop` / `iter_edge` / `iter_vertex` reach the
+//!    topology, `Face::surface` / `Edge::curve` the geometry down to NURBS coefficients,
+//!    and `Face::face` / `Edge::edge` build it back.
+//!
 //! Trait hierarchy:
 //!
 //! ```text
@@ -351,8 +361,13 @@ impl Lineage {
 /// `Error::Edge(String)` with a message that identifies the failing
 /// constructor and the offending parameters.
 pub trait EdgeStruct: Sized + Clone + Debug + Transform {
-	/// Stable, backend-defined identity for this edge. Two `Edge` values
-	/// returning the same `id()` refer to the same topology element.
+	/// Identity of this edge within the solid it was taken from, or of the edge itself
+	/// when it was built standalone. Two ids from the same solid are equal exactly when
+	/// they are the same edge at the same placement, so an edge a builder reuses at a
+	/// second position (a prism's top) has its own id. Ids are kept by `translate`,
+	/// `rotate`, colour and `Clone`; builders give new ones and relate them through
+	/// `Solid::iter_history`. Never compare ids across solids.
+	///
 	/// Use to compare edges across `Solid::iter_edge()` / `Face::iter_edge()`
 	/// (e.g. `face.iter_edge().any(|e| e.id() == edge.id())`).
 	fn id(&self) -> u64;
@@ -517,11 +532,11 @@ pub trait FaceStruct: Sized + Clone + Debug {
 	where
 		Self::Edge: 'a;
 
-	/// Stable, backend-defined identity for this face. Two `Face` values
-	/// returning the same `id()` refer to the same topology element. Used
-	/// to look up entries in `Solid::colormap` or to match faces against
-	/// boolean / clean operation history. The numeric value itself has no
-	/// meaning beyond equality / hash use.
+	/// Identity of this face within the solid it was taken from, with the same rules as
+	/// `Edge::id`: unique per placement in its solid, kept by `translate` / `rotate` /
+	/// colour / `Clone`, renewed by every builder and related through
+	/// `Solid::iter_history`. Keys `Solid::colormap` and `Mesh::face_ids`. The numeric
+	/// value itself has no meaning beyond equality / hash use.
 	fn id(&self) -> u64;
 
 	/// Area of the trimmed face.
@@ -594,11 +609,10 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	type Face: FaceStruct;
 
 	// --- Identity ---
-	/// Stable, backend-defined identity for this solid. Two `Solid` values
-	/// returning the same `id()` refer to the same topology element.
-	/// translate / rotate / color preserve this id; scale / mirror / Clone
-	/// rebuild topology and produce a fresh id. Distinct from the ids of
-	/// the solid's contained faces / edges (each sub-shape has its own).
+	/// Identity of this solid's topology. `translate` / `rotate` / colour / `Clone`
+	/// (a shallow handle copy) keep it; every builder and `scale` / `mirror` rebuild the
+	/// topology and give a fresh one. Distinct from the ids of the solid's faces and
+	/// edges, which `Solid::colormap` also uses as keys.
 	fn id(&self) -> u64;
 
 	// --- Constructors ---
@@ -635,6 +649,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn iter_history(&self) -> impl Iterator<Item = Lineage> + '_;
 
 	// --- Queries ---
+	// None of these writes into the solid, `mesh` included, so a `&Solid` may be read
+	// from several threads once `Sync` is declared. On a solid the kernel rejects they
+	// return `NaN` (`false` for `contains`); `is_valid` tells in advance.
 	/// Volume of the solid (uniform density).
 	fn volume(&self) -> f64;
 	/// Total surface area of the solid.

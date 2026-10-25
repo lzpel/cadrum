@@ -44,6 +44,11 @@ cadrum has several goals:
   <br/> <img src="https://github.com/lzpel/opencascade-wasm32-unknown-unknown-example/raw/main/screenshot.png" alt="cadrum compiled to WebAssembly converting a STEP file to glTF in the browser" height="200"/>
 - **Fully headless.** <br/> No GUI, no windowing, no OS-specific dependencies —
   cadrum is pure geometry and I/O, suitable for servers, CI, and wasm.
+- **A kernel contract, not only a script API.** <br/> Every builder reports how the
+  result's faces and edges descend from its operands, every face and edge has a
+  stable id, and every face and edge can be read back down to its NURBS
+  coefficients — what a CAD application's selection, persistent naming and
+  surface workspace stand on. See [Identity, history and thread safety](#identity-history-and-thread-safety).
 - **Major formats in and out.** <br/> Reads and writes **STEP** and **BRep**,
   and exports **glTF (`.glb`)**, **STL**, and **PNG** — so models flow into CAD
   tools, web / three.js viewers, 3D printers, and docs.
@@ -131,12 +136,14 @@ statically, so no OpenCASCADE installation is needed. `make test` is an alias.
 | Area | Methods |
 |---|---|
 | **Primitives** | `Solid::cube`, `Solid::sphere`, `Solid::cylinder`, `Solid::cone`, `Solid::torus`, `Solid::half_space` |
-| **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline` |
+| **Curves** | `Edge::line`, `Edge::arc_3pts`, `Edge::circle`, `Edge::polygon`, `Edge::helix`, `Edge::bspline`, `Edge::edge` (from a `Curve`: line, circle, ellipse, NURBS) |
+| **Faces** | `Face::face` (loops on a `Surface`: plane, cylinder, cone, sphere, torus, NURBS) |
 | **Surfacing** | `Solid::extrude`, `Solid::sweep`, `Solid::loft`, `Solid::bspline`, `Solid::sew` |
 | **Editing** | `Solid::shell`, `Solid::offset`, `Solid::fillet_edges`, `Solid::chamfer_edges`, `Solid::clean` |
-| **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains`, `Face::area`, `Face::center`, `Face::surface` |
-| **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Face::iter_edge`, `Face::project`, `Edge::project` |
-| **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` |
+| **Queries** | `Solid::volume`, `Solid::area`, `Solid::center`, `Solid::inertia`, `Solid::bounding_box`, `Solid::contains`, `Solid::is_valid`, `Face::area`, `Face::center`, `Face::project`, `Edge::project` |
+| **Topology** | `Solid::iter_face`, `Solid::iter_edge`, `Solid::iter_vertex`, `Face::iter_loop` (outer loop first), `Face::iter_edge` |
+| **Geometry** | `Face::surface` → `Surface` (elementary or `SurfaceKind::Bspline`), `Edge::curve` → `Curve` (line, circle, ellipse or `CurveKind::Bspline`), `Mesh::uvs` |
+| **Identity / history** | `Solid::id`, `Face::id`, `Edge::id`, `Solid::iter_history` → `Lineage` (`Kept` / `Modified` / `Generated` / `Deleted`) |
 | **I/O** | `Solid::read_step` / `Solid::write_step`, `Solid::read_brep` / `Solid::write_brep` (BRep = OCCT's `BinTools` binary format) |
 | **Mesh** | `Solid::mesh` → `Mesh`, `Mesh::write_stl`, `Mesh::write_gltf_binary`, `Mesh::scene` → `Scene2D`, `Scene2D::write_svg`, `Scene2D::write_png` *(png)*, `Solid::write_multiview_png` *(png)* |
 | **Color** | per-face and per-solid color preserved across STEP / BRep / STL / glTF / SVG round-trips |
@@ -1198,11 +1205,59 @@ let v = s.volume();
 # }
 ```
 
+## Identity, history and thread safety
+
+cadrum is three layers, and the lower two are a contract every builder keeps.
+The **builders** (`extrude`, `fillet_edges`, `Boolean`, …) turn operands into a new `Solid` and never write into their operands.
+The **history** says how the result's faces and edges descend from the operands'.
+The **exploration** reaches the topology and the geometry, down to NURBS coefficients, and builds it back.
+
+**Ids are stable within a solid and survive moves.**
+`Face::id` and `Edge::id` identify a sub-shape at its placement in its solid, so a face a builder reuses at a second position (a prism's top is its bottom moved) has its own id, and `Mesh::face_ids` tells the two apart.
+`translate`, `rotate`, colouring and `Clone` keep every id, the colormap and the history; `Clone` is a shallow handle copy of OCCT's immutable topology, so it costs nothing.
+Every builder, `scale` and `mirror` give new ids and relate them to the old ones through the history.
+Ids are never compared across solids: a face a boolean leaves untouched keeps its OCCT shape but, sitting in a new solid, is reported as `Lineage::Kept { src, post }` with both ids.
+
+**Every builder reports a `Lineage` for faces and edges.**
+`Solid::iter_history` yields `Kept` (the same OCCT shape in operand and result), `Modified` (trimmed, split or rebuilt), `Generated` (new, grown from the source: a prism wall from a profile edge, a fillet face from an edge, a boolean's section edge from a face) and `Deleted` (no image).
+`extrude`, `revolve`, `sweep`, `loft`, `fillet_edges`, `chamfer_edges`, `shell`, `offset`, `clean`, booleans, `scale`, `mirror` and `sew` fill it; `translate`, `rotate`, colouring and `Clone` keep the previous one; primitives, `bspline` and the readers have none.
+Faces with no entry are the ones no operand sub-shape made, such as a prism's caps.
+Two OCCT limits are passed on: `fillet_edges`, `chamfer_edges` and `clean` rebuild every face, so untouched faces come back `Modified`, and the shortened boundary edges of a fillet have no lineage.
+
+```rust,no_run
+# use cadrum::{DVec3, Edge, Lineage, Solid};
+# fn main() -> Result<(), cadrum::Error> {
+let profile = Edge::polygon(&[DVec3::ZERO, DVec3::X * 10.0, DVec3::new(10.0, 10.0, 0.0), DVec3::Y * 10.0])?;
+let prism = Solid::extrude(&profile, DVec3::Z * 5.0)?;
+// The wall grown from the second profile edge, by id rather than by geometry.
+let wall = prism.iter_history().find_map(|l| match l {
+	Lineage::Generated { src, post } if src == profile[1].id() && prism.iter_face().any(|f| f.id() == post) => Some(post),
+	_ => None,
+});
+# let _ = wall;
+# Ok(())
+# }
+```
+
+**No `&Solid` method writes into the solid.**
+`Solid::mesh` triangulates a topology copy, so a solid's BRep bytes are the same before and after meshing; the builders work on copies of the caller's edges and run booleans non-destructively.
+`Solid`, `Face` and `Edge` are `Send`. `Sync` is not declared yet: OCCT's own handling of builder inputs has not been audited, and the table below is what that audit will confirm.
+
+| Call | Writes into the receiver or operands |
+|---|---|
+| `volume`, `area`, `center`, `inertia`, `contains`, `bounding_box`, `is_valid`, `iter_*`, `Face::surface`, `Edge::curve`, `project`, `mesh`, `write_*` | no |
+| `translate`, `rotate`, `color`, `Clone` | no — a new handle on the same topology |
+| `extrude`, `revolve`, `sweep`, `loft`, `Face::face` | no — the profile edges are copied first |
+| booleans | no — `BOPAlgo` runs in non-destructive mode |
+| `fillet_edges`, `chamfer_edges`, `shell`, `offset`, `clean`, `sew`, `scale`, `mirror` | not by cadrum; OCCT's builders are believed not to, unaudited |
+
 ## Errors
 
 Every fallible operation returns `std::result::Result<T, cadrum::Error>` with `Error` enumerating the failure modes (`Error::Sweep`, `Error::Fillet`, `Error::Edge`, etc.).
-I/O and export failures are routed through `Error::Io(std::io::Error)`.
-Panics are reserved for true logic bugs.
+Degenerate input to a primitive is `Error::Validation`, to a transform `Error::Transform`, and a read-only query the kernel refuses is `Error::Query`; I/O and export failures are routed through `Error::Io(std::io::Error)`.
+Every OpenCASCADE exception is caught at the FFI boundary and becomes one of these, so no call aborts the process.
+The measures (`volume`, `area`, …) return `NaN` on a solid the kernel rejects, and `contains` returns `false`; `Solid::is_valid` says so in advance.
+Panics are reserved for true logic bugs, such as a `translate` failing.
 
 ## License
 
