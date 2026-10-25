@@ -45,7 +45,7 @@ fn read_color_trailer(tail: &[u8]) -> std::collections::HashMap<u32, Color> {
 /// carries explicit ids instead.
 fn trailer_ids(solids: &cxx::CxxVector<ffi::TopoDS_Solid>) -> Vec<u64> {
 	// Every solid first, then every solid's faces in the same solid order.
-	let faces = solids.iter().flat_map(|s| ffi::solid_faces(s).map(|v| v.iter().map(ffi::face_tshape_id).collect::<Vec<_>>()).unwrap_or_default());
+	let faces = solids.iter().flat_map(super::solid::face_ids);
 	solids.iter().map(ffi::solid_tshape_id).chain(faces).collect()
 }
 
@@ -140,8 +140,8 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		let mut map = std::collections::HashMap::new();
 		for s in solids.iter().copied() {
 			if let Some(&c) = s.colormap().get(&s.id()) {
-				for f in ffi::solid_faces(s.inner()).iter().flat_map(|v| v.iter()) {
-					map.insert(ffi::face_tshape_id(f), c);
+				for id in super::solid::face_ids(s.inner()) {
+					map.insert(id, c);
 				}
 			}
 			// Face colours are the more specific style and win over the solid's.
@@ -165,7 +165,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	// surface triangulation only; edges use `deflection_linear` as an absolute
 	// chord here.
 	let mut edges: Vec<DVec3> = Vec::new();
-	let solid_edges: Vec<_> = solids.iter().filter_map(|s| ffi::solid_edges(s.inner()).ok()).collect();
+	let solid_edges: Vec<_> = solids.iter().filter_map(|s| ffi::solid_edges(s.inner(), &mut Vec::new()).ok()).collect();
 	for e in solid_edges.iter().flat_map(|v| v.iter()) {
 		let segs = ffi::edge_approximation_segments(e, options.deflection_linear, options.deflection_angular, options.relative_linear).unwrap_or_default();
 		if segs.len() < 6 {

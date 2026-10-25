@@ -17,12 +17,18 @@ fn encode_orient(orient: ProfileOrient<'_>) -> (u32, f64, f64, f64, &[Edge]) {
 	}
 }
 
+/// The face ids of `inner`, in `iter_face` order.
+pub(super) fn face_ids(inner: &ffi::TopoDS_Solid) -> Vec<u64> {
+	let mut ids = Vec::new();
+	let _ = ffi::solid_faces(inner, &mut ids);
+	ids
+}
+
 fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Solid, new_inner: &ffi::TopoDS_Solid, old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
 	let mut colormap = std::collections::HashMap::new();
-	let (Ok(old_faces), Ok(new_faces)) = (ffi::solid_faces(old_inner), ffi::solid_faces(new_inner)) else { return colormap };
-	for (old_face, new_face) in old_faces.iter().zip(new_faces.iter()) {
-		if let Some(&color) = old_colormap.get(&ffi::face_tshape_id(old_face)) {
-			colormap.insert(ffi::face_tshape_id(new_face), color);
+	for (old_id, new_id) in face_ids(old_inner).into_iter().zip(face_ids(new_inner)) {
+		if let Some(&color) = old_colormap.get(&old_id) {
+			colormap.insert(new_id, color);
 		}
 	}
 	// The solid's own colour is keyed by its TShape id, which these ops change
@@ -94,7 +100,7 @@ impl Solid {
 		solids
 			.iter()
 			.map(|s| {
-				let local: std::collections::HashSet<u64> = ffi::solid_faces(s).map(|v| v.iter().map(ffi::face_tshape_id).collect()).unwrap_or_default();
+				let local: std::collections::HashSet<u64> = face_ids(s).into_iter().collect();
 				let history = history.chunks_exact(2).filter(|p| local.contains(&p[0])).flatten().copied().collect();
 				Solid::new(ffi::clone_solid_handle(s), colormap.clone(), history)
 			})
@@ -183,11 +189,21 @@ impl SolidStruct for Solid {
 	// `OnceLock::new()`). See `notes/20260420-OCCTトポロジ不変性と設計含意.md`.
 
 	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
-		self.edges.get_or_init(|| ffi::solid_edges(&self.inner).map(|v| v.iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).unwrap_or_default()).iter()
+		self.edges
+			.get_or_init(|| {
+				let mut ids = Vec::new();
+				ffi::solid_edges(&self.inner, &mut ids).map(|v| v.iter().zip(ids).map(|(e, id)| Edge::with_id(ffi::clone_edge_handle(e), id)).collect()).unwrap_or_default()
+			})
+			.iter()
 	}
 
 	fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
-		self.faces.get_or_init(|| ffi::solid_faces(&self.inner).map(|v| v.iter().map(|f_ref| Face::new(ffi::clone_face_handle(f_ref))).collect()).unwrap_or_default()).iter()
+		self.faces
+			.get_or_init(|| {
+				let mut ids = Vec::new();
+				ffi::solid_faces(&self.inner, &mut ids).map(|v| v.iter().zip(ids).map(|(f, id)| Face::new(ffi::clone_face_handle(f), ffi::local_face(f, &self.inner), id)).collect()).unwrap_or_default()
+			})
+			.iter()
 	}
 
 	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
@@ -350,11 +366,7 @@ impl SolidStruct for Solid {
 	where
 		Self: 'a,
 	{
-		// TShape* を共有する shallow copy で Boolean を組む。Solid::clone() (=
-		// BRepBuilderAPI_Copy) と違い、各 face の id() が元と一致するため
-		// boolean 結果の history (post_id, src_id) を呼び出し側の face id と
-		// 照合できる。
-		let solids: Vec<Solid> = solids.into_iter().map(|s| Solid { inner: ffi::clone_solid_handle(&s.inner), edges: OnceLock::new(), faces: OnceLock::new(), colormap: s.colormap.clone(), history: s.history.clone() }).collect();
+		let solids: Vec<Solid> = solids.into_iter().cloned().collect();
 		Boolean::from_parts(solids, clauses.into_iter().collect())
 	}
 	fn boolean_build(b: &Boolean<Self>) -> Result<Vec<Self>, Error> {
@@ -525,12 +537,10 @@ impl Transform for Solid {
 	}
 }
 
+// A shallow handle copy, as OCCT's own `TopoDS_Shape` copy is: the topology is shared
+// and immutable, so every id, the colormap and the history stay valid.
 impl Clone for Solid {
 	fn clone(&self) -> Self {
-		let inner = ffi::deep_copy(&self.inner).unwrap_or_else(|e| panic!("Solid::clone: {}", e.what()));
-		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
-		// deep_copy rebuilds topology — post_ids in `history` no longer point
-		// to faces of the new shape. Drop history rather than remapping.
-		Solid::new(inner, colormap, Default::default())
+		Solid::new(ffi::clone_solid_handle(&self.inner), self.colormap.clone(), self.history.clone())
 	}
 }

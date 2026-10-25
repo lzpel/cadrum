@@ -8,19 +8,33 @@ use std::sync::OnceLock;
 
 /// A face topology shape.
 ///
-/// `edges` is a lazy `OnceLock` cache populated on first `iter_edge` call,
-/// matching the pattern used by `Solid`. Faces yielded from `Solid::iter_face`
-/// are constructed fresh each time the parent solid's face cache is built, so
-/// the OnceLock matches the lifetime of the enclosing `Vec<Face>`.
+/// `inner` is the face where OCCT sees it. `local` is the same face placed relative
+/// to its owning solid, which is what gives this face's edges the ids
+/// `Solid::iter_edge` gives them (see `ffi.h`). A standalone face is its own owner.
 pub struct Face {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Face>,
+	local: cxx::UniquePtr<ffi::TopoDS_Face>,
+	id: u64,
 	edges: OnceLock<Vec<Edge>>,
 }
 
 impl Face {
-	/// Create a Face wrapping a `TopoDS_Face`.
-	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Face>) -> Self {
-		Face { inner, edges: OnceLock::new() }
+	/// A face of a solid, with the id and placement its owner assigned.
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Face>, local: cxx::UniquePtr<ffi::TopoDS_Face>, id: u64) -> Self {
+		Face { inner, local, id, edges: OnceLock::new() }
+	}
+
+	/// A standalone face: its own owner, so its id is its TShape address.
+	pub(crate) fn standalone(inner: cxx::UniquePtr<ffi::TopoDS_Face>) -> Self {
+		let (local, id) = (ffi::clone_face_handle(&inner), ffi::face_tshape_id(&inner));
+		Face::new(inner, local, id)
+	}
+}
+
+// A shallow handle copy sharing the immutable TShape, so the id is kept.
+impl Clone for Face {
+	fn clone(&self) -> Self {
+		Face::new(ffi::clone_face_handle(&self.inner), ffi::clone_face_handle(&self.local), self.id)
 	}
 }
 
@@ -44,11 +58,11 @@ impl FaceStruct for Face {
 		};
 		let (o, z, x) = (surface.origin, surface.axis_z, surface.axis_x);
 		let inner = ffi::make_face(kind, o.x, o.y, o.z, z.x, z.y, z.z, x.x, x.y, x.z, p1, p2, &wires).map_err(|e| Error::Validation(format!("face: surface={surface:?}: {}", e.what())))?;
-		Ok(Face::new(inner))
+		Ok(Face::standalone(inner))
 	}
 
 	fn id(&self) -> u64 {
-		ffi::face_tshape_id(&self.inner)
+		self.id
 	}
 
 	fn surface(&self) -> Option<Surface> {
@@ -88,6 +102,11 @@ impl FaceStruct for Face {
 	}
 
 	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
-		self.edges.get_or_init(|| ffi::face_edges(&self.inner).map(|v| v.iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).unwrap_or_default()).iter()
+		self.edges
+			.get_or_init(|| {
+				let mut ids = Vec::new();
+				ffi::face_edges(&self.inner, &self.local, &mut ids).map(|v| v.iter().zip(ids).map(|(e, id)| Edge::with_id(ffi::clone_edge_handle(e), id)).collect()).unwrap_or_default()
+			})
+			.iter()
 	}
 }

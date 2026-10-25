@@ -77,8 +77,6 @@ std::unique_ptr<TopoDS_Solid> make_torus(
     double dx, double dy, double dz,
     double r1, double r2);
 
-std::unique_ptr<TopoDS_Solid> deep_copy(const TopoDS_Solid& shape);
-
 // ==================== Builders (solid → solid with history) ====================
 //
 // Functions in this section take one or more solid inputs, rebuild topology,
@@ -189,21 +187,22 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
 
 // ==================== Topology enumeration ====================
 
-// One-shot enumeration of unique sub-shapes. `solid_edges` deduplicates
-// edges shared between faces (so each edge appears exactly once).
-// Callers typically cache the result in a Rust-side OnceLock<Vec<Edge>>.
-std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape);
-std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape);
+// Unique sub-shapes of a solid, each with its id relative to the solid in `out_ids`:
+// the TShape address mixed with the hash of the sub-shape's location relative to the
+// solid, so a face reused at a second placement (a prism's top) gets its own id and
+// translating the solid changes none of them.
+std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids);
+std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids);
 
-// One-shot enumeration of the boundary edges of a single face. Edges shared
-// between this face's wires are deduplicated so each edge appears once.
-std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face);
+// Unique boundary edges of `face`, ids relative to the owner that `local` encodes.
+std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids);
+// `face` placed relative to `owner`: what `face_edges` needs to id the edges like `solid_edges`.
+std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_Solid& owner);
 
 // Shallow handle clone — C++ copy-ctor shares the underlying TShape via
 // OCCT's ref count. Needed when Rust materializes owned `Shape` / `Edge` /
 // `Face` wrappers from the `&TopoDS_*` references yielded by
-// `CxxVector::iter()`. Distinct from `deep_copy` / `deep_copy_edge` which
-// create new TShapes.
+// `CxxVector::iter()`.
 std::unique_ptr<TopoDS_Solid> clone_solid_handle(const TopoDS_Solid& solid);
 std::unique_ptr<TopoDS_Edge> clone_edge_handle(const TopoDS_Edge& edge);
 std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face);
@@ -284,9 +283,6 @@ bool edge_project_point(const TopoDS_Edge& edge,
     double px, double py, double pz,
     double& cpx, double& cpy, double& cpz,
     double& tx, double& ty, double& tz);
-
-// Edge clone (deep copy of underlying TShape).
-std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge);
 
 // Edge spatial transforms. Mirror the shape-level helpers but operate on
 // TopoDS_Edge directly so the Rust wrapper can stay edge-typed.
@@ -388,8 +384,8 @@ std::unique_ptr<TopoDS_Solid> make_bspline_solid(
 
 // ==================== Face Methods ====================
 
-// Both helpers return the underlying TopoDS_TShape* address as a u64 — used
-// to track face/solid/edge identity across boolean ops, color maps, and BREP I/O.
+// A shape's own id: its TopoDS_TShape* address. Sub-shape ids come from the
+// enumeration functions above instead, as they depend on the owner.
 uint64_t face_tshape_id(const TopoDS_Face& face);
 uint64_t solid_tshape_id(const TopoDS_Solid& shape);
 uint64_t edge_tshape_id(const TopoDS_Edge& edge);

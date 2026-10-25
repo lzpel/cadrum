@@ -4,13 +4,32 @@ use crate::traits::{BSplineEnd, EdgeStruct, Transform};
 use glam::DVec3;
 
 /// An edge topology shape.
+///
+/// `id` is fixed when the edge is wrapped: its own TShape address for a standalone
+/// edge, or the owner-relative id `solid_edges` / `face_edges` computed for an edge
+/// taken from a solid (see `ffi.h`).
 pub struct Edge {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Edge>,
+	id: u64,
 }
 
+impl Edge {
+	/// A standalone edge: its own owner, so its id is its TShape address.
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Edge>) -> Self {
+		let id = ffi::edge_tshape_id(&inner);
+		Edge { inner, id }
+	}
+
+	/// An edge of a solid or face, with the id its owner assigned.
+	pub(crate) fn with_id(inner: cxx::UniquePtr<ffi::TopoDS_Edge>, id: u64) -> Self {
+		Edge { inner, id }
+	}
+}
+
+// A shallow handle copy sharing the immutable TShape, so the id is kept.
 impl Clone for Edge {
 	fn clone(&self) -> Self {
-		Edge { inner: ffi::deep_copy_edge(&self.inner).unwrap_or_else(|e| panic!("Edge::clone: {}", e.what())) }
+		Edge { inner: ffi::clone_edge_handle(&self.inner), id: self.id }
 	}
 }
 
@@ -22,7 +41,7 @@ impl std::fmt::Debug for Edge {
 
 impl EdgeStruct for Edge {
 	fn id(&self) -> u64 {
-		ffi::edge_tshape_id(&self.inner)
+		self.id
 	}
 
 	// ==================== Per-edge queries ====================
@@ -82,29 +101,28 @@ impl EdgeStruct for Edge {
 
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_helix_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, radius, pitch, height).map_err(|e| Error::Edge(format!("helix: radius={radius}, pitch={pitch}, height={height}, axis={axis:?}, x_ref={x_ref:?}: {}", e.what())))?;
-		Ok(Edge { inner })
+		Ok(Edge::new(inner))
 	}
 
 	fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<Self>, Error> {
 		let coords: Vec<f64> = points.into_iter().flat_map(|p| [p.x, p.y, p.z]).collect();
 		let edges = ffi::make_polygon_edges(&coords).map_err(|e| Error::Edge(format!("polygon: {} point(s): {}", coords.len() / 3, e.what())))?;
-		// deep_copy_edge so each Edge owns its topology instead of borrowing the vector.
-		Ok(edges.iter().map(|e| Edge { inner: ffi::deep_copy_edge(e).unwrap_or_else(|err| panic!("polygon: {}", err.what())) }).collect())
+		Ok(edges.iter().map(|e| Edge::new(ffi::clone_edge_handle(e))).collect())
 	}
 
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_circle_edge(axis.x, axis.y, axis.z, radius).map_err(|e| Error::Edge(format!("circle: radius={radius}, axis={axis:?}: {}", e.what())))?;
-		Ok(Edge { inner })
+		Ok(Edge::new(inner))
 	}
 
 	fn line(a: DVec3, b: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_line_edge(a.x, a.y, a.z, b.x, b.y, b.z).map_err(|e| Error::Edge(format!("line: a={a:?}, b={b:?}: {}", e.what())))?;
-		Ok(Edge { inner })
+		Ok(Edge::new(inner))
 	}
 
 	fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<Self, Error> {
 		let inner = ffi::make_arc_edge(start.x, start.y, start.z, mid.x, mid.y, mid.z, end.x, end.y, end.z).map_err(|e| Error::Edge(format!("arc_3pts: start={start:?}, mid={mid:?}, end={end:?}: {}", e.what())))?;
-		Ok(Edge { inner })
+		Ok(Edge::new(inner))
 	}
 
 	fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<Self, Error> {
@@ -121,21 +139,13 @@ impl EdgeStruct for Edge {
 
 		// Periodic では先頭と末尾が一致してはならない。OCCT は周期性を基底関数に
 		// 組み込むので、ユーザーが点を重複させると行列が特異化して失敗する。
-		// 自動除去はせず Error::Edge で誤用を明示する (AGENTS.md "誤解 vs 手間" 方針)。
-		if matches!(end, BSplineEnd::Periodic) {
-			let first = pts.first().expect("checked above");
-			let last = pts.last().expect("checked above");
-			if first == last {
-				return Err(Error::Edge(format!("bspline(Periodic): first and last points coincide ({first:?}); periodicity is encoded in the basis, do not duplicate the closing point")));
-			}
+		if matches!(end, BSplineEnd::Periodic) && pts.first() == pts.last() {
+			return Err(Error::Edge(format!("bspline(Periodic): first and last points coincide ({:?}); periodicity is encoded in the basis, do not duplicate the closing point", pts[0])));
 		}
 
-		// FFI 用に flat な xyz 列にパック。
 		let coords: Vec<f64> = pts.iter().flat_map(|p| [p.x, p.y, p.z]).collect();
 
-		// BSplineEnd を (kind, start_tangent, end_tangent) にエンコード。
-		// kind: 0 = Periodic, 1 = NotAKnot, 2 = Clamped。
-		// 接線ベクトルは Clamped 以外では使われない (C++ 側で無視)。
+		// kind: 0 = Periodic, 1 = NotAKnot, 2 = Clamped; the tangents matter to Clamped only.
 		let (kind, sx, sy, sz, ex, ey, ez) = match end {
 			BSplineEnd::Periodic => (0u32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
 			BSplineEnd::NotAKnot => (1u32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
@@ -143,35 +153,31 @@ impl EdgeStruct for Edge {
 		};
 
 		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez).map_err(|e| Error::Edge(format!("bspline: {} points, end={end:?}: {}", pts.len(), e.what())))?;
-		Ok(Edge { inner })
+		Ok(Edge::new(inner))
 	}
 }
 
-// endpoint / tangent / is_closed / approximation_segments / project は
-// 上の `impl EdgeStruct for Edge` に統合済み。エッジ列 (= wire) はイテレータ
-// 慣用句で扱い、専用トレイトは持たない。
-
 // `Transform` returns `Self`, and an affine transform of a valid edge only throws
 // on a degenerate axis or plane — a caller bug, so it panics with OCCT's message.
+// Translate and rotate move the edge and keep its id; scale and mirror rebuild it.
 impl Transform for Edge {
 	fn translate(self, t: DVec3) -> Self {
-		Edge { inner: ffi::translate_edge(&self.inner, t.x, t.y, t.z).unwrap_or_else(|e| panic!("Edge::translate: {}", e.what())) }
+		Edge { inner: ffi::translate_edge(&self.inner, t.x, t.y, t.z).unwrap_or_else(|e| panic!("Edge::translate: {}", e.what())), id: self.id }
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
 		Edge {
 			inner: ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Edge::rotate: {}", e.what())),
+			id: self.id,
 		}
 	}
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
-		Edge { inner: ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Edge::scale: {}", e.what())) }
+		Edge::new(ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Edge::scale: {}", e.what())))
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		Edge {
-			inner: ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Edge::mirror: {}", e.what())),
-		}
+		Edge::new(ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Edge::mirror: {}", e.what())))
 	}
 }
 

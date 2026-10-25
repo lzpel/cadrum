@@ -17,6 +17,7 @@
 #include <TopExp_Explorer.hxx>
 #include <TopLoc_Location.hxx>
 #include <NCollection_IndexedMap.hxx>
+#include <NCollection_DataMap.hxx>
 #include <NCollection_List.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
 
@@ -185,6 +186,22 @@ static TopoDS_Compound compound_of(const std::vector<TopoDS_Solid>& solids) {
     builder.MakeCompound(compound);
     for (const auto& s : solids) builder.Add(compound, s);
     return compound;
+}
+
+// ==================== Identity ====================
+
+// A sub-shape's id as seen from its owner: the TShape address, mixed with the hash of
+// its location relative to the owner when that location is not the identity.
+static uint64_t sub_id(const TopoDS_Shape& sub, const TopLoc_Location& owner_loc) {
+    const uint64_t ptr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(sub.TShape().get()));
+    const TopLoc_Location rel = sub.Location().Predivided(owner_loc);
+    if (rel.IsIdentity()) return ptr;
+    return ptr ^ (static_cast<uint64_t>(rel.HashCode()) * 0x9E3779B97F4A7C15ULL);
+}
+
+// A shape's own id: its TShape address, whatever its location.
+static uint64_t own_id(const TopoDS_Shape& shape) {
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shape.TShape().get()));
 }
 
 // ==================== Shape Constructors ====================
@@ -368,11 +385,6 @@ std::unique_ptr<TopoDS_Solid> make_torus(
     gp_Ax2 axis(center, direction);
     BRepPrimAPI_MakeTorus maker(axis, r1, r2);
     return std::make_unique<TopoDS_Solid>(maker.Solid());
-}
-
-std::unique_ptr<TopoDS_Solid> deep_copy(const TopoDS_Solid& shape) {
-    BRepBuilderAPI_Copy copier(shape, true, false);
-    return to_solid(copier.Shape());
 }
 
 // ==================== STEP read post-processing ====================
@@ -728,6 +740,11 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
     MeshData result;
     result.success = false;
     TopoDS_Compound shape = compound_of(solids);
+    // Face ids are owner-relative, so compute them from each solid, not from the compound.
+    NCollection_DataMap<TopoDS_Shape, uint64_t, TopTools_ShapeMapHasher> ids;
+    for (const auto& s : solids) {
+        for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) ids.Bind(ex.Current(), sub_id(ex.Current(), s.Location()));
+    }
 
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
     BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
@@ -783,7 +800,7 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         }
 
         // Indices
-        uint64_t face_id = reinterpret_cast<uint64_t>(face.TShape().get());
+        const uint64_t face_id = ids.Find(face);
         for (int i = 1; i <= nb_triangles; i++) {
             const Poly_Triangle& tri = triangulation->Triangle(i);
 
@@ -814,39 +831,40 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
 
 // ==================== Topology enumeration ====================
 
-std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape) {
-    // TopExp_Explorer visits shared edges once per adjacent face.
-    // NCollection_IndexedMap collapses those into unique edges.
+// Unique edges of `shape` (TopExp_Explorer visits a shared edge once per face) with
+// ids relative to `owner`.
+static std::unique_ptr<std::vector<TopoDS_Edge>> edges_of(const TopoDS_Shape& shape, const TopLoc_Location& owner, rust::Vec<uint64_t>& out_ids) {
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edgeMap;
     TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap);
     auto out = std::make_unique<std::vector<TopoDS_Edge>>();
     out->reserve(edgeMap.Extent());
     for (int i = 1; i <= edgeMap.Extent(); i++) {
         out->push_back(TopoDS::Edge(edgeMap(i)));
+        out_ids.push_back(sub_id(edgeMap(i), owner));
     }
     return out;
 }
 
-std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape) {
-    // Faces in a valid shape are already unique under TopExp_Explorer.
+std::unique_ptr<std::vector<TopoDS_Edge>> solid_edges(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids) {
+    return edges_of(shape, shape.Location(), out_ids);
+}
+
+std::unique_ptr<std::vector<TopoDS_Face>> solid_faces(const TopoDS_Solid& shape, rust::Vec<uint64_t>& out_ids) {
     auto out = std::make_unique<std::vector<TopoDS_Face>>();
     for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
         out->push_back(TopoDS::Face(ex.Current()));
+        out_ids.push_back(sub_id(ex.Current(), shape.Location()));
     }
     return out;
 }
 
-std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face) {
-    // A face's outer wire and (optional) inner wires can share edges; collapse
-    // them into unique edges with the same IndexedMap trick used in solid_edges.
-    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edgeMap;
-    TopExp::MapShapes(face, TopAbs_EDGE, edgeMap);
-    auto out = std::make_unique<std::vector<TopoDS_Edge>>();
-    out->reserve(edgeMap.Extent());
-    for (int i = 1; i <= edgeMap.Extent(); i++) {
-        out->push_back(TopoDS::Edge(edgeMap(i)));
-    }
-    return out;
+// `local` is `face` placed relative to its owner, so the owner sits at `face / local`.
+std::unique_ptr<std::vector<TopoDS_Edge>> face_edges(const TopoDS_Face& face, const TopoDS_Face& local, rust::Vec<uint64_t>& out_ids) {
+    return edges_of(face, face.Location().Divided(local.Location()), out_ids);
+}
+
+std::unique_ptr<TopoDS_Face> local_face(const TopoDS_Face& face, const TopoDS_Solid& owner) {
+    return std::make_unique<TopoDS_Face>(TopoDS::Face(face.Located(face.Location().Predivided(owner.Location()))));
 }
 
 std::unique_ptr<TopoDS_Solid> clone_solid_handle(const TopoDS_Solid& solid) {
@@ -864,15 +882,15 @@ std::unique_ptr<TopoDS_Face> clone_face_handle(const TopoDS_Face& face) {
 // ==================== Face Methods ====================
 
 uint64_t face_tshape_id(const TopoDS_Face& face) {
-    return reinterpret_cast<uint64_t>(face.TShape().get());
+    return own_id(face);
 }
 
 uint64_t solid_tshape_id(const TopoDS_Solid& shape) {
-    return reinterpret_cast<uint64_t>(shape.TShape().get());
+    return own_id(shape);
 }
 
 uint64_t edge_tshape_id(const TopoDS_Edge& edge) {
-    return reinterpret_cast<uint64_t>(edge.TShape().get());
+    return own_id(edge);
 }
 
 double face_surface_area(const TopoDS_Face& face) {
@@ -1297,13 +1315,8 @@ bool edge_project_point(const TopoDS_Edge& edge,
     return true;
 }
 
-std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge) {
-    BRepBuilderAPI_Copy copier(edge);
-    return std::make_unique<TopoDS_Edge>(TopoDS::Edge(copier.Shape()));
-}
-
-// Helper: apply a gp_Trsf to an edge via BRepBuilderAPI_Transform.
-// Used for all four edge transforms below.
+// Scale and mirror rebuild the edge via BRepBuilderAPI_Transform; translate and
+// rotate only move it, keeping its TShape and so its id.
 static std::unique_ptr<TopoDS_Edge> transform_edge_impl(
     const TopoDS_Edge& edge, const gp_Trsf& trsf)
 {
@@ -1316,7 +1329,7 @@ std::unique_ptr<TopoDS_Edge> translate_edge(
 {
     gp_Trsf trsf;
     trsf.SetTranslation(gp_Vec(tx, ty, tz));
-    return transform_edge_impl(edge, trsf);
+    return std::make_unique<TopoDS_Edge>(TopoDS::Edge(edge.Moved(TopLoc_Location(trsf))));
 }
 
 std::unique_ptr<TopoDS_Edge> rotate_edge(
@@ -1327,7 +1340,7 @@ std::unique_ptr<TopoDS_Edge> rotate_edge(
 {
     gp_Trsf trsf;
     trsf.SetRotation(gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz)), angle);
-    return transform_edge_impl(edge, trsf);
+    return std::make_unique<TopoDS_Edge>(TopoDS::Edge(edge.Moved(TopLoc_Location(trsf))));
 }
 
 std::unique_ptr<TopoDS_Edge> scale_edge(
@@ -2108,20 +2121,19 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_step_color_stream(
 
     // Walk the POST-processed shape so sewing's new TShape* are picked up, and
     // entries it no longer holds are dropped by not being reached.
-    auto emit = [&](const TopoDS_Shape& sub) {
-        uint64_t id = reinterpret_cast<uint64_t>(sub.TShape().get());
-        auto it = colorMap.find(id);
+    auto emit = [&](const TopoDS_Shape& sub, uint64_t id) {
+        auto it = colorMap.find(own_id(sub));
         if (it == colorMap.end()) return;
         out_ids.push_back(id);
         out_rgb.push_back(it->second[0]);
         out_rgb.push_back(it->second[1]);
         out_rgb.push_back(it->second[2]);
     };
-    for (TopExp_Explorer ex(post, TopAbs_FACE); ex.More(); ex.Next()) {
-        emit(ex.Current());
-    }
-    for (TopExp_Explorer ex(post, TopAbs_SOLID); ex.More(); ex.Next()) {
-        emit(ex.Current());
+    for (TopExp_Explorer sx(post, TopAbs_SOLID); sx.More(); sx.Next()) {
+        for (TopExp_Explorer ex(sx.Current(), TopAbs_FACE); ex.More(); ex.Next()) {
+            emit(ex.Current(), sub_id(ex.Current(), sx.Current().Location()));
+        }
+        emit(sx.Current(), own_id(sx.Current()));
     }
 
     return solids_of(post);
@@ -2175,13 +2187,15 @@ struct StyleWriter {
 
     // MakeSTEPStyles in STEPCAFControl_Writer.cxx for a visible, non-component shape
     // with surface colors only: a style on a solid overrides into its faces.
-    void walk(const TopoDS_Shape& shape, const Handle(StepVisual_StyledItem)& over, const Quantity_Color* inherit) {
+    void walk(const TopoDS_Shape& shape, const Handle(StepVisual_StyledItem)& over, const Quantity_Color* inherit, const TopLoc_Location& owner) {
         if (!seen.Add(shape)) return;
         std::optional<Quantity_Color> color;
         if (inherit) color = *inherit;
         TopAbs_ShapeEnum type = shape.ShapeType();
+        // Face colours are keyed relative to the enclosing solid.
+        const TopLoc_Location here = type == TopAbs_SOLID ? shape.Location() : owner;
         if (type == TopAbs_SOLID || type == TopAbs_FACE) {
-            auto it = colors.find(reinterpret_cast<uint64_t>(shape.TShape().get()));
+            auto it = colors.find(type == TopAbs_SOLID ? own_id(shape) : sub_id(shape, here));
             if (it != colors.end()) color = it->second;
         }
         Handle(StepVisual_StyledItem) style = over;
@@ -2210,7 +2224,7 @@ struct StyleWriter {
         }
         if (type == TopAbs_EDGE) return;
         for (TopoDS_Iterator it(shape); it.More(); it.Next()) {
-            walk(it.Value(), style, own ? &*color : nullptr);
+            walk(it.Value(), style, own ? &*color : nullptr, here);
         }
     }
 };
@@ -2246,7 +2260,7 @@ void write_step_color_stream(
     STEPConstruct_Styles styles(ws);
     Handle(StepRepr_RepresentationContext) context = styles.FindContext(shape);
     if (!context.IsNull()) {
-        StyleWriter{styles, colors, {}, {}, {}}.walk(shape, nullptr, nullptr);
+        StyleWriter{styles, colors, {}, {}, {}}.walk(shape, nullptr, nullptr, TopLoc_Location());
         Handle(StepData_StepModel) model = step_writer.Model();
         Handle(StepVisual_MechanicalDesignGeometricPresentationRepresentation) mdgpr;
         if (styles.CreateMDGPR(context, mdgpr, model)) model->AddWithRefs(mdgpr);

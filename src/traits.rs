@@ -437,7 +437,7 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 ///
 /// examples/codegen.rs generates `impl Face { pub fn ... }` from this trait
 /// so callers reach the methods inherently as `face.id()` / `face.project(p)`.
-pub trait FaceStruct: Sized + Debug {
+pub trait FaceStruct: Sized + Clone + Debug {
 	type Edge: EdgeStruct;
 
 	/// The part of `surface` bounded by `profile`, as one face; `Self::surface`

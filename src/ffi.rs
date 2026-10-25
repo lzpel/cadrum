@@ -54,8 +54,6 @@ mod ffi_bridge {
 
 		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn deep_copy(shape: &TopoDS_Solid) -> Result<UniquePtr<TopoDS_Solid>>;
-
 		// ==================== STEP I/O ====================
 
 		fn read_step_color_stream(reader: &mut RustReader, out_ids: &mut Vec<u64>, out_rgb: &mut Vec<f32>) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
@@ -103,9 +101,11 @@ mod ffi_bridge {
 
 		// ==================== Topology enumeration ====================
 
-		fn solid_edges(shape: &TopoDS_Solid) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
-		fn solid_faces(shape: &TopoDS_Solid) -> Result<UniquePtr<CxxVector<TopoDS_Face>>>;
-		fn face_edges(face: &TopoDS_Face) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		// `out_ids` receives one owner-relative id per returned sub-shape (see ffi.h).
+		fn solid_edges(shape: &TopoDS_Solid, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		fn solid_faces(shape: &TopoDS_Solid, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Face>>>;
+		fn face_edges(face: &TopoDS_Face, local: &TopoDS_Face, out_ids: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		fn local_face(face: &TopoDS_Face, owner: &TopoDS_Solid) -> UniquePtr<TopoDS_Face>;
 
 		fn clone_solid_handle(solid: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
 		fn clone_edge_handle(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
@@ -137,8 +137,6 @@ mod ffi_bridge {
 		fn edge_tangents(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64) -> Result<()>;
 		fn precision_confusion() -> f64;
 		fn edge_project_point(edge: &TopoDS_Edge, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, tx: &mut f64, ty: &mut f64, tz: &mut f64) -> Result<bool>;
-
-		fn deep_copy_edge(edge: &TopoDS_Edge) -> Result<UniquePtr<TopoDS_Edge>>;
 
 		fn translate_edge(edge: &TopoDS_Edge, tx: f64, ty: f64, tz: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn rotate_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Edge>>;
