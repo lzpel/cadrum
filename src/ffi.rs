@@ -7,6 +7,7 @@ mod ffi_bridge {
 	struct MeshData {
 		vertices: Vec<f64>, // flat xyz
 		normals: Vec<f64>,  // flat xyz, one per vertex
+		uvs: Vec<f64>,      // flat uv on the face's surface, one per vertex
 		indices: Vec<u32>,
 		face_tshape_ids: Vec<u64>, // per-triangle TShape* address
 		success: bool,

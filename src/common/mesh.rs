@@ -14,6 +14,9 @@ pub struct Mesh {
 	/// faces, so each face acts as its own smoothing group: a cylinder's side is
 	/// smooth and its sharp edges stay sharp.
 	pub normals: Vec<DVec3>,
+	/// Surface parameters `(u, v)` of each vertex on its B-rep face, in the parameter
+	/// space `Face::surface` describes, so a renderer can evaluate the exact surface.
+	pub uvs: Vec<DVec2>,
 	/// Triangle indices (groups of 3, referencing into `vertices`).
 	pub indices: Vec<usize>,
 	/// Per-triangle face ID. Length equals `indices.len() / 3`.

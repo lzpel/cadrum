@@ -265,3 +265,20 @@ mod png {
 		}
 	}
 }
+
+/// `mesh` never writes into the solid: the BRep bytes are the same before and after,
+/// and every vertex carries the surface parameters of its face.
+#[test]
+fn mesh_keeps_brep_bytes_and_gives_uvs() {
+	let brep = |s: &Solid| {
+		let mut bytes = Vec::new();
+		Solid::write_brep([s], &mut bytes).unwrap();
+		bytes
+	};
+	let s = Solid::sphere(10.0);
+	let before = brep(&s);
+	let mesh = Solid::mesh([&s], Tessellation::default()).unwrap();
+	assert_eq!(brep(&s), before, "meshing must not change what write_brep writes");
+	assert_eq!(mesh.uvs.len(), mesh.vertices.len());
+	assert!(mesh.uvs.iter().all(|uv| uv.x.is_finite() && uv.y.is_finite()), "every vertex has surface parameters");
+}

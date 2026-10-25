@@ -849,15 +849,21 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) ids.Bind(ex.Current(), sub_id(ex.Current(), s.Location()));
     }
 
+    // BRepMesh writes its triangulation into the faces it is given, so it runs on a
+    // topology copy (geometry shared) and the caller's shapes are never written to.
+    TopoDS_Shape meshed = BRepBuilderAPI_Copy(shape, false, false).Shape();
+    BRepTools::Clean(meshed);
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
-    BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
+    BRepMesh_IncrementalMesh mesher(meshed, linear, relative, angular, false);
     if (!mesher.IsDone()) {
         return result;
     }
 
     uint32_t global_vertex_offset = 0;
 
-    for (TopExp_Explorer explorer(shape, TopAbs_FACE); explorer.More(); explorer.Next()) {
+    // The copy keeps the traversal order, so its faces pair with the originals' ids.
+    TopExp_Explorer original(shape, TopAbs_FACE);
+    for (TopExp_Explorer explorer(meshed, TopAbs_FACE); explorer.More() && original.More(); explorer.Next(), original.Next()) {
         TopoDS_Face face = TopoDS::Face(explorer.Current());
         TopLoc_Location location;
         Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation(face, location);
@@ -883,13 +889,17 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         // Shared by the nodal normals and the index winding below.
         bool reversed = (face.Orientation() == TopAbs_REVERSED);
 
-        // Position and normal of every node in one pass.
+        // Position, surface parameters and normal of every node in one pass.
+        const bool has_uv = triangulation->HasUVNodes();
         for (int i = 1; i <= nb_nodes; i++) {
             gp_Pnt p = triangulation->Node(i);
             p.Transform(location.Transformation());
             result.vertices.push_back(p.X());
             result.vertices.push_back(p.Y());
             result.vertices.push_back(p.Z());
+            const gp_Pnt2d uv = has_uv ? triangulation->UVNode(i) : gp_Pnt2d(std::nan(""), std::nan(""));
+            result.uvs.push_back(uv.X());
+            result.uvs.push_back(uv.Y());
 
             // ComputeNormals ignores face orientation and works in the
             // triangulation's local frame, so apply the location and the REVERSED
@@ -903,7 +913,7 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         }
 
         // Indices
-        const uint64_t face_id = ids.Find(face);
+        const uint64_t face_id = ids.Find(original.Current());
         for (int i = 1; i <= nb_triangles; i++) {
             const Poly_Triangle& tri = triangulation->Triangle(i);
 
@@ -926,8 +936,6 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         global_vertex_offset += nb_nodes;
     }
 
-    // BRepMesh stores its triangulation in the caller's faces; drop it so no later call sees it.
-    BRepTools::Clean(shape);
     result.success = true;
     return result;
 }

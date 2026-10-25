@@ -157,6 +157,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	let vertex_count = data.vertices.len() / 3;
 	let vertices: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.vertices[i * 3], data.vertices[i * 3 + 1], data.vertices[i * 3 + 2])).collect();
 	let normals: Vec<DVec3> = (0..vertex_count).map(|i| DVec3::new(data.normals[i * 3], data.normals[i * 3 + 1], data.normals[i * 3 + 2])).collect();
+	let uvs: Vec<glam::DVec2> = (0..vertex_count).map(|i| glam::DVec2::new(data.uvs[i * 2], data.uvs[i * 2 + 1])).collect();
 	let indices: Vec<usize> = data.indices.iter().map(|&i| i as usize).collect();
 	let face_ids = data.face_tshape_ids;
 
@@ -189,5 +190,5 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		map
 	};
 
-	Ok(Mesh { vertices, normals, indices, face_ids, colormap, edges })
+	Ok(Mesh { vertices, normals, uvs, indices, face_ids, colormap, edges })
 }
