@@ -337,9 +337,8 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Edge>.
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
-void edge_vec_push_oriented(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed);
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();

@@ -152,9 +152,8 @@ mod ffi_bridge {
 		fn make_bspline_solid(coords: &[f64], nu: u32, nv: u32, u_periodic: bool, v_periodic: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
-		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);
 		fn edge_vec_push_null(v: Pin<&mut CxxVector<TopoDS_Edge>>);
-		fn edge_vec_push_oriented(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge, reversed: bool);
+		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge, reversed: bool);
 
 		fn face_vec_new() -> UniquePtr<CxxVector<TopoDS_Face>>;
 		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);

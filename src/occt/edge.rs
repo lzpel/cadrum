@@ -197,7 +197,7 @@ pub(super) fn loops_to_ffi<'a>(profile: impl IntoIterator<Item = &'a Edge>) -> R
 				ffi::edge_vec_push_null(edges.pin_mut());
 			}
 			for (e, reversed) in open.drain(..) {
-				ffi::edge_vec_push_oriented(edges.pin_mut(), &e.inner, reversed);
+				ffi::edge_vec_push(edges.pin_mut(), &e.inner, reversed);
 			}
 		}
 	}

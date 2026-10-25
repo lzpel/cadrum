@@ -210,29 +210,7 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
 }
 
 static std::vector<TopoDS_Wire> wires_of(const std::vector<TopoDS_Edge>& edges);
-
-// Same placement and kind codes as face_surface, so a face round-trips through it.
-static Handle(Geom_Surface) surface_of(
-    uint32_t kind,
-    double ox, double oy, double oz,
-    double zx, double zy, double zz,
-    double xx, double xy, double xz,
-    double p1, double p2)
-{
-    // OCCT only rejects negative radii; a zero one gives a face with no area.
-    const bool has_radius = kind != 1 && kind != 3;
-    if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
-    if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
-    const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
-    switch (kind) {
-        case 1: return new Geom_Plane(pos);
-        case 2: return new Geom_CylindricalSurface(pos, p1);
-        case 3: return new Geom_ConicalSurface(pos, p2, p1);
-        case 4: return new Geom_SphericalSurface(pos, p1);
-        case 5: return new Geom_ToroidalSurface(pos, p1, p2);
-        default: throw std::runtime_error("unknown surface kind");
-    }
-}
+static Handle(Geom_Surface) surface_of(uint32_t kind, double ox, double oy, double oz, double zx, double zy, double zz, double xx, double xy, double xz, double p1, double p2);
 
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
@@ -301,6 +279,29 @@ std::unique_ptr<TopoDS_Face> make_face(
     // The fix widens an edge's tolerance to cover its distance from the surface.
     if (BRep_Tool::MaxTolerance(face, TopAbs_EDGE) > 1.0e-4) throw std::runtime_error("profile does not lie on the surface");
     return std::make_unique<TopoDS_Face>(face);
+}
+
+// Same placement and kind codes as face_surface, so a face round-trips through it.
+static Handle(Geom_Surface) surface_of(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2)
+{
+    // OCCT only rejects negative radii; a zero one gives a face with no area.
+    const bool has_radius = kind != 1 && kind != 3;
+    if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
+    if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
+    const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
+    switch (kind) {
+        case 1: return new Geom_Plane(pos);
+        case 2: return new Geom_CylindricalSurface(pos, p1);
+        case 3: return new Geom_ConicalSurface(pos, p2, p1);
+        case 4: return new Geom_SphericalSurface(pos, p1);
+        case 5: return new Geom_ToroidalSurface(pos, p1, p2);
+        default: throw std::runtime_error("unknown surface kind");
+    }
 }
 
 std::unique_ptr<TopoDS_Solid> make_box(
@@ -1373,15 +1374,12 @@ std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new() {
     return std::make_unique<std::vector<TopoDS_Edge>>();
 }
 
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
-    v.push_back(e);
-}
 
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
     v.push_back(TopoDS_Edge());
 }
 
-void edge_vec_push_oriented(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed) {
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed) {
     // Edge::start_point reads the curve, whatever the orientation, so set it outright.
     v.push_back(TopoDS::Edge(e.Oriented(reversed ? TopAbs_REVERSED : TopAbs_FORWARD)));
 }
