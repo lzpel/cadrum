@@ -31,6 +31,26 @@ fn sphere_normals_come_from_the_surface() {
 	}
 }
 
+// ==================== No triangulation left on the solid ====================
+
+/// mesh は solid に三角形分割を残さない: 細かい mesh の後でも粗い要求は粗く、bbox も変わらない。
+#[test]
+fn mesh_leaves_the_solid_untouched() {
+	let tess = |d| Tessellation { deflection_linear: d, relative_linear: false, ..Default::default() };
+	let count = |s: &Solid, d| Solid::mesh([s], tess(d)).unwrap().indices.len() / 3;
+	let coarse = count(&Solid::sphere(10.0), 1.0);
+
+	let s = Solid::torus(10.0, 3.0, dvec3(1.0, 1.0, 0.3));
+	let before = s.bounding_box();
+	count(&s, 0.01);
+	assert_eq!(s.bounding_box(), before, "a stored triangulation would tighten the box");
+
+	let s = Solid::sphere(10.0);
+	count(&s, 0.01);
+	assert_eq!(count(&s, 1.0), coarse, "a stored fine triangulation would be reused");
+	assert_eq!(count(&s.translate(dvec3(5.0, 0.0, 0.0)), 1.0), coarse);
+}
+
 // ==================== SVG (Scene2D::write_svg) ====================
 
 mod svg {

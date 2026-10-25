@@ -662,16 +662,21 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
     MeshData result;
     result.success = false;
     TopoDS_Compound shape = compound_of(solids);
+    // BRepMesh stores its triangulation in the faces it meshes, so it meshes a throwaway
+    // copy (geometry shared) and the caller's faces stay untouched.
+    TopoDS_Shape copy = BRepBuilderAPI_Copy(shape, false, false).Shape();
 
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
-    BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
+    BRepMesh_IncrementalMesh mesher(copy, linear, relative, angular, false);
     if (!mesher.IsDone()) {
         return result;
     }
 
     uint32_t global_vertex_offset = 0;
 
-    for (TopExp_Explorer explorer(shape, TopAbs_FACE); explorer.More(); explorer.Next()) {
+    // The copy keeps the traversal order, so `original` walks the caller's faces in step.
+    TopExp_Explorer original(shape, TopAbs_FACE);
+    for (TopExp_Explorer explorer(copy, TopAbs_FACE); explorer.More(); explorer.Next(), original.Next()) {
         TopoDS_Face face = TopoDS::Face(explorer.Current());
         TopLoc_Location location;
         Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation(face, location);
@@ -717,7 +722,7 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         }
 
         // Indices
-        uint64_t face_id = reinterpret_cast<uint64_t>(face.TShape().get());
+        uint64_t face_id = reinterpret_cast<uint64_t>(original.Current().TShape().get());
         for (int i = 1; i <= nb_triangles; i++) {
             const Poly_Triangle& tri = triangulation->Triangle(i);
 
@@ -1897,7 +1902,7 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_brep_stream(
 void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
-    // Without triangles: BRepMesh reuses a stored triangulation and ignores a coarser request.
+    // Without triangles: a stored triangulation tightens BRepBndLib boxes after a read.
     BinTools::Write(compound_of(solids), os, false, false, BinTools_FormatVersion_CURRENT);
     if (!os.good()) throw std::runtime_error("stream write failed");
 }
