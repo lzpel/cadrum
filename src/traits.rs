@@ -584,9 +584,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	///
 	/// `profile` is split into closed loops wherever an edge returns to the
 	/// loop's start: the first loop bounds the solid and any further loop
-	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. Loop
-	/// winding does not matter — each hole is oriented to remove material
-	/// whichever way it was traced.
+	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. An
+	/// edge may run either way along its loop, and loop winding does not matter —
+	/// each hole is oriented to remove material whichever way it was traced.
 	///
 	/// Internally builds a face from the loops and uses `BRepPrimAPI_MakePrism`.
 	/// Fails if the profile is empty, does not split into closed loops, a hole

@@ -168,33 +168,31 @@ impl Transform for Edge {
 }
 
 /// Split `profile` into closed loops and flatten them with null-edge sentinels,
-/// the form `make_extrude` / `make_revolve` read. Consecutive edges must meet
-/// within `Edge::precision_distance`; a loop closes when an edge returns to its start.
+/// the form `make_extrude` / `make_revolve` read. Consecutive edges meet at either end
+/// within `Edge::precision_distance`, as `BRepBuilderAPI_MakeWire` reorients them.
 pub(super) fn loops_to_ffi<'a>(profile: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>, Error> {
-	let tolerance = Edge::precision_distance();
+	let near = |a: DVec3, b: DVec3| a.distance(b) <= Edge::precision_distance();
 	let mut edges = ffi::edge_vec_new();
-	let mut first_loop = true;
-	// (start of the loop being traced, end of its last edge, edges so far); None between loops.
+	// (start, end) of the loop being traced and its edge count; the first edge's
+	// direction is settled by the second, so `start` may still swap with `end`.
 	let mut open: Option<(DVec3, DVec3, usize)> = None;
 	for edge in profile {
-		let (start, count) = match open {
-			Some((start, end, count)) => {
-				let gap = end.distance(edge.start_point());
-				if gap > tolerance {
-					return Err(Error::Edge(format!("profile: edge starting at {:?} is {gap} away from the previous edge's end", edge.start_point())));
-				}
-				(start, count)
-			}
+		let (a, b) = (edge.start_point(), edge.end_point());
+		let (start, end, count) = match open {
 			None => {
-				if !first_loop {
+				if !edges.is_empty() {
 					ffi::edge_vec_push_null(edges.pin_mut());
 				}
-				first_loop = false;
-				(edge.start_point(), 0)
+				(a, b, 0)
 			}
+			Some((start, end, count)) if near(end, a) => (start, b, count),
+			Some((start, end, count)) if near(end, b) => (start, a, count),
+			Some((start, end, 1)) if near(start, a) => (end, b, 1),
+			Some((start, end, 1)) if near(start, b) => (end, a, 1),
+			Some((_, end, _)) => return Err(Error::Edge(format!("profile: edge from {a:?} to {b:?} meets neither end of the previous edge at {end:?}"))),
 		};
 		ffi::edge_vec_push(edges.pin_mut(), &edge.inner);
-		open = (edge.end_point().distance(start) > tolerance).then_some((start, edge.end_point(), count + 1));
+		open = (!near(end, start)).then_some((start, end, count + 1));
 	}
 	match open {
 		None => Ok(edges),
