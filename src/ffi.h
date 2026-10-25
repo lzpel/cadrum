@@ -50,9 +50,9 @@ std::unique_ptr<TopoDS_Face> make_face(
     double p1, double p2,
     const std::vector<TopoDS_Wire>& wires);
 
-// Chain `edges` into wires, each edge taken whichever way meets the chain. A wire
-// closes when it returns to its start; trailing edges make an open last wire.
-std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges);
+// Chain `edges` into wires, each edge taken whichever way meets the chain within
+// `tolerance`. A wire closes when it returns to its start; trailing edges make an open last wire.
+std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges, double tolerance);
 
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,

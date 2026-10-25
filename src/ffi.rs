@@ -42,7 +42,7 @@ mod ffi_bridge {
 		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Solid>;
 
 		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
-		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
+		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
 
 		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Solid>;
 

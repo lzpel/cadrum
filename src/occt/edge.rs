@@ -167,11 +167,11 @@ impl Transform for Edge {
 	}
 }
 
-/// Chain `edges` into wires; `wires_from_edges` closes one wherever it returns to its start.
-pub(super) fn wires<'a>(edges: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Wire>>, cxx::Exception> {
+/// Chain `edges` into wires; the C++ side closes one wherever it returns to its start.
+pub(super) fn wires_from_edges<'a>(edges: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Wire>>, cxx::Exception> {
 	let mut vec = ffi::edge_vec_new();
 	for e in edges {
 		ffi::edge_vec_push(vec.pin_mut(), &e.inner);
 	}
-	ffi::wires_from_edges(&vec)
+	ffi::wires_from_edges(&vec, Edge::precision_distance())
 }

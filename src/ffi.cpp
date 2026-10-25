@@ -1517,9 +1517,9 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
     return out;
 }
 
-std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges)
+std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges, double tolerance)
 {
-    auto near = [](const gp_Pnt& p, const gp_Pnt& q) { return p.Distance(q) <= Precision::Confusion(); };
+    auto near = [tolerance](const gp_Pnt& p, const gp_Pnt& q) { return p.Distance(q) <= tolerance; };
     auto wires = std::make_unique<std::vector<TopoDS_Wire>>();
     std::vector<TopoDS_Edge> chain;
     gp_Pnt start, end;

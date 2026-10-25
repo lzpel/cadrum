@@ -1,4 +1,4 @@
-use super::edge::{wires, Edge};
+use super::edge::{wires_from_edges, Edge};
 use super::face::Face;
 use super::ffi;
 use crate::common::boolean::Boolean;
@@ -198,12 +198,12 @@ impl SolidStruct for Solid {
 	// ==================== Extrude ====================
 
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
-		let shape = wires(profile).and_then(|w| ffi::make_extrude(&w, dir.x, dir.y, dir.z)).map_err(|e| Error::Extrude(e.what().into()))?;
+		let shape = wires_from_edges(profile).and_then(|w| ffi::make_extrude(&w, dir.x, dir.y, dir.z)).map_err(|e| Error::Extrude(e.what().into()))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	fn revolve<'a>(profile: impl IntoIterator<Item = &'a Edge>, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
-		let shape = wires(profile).and_then(|w| ffi::make_revolve(&w, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle)).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
+		let shape = wires_from_edges(profile).and_then(|w| ffi::make_revolve(&w, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle)).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
@@ -250,7 +250,7 @@ impl SolidStruct for Solid {
 		let (profile, spine): (Vec<&Edge>, Vec<&Edge>) = (profile.into_iter().collect(), spine.into_iter().collect());
 		let (kind, ux, uy, uz, aux) = encode_orient(orient);
 		let shape = (|| {
-			let (p, s, a) = (wires(profile.iter().copied())?, wires(spine.iter().copied())?, wires(aux)?);
+			let (p, s, a) = (wires_from_edges(profile.iter().copied())?, wires_from_edges(spine.iter().copied())?, wires_from_edges(aux)?);
 			ffi::make_pipe_shell(&p, &s, kind, ux, uy, uz, &a)
 		})()
 		.map_err(|e| Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s)): {}", profile.len(), spine.len(), e.what())))?;
@@ -283,7 +283,7 @@ impl SolidStruct for Solid {
 		}
 
 		// Each section closes on itself, so the flattened edges chain back into one wire per section.
-		let sections = wires(all_edges).map_err(|e| Error::Loft(format!("loft: {}", e.what())))?;
+		let sections = wires_from_edges(all_edges).map_err(|e| Error::Loft(format!("loft: {}", e.what())))?;
 		if sections.len() != section_count {
 			return Err(Error::Loft(format!("loft: {section_count} sections chain into {} wires; each section must close a loop", sections.len())));
 		}

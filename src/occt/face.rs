@@ -1,4 +1,4 @@
-use super::edge::{wires, Edge};
+use super::edge::{wires_from_edges, Edge};
 use super::ffi;
 use crate::common::error::Error;
 use crate::common::surface::{Surface, SurfaceKind};
@@ -34,7 +34,7 @@ impl FaceStruct for Face {
 	type Edge = Edge;
 
 	fn face<'a>(surface: &Surface, profile: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
-		let wires = wires(profile).map_err(|e| Error::Validation(format!("face: {}", e.what())))?;
+		let wires = wires_from_edges(profile).map_err(|e| Error::Validation(format!("face: {}", e.what())))?;
 		let (kind, p1, p2) = match surface.kind {
 			SurfaceKind::Plane => (1, 0.0, 0.0),
 			SurfaceKind::Cylinder { radius } => (2, radius, 0.0),
