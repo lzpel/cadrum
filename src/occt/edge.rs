@@ -167,42 +167,11 @@ impl Transform for Edge {
 	}
 }
 
-/// Split `profile` into closed loops and flatten them with null-edge sentinels,
-/// the form `make_extrude` / `make_revolve` / `make_face` read. Consecutive edges meet
-/// at either end within `Edge::precision_distance`, and each is oriented along its loop.
-pub(super) fn loops_to_ffi<'a>(profile: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>, Error> {
-	let near = |a: DVec3, b: DVec3| a.distance(b) <= Edge::precision_distance();
-	let mut edges = ffi::edge_vec_new();
-	// The loop being traced as (edge, reversed), with its start and end; the first
-	// edge's direction is settled by the second.
-	let mut open: Vec<(&Edge, bool)> = Vec::new();
-	let (mut start, mut end) = (DVec3::ZERO, DVec3::ZERO);
-	for edge in profile {
-		let (a, b) = (edge.start_point(), edge.end_point());
-		if open.is_empty() {
-			(start, end) = (a, b);
-		} else if open.len() == 1 && !near(end, a) && !near(end, b) && (near(start, a) || near(start, b)) {
-			open[0].1 = true;
-			(start, end) = (end, start);
-		}
-		let reversed = match () {
-			_ if open.is_empty() || near(end, a) => false,
-			_ if near(end, b) => true,
-			_ => return Err(Error::Edge(format!("profile: edge from {a:?} to {b:?} meets neither end of the previous edge at {end:?}"))),
-		};
-		end = if reversed { a } else { b };
-		open.push((edge, reversed));
-		if near(end, start) {
-			if !edges.is_empty() {
-				ffi::edge_vec_push_null(edges.pin_mut());
-			}
-			for (e, reversed) in open.drain(..) {
-				ffi::edge_vec_push(edges.pin_mut(), &e.inner, reversed);
-			}
-		}
+/// Chain `edges` into wires; the C++ side closes one wherever it returns to its start.
+pub(super) fn wires_from_edges<'a>(edges: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Wire>>, cxx::Exception> {
+	let mut vec = ffi::edge_vec_new();
+	for e in edges {
+		ffi::edge_vec_push(vec.pin_mut(), &e.inner);
 	}
-	match open.len() {
-		0 => Ok(edges),
-		count => Err(Error::Edge(format!("profile: {count} trailing edges do not close a loop"))),
-	}
+	ffi::wires_from_edges(&vec, Edge::precision_distance())
 }

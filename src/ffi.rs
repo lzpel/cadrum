@@ -28,6 +28,7 @@ mod ffi_bridge {
 		type TopoDS_Solid;
 		type TopoDS_Face;
 		type TopoDS_Edge;
+		type TopoDS_Wire;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -40,7 +41,8 @@ mod ffi_bridge {
 
 		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Solid>;
 
-		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, profile_edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<TopoDS_Face>>;
+		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
+		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
 
 		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Solid>;
 
@@ -143,17 +145,16 @@ mod ffi_bridge {
 		fn scale_edge(edge: &TopoDS_Edge, cx: f64, cy: f64, cz: f64, factor: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 
-		fn make_extrude(profile_edges: &CxxVector<TopoDS_Edge>, dx: f64, dy: f64, dz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_revolve(profile_edges: &CxxVector<TopoDS_Edge>, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_pipe_shell(all_edges: &CxxVector<TopoDS_Edge>, spine_edges: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine_edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_loft(all_edges: &CxxVector<TopoDS_Edge>, ruled: bool) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_extrude(wires: &CxxVector<TopoDS_Wire>, dx: f64, dy: f64, dz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_revolve(wires: &CxxVector<TopoDS_Wire>, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_pipe_shell(profile: &CxxVector<TopoDS_Wire>, spine_wires: &CxxVector<TopoDS_Wire>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_loft(wires: &CxxVector<TopoDS_Wire>, ruled: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_sewn_solid(faces: &CxxVector<TopoDS_Face>, tolerance: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_offset(shape: &TopoDS_Solid, faces: &CxxVector<TopoDS_Face>, offset: f64, tolerance: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_bspline_solid(coords: &[f64], nu: u32, nv: u32, u_periodic: bool, v_periodic: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn edge_vec_new() -> UniquePtr<CxxVector<TopoDS_Edge>>;
-		fn edge_vec_push_null(v: Pin<&mut CxxVector<TopoDS_Edge>>);
-		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge, reversed: bool);
+		fn edge_vec_push(v: Pin<&mut CxxVector<TopoDS_Edge>>, e: &TopoDS_Edge);
 
 		fn face_vec_new() -> UniquePtr<CxxVector<TopoDS_Face>>;
 		fn face_vec_push(v: Pin<&mut CxxVector<TopoDS_Face>>, f: &TopoDS_Face);
