@@ -667,7 +667,6 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
     BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
     if (!mesher.IsDone()) {
-        BRepTools::Clean(shape);
         return result;
     }
 
