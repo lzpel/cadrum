@@ -46,6 +46,10 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <ShapeFix_Edge.hxx>
+#include <gp_Pnt2d.hxx>
+#include <gp_Dir2d.hxx>
 #include <ShapeFix_Face.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
@@ -205,38 +209,99 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     return std::make_unique<TopoDS_Solid>(maker.Solid());
 }
 
+static std::vector<TopoDS_Wire> wires_of(const std::vector<TopoDS_Edge>& edges);
+static Handle(Geom_Surface) surface_of(uint32_t kind, double ox, double oy, double oz, double zx, double zy, double zz, double xx, double xy, double xz, double p1, double p2);
+
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    double u0, double u1, double v0, double v1)
+    const std::vector<TopoDS_Edge>& profile_edges)
 {
-    if (!(u1 > u0) || !(v1 > v0)) throw std::runtime_error("empty parameter range");
+    Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
+    std::vector<TopoDS_Wire> wires = wires_of(profile_edges);
+    if (wires.empty()) {
+        // Only a sphere or torus closes on itself without a boundary.
+        if (kind != 4 && kind != 5) throw std::runtime_error("empty profile on an unbounded surface");
+        return std::make_unique<TopoDS_Face>(BRepBuilderAPI_MakeFace(surface, Precision::Confusion()).Face());
+    }
+    BRep_Builder builder;
+    TopoDS_Face bare;
+    builder.MakeFace(bare, surface, Precision::Confusion());
+    for (const TopoDS_Wire& w : wires) builder.Add(bare, w);
+    ShapeFix_Edge edge_fixer;
+    for (TopExp_Explorer x(bare, TopAbs_EDGE); x.More(); x.Next()) edge_fixer.FixAddPCurve(TopoDS::Edge(x.Current()), bare, false);
+    if (kind == 3) {
+        // A single ring round a cone closes at the apex, which ShapeFix does not
+        // add as it does a sphere's pole: give it a degenerate edge there.
+        int rings = 0;
+        for (const TopoDS_Wire& w : wires) {
+            double du = 0;
+            for (TopExp_Explorer x(w, TopAbs_EDGE); x.More(); x.Next()) {
+                double f, l;
+                Handle(Geom2d_Curve) c = BRep_Tool::CurveOnSurface(TopoDS::Edge(x.Current()), bare, f, l);
+                du += c->Value(l).X() - c->Value(f).X();
+            }
+            if (std::abs(std::abs(du) - 2 * M_PI) < 0.1) ++rings;
+        }
+        if (rings == 1) {
+            Handle(Geom_ConicalSurface) cone = Handle(Geom_ConicalSurface)::DownCast(surface);
+            TopoDS_Edge apex;
+            builder.MakeEdge(apex);
+            builder.Degenerated(apex, true);
+            builder.UpdateEdge(apex, new Geom2d_Line(gp_Pnt2d(0, -cone->RefRadius() / std::sin(cone->SemiAngle())), gp_Dir2d(1, 0)), bare, Precision::Confusion());
+            builder.Range(apex, bare, 0, 2 * M_PI);
+            TopoDS_Vertex v;
+            builder.MakeVertex(v, cone->Apex(), Precision::Confusion());
+            builder.Add(apex, v.Oriented(TopAbs_FORWARD));
+            builder.Add(apex, v.Oriented(TopAbs_REVERSED));
+            TopoDS_Wire w;
+            builder.MakeWire(w);
+            builder.Add(w, apex);
+            builder.Add(bare, w);
+        }
+    }
+    // A loop round a periodic direction needs a seam, and Perform alters the
+    // wires so that FixMissingSeam no longer recognises them; seam first.
+    ShapeFix_Face fixer(bare);
+    fixer.FixMissingSeam();
+    // As in STEP, the face lies left of each loop seen from the surface normal.
+    fixer.FixOrientationMode() = 0;
+    fixer.Perform();
+    TopoDS_Shape fixed = fixer.Result();
+    if (fixed.IsNull() || fixed.ShapeType() != TopAbs_FACE) throw std::runtime_error("loops bound no single region");
+    const TopoDS_Face& face = TopoDS::Face(fixed);
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    if (!(props.Mass() > 0) || !BRepCheck_Analyzer(face).IsValid()) throw std::runtime_error("loops bound no finite region: wind each loop counterclockwise about the surface normal round the face, so holes run clockwise");
+    // The fix widens an edge's tolerance to cover its distance from the surface.
+    if (BRep_Tool::MaxTolerance(face, TopAbs_EDGE) > 1.0e-4) throw std::runtime_error("profile does not lie on the surface");
+    return std::make_unique<TopoDS_Face>(face);
+}
+
+// Same placement and kind codes as face_surface, so a face round-trips through it.
+static Handle(Geom_Surface) surface_of(
+    uint32_t kind,
+    double ox, double oy, double oz,
+    double zx, double zy, double zz,
+    double xx, double xy, double xz,
+    double p1, double p2)
+{
     // OCCT only rejects negative radii; a zero one gives a face with no area.
     const bool has_radius = kind != 1 && kind != 3;
     if (has_radius && !(p1 > Precision::Confusion())) throw std::runtime_error("radius must be positive");
     if (kind == 5 && !(p2 > Precision::Confusion())) throw std::runtime_error("minor radius must be positive");
-    // Same placement and kind codes as face_surface, so a face round-trips through it.
     const gp_Ax3 pos(gp_Pnt(ox, oy, oz), gp_Dir(zx, zy, zz), gp_Dir(xx, xy, xz));
-    Handle(Geom_Surface) surface;
     switch (kind) {
-        case 1: surface = new Geom_Plane(pos); break;
-        case 2: surface = new Geom_CylindricalSurface(pos, p1); break;
-        case 3:
-            surface = new Geom_ConicalSurface(pos, p2, p1);
-            // STEP measures a cone's v along the axis, OCCT along the generatrix.
-            v0 /= std::cos(p2);
-            v1 /= std::cos(p2);
-            break;
-        case 4: surface = new Geom_SphericalSurface(pos, p1); break;
-        case 5: surface = new Geom_ToroidalSurface(pos, p1, p2); break;
+        case 1: return new Geom_Plane(pos);
+        case 2: return new Geom_CylindricalSurface(pos, p1);
+        case 3: return new Geom_ConicalSurface(pos, p2, p1);
+        case 4: return new Geom_SphericalSurface(pos, p1);
+        case 5: return new Geom_ToroidalSurface(pos, p1, p2);
         default: throw std::runtime_error("unknown surface kind");
     }
-    BRepBuilderAPI_MakeFace maker(surface, u0, u1, v0, v1, Precision::Confusion());
-    if (!maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeFace did not complete");
-    return std::make_unique<TopoDS_Face>(maker.Face());
 }
 
 std::unique_ptr<TopoDS_Solid> make_box(
@@ -1309,12 +1374,14 @@ std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new() {
     return std::make_unique<std::vector<TopoDS_Edge>>();
 }
 
-void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e) {
-    v.push_back(e);
-}
 
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v) {
     v.push_back(TopoDS_Edge());
+}
+
+void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed) {
+    // Edge::start_point reads the curve, whatever the orientation, so set it outright.
+    v.push_back(TopoDS::Edge(e.Oriented(reversed ? TopAbs_REVERSED : TopAbs_FORWARD)));
 }
 
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new() {

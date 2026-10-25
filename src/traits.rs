@@ -440,23 +440,22 @@ pub trait EdgeStruct: Sized + Clone + Debug + Transform {
 pub trait FaceStruct: Sized + Debug {
 	type Edge: EdgeStruct;
 
-	/// The part of `surface` over the parameter rectangle `u` x `v`, as one face.
-	/// The inverse of Self::surface: a face built here reports the same `Surface` back.
+	/// The part of `surface` bounded by `profile`, as one face; `Self::surface`
+	/// reports the same `Surface` back.
 	///
-	/// `u` and `v` are the surface's own parameters, as in STEP:
-	/// - plane: lengths along `axis_x` and `axis_z x axis_x`
-	/// - cylinder: angle about `axis_z` from `axis_x`, and height along `axis_z`
-	/// - cone: angle as for the cylinder, and height along `axis_z` from the
-	///   reference circle (`radius` 0 puts it at `origin`, the apex)
-	/// - sphere: longitude as for the cylinder, and latitude from the equator
-	///   in `-PI/2..=PI/2`
-	/// - torus: the angle round `axis_z`, and the angle round the tube
+	/// `profile` is split into closed loops as in `Solid::extrude`, edges running
+	/// either way, but loop winding matters: as in STEP, the face lies left of
+	/// every loop seen from the surface normal, so an outer loop runs
+	/// counterclockwise and a hole clockwise. On a sphere or torus this picks which
+	/// region a loop splits off, and an empty profile gives the whole surface.
 	///
-	/// A full turn (`0..TAU`) of a periodic parameter closes the face on its seam.
-	/// Fails with `Error::Validation` on an empty range (`u[1] <= u[0]`), or on
-	/// a surface that cannot be built: a non-positive radius (a cone's `radius`
-	/// may be 0), or a cone angle of 0 or beyond a right angle.
-	fn face(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<Self, Error>;
+	/// Fails with `Error::Validation` on a non-loop profile, a loop off the
+	/// surface, loops bounding no finite region, or a surface that cannot be built:
+	/// a non-positive radius (a cone's `radius` may be 0), or a cone angle of 0 or
+	/// beyond a right angle.
+	fn face<'a>(surface: &Surface, profile: impl IntoIterator<Item = &'a Self::Edge>) -> Result<Self, Error>
+	where
+		Self::Edge: 'a;
 
 	/// Stable, backend-defined identity for this face. Two `Face` values
 	/// returning the same `id()` refer to the same topology element. Used
@@ -584,9 +583,9 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	///
 	/// `profile` is split into closed loops wherever an edge returns to the
 	/// loop's start: the first loop bounds the solid and any further loop
-	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. Loop
-	/// winding does not matter — each hole is oriented to remove material
-	/// whichever way it was traced.
+	/// becomes a hole, so a plate with a bore is `[outer, bore].concat()`. An
+	/// edge may run either way along its loop, and loop winding does not matter —
+	/// each hole is oriented to remove material whichever way it was traced.
 	///
 	/// Internally builds a face from the loops and uses `BRepPrimAPI_MakePrism`.
 	/// Fails if the profile is empty, does not split into closed loops, a hole

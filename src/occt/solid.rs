@@ -16,7 +16,7 @@ fn encode_orient(orient: ProfileOrient) -> (u32, f64, f64, f64, cxx::UniquePtr<c
 		ProfileOrient::Up(v) => (2u32, v.x, v.y, v.z),
 		ProfileOrient::Auxiliary(edges) => {
 			for e in edges {
-				ffi::edge_vec_push(aux_vec.pin_mut(), &e.inner);
+				ffi::edge_vec_push(aux_vec.pin_mut(), &e.inner, false);
 			}
 			(3u32, 0.0, 0.0, 0.0)
 		}
@@ -234,7 +234,7 @@ impl SolidStruct for Solid {
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner, false);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_fillet(&self.inner, &edge_vec, radius, &mut history).map_err(|e| Error::Fillet(format!("radius={radius} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
@@ -245,7 +245,7 @@ impl SolidStruct for Solid {
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
-			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner, false);
 		}
 		let mut history: Vec<u64> = Default::default();
 		let shape = ffi::builder_chamfer(&self.inner, &edge_vec, distance, &mut history).map_err(|e| Error::Chamfer(format!("distance={distance} does not fit the local geometry on {} edge(s): {}", edge_vec.len(), e.what())))?;
@@ -258,11 +258,11 @@ impl SolidStruct for Solid {
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {
 		let mut profile_vec = ffi::edge_vec_new();
 		for e in profile {
-			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(profile_vec.pin_mut(), &e.inner, false);
 		}
 		let mut spine_vec = ffi::edge_vec_new();
 		for e in spine {
-			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner);
+			ffi::edge_vec_push(spine_vec.pin_mut(), &e.inner, false);
 		}
 		let (kind, ux, uy, uz, aux_vec) = encode_orient(orient);
 		let shape = ffi::make_pipe_shell(&profile_vec, &spine_vec, kind, ux, uy, uz, &aux_vec).map_err(|e| Error::Sweep(format!("profile ({} edge(s)) could not be swept along the spine ({} edge(s)): {}", profile_vec.len(), spine_vec.len(), e.what())))?;
@@ -284,7 +284,7 @@ impl SolidStruct for Solid {
 			}
 			let mut count = 0u32;
 			for edge in sec {
-				ffi::edge_vec_push(all_edges.pin_mut(), &edge.inner);
+				ffi::edge_vec_push(all_edges.pin_mut(), &edge.inner, false);
 				count += 1;
 			}
 			if count == 0 {
