@@ -86,6 +86,7 @@
 
 // --- Mesh, classification, mass / surface properties ---
 #include <BRepMesh_IncrementalMesh.hxx>
+#include <BRepTools.hxx>
 #include <Poly_Triangulation.hxx>
 #include <BRepBndLib.hxx>
 #include <Bnd_Box.hxx>
@@ -666,6 +667,7 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
     BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
     if (!mesher.IsDone()) {
+        BRepTools::Clean(shape);
         return result;
     }
 
@@ -740,6 +742,8 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
         global_vertex_offset += nb_nodes;
     }
 
+    // BRepMesh stores its triangulation in the caller's faces; drop it so no later call sees it.
+    BRepTools::Clean(shape);
     result.success = true;
     return result;
 }
@@ -1897,7 +1901,7 @@ std::unique_ptr<std::vector<TopoDS_Solid>> read_brep_stream(
 void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writer) {
     RustWriteStreambuf sbuf(writer);
     std::ostream os(&sbuf);
-    // Without triangles: BRepMesh reuses a stored triangulation and ignores a coarser request.
+    // Without triangles: a stored triangulation tightens BRepBndLib boxes after a read.
     BinTools::Write(compound_of(solids), os, false, false, BinTools_FormatVersion_CURRENT);
     if (!os.good()) throw std::runtime_error("stream write failed");
 }
