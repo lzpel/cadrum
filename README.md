@@ -1075,11 +1075,6 @@ cargo run --example 14_sew
 use cadrum::{DVec3, Edge, Error, Face, SceneOption, Solid, Surface, SurfaceKind};
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_8};
 
-/// A circle about the Z axis at height `z`, counterclockwise about +Z when `ccw`.
-fn ring(radius: f64, z: f64, ccw: bool) -> Result<Edge, Error> {
-	Ok(Edge::circle(radius, if ccw { DVec3::Z } else { DVec3::NEG_Z })?.translate(DVec3::Z * z))
-}
-
 /// Regular tetrahedron on every other corner of `[-a, a]³`, its faces sharing the six lines between them.
 fn sew_tetrahedron() -> Result<Solid, Error> {
 	let a = 2.0;
@@ -1108,7 +1103,7 @@ fn sew_napkin_ring() -> Result<Solid, Error> {
 	let (r, h) = (3.0_f64, 4.0);
 	let rho = (r * r - h * h / 4.0).sqrt();
 	// Both faces lie left of the circles, between them.
-	let rims = [ring(rho, -h / 2.0, true)?, ring(rho, h / 2.0, false)?];
+	let rims = [Edge::circle(rho, DVec3::Z)?.translate(DVec3::NEG_Z * h / 2.0), Edge::circle(rho, DVec3::NEG_Z)?.translate(DVec3::Z * h / 2.0)];
 	let band = Face::face(&Surface { origin: DVec3::ZERO, axis_z: DVec3::Z, axis_x: DVec3::X, kind: SurfaceKind::Sphere { radius: r } }, &rims)?;
 	let hole = Face::face(&Surface { origin: DVec3::ZERO, axis_z: DVec3::Z, axis_x: DVec3::X, kind: SurfaceKind::Cylinder { radius: rho } }, &rims)?;
 	Solid::sew([&band, &hole], 1e-6)
@@ -1121,8 +1116,8 @@ fn sew_ice_cream_cone() -> Result<Solid, Error> {
 	// The scoop passes through the rim; the cone stays outside it while d >= rim * tan(phi).
 	let r = rim.hypot(d);
 	// The cone lies left of the rim toward its apex, the scoop toward its bottom.
-	let cone = Face::face(&Surface { origin: DVec3::ZERO, axis_z: DVec3::NEG_Z, axis_x: DVec3::X, kind: SurfaceKind::Cone { radius: 0.0, semi_angle: phi } }, [&ring(rim, -h, true)?])?;
-	let scoop = Face::face(&Surface { origin: DVec3::NEG_Z * (h + d), axis_z: DVec3::NEG_Z, axis_x: DVec3::X, kind: SurfaceKind::Sphere { radius: r } }, [&ring(rim, -h, false)?])?;
+	let cone = Face::face(&Surface { origin: DVec3::ZERO, axis_z: DVec3::NEG_Z, axis_x: DVec3::X, kind: SurfaceKind::Cone { radius: 0.0, semi_angle: phi } }, [&Edge::circle(rim, DVec3::Z)?.translate(DVec3::NEG_Z * h)])?;
+	let scoop = Face::face(&Surface { origin: DVec3::NEG_Z * (h + d), axis_z: DVec3::NEG_Z, axis_x: DVec3::X, kind: SurfaceKind::Sphere { radius: r } }, [&Edge::circle(rim, DVec3::NEG_Z)?.translate(DVec3::NEG_Z * h)])?;
 	Solid::sew([&cone, &scoop], 1e-6)
 }
 
