@@ -1,4 +1,4 @@
-use super::edge::Edge;
+use super::edge::{loops_to_ffi, Edge};
 use super::ffi;
 use crate::common::error::Error;
 use crate::common::surface::{Surface, SurfaceKind};
@@ -33,7 +33,8 @@ impl std::fmt::Debug for Face {
 impl FaceStruct for Face {
 	type Edge = Edge;
 
-	fn face(surface: &Surface, u: [f64; 2], v: [f64; 2]) -> Result<Self, Error> {
+	fn face<'a>(surface: &Surface, profile: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
+		let edges = loops_to_ffi(profile).map_err(|e| Error::Validation(format!("face: {e}")))?;
 		let (kind, p1, p2) = match surface.kind {
 			SurfaceKind::Plane => (1, 0.0, 0.0),
 			SurfaceKind::Cylinder { radius } => (2, radius, 0.0),
@@ -42,7 +43,7 @@ impl FaceStruct for Face {
 			SurfaceKind::Torus { major_radius, minor_radius } => (5, major_radius, minor_radius),
 		};
 		let (o, z, x) = (surface.origin, surface.axis_z, surface.axis_x);
-		let inner = ffi::make_face(kind, o.x, o.y, o.z, z.x, z.y, z.z, x.x, x.y, x.z, p1, p2, u[0], u[1], v[0], v[1]).map_err(|e| Error::Validation(format!("face: surface={surface:?}, u={u:?}, v={v:?}: {}", e.what())))?;
+		let inner = ffi::make_face(kind, o.x, o.y, o.z, z.x, z.y, z.z, x.x, x.y, x.z, p1, p2, &edges).map_err(|e| Error::Validation(format!("face: surface={surface:?}: {}", e.what())))?;
 		Ok(Face::new(inner))
 	}
 

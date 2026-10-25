@@ -38,17 +38,15 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-// `kind`, placement and `p1` / `p2` follow `face_surface`. The face covers
-// [u0, u1] x [v0, v1] of the surface's STEP parameters (a cone's v is a
-// height along its axis). Throws on an empty range, a bad radius or angle,
-// or an unknown kind.
+// `kind`, placement and `p1` / `p2` follow `face_surface`. The face lies left of
+// each loop of `profile_edges` (split at null sentinels) seen from the normal.
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    double u0, double u1, double v0, double v1);
+    const std::vector<TopoDS_Edge>& profile_edges);
 
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
@@ -341,6 +339,7 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
 void edge_vec_push(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e);
 void edge_vec_push_null(std::vector<TopoDS_Edge>& v);
+void edge_vec_push_oriented(std::vector<TopoDS_Edge>& v, const TopoDS_Edge& e, bool reversed);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Face>.
 std::unique_ptr<std::vector<TopoDS_Face>> face_vec_new();

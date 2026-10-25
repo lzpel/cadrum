@@ -168,34 +168,41 @@ impl Transform for Edge {
 }
 
 /// Split `profile` into closed loops and flatten them with null-edge sentinels,
-/// the form `make_extrude` / `make_revolve` read. Consecutive edges meet at either end
-/// within `Edge::precision_distance`, as `BRepBuilderAPI_MakeWire` reorients them.
+/// the form `make_extrude` / `make_revolve` / `make_face` read. Consecutive edges meet
+/// at either end within `Edge::precision_distance`, and each is oriented along its loop.
 pub(super) fn loops_to_ffi<'a>(profile: impl IntoIterator<Item = &'a Edge>) -> Result<cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Edge>>, Error> {
 	let near = |a: DVec3, b: DVec3| a.distance(b) <= Edge::precision_distance();
 	let mut edges = ffi::edge_vec_new();
-	// (start, end) of the loop being traced and its edge count; the first edge's
-	// direction is settled by the second, so `start` may still swap with `end`.
-	let mut open: Option<(DVec3, DVec3, usize)> = None;
+	// The loop being traced as (edge, reversed), with its start and end; the first
+	// edge's direction is settled by the second.
+	let mut open: Vec<(&Edge, bool)> = Vec::new();
+	let (mut start, mut end) = (DVec3::ZERO, DVec3::ZERO);
 	for edge in profile {
 		let (a, b) = (edge.start_point(), edge.end_point());
-		let (start, end, count) = match open {
-			None => {
-				if !edges.is_empty() {
-					ffi::edge_vec_push_null(edges.pin_mut());
-				}
-				(a, b, 0)
-			}
-			Some((start, end, count)) if near(end, a) => (start, b, count),
-			Some((start, end, count)) if near(end, b) => (start, a, count),
-			Some((start, end, 1)) if near(start, a) => (end, b, 1),
-			Some((start, end, 1)) if near(start, b) => (end, a, 1),
-			Some((_, end, _)) => return Err(Error::Edge(format!("profile: edge from {a:?} to {b:?} meets neither end of the previous edge at {end:?}"))),
+		if open.is_empty() {
+			(start, end) = (a, b);
+		} else if open.len() == 1 && !near(end, a) && !near(end, b) && (near(start, a) || near(start, b)) {
+			open[0].1 = true;
+			(start, end) = (end, start);
+		}
+		let reversed = match () {
+			_ if open.is_empty() || near(end, a) => false,
+			_ if near(end, b) => true,
+			_ => return Err(Error::Edge(format!("profile: edge from {a:?} to {b:?} meets neither end of the previous edge at {end:?}"))),
 		};
-		ffi::edge_vec_push(edges.pin_mut(), &edge.inner);
-		open = (!near(end, start)).then_some((start, end, count + 1));
+		end = if reversed { a } else { b };
+		open.push((edge, reversed));
+		if near(end, start) {
+			if !edges.is_empty() {
+				ffi::edge_vec_push_null(edges.pin_mut());
+			}
+			for (e, reversed) in open.drain(..) {
+				ffi::edge_vec_push_oriented(edges.pin_mut(), &e.inner, reversed);
+			}
+		}
 	}
-	match open {
-		None => Ok(edges),
-		Some((_, _, count)) => Err(Error::Edge(format!("profile: {count} trailing edges do not close a loop"))),
+	match open.len() {
+		0 => Ok(edges),
+		count => Err(Error::Edge(format!("profile: {count} trailing edges do not close a loop"))),
 	}
 }
