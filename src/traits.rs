@@ -292,6 +292,42 @@ pub enum BSplineEnd {
 	Clamped { start: DVec3, end: DVec3 },
 }
 
+// ==================== Lineage ====================
+
+/// How one face or edge of a solid relates to a face or edge of the operands of the
+/// operation that built it. Every builder reports it (`Solid::iter_history`), for
+/// faces and edges alike; ids are those of `iter_face` / `iter_edge` on each side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Lineage {
+	/// Unchanged by the operation: the same OCCT shape in operand and result. The two
+	/// ids still differ when the operand sat at a location, so both are given.
+	Kept { src: u64, post: u64 },
+	/// `src` was trimmed, split, re-parameterised or rebuilt into `post`.
+	Modified { src: u64, post: u64 },
+	/// `post` is new and grew out of `src`: a prism wall from a profile edge, a fillet
+	/// face from an edge, a boolean's section edge from a face.
+	Generated { src: u64, post: u64 },
+	/// `src` has no image in the result.
+	Deleted { src: u64 },
+}
+
+impl Lineage {
+	/// The face or edge of the result this entry names, if any.
+	pub fn post(&self) -> Option<u64> {
+		match *self {
+			Lineage::Kept { post, .. } | Lineage::Modified { post, .. } | Lineage::Generated { post, .. } => Some(post),
+			Lineage::Deleted { .. } => None,
+		}
+	}
+
+	/// The face or edge of the operand this entry descends from.
+	pub fn src(&self) -> u64 {
+		match *self {
+			Lineage::Kept { src, .. } | Lineage::Modified { src, .. } | Lineage::Generated { src, .. } | Lineage::Deleted { src } => src,
+		}
+	}
+}
+
 // ==================== EdgeStruct ====================
 
 /// Backend-independent edge trait (pub(crate) — not exposed to users).
@@ -545,11 +581,12 @@ pub trait SolidStruct: Sized + Clone + Debug + Transform {
 	fn iter_edge(&self) -> impl Iterator<Item = &Self::Edge> + '_;
 	/// Iterate this solid's faces. Backends may cache the result internally.
 	fn iter_face(&self) -> impl Iterator<Item = &Self::Face> + '_;
-	/// Iterate face-derivation pairs `[post_id, src_id]` from the most recent
-	/// boolean operation that produced this Solid (or its source chain, while
-	/// it stays through translate/rotate/color). Empty after primitive/builder
-	/// construction, I/O read, scale/mirror, or Clone.
-	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_;
+	/// How this solid's faces and edges descend from those of the operands of the
+	/// operation that built it; see [`Lineage`]. Every builder, boolean, `clean`,
+	/// `scale` and `mirror` fills it; translate, rotate, colour and `Clone` keep it;
+	/// primitives, `bspline` and the readers have none. A `src` is an id of the
+	/// operand (a profile edge, a face of `self`), a `post` an id of this solid.
+	fn iter_history(&self) -> impl Iterator<Item = Lineage> + '_;
 
 	// --- Queries ---
 	/// Volume of the solid (uniform density).

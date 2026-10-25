@@ -18,6 +18,7 @@
 #include <TopLoc_Location.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <NCollection_DataMap.hxx>
+#include <NCollection_Map.hxx>
 #include <NCollection_List.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
 
@@ -128,6 +129,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 #include <array>
 
 namespace cadrum {
@@ -204,6 +206,184 @@ static uint64_t own_id(const TopoDS_Shape& shape) {
     return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shape.TShape().get()));
 }
 
+// ==================== History ====================
+//
+// Every builder reports how the faces and edges of its operands relate to those of
+// its result as [kind, src, post] triples (kinds below; a Deleted entry has post 0).
+// `src` is the sub-shape's id relative to its operand, `post` relative to the result
+// solid that holds it, so both match what `Solid::iter_face` / `iter_edge` report.
+
+enum : uint64_t { LINEAGE_KEPT = 0, LINEAGE_MODIFIED = 1, LINEAGE_GENERATED = 2, LINEAGE_DELETED = 3 };
+
+using IdMap = NCollection_DataMap<TopoDS_Shape, uint64_t, TopTools_ShapeMapHasher>;
+
+// One operand sub-shape: the id the caller knows it by, and the shape to ask the
+// algorithm about. `copied` marks a probe that is already a copy of the caller's
+// shape, so finding it unchanged in the result is a Modified, not a Kept.
+struct SrcEntry {
+    uint64_t id;
+    TopoDS_Shape probe;
+    bool copied = false;
+};
+
+// The faces and edges of `owner`, ids relative to it.
+static std::vector<SrcEntry> src_of(const TopoDS_Shape& owner) {
+    std::vector<SrcEntry> out;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    for (TopAbs_ShapeEnum type : {TopAbs_FACE, TopAbs_EDGE}) {
+        for (TopExp_Explorer ex(owner, type); ex.More(); ex.Next()) {
+            if (seen.Add(ex.Current())) out.push_back({sub_id(ex.Current(), owner.Location()), ex.Current()});
+        }
+    }
+    return out;
+}
+
+// {absolute face or edge → id relative to the result solid holding it} over every
+// solid under `result`.
+static IdMap index_result(const TopoDS_Shape& result) {
+    IdMap out;
+    auto add = [&](const TopoDS_Shape& owner) {
+        for (TopAbs_ShapeEnum type : {TopAbs_FACE, TopAbs_EDGE}) {
+            for (TopExp_Explorer ex(owner, type); ex.More(); ex.Next()) {
+                if (!out.IsBound(ex.Current())) out.Bind(ex.Current(), sub_id(ex.Current(), owner.Location()));
+            }
+        }
+    };
+    if (result.ShapeType() == TopAbs_SOLID) add(result);
+    for (TopExp_Explorer ex(result, TopAbs_SOLID); ex.More(); ex.Next()) add(ex.Current());
+    return out;
+}
+
+// Emit the lineage of every `src` entry: Kept when the probe itself is in the result,
+// Modified / Generated for each image `algo` reports there, and Deleted when the shape
+// itself has no image (a Generated face does not keep its source edge alive).
+// `Algo` is anything with `Modified(S)` and `Generated(S)` returning shape lists.
+template <typename Algo>
+static void relay_history(Algo& algo, const std::vector<SrcEntry>& src, const IdMap& post, rust::Vec<uint64_t>& out)
+{
+    for (const SrcEntry& e : src) {
+        std::set<std::pair<uint64_t, uint64_t>> seen;
+        auto emit = [&](uint64_t kind, uint64_t p) {
+            if (!seen.insert({kind, p}).second) return;
+            out.push_back(kind);
+            out.push_back(e.id);
+            out.push_back(p);
+        };
+        if (const uint64_t* p = post.Seek(e.probe)) emit(e.copied ? LINEAGE_MODIFIED : LINEAGE_KEPT, *p);
+        for (uint64_t kind : {LINEAGE_MODIFIED, LINEAGE_GENERATED}) {
+            NCollection_List<TopoDS_Shape> images;
+            // Builders differ in what they accept; an unknown shape is simply no image.
+            try {
+                images = kind == LINEAGE_MODIFIED ? algo.Modified(e.probe) : algo.Generated(e.probe);
+            } catch (const Standard_Failure&) {
+            }
+            for (const TopoDS_Shape& image : images) {
+                if (const uint64_t* p = post.Seek(image)) emit(kind, *p);
+            }
+        }
+        const bool survives = std::any_of(seen.begin(), seen.end(), [](const auto& kp) { return kp.first != LINEAGE_GENERATED; });
+        if (!survives) {
+            out.push_back(LINEAGE_DELETED);
+            out.push_back(e.id);
+            out.push_back(0);
+        }
+    }
+}
+
+// An algorithm that changed nothing: every operand sub-shape found in the result is Kept.
+struct NoAlgo {
+    NCollection_List<TopoDS_Shape> none;
+    const NCollection_List<TopoDS_Shape>& Modified(const TopoDS_Shape&) { return none; }
+    const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape&) { return none; }
+};
+
+// MakePrism / MakeRevol report the side face as Generated from a profile edge; the
+// edge's image on the far cap is `LastShape(edge)`, added here as Generated too.
+template <typename Sweep>
+struct SweepEnds {
+    Sweep& sweep;
+    NCollection_List<TopoDS_Shape> list;
+    const NCollection_List<TopoDS_Shape>& Modified(const TopoDS_Shape& s) { return sweep.Modified(s); }
+    const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape& s) {
+        list = sweep.Generated(s);
+        const TopoDS_Shape last = sweep.LastShape(s);
+        if (!last.IsNull()) list.Append(last);
+        return list;
+    }
+};
+
+// BRepBuilderAPI_Sewing has its own history accessors; this gives them the common shape.
+struct SewingHistory {
+    BRepBuilderAPI_Sewing& sewing;
+    NCollection_List<TopoDS_Shape> list;
+    const NCollection_List<TopoDS_Shape>& Modified(const TopoDS_Shape& s) {
+        list.Clear();
+        if (sewing.IsModified(s)) list.Append(sewing.Modified(s));
+        else if (sewing.IsModifiedSubShape(s)) list.Append(sewing.ModifiedSubShape(s));
+        return list;
+    }
+    const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape&) { return list = NCollection_List<TopoDS_Shape>(); }
+};
+
+// ==================== Wires from edges ====================
+
+// Copies of the caller's edges chained into wires. The copies take the vertex and
+// pcurve fixes the builders apply, so the caller's edges stay untouched; `src` maps
+// each caller edge, by its own id, to the copy the wire holds.
+struct Chained {
+    std::vector<TopoDS_Wire> wires;
+    std::vector<SrcEntry> src;
+};
+
+// Each edge is taken whichever way meets the chain within `tolerance`. A wire closes
+// when it returns to its start; trailing edges make an open last wire.
+static Chained chain(const std::vector<TopoDS_Edge>& edges, double tolerance)
+{
+    auto near = [tolerance](const gp_Pnt& p, const gp_Pnt& q) { return p.Distance(q) <= tolerance; };
+    Chained out;
+    std::vector<std::pair<TopoDS_Edge, size_t>> link;
+    gp_Pnt start, end;
+    auto flush = [&]() {
+        BRepBuilderAPI_MakeWire maker;
+        for (const auto& [e, i] : link) {
+            maker.Add(e);
+            if (!maker.IsDone()) throw std::runtime_error("edges do not connect into a wire");
+            // MakeWire may have copied the edge again to share a vertex; Edge() is what it holds.
+            out.src.push_back({own_id(edges[i]), maker.Edge(), true});
+        }
+        out.wires.push_back(maker.Wire());
+        link.clear();
+    };
+    for (size_t i = 0; i < edges.size(); ++i) {
+        // Edge::start_point reads the curve whatever the orientation, so orient from the curve.
+        BRepAdaptor_Curve curve(edges[i]);
+        const gp_Pnt a = curve.Value(curve.FirstParameter()), b = curve.Value(curve.LastParameter());
+        TopoDS_Edge e = TopoDS::Edge(BRepBuilderAPI_Copy(edges[i], false).Shape().Oriented(TopAbs_FORWARD));
+        if (link.empty()) {
+            start = a;
+            end = b;
+        } else {
+            // The first edge's direction is settled by the second.
+            if (link.size() == 1 && !near(end, a) && !near(end, b) && (near(start, a) || near(start, b))) {
+                link.front().first.Reverse();
+                std::swap(start, end);
+            }
+            if (near(end, a)) {
+                end = b;
+            } else if (near(end, b)) {
+                e.Reverse();
+                end = a;
+            } else {
+                throw std::runtime_error("an edge meets neither end of the previous one");
+            }
+        }
+        link.push_back({e, i});
+        if (near(end, start)) flush();
+    }
+    if (!link.empty()) flush();
+    return out;
+}
+
 // ==================== Shape Constructors ====================
 
 std::unique_ptr<TopoDS_Solid> make_half_space(
@@ -235,8 +415,9 @@ std::unique_ptr<TopoDS_Face> make_face(
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    const std::vector<TopoDS_Wire>& wires)
+    const std::vector<TopoDS_Edge>& edges)
 {
+    const std::vector<TopoDS_Wire> wires = chain(edges, Precision::Confusion()).wires;
     Handle(Geom_Surface) surface = surface_of(kind, ox, oy, oz, zx, zy, zz, xx, xy, xz, p1, p2);
     if (!wires.empty() && !BRep_Tool::IsClosed(wires.back())) throw std::runtime_error("trailing edges do not close a loop");
     if (wires.empty()) {
@@ -470,76 +651,6 @@ static TopoDS_Shape try_sew_orphan_faces(
 }
 
 // ==================== Builders (solid → solid with history) ====================
-//
-// out_history is built from composable relay maps shared by boolean (copy-based)
-// and shell/fillet/chamfer (no copy):
-//   relay_from_builder  {result/pre → src}  (all builders)
-//   relay_from_pair     {post → pre}        (copy-based only)
-//   relay_into_history  compose → flat [post, src] pairs
-// relay_into_history emits only the outermost map's keys (the real result
-// faces), so no bogus pre/src-only ids leak in.
-
-// {dest face → src face} for the faces of `dest` that `relation` (Modified or
-// Generated) derives from `src`, plus src faces kept unchanged in `dest`.
-template <typename Builder>
-static void relay_from_builder(
-    Builder& builder,
-    const TopoDS_Shape& src,
-    const TopoDS_Shape& dest,
-    std::unordered_map<uint64_t, uint64_t>& relay,
-    BRepTools_History::TRelationType relation)
-{
-    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> dest_faces;
-    TopExp::MapShapes(dest, TopAbs_FACE, dest_faces);
-    for (TopExp_Explorer ex(src, TopAbs_FACE); ex.More(); ex.Next()) {
-        const TopoDS_Shape& sf = ex.Current();
-        uint64_t src_id = reinterpret_cast<uint64_t>(sf.TShape().get());
-        if (dest_faces.Contains(sf)) relay[src_id] = src_id;
-        const NCollection_List<TopoDS_Shape>& images = relation == BRepTools_History::TRelationType_Generated ? builder.Generated(sf) : builder.Modified(sf);
-        for (NCollection_List<TopoDS_Shape>::Iterator it(images); it.More(); it.Next()) {
-            if (dest_faces.Contains(it.Value())) relay[reinterpret_cast<uint64_t>(it.Value().TShape().get())] = src_id;
-        }
-    }
-}
-
-// {post → pre} by index (BRepBuilderAPI_Copy preserves traversal order).
-static void relay_from_pair(
-    const TopoDS_Shape& pre_shape,
-    const TopoDS_Shape& post_shape,
-    std::unordered_map<uint64_t, uint64_t>& relay)
-{
-    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> pre_map, post_map;
-    TopExp::MapShapes(pre_shape, TopAbs_FACE, pre_map);
-    TopExp::MapShapes(post_shape, TopAbs_FACE, post_map);
-    // pre_map and post_map have the same size because the copy preserves topology.
-    for (int i = 1; i <= pre_map.Extent(); ++i) {
-        uint64_t pre_id = reinterpret_cast<uint64_t>(pre_map(i).TShape().get());
-        uint64_t post_id = reinterpret_cast<uint64_t>(post_map(i).TShape().get());
-        relay[post_id] = pre_id;
-    }
-}
-
-// Emit [post, src] pairs. relay2==null: flatten relay1 (its keys are final).
-// relay2!=null: iterate relay2 keys (post) and resolve post→pre→src via relay1.
-static void relay_into_history(
-    const std::unordered_map<uint64_t, uint64_t>* relay1,
-    const std::unordered_map<uint64_t, uint64_t>* relay2,
-    rust::Vec<uint64_t>& out)
-{
-    if (relay2 == nullptr) {
-        for (const auto& kv : *relay1) {
-            out.push_back(kv.first);
-            out.push_back(kv.second);
-        }
-    } else {
-        for (const auto& kv : *relay2) {
-            auto it = relay1->find(kv.second);
-            if (it == relay1->end()) continue;
-            out.push_back(kv.first);
-            out.push_back(it->second);
-        }
-    }
-}
 
 // Evaluate any boolean expression in DNF on N solids via BOPAlgo_CellsBuilder.
 // 1 回の Perform() で全交差を計算し、clause ごとに AddToResult を呼ぶ。
@@ -550,21 +661,25 @@ std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
 {
     if (solids.empty() || clauses.size() == 0) throw std::runtime_error("no solids or clauses");
 
+    std::vector<SrcEntry> src;
+    for (const auto& s : solids) {
+        for (SrcEntry& e : src_of(s)) src.push_back(std::move(e));
+    }
+
     // BOPAlgo_CellsBuilder は引数 N≥2 を想定するため、単一 solid の場合は
-    // deep copy のみで返す (DNF clause が `[+1, 0]` の単純ケース)。
+    // そのまま返す (DNF clause が `[+1, 0]` の単純ケース)。
     if (solids.size() == 1 && clauses.size() == 2 && clauses[0] == 1 && clauses[1] == 0) {
-        BRepBuilderAPI_Copy copier(solids[0], true, false);
-        // No builder: relay_from_pair gives {post → pre==src}; flatten it.
-        std::unordered_map<uint64_t, uint64_t> relay;
-        relay_from_pair(solids[0], copier.Shape(), relay);
-        relay_into_history(&relay, nullptr, out_history);
-        return solids_of(copier.Shape());
+        NoAlgo none;
+        relay_history(none, src, index_result(solids[0]), out_history);
+        return std::make_unique<std::vector<TopoDS_Solid>>(solids);
     }
 
     BOPAlgo_CellsBuilder cb;
     NCollection_List<TopoDS_Shape> args;
     for (const auto& s : solids) args.Append(s);
     cb.SetArguments(args);
+    // The operands are shared with the caller, so they must come out untouched.
+    cb.SetNonDestructive(true);
     cb.Perform();
     if (cb.HasErrors()) throw std::runtime_error("BOPAlgo_CellsBuilder reported errors");
 
@@ -587,14 +702,9 @@ std::unique_ptr<std::vector<TopoDS_Solid>> builder_cells(
     }
     cb.RemoveInternalBoundaries();
 
-    std::unordered_map<uint64_t, uint64_t> relay1, relay2;
-    // One call over all operands maps cb.Shape()'s faces once, not once per operand.
-    relay_from_builder(cb, compound_of(solids), cb.Shape(), relay1, BRepTools_History::TRelationType_Modified);
-
-    BRepBuilderAPI_Copy copier(cb.Shape(), true, false);
-    relay_from_pair(cb.Shape(), copier.Shape(), relay2);
-    relay_into_history(&relay1, &relay2, out_history);
-    return solids_of(copier.Shape());
+    // The result shares every untouched face with its operand, so those are Kept.
+    relay_history(cb, src, index_result(cb.Shape()), out_history);
+    return solids_of(cb.Shape());
 }
 
 // Unify shared faces / collinear edges. `out_history` is populated with
@@ -610,25 +720,12 @@ std::unique_ptr<TopoDS_Solid> builder_clean(
     unifier.Build();
 
     auto result = to_solid(unifier.Shape());
-
     Handle(BRepTools_History) history = unifier.History();
-    if (!history.IsNull()) {
-        for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
-            const TopoDS_Shape& old_face = ex.Current();
-            uint64_t old_id = reinterpret_cast<uint64_t>(old_face.TShape().get());
-            if (history->IsRemoved(old_face)) continue;
-            const NCollection_List<TopoDS_Shape>& mods = history->Modified(old_face);
-            if (mods.IsEmpty()) {
-                // Unchanged: TShape* is the same in the result.
-                out_history.push_back(old_id);
-                out_history.push_back(old_id);
-            } else {
-                // Merged: use only the first resulting face (first-found wins).
-                uint64_t new_id = reinterpret_cast<uint64_t>(mods.First().TShape().get());
-                out_history.push_back(new_id);
-                out_history.push_back(old_id);
-            }
-        }
+    if (history.IsNull()) {
+        NoAlgo none;
+        relay_history(none, src_of(shape), index_result(*result), out_history);
+    } else {
+        relay_history(*history, src_of(shape), index_result(*result), out_history);
     }
     return result;
 }
@@ -658,23 +755,29 @@ std::unique_ptr<TopoDS_Solid> transform_rotate(
 std::unique_ptr<TopoDS_Solid> transform_scale(
     const TopoDS_Solid& shape,
     double cx, double cy, double cz,
-    double factor)
+    double factor,
+    rust::Vec<uint64_t>& out_history)
 {
     gp_Trsf trsf;
     trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
     BRepBuilderAPI_Transform transform(shape, trsf, true);
-    return to_solid(transform.Shape());
+    auto out = to_solid(transform.Shape());
+    relay_history(transform, src_of(shape), index_result(*out), out_history);
+    return out;
 }
 
 std::unique_ptr<TopoDS_Solid> transform_mirror(
     const TopoDS_Solid& shape,
     double ox, double oy, double oz,
-    double nx, double ny, double nz)
+    double nx, double ny, double nz,
+    rust::Vec<uint64_t>& out_history)
 {
     gp_Trsf trsf;
     trsf.SetMirror(gp_Ax2(gp_Pnt(ox, oy, oz), gp_Dir(nx, ny, nz)));
     BRepBuilderAPI_Transform transform(shape, trsf, true);
-    return to_solid(transform.Shape());
+    auto out = to_solid(transform.Shape());
+    relay_history(transform, src_of(shape), index_result(*out), out_history);
+    return out;
 }
 
 // ==================== Shape Queries ====================
@@ -1420,12 +1523,10 @@ std::unique_ptr<TopoDS_Solid> builder_thick_solid(
         BRepBuilderAPI_MakeSolid solid_maker(outer);
         solid_maker.Add(TopoDS::Shell(inner.Reversed()));
         if (!solid_maker.IsDone()) throw std::runtime_error("BRepBuilderAPI_MakeSolid did not complete");
-        // Sealed case: original faces are retained as identity; offset walls
-        // are Generated (src is an edge) and intentionally absent.
-        std::unordered_map<uint64_t, uint64_t> relay;
-        relay_from_pair(solid, solid, relay);
-        relay_into_history(&relay, nullptr, out_history);
-        return std::make_unique<TopoDS_Solid>(solid_maker.Solid());
+        auto out = std::make_unique<TopoDS_Solid>(solid_maker.Solid());
+        // The original faces are kept; the offset walls are Generated from them.
+        relay_history(offset, src_of(solid), index_result(*out), out_history);
+        return out;
     }
 
     NCollection_List<TopoDS_Shape> faces_to_remove;
@@ -1441,11 +1542,9 @@ std::unique_ptr<TopoDS_Solid> builder_thick_solid(
         /*join=*/ GeomAbs_Arc);
     builder.Build();
     if (!builder.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakeThickSolid did not complete");
-    // No copy, so relay keys are final faces.
-    std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(builder, solid, builder.Shape(), relay, BRepTools_History::TRelationType_Modified);
-    relay_into_history(&relay, nullptr, out_history);
-    return to_solid(builder.Shape());
+    auto out = to_solid(builder.Shape());
+    relay_history(builder, src_of(solid), index_result(*out), out_history);
+    return out;
 }
 
 std::unique_ptr<TopoDS_Solid> builder_fillet(
@@ -1455,10 +1554,8 @@ std::unique_ptr<TopoDS_Solid> builder_fillet(
     rust::Vec<uint64_t>& out_history)
 {
     if (edges.empty()) {
-        // No-op: shallow copy; every face is identity.
-        std::unordered_map<uint64_t, uint64_t> relay;
-        relay_from_pair(solid, solid, relay);
-        relay_into_history(&relay, nullptr, out_history);
+        NoAlgo none;
+        relay_history(none, src_of(solid), index_result(solid), out_history);
         return std::make_unique<TopoDS_Solid>(solid);
     }
     BRepFilletAPI_MakeFillet mk(solid);
@@ -1472,10 +1569,7 @@ std::unique_ptr<TopoDS_Solid> builder_fillet(
     if (result.IsNull()) throw std::runtime_error("BRepFilletAPI_MakeFillet produced no shape");
     // MakeFillet can wrap the solid in a compound even if it contains only one solid.
     auto out = to_solid(result);
-    // No copy, so relay keys are final faces (identity for untouched).
-    std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(mk, solid, result, relay, BRepTools_History::TRelationType_Modified);
-    relay_into_history(&relay, nullptr, out_history);
+    relay_history(mk, src_of(solid), index_result(*out), out_history);
     return out;
 }
 
@@ -1486,10 +1580,8 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
     rust::Vec<uint64_t>& out_history)
 {
     if (edges.empty()) {
-        // No-op: shallow copy; every face is identity.
-        std::unordered_map<uint64_t, uint64_t> relay;
-        relay_from_pair(solid, solid, relay);
-        relay_into_history(&relay, nullptr, out_history);
+        NoAlgo none;
+        relay_history(none, src_of(solid), index_result(solid), out_history);
         return std::make_unique<TopoDS_Solid>(solid);
     }
     BRepFilletAPI_MakeChamfer mk(solid);
@@ -1503,55 +1595,10 @@ std::unique_ptr<TopoDS_Solid> builder_chamfer(
     if (result.IsNull()) throw std::runtime_error("BRepFilletAPI_MakeChamfer produced no shape");
     // Like MakeFillet, MakeChamfer may wrap the result in a compound even if it contains only one solid.
     auto out = to_solid(result);
-    // No copy, so relay keys are final faces (identity for untouched).
-    std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(mk, solid, result, relay, BRepTools_History::TRelationType_Modified);
-    relay_into_history(&relay, nullptr, out_history);
+    relay_history(mk, src_of(solid), index_result(*out), out_history);
     return out;
 }
 
-std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges, double tolerance)
-{
-    auto near = [tolerance](const gp_Pnt& p, const gp_Pnt& q) { return p.Distance(q) <= tolerance; };
-    auto wires = std::make_unique<std::vector<TopoDS_Wire>>();
-    std::vector<TopoDS_Edge> chain;
-    gp_Pnt start, end;
-    auto flush = [&]() {
-        BRepBuilderAPI_MakeWire maker;
-        for (const TopoDS_Edge& e : chain) maker.Add(e);
-        if (!maker.IsDone()) throw std::runtime_error("edges do not connect into a wire");
-        wires->push_back(maker.Wire());
-        chain.clear();
-    };
-    for (const TopoDS_Edge& edge : edges) {
-        // Edge::start_point reads the curve whatever the orientation, so orient from the curve.
-        BRepAdaptor_Curve curve(edge);
-        const gp_Pnt a = curve.Value(curve.FirstParameter()), b = curve.Value(curve.LastParameter());
-        TopoDS_Edge e = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
-        if (chain.empty()) {
-            start = a;
-            end = b;
-        } else {
-            // The first edge's direction is settled by the second.
-            if (chain.size() == 1 && !near(end, a) && !near(end, b) && (near(start, a) || near(start, b))) {
-                chain.front().Reverse();
-                std::swap(start, end);
-            }
-            if (near(end, a)) {
-                end = b;
-            } else if (near(end, b)) {
-                e.Reverse();
-                end = a;
-            } else {
-                throw std::runtime_error("an edge meets neither end of the previous one");
-            }
-        }
-        chain.push_back(e);
-        if (near(end, start)) flush();
-    }
-    if (!chain.empty()) flush();
-    return wires;
-}
 
 // Build the profile face shared by make_extrude and make_revolve from closed
 // loops; the first is the outer boundary.
@@ -1597,48 +1644,63 @@ static TopoDS_Face face_from_loops(const std::vector<TopoDS_Wire>& wires)
 }
 
 std::unique_ptr<TopoDS_Solid> make_extrude(
-    const std::vector<TopoDS_Wire>& wires,
-    double dx, double dy, double dz)
+    const std::vector<TopoDS_Edge>& edges,
+    double dx, double dy, double dz,
+    rust::Vec<uint64_t>& out_history)
 {
     // MakePrism accepts a zero vector and returns a degenerate solid.
     const gp_Vec dir(dx, dy, dz);
     if (dir.Magnitude() < Precision::Confusion()) throw std::runtime_error("direction is zero-length");
-    TopoDS_Face face = face_from_loops(wires);
+    Chained profile = chain(edges, Precision::Confusion());
+    TopoDS_Face face = face_from_loops(profile.wires);
     BRepPrimAPI_MakePrism prism(face, dir);
     prism.Build();
     if (!prism.IsDone()) throw std::runtime_error("BRepPrimAPI_MakePrism did not complete");
-    return to_solid(prism.Shape());
+    auto out = to_solid(prism.Shape());
+    SweepEnds<BRepPrimAPI_MakePrism> ends{prism, {}};
+    relay_history(ends, profile.src, index_result(*out), out_history);
+    return out;
 }
 
 std::unique_ptr<TopoDS_Solid> make_revolve(
-    const std::vector<TopoDS_Wire>& wires,
+    const std::vector<TopoDS_Edge>& edges,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
-    double angle)
+    double angle,
+    rust::Vec<uint64_t>& out_history)
 {
     const gp_Vec axis_vec(dx, dy, dz);
     if (axis_vec.Magnitude() < Precision::Confusion()) throw std::runtime_error("axis is zero-length");
     // MakeRevol takes an angle in [0, 2pi]; a negative angle turns the other way.
     if (std::abs(angle) < Precision::Angular() || std::abs(angle) > 2.0 * M_PI + Precision::Angular()) throw std::runtime_error("angle must be within (0, 2pi]");
-    TopoDS_Face face = face_from_loops(wires);
+    Chained profile = chain(edges, Precision::Confusion());
+    TopoDS_Face face = face_from_loops(profile.wires);
     gp_Ax1 axis(gp_Pnt(ox, oy, oz), gp_Dir(axis_vec));
     if (angle < 0.0) axis.Reverse();
     BRepPrimAPI_MakeRevol revol(face, axis, std::abs(angle));
     revol.Build();
     if (!revol.IsDone()) throw std::runtime_error("BRepPrimAPI_MakeRevol did not complete");
-    return to_solid(revol.Shape());
+    auto out = to_solid(revol.Shape());
+    SweepEnds<BRepPrimAPI_MakeRevol> ends{revol, {}};
+    relay_history(ends, profile.src, index_result(*out), out_history);
+    return out;
 }
 
 // Unified MakePipeShell wrapper.  Handles both single-profile sweep and
 // multi-profile morphing sweep: each wire of `profile` is a section.
 // `spine_wires` and, when orient == 3 (Auxiliary), `aux_spine` hold one wire.
 std::unique_ptr<TopoDS_Solid> make_pipe_shell(
-    const std::vector<TopoDS_Wire>& profile,
-    const std::vector<TopoDS_Wire>& spine_wires,
+    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Edge>& spine_edges,
     uint32_t orient,
     double ux, double uy, double uz,
-    const std::vector<TopoDS_Wire>& aux_spine)
+    const std::vector<TopoDS_Edge>& aux_edges,
+    rust::Vec<uint64_t>& out_history)
 {
+    Chained profiled = chain(profile_edges, Precision::Confusion());
+    const std::vector<TopoDS_Wire>& profile = profiled.wires;
+    const std::vector<TopoDS_Wire> spine_wires = chain(spine_edges, Precision::Confusion()).wires;
+    const std::vector<TopoDS_Wire> aux_spine = chain(aux_edges, Precision::Confusion()).wires;
     if (profile.empty()) throw std::runtime_error("empty profile");
     if (spine_wires.size() != 1) throw std::runtime_error("spine edges do not connect into one wire");
     const TopoDS_Wire& spine = spine_wires.front();
@@ -1689,7 +1751,9 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
     shell.Build();
     if (!shell.IsDone()) throw std::runtime_error("BRepOffsetAPI_MakePipeShell did not complete");
     if (!shell.MakeSolid()) throw std::runtime_error("profile is not closed, so the sweep is a shell rather than a solid");
-    return to_solid(shell.Shape());
+    auto out = to_solid(shell.Shape());
+    relay_history(shell, profiled.src, index_result(*out), out_history);
+    return out;
 }
 
 // Loft (skin) a solid through a sequence of cross-section wires.
@@ -1700,20 +1764,27 @@ std::unique_ptr<TopoDS_Solid> make_pipe_shell(
 // all sections; `ruled=true` gives per-panel ruled (straight-line) surfaces
 // between adjacent sections. Both pass through every section wire exactly.
 std::unique_ptr<TopoDS_Solid> make_loft(
-    const std::vector<TopoDS_Wire>& wires,
-    bool ruled)
+    const std::vector<TopoDS_Edge>& edges,
+    uint32_t sections,
+    bool ruled,
+    rust::Vec<uint64_t>& out_history)
 {
     BRepOffsetAPI_ThruSections loft(
         /*isSolid=*/true,
         /*isRuled=*/ruled,
         Precision::Confusion());
 
-    if (wires.size() < 2) throw std::runtime_error("need at least 2 sections");
-    for (const TopoDS_Wire& w : wires) loft.AddWire(w);
+    if (sections < 2) throw std::runtime_error("need at least 2 sections");
+    // Each section closes on itself, so the flattened edges chain back into one wire per section.
+    Chained chained = chain(edges, Precision::Confusion());
+    if (chained.wires.size() != sections) throw std::runtime_error(std::to_string(sections) + " sections chain into " + std::to_string(chained.wires.size()) + " wires; each section must close a loop");
+    for (const TopoDS_Wire& w : chained.wires) loft.AddWire(w);
 
     loft.Build();
     if (!loft.IsDone()) throw std::runtime_error("BRepOffsetAPI_ThruSections did not complete");
-    return to_solid(loft.Shape());
+    auto out = to_solid(loft.Shape());
+    relay_history(loft, chained.src, index_result(*out), out_history);
+    return out;
 }
 
 // Sew (stitch) free faces into a single closed shell and upgrade it to a
@@ -1724,7 +1795,9 @@ std::unique_ptr<TopoDS_Solid> make_loft(
 // so the enclosed volume is positive regardless of input face orientation.
 std::unique_ptr<TopoDS_Solid> make_sewn_solid(
     const std::vector<TopoDS_Face>& faces,
-    double tolerance)
+    rust::Slice<const uint64_t> ids,
+    double tolerance,
+    rust::Vec<uint64_t>& out_history)
 {
     if (faces.empty()) throw std::runtime_error("no faces");
     BRepBuilderAPI_Sewing sewing(tolerance);
@@ -1733,7 +1806,13 @@ std::unique_ptr<TopoDS_Solid> make_sewn_solid(
     const TopoDS_Shape& sewn = sewing.SewedShape();
     if (sewn.IsNull()) throw std::runtime_error("BRepBuilderAPI_Sewing produced no shape");
     // Partial sewing leaves stray faces beside the shell; requiring one closed shell rejects them.
-    return solid_from_shell(sewn);
+    auto out = solid_from_shell(sewn);
+    // The caller knows its faces by the ids it passed, whatever solid they came from.
+    std::vector<SrcEntry> src;
+    for (size_t i = 0; i < faces.size(); ++i) src.push_back({ids[i], faces[i]});
+    SewingHistory history{sewing, {}};
+    relay_history(history, src, index_result(*out), out_history);
+    return out;
 }
 
 // Offset the given faces of `shape` by signed `offset` along their normals; a
@@ -1758,10 +1837,10 @@ std::unique_ptr<TopoDS_Solid> make_offset(
     if (!offsetter.IsDone()) throw std::runtime_error("BRepOffset_MakeOffset did not complete");
     TopoDS_Shape result = offsetter.Shape();
     if (result.IsNull()) throw std::runtime_error("BRepOffset_MakeOffset produced no shape");
-    std::unordered_map<uint64_t, uint64_t> relay;
-    relay_from_builder(offsetter, shape, result, relay, BRepTools_History::TRelationType_Generated); // offset faces are Generated, not Modified; MakeSolid below reuses them
-    relay_into_history(&relay, nullptr, out_history);
-    return solid_from_shell(result);
+    // solid_from_shell keeps the face handles, so the result can be indexed for the history.
+    auto out = solid_from_shell(result);
+    relay_history(offsetter, src_of(shape), index_result(*out), out_history);
+    return out;
 }
 
 // Interpolate each column of `points` along its first index at uniform

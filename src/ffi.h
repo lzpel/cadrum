@@ -7,7 +7,6 @@
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Edge.hxx>
-#include <TopoDS_Wire.hxx>
 
 
 namespace cadrum {
@@ -17,7 +16,6 @@ namespace cadrum {
 using TopoDS_Solid = ::TopoDS_Solid;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
-using TopoDS_Wire = ::TopoDS_Wire;
 
 // Forward-declare the Rust opaque types (defined by cxx in ffi.rs.h)
 struct RustReader;
@@ -40,19 +38,15 @@ std::unique_ptr<TopoDS_Solid> make_half_space(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-// `kind`, placement and `p1` / `p2` follow `face_surface`. The face lies left of
-// each closed loop of `wires` seen from the normal.
+// `kind`, placement and `p1` / `p2` follow `face_surface`. `edges` chain into closed
+// loops as in `make_extrude`; the face lies left of each loop seen from the normal.
 std::unique_ptr<TopoDS_Face> make_face(
     uint32_t kind,
     double ox, double oy, double oz,
     double zx, double zy, double zz,
     double xx, double xy, double xz,
     double p1, double p2,
-    const std::vector<TopoDS_Wire>& wires);
-
-// Chain `edges` into wires, each edge taken whichever way meets the chain within
-// `tolerance`. A wire closes when it returns to its start; trailing edges make an open last wire.
-std::unique_ptr<std::vector<TopoDS_Wire>> wires_from_edges(const std::vector<TopoDS_Edge>& edges, double tolerance);
+    const std::vector<TopoDS_Edge>& edges);
 
 std::unique_ptr<TopoDS_Solid> make_box(
     double x1, double y1, double z1,
@@ -79,9 +73,9 @@ std::unique_ptr<TopoDS_Solid> make_torus(
 
 // ==================== Builders (solid → solid with history) ====================
 //
-// Functions in this section take one or more solid inputs, rebuild topology,
-// and append flat [post_id, src_id, ...] face derivation pairs to
-// `out_history`. The Rust side stores these in `Solid::history`.
+// Every builder appends [kind, src, post] triples to `out_history` for the faces and
+// edges of its operands: kind 0 Kept, 1 Modified, 2 Generated, 3 Deleted (post 0).
+// `src` is the operand's id for the sub-shape, `post` the result's; see ffi.cpp "History".
 
 // Evaluate an arbitrary boolean expression on N solids in a single pass
 // using BOPAlgo_CellsBuilder. The expression is encoded as DIMACS-flat DNF:
@@ -161,11 +155,13 @@ std::unique_ptr<TopoDS_Solid> transform_rotate(
 std::unique_ptr<TopoDS_Solid> transform_scale(
     const TopoDS_Solid& shape,
     double cx, double cy, double cz,
-    double factor);
+    double factor,
+    rust::Vec<uint64_t>& out_history);
 std::unique_ptr<TopoDS_Solid> transform_mirror(
     const TopoDS_Solid& shape,
     double ox, double oy, double oz,
-    double nx, double ny, double nz);
+    double nx, double ny, double nz,
+    rust::Vec<uint64_t>& out_history);
 
 // ==================== Shape Queries ====================
 
@@ -302,22 +298,26 @@ std::unique_ptr<TopoDS_Edge> mirror_edge(
     double ox, double oy, double oz,
     double nx, double ny, double nz);
 
-// Extrude a closed profile into a solid using BRepPrimAPI_MakePrism.
-// `wires` are one or more closed loops; the extra loops become holes.
+// Extrude a closed profile into a solid using BRepPrimAPI_MakePrism. `edges` chain
+// into one or more closed loops; the extra loops become holes. The history reports
+// each profile edge Modified into its copy on the near cap, Generated into its side
+// face and its far-cap edge; the caps themselves descend from no edge.
 std::unique_ptr<TopoDS_Solid> make_extrude(
-    const std::vector<TopoDS_Wire>& wires,
-    double dx, double dy, double dz);
+    const std::vector<TopoDS_Edge>& edges,
+    double dx, double dy, double dz,
+    rust::Vec<uint64_t>& out_history);
 
 // Revolve the same loops about the axis through
 // (ox,oy,oz) along (dx,dy,dz) by `angle` radians using BRepPrimAPI_MakeRevol.
 std::unique_ptr<TopoDS_Solid> make_revolve(
-    const std::vector<TopoDS_Wire>& wires,
+    const std::vector<TopoDS_Edge>& edges,
     double ox, double oy, double oz,
     double dx, double dy, double dz,
-    double angle);
+    double angle,
+    rust::Vec<uint64_t>& out_history);
 
-// Sweep the closed `profile` wires along the single wire of `spine_wires` using
-// BRepOffsetAPI_MakePipeShell; several profile wires morph from one to the next.
+// Sweep the closed profile loops along the single wire the spine edges chain into,
+// using BRepOffsetAPI_MakePipeShell; several profile loops morph from one to the next.
 //
 // `orient` selects how the profile is oriented along the spine:
 //   0 = Fixed   — fix the trihedron to the spine-start frame (no rotation)
@@ -326,11 +326,12 @@ std::unique_ptr<TopoDS_Solid> make_revolve(
 //   3 = Auxiliary — use `aux_spine` as auxiliary spine for twist control
 // Any other value falls back to Torsion.
 std::unique_ptr<TopoDS_Solid> make_pipe_shell(
-    const std::vector<TopoDS_Wire>& profile,
-    const std::vector<TopoDS_Wire>& spine_wires,
+    const std::vector<TopoDS_Edge>& profile_edges,
+    const std::vector<TopoDS_Edge>& spine_edges,
     uint32_t orient,
     double ux, double uy, double uz,
-    const std::vector<TopoDS_Wire>& aux_spine);
+    const std::vector<TopoDS_Edge>& aux_edges,
+    rust::Vec<uint64_t>& out_history);
 
 // Helpers for the Rust side to construct a std::vector<TopoDS_Edge>.
 std::unique_ptr<std::vector<TopoDS_Edge>> edge_vec_new();
@@ -345,22 +346,27 @@ void face_vec_push(std::vector<TopoDS_Face>& v, const TopoDS_Face& f);
 std::unique_ptr<std::vector<TopoDS_Solid>> shape_vec_new();
 void shape_vec_push(std::vector<TopoDS_Solid>& v, const TopoDS_Solid& s);
 
-// Loft (skin) a solid through N cross-section wires.
+// Loft (skin) a solid through `sections` cross-section loops, which `edges` chain into.
 // `ruled=false` interpolates a smooth B-spline surface through all sections;
 // `ruled=true` connects adjacent sections with straight ruled panels.
 std::unique_ptr<TopoDS_Solid> make_loft(
-    const std::vector<TopoDS_Wire>& wires,
-    bool ruled);
+    const std::vector<TopoDS_Edge>& edges,
+    uint32_t sections,
+    bool ruled,
+    rust::Vec<uint64_t>& out_history);
 
 // Sew (stitch) free faces into a single closed shell and upgrade it to a
 // solid via BRepBuilderAPI_MakeSolid. The sewn result must contain exactly
 // one closed shell — gaps wider than `tolerance` (open shell), leftover free
 // faces, or multiple disconnected shells all throw. The solid is
 // oriented with BRepLib::OrientClosedSolid so the enclosed volume is
-// positive regardless of input face orientation.
+// positive regardless of input face orientation. `ids` are the caller's ids of
+// `faces`, which the history reports as `src`.
 std::unique_ptr<TopoDS_Solid> make_sewn_solid(
     const std::vector<TopoDS_Face>& faces,
-    double tolerance);
+    rust::Slice<const uint64_t> ids,
+    double tolerance,
+    rust::Vec<uint64_t>& out_history);
 
 // Offset the given faces of `shape` by signed `offset` along their normals,
 // extending their neighbours; throws when OCCT rejects a self-intersecting offset.

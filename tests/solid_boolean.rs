@@ -184,6 +184,6 @@ fn test_preserves_src_face_identity() {
 	let cutter = Solid::half_space(DVec3::ZERO, -DVec3::Z);
 	let cutter_ids: std::collections::HashSet<u64> = cutter.iter_face().map(|f| f.id()).collect();
 	let half: Solid = (&torus * &cutter).build().unwrap();
-	let matched: Vec<u64> = half.iter_history().filter_map(|[p, s]| cutter_ids.contains(&s).then_some(p)).collect();
+	let matched: Vec<u64> = half.iter_history().filter(|l| cutter_ids.contains(&l.src())).filter_map(|l| l.post()).collect();
 	assert!(!matched.is_empty(), "history must contain at least one face sourced from cutter");
 }

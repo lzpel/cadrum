@@ -28,7 +28,6 @@ mod ffi_bridge {
 		type TopoDS_Solid;
 		type TopoDS_Face;
 		type TopoDS_Edge;
-		type TopoDS_Wire;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -41,8 +40,7 @@ mod ffi_bridge {
 
 		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
-		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
+		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, edges: &CxxVector<TopoDS_Edge>) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
@@ -62,31 +60,27 @@ mod ffi_bridge {
 
 		// ==================== Builders (solid → solid with history) ====================
 
+		// Every `out_history` is a flat list of [kind, src, post] triples; see ffi.h.
 		// Evaluate any boolean expression on N solids via BOPAlgo_CellsBuilder.
 		// `clauses` は DIMACS-flat DNF (`+i` = solids[i-1] を take、`-i` = avoid、`0` = clause 終端)。
-		// `out_history` の形式は builder_boolean と同じ。
 		fn builder_cells(solids: &CxxVector<TopoDS_Solid>, clauses: &[i64], out_history: &mut Vec<u64>) -> Result<UniquePtr<CxxVector<TopoDS_Solid>>>;
 
-		// Unify shared faces. `out_history` receives flat [new_id, old_id, ...]
-		// pairs (same layout as `builder_boolean`), used by Solid::clean to populate
-		// `Solid::history` and remap the colormap when color is enabled.
+		// Unify shared faces.
 		fn builder_clean(shape: &TopoDS_Solid, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		// shell/fillet/chamfer fill `out_history` with flat [post_id, src_id]
-		// pairs (same layout as builder_cells) → Solid::history + colormap remap.
 		fn builder_thick_solid(solid: &TopoDS_Solid, open_faces: &CxxVector<TopoDS_Face>, thickness: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn builder_fillet(solid: &TopoDS_Solid, edges: &CxxVector<TopoDS_Edge>, radius: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn builder_chamfer(solid: &TopoDS_Solid, edges: &CxxVector<TopoDS_Edge>, distance: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		// ==================== Transforms (solid → solid, no history) ====================
+		// ==================== Transforms ====================
 
 		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn transform_rotate(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn transform_scale(shape: &TopoDS_Solid, cx: f64, cy: f64, cz: f64, factor: f64) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn transform_scale(shape: &TopoDS_Solid, cx: f64, cy: f64, cz: f64, factor: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn transform_mirror(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn transform_mirror(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		// ==================== Shape Queries ====================
 		fn shape_volume(shape: &TopoDS_Solid) -> Result<f64>;
@@ -143,11 +137,11 @@ mod ffi_bridge {
 		fn scale_edge(edge: &TopoDS_Edge, cx: f64, cy: f64, cz: f64, factor: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn mirror_edge(edge: &TopoDS_Edge, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 
-		fn make_extrude(wires: &CxxVector<TopoDS_Wire>, dx: f64, dy: f64, dz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_revolve(wires: &CxxVector<TopoDS_Wire>, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_pipe_shell(profile: &CxxVector<TopoDS_Wire>, spine_wires: &CxxVector<TopoDS_Wire>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_loft(wires: &CxxVector<TopoDS_Wire>, ruled: bool) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn make_sewn_solid(faces: &CxxVector<TopoDS_Face>, tolerance: f64) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_extrude(edges: &CxxVector<TopoDS_Edge>, dx: f64, dy: f64, dz: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_revolve(edges: &CxxVector<TopoDS_Edge>, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_pipe_shell(profile: &CxxVector<TopoDS_Edge>, spine: &CxxVector<TopoDS_Edge>, orient: u32, ux: f64, uy: f64, uz: f64, aux_spine: &CxxVector<TopoDS_Edge>, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_loft(edges: &CxxVector<TopoDS_Edge>, sections: u32, ruled: bool, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn make_sewn_solid(faces: &CxxVector<TopoDS_Face>, ids: &[u64], tolerance: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_offset(shape: &TopoDS_Solid, faces: &CxxVector<TopoDS_Face>, offset: f64, tolerance: f64, out_history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn make_bspline_solid(coords: &[f64], nu: u32, nv: u32, u_periodic: bool, v_periodic: bool) -> Result<UniquePtr<TopoDS_Solid>>;
 

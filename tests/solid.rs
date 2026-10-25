@@ -115,20 +115,18 @@ fn test_face_edge_incidence_via_id() {
 // ==================== iter_history (B fully inside A) ====================
 
 #[test]
-#[ignore = "CellsBuilder の history semantics 差異: tool 面の history threading は要 follow-up"]
 fn test_new_faces_subtract_b_inside_a() {
-	// small_box が big_box に完全に収まる → small の 6 面はすべて Modified されない
-	// 新実装（iter_history の post_id 集合）では unchanged 面も history に入る → tool faces = 6
+	// small_box が big_box に完全に収まる → small の 6 面は手つかずのまま内壁になる。
+	// 被演算子が translate されていても、Kept の src/post ペアで追える。
 	let big = [Solid::cube(DVec3::ZERO, DVec3::splat(10.0))];
 	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] - &small[0]).build_vec().unwrap();
-	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post)).collect();
+	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter(|l| small_face_ids.contains(&l.src())).filter_map(|l| l.post()).collect();
 	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count(), 6, "subtract with B fully inside A: tool faces should be all 6 inner walls");
 }
 
 #[test]
-#[ignore = "CellsBuilder の history semantics 差異: tool 面の history threading は要 follow-up"]
 fn test_new_faces_intersect_b_inside_a() {
 	// intersect(big, small) の結果は small そのもの
 	// small の 6 面はすべて unchanged → tool faces = 結果の全フェイス = 6
@@ -136,7 +134,7 @@ fn test_new_faces_intersect_b_inside_a() {
 	let small = [Solid::cube(DVec3::ZERO, DVec3::splat(4.0)).translate(dvec3(3.0, 3.0, 3.0))];
 	let small_face_ids: std::collections::HashSet<u64> = small.iter().flat_map(|s| s.iter_face()).map(|f| f.id()).collect();
 	let solids: Vec<Solid> = (&big[0] * &small[0]).build_vec().unwrap();
-	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter_map(|[post, src]| small_face_ids.contains(&src).then_some(post)).collect();
+	let tool_post_ids: std::collections::HashSet<u64> = solids.iter().flat_map(|s| s.iter_history()).filter(|l| small_face_ids.contains(&l.src())).filter_map(|l| l.post()).collect();
 	let tool_count = solids.iter().flat_map(|s| s.iter_face()).filter(|f| tool_post_ids.contains(&f.id())).count();
 	assert_eq!(tool_count, 6, "intersect with B fully inside A: tool faces should equal all faces of result");
 	assert_eq!(solids.iter().flat_map(|s| s.iter_face()).count(), tool_count, "intersect with B fully inside A: tool faces should cover all result faces");
