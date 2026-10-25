@@ -890,39 +890,35 @@ uint32_t face_surface(const TopoDS_Face& face,
     uint32_t kind = 0;
     gp_Ax3 pos;
     p1 = 0.0; p2 = 0.0;
-    try {
-        BRepAdaptor_Surface surf(face);
-        switch (surf.GetType()) {
-            case GeomAbs_Plane: {
-                kind = 1; pos = surf.Plane().Position();
-                break;
-            }
-            case GeomAbs_Cylinder: {
-                const gp_Cylinder cyl = surf.Cylinder();
-                kind = 2; pos = cyl.Position(); p1 = cyl.Radius();
-                break;
-            }
-            case GeomAbs_Cone: {
-                const gp_Cone cone = surf.Cone();
-                kind = 3; pos = cone.Position();
-                p1 = cone.RefRadius(); p2 = cone.SemiAngle();
-                break;
-            }
-            case GeomAbs_Sphere: {
-                const gp_Sphere sph = surf.Sphere();
-                kind = 4; pos = sph.Position(); p1 = sph.Radius();
-                break;
-            }
-            case GeomAbs_Torus: {
-                const gp_Torus tor = surf.Torus();
-                kind = 5; pos = tor.Position();
-                p1 = tor.MajorRadius(); p2 = tor.MinorRadius();
-                break;
-            }
-            default: break;
+    BRepAdaptor_Surface surf(face);
+    switch (surf.GetType()) {
+        case GeomAbs_Plane: {
+            kind = 1; pos = surf.Plane().Position();
+            break;
         }
-    } catch (const Standard_Failure&) {
-        return 0;
+        case GeomAbs_Cylinder: {
+            const gp_Cylinder cyl = surf.Cylinder();
+            kind = 2; pos = cyl.Position(); p1 = cyl.Radius();
+            break;
+        }
+        case GeomAbs_Cone: {
+            const gp_Cone cone = surf.Cone();
+            kind = 3; pos = cone.Position();
+            p1 = cone.RefRadius(); p2 = cone.SemiAngle();
+            break;
+        }
+        case GeomAbs_Sphere: {
+            const gp_Sphere sph = surf.Sphere();
+            kind = 4; pos = sph.Position(); p1 = sph.Radius();
+            break;
+        }
+        case GeomAbs_Torus: {
+            const gp_Torus tor = surf.Torus();
+            kind = 5; pos = tor.Position();
+            p1 = tor.MajorRadius(); p2 = tor.MinorRadius();
+            break;
+        }
+        default: break;
     }
     const gp_Pnt origin = pos.Location();
     const gp_Dir axis = pos.Direction();
@@ -954,88 +950,84 @@ bool face_project_point(const TopoDS_Face& face,
     // derivative). Caller can detect via `normal.length() == 0`.
     nx = 0.0; ny = 0.0; nz = 0.0;
 
-    try {
-        const gp_Pnt target(px, py, pz);
-        bool has_uv = false;
-        double best_d2 = Precision::Infinite(), bu = 0.0, bv = 0.0;
-        gp_Pnt best_p;
+    const gp_Pnt target(px, py, pz);
+    bool has_uv = false;
+    double best_d2 = Precision::Infinite(), bu = 0.0, bv = 0.0;
+    gp_Pnt best_p;
 
-        // Orthogonal projections onto the face interior. BRepExtrema_ExtPF
-        // respects the trim: it keeps only extrema classified inside the face.
-        TopoDS_Vertex vert = BRepBuilderAPI_MakeVertex(target);
-        BRepExtrema_ExtPF ext(vert, face);
-        if (ext.IsDone()) {
-            for (int i = 1; i <= ext.NbExt(); ++i) {
-                const double d2 = ext.SquareDistance(i);
-                if (d2 >= best_d2) continue;
-                best_d2 = d2;
-                best_p = ext.Point(i);
-                ext.Parameter(i, bu, bv);
-                has_uv = true;
-            }
+    // Orthogonal projections onto the face interior. BRepExtrema_ExtPF
+    // respects the trim: it keeps only extrema classified inside the face.
+    TopoDS_Vertex vert = BRepBuilderAPI_MakeVertex(target);
+    BRepExtrema_ExtPF ext(vert, face);
+    if (ext.IsDone()) {
+        for (int i = 1; i <= ext.NbExt(); ++i) {
+            const double d2 = ext.SquareDistance(i);
+            if (d2 >= best_d2) continue;
+            best_d2 = d2;
+            best_p = ext.Point(i);
+            ext.Parameter(i, bu, bv);
+            has_uv = true;
         }
-
-        // Nearest points on the boundary wires. An interior extremum can be
-        // farther than the boundary (a 270° cylindrical face keeps only the far
-        // wall), and outside the trim there is no interior extremum at all, so
-        // both sets must be compared rather than one used as a fallback.
-        for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
-            const TopoDS_Edge& edge = TopoDS::Edge(it.Current());
-            BRepAdaptor_Curve curve(edge);
-            const double first = curve.FirstParameter();
-            const double last = curve.LastParameter();
-            Extrema_ExtPC extrema(target, curve, first, last);
-            double u = first;
-            if (extrema.IsDone() && extrema.NbExt() > 0) {
-                int k = 1;
-                for (int i = 2; i <= extrema.NbExt(); ++i) {
-                    if (extrema.SquareDistance(i) < extrema.SquareDistance(k)) k = i;
-                }
-                u = extrema.Point(k).Parameter();
-            }
-            // The endpoints are candidates too: an interior extremum of the
-            // curve can be farther than either end.
-            double pf = 0.0, pl = 0.0;
-            Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, pf, pl);
-            for (const double t : {u, first, last}) {
-                const gp_Pnt p = curve.Value(t);
-                const double d2 = target.SquareDistance(p);
-                if (d2 >= best_d2) continue;
-                best_d2 = d2;
-                best_p = p;
-                // The edge shares its parameter with its pcurve, so the same t
-                // gives the (u, v) the normal needs.
-                has_uv = !pcurve.IsNull();
-                if (has_uv) {
-                    const gp_Pnt2d uv = pcurve->Value(t);
-                    bu = uv.X();
-                    bv = uv.Y();
-                }
-            }
-        }
-
-        if (Precision::IsInfinite(best_d2)) return false;  // no interior extremum and no boundary
-        cpx = best_p.X();
-        cpy = best_p.Y();
-        cpz = best_p.Z();
-        if (!has_uv) return true;  // cp valid, normal stays 0.
-
-        BRepAdaptor_Surface surf(face);
-        BRepLProp_SLProps props(surf, bu, bv, /*derivOrder=*/1, Precision::Confusion());
-        if (!props.IsNormalDefined()) return true;  // cp valid, normal stays 0.
-
-        gp_Dir n = props.Normal();
-        // BRepLProp returns the surface-orientation normal; flip when the
-        // face is REVERSED in its enclosing shell so the caller always
-        // sees an outward-pointing direction.
-        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
-        nx = n.X();
-        ny = n.Y();
-        nz = n.Z();
-        return true;
-    } catch (const Standard_Failure&) {
-        return false;
     }
+
+    // Nearest points on the boundary wires. An interior extremum can be
+    // farther than the boundary (a 270° cylindrical face keeps only the far
+    // wall), and outside the trim there is no interior extremum at all, so
+    // both sets must be compared rather than one used as a fallback.
+    for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+        const TopoDS_Edge& edge = TopoDS::Edge(it.Current());
+        BRepAdaptor_Curve curve(edge);
+        const double first = curve.FirstParameter();
+        const double last = curve.LastParameter();
+        Extrema_ExtPC extrema(target, curve, first, last);
+        double u = first;
+        if (extrema.IsDone() && extrema.NbExt() > 0) {
+            int k = 1;
+            for (int i = 2; i <= extrema.NbExt(); ++i) {
+                if (extrema.SquareDistance(i) < extrema.SquareDistance(k)) k = i;
+            }
+            u = extrema.Point(k).Parameter();
+        }
+        // The endpoints are candidates too: an interior extremum of the
+        // curve can be farther than either end.
+        double pf = 0.0, pl = 0.0;
+        Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, pf, pl);
+        for (const double t : {u, first, last}) {
+            const gp_Pnt p = curve.Value(t);
+            const double d2 = target.SquareDistance(p);
+            if (d2 >= best_d2) continue;
+            best_d2 = d2;
+            best_p = p;
+            // The edge shares its parameter with its pcurve, so the same t
+            // gives the (u, v) the normal needs.
+            has_uv = !pcurve.IsNull();
+            if (has_uv) {
+                const gp_Pnt2d uv = pcurve->Value(t);
+                bu = uv.X();
+                bv = uv.Y();
+            }
+        }
+    }
+
+    if (Precision::IsInfinite(best_d2)) throw std::runtime_error("face has no interior extremum and no boundary");
+    cpx = best_p.X();
+    cpy = best_p.Y();
+    cpz = best_p.Z();
+    if (!has_uv) return true;  // cp valid, normal stays 0.
+
+    BRepAdaptor_Surface surf(face);
+    BRepLProp_SLProps props(surf, bu, bv, /*derivOrder=*/1, Precision::Confusion());
+    if (!props.IsNormalDefined()) return true;  // cp valid, normal stays 0.
+
+    gp_Dir n = props.Normal();
+    // BRepLProp returns the surface-orientation normal; flip when the
+    // face is REVERSED in its enclosing shell so the caller always
+    // sees an outward-pointing direction.
+    if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+    nx = n.X();
+    ny = n.Y();
+    nz = n.Z();
+    return true;
 }
 
 // ==================== Edge Methods ====================
@@ -1044,31 +1036,27 @@ rust::Vec<double> edge_approximation_segments(
     const TopoDS_Edge& edge, double linear, double angular, bool relative)
 {
     rust::Vec<double> out;
-    try {
-        // Mirror mesh_shape's relative semantics: when relative, scale the chord
-        // by the edge's bounding-box max dimension (OCCT BRepMesh convention).
-        double eff_chord = linear;
-        if (relative) {
-            Bnd_Box box;
-            BRepBndLib::Add(edge, box);
-            if (!box.IsVoid()) {
-                double xmin, ymin, zmin, xmax, ymax, zmax;
-                box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
-                eff_chord = linear * std::max(xmax - xmin, std::max(ymax - ymin, zmax - zmin));
-            }
+    // Mirror mesh_shape's relative semantics: when relative, scale the chord
+    // by the edge's bounding-box max dimension (OCCT BRepMesh convention).
+    double eff_chord = linear;
+    if (relative) {
+        Bnd_Box box;
+        BRepBndLib::Add(edge, box);
+        if (!box.IsVoid()) {
+            double xmin, ymin, zmin, xmax, ymax, zmax;
+            box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+            eff_chord = linear * std::max(xmax - xmin, std::max(ymax - ymin, zmax - zmin));
         }
-        BRepAdaptor_Curve curve(edge);
-        GCPnts_TangentialDeflection approx(curve, angular, eff_chord);
+    }
+    BRepAdaptor_Curve curve(edge);
+    GCPnts_TangentialDeflection approx(curve, angular, eff_chord);
 
-        int nb_points = approx.NbPoints();
-        for (int i = 1; i <= nb_points; i++) {
-            gp_Pnt p = approx.Value(i);
-            out.push_back(p.X());
-            out.push_back(p.Y());
-            out.push_back(p.Z());
-        }
-    } catch (const Standard_Failure&) {
-        out.clear();
+    int nb_points = approx.NbPoints();
+    for (int i = 1; i <= nb_points; i++) {
+        gp_Pnt p = approx.Value(i);
+        out.push_back(p.X());
+        out.push_back(p.Y());
+        out.push_back(p.Z());
     }
     return out;
 }
@@ -1238,13 +1226,11 @@ void edge_endpoints(const TopoDS_Edge& edge,
 {
     sx = 0.0; sy = 0.0; sz = 0.0;
     ex = 0.0; ey = 0.0; ez = 0.0;
-    try {
-        BRepAdaptor_Curve curve(edge);
-        gp_Pnt start = curve.Value(curve.FirstParameter());
-        gp_Pnt end = curve.Value(curve.LastParameter());
-        sx = start.X(); sy = start.Y(); sz = start.Z();
-        ex = end.X();   ey = end.Y();   ez = end.Z();
-    } catch (const Standard_Failure&) {}
+    BRepAdaptor_Curve curve(edge);
+    gp_Pnt start = curve.Value(curve.FirstParameter());
+    gp_Pnt end = curve.Value(curve.LastParameter());
+    sx = start.X(); sy = start.Y(); sz = start.Z();
+    ex = end.X();   ey = end.Y();   ez = end.Z();
 }
 
 void edge_tangents(const TopoDS_Edge& edge,
@@ -1253,21 +1239,19 @@ void edge_tangents(const TopoDS_Edge& edge,
 {
     sx = 0.0; sy = 0.0; sz = 0.0;
     ex = 0.0; ey = 0.0; ez = 0.0;
-    try {
-        BRepAdaptor_Curve curve(edge);
-        gp_Pnt p;
-        gp_Vec vs, ve;
-        curve.D1(curve.FirstParameter(), p, vs);
-        curve.D1(curve.LastParameter(), p, ve);
-        if (vs.Magnitude() > Precision::Confusion()) {
-            vs.Normalize();
-            sx = vs.X(); sy = vs.Y(); sz = vs.Z();
-        }
-        if (ve.Magnitude() > Precision::Confusion()) {
-            ve.Normalize();
-            ex = ve.X(); ey = ve.Y(); ez = ve.Z();
-        }
-    } catch (const Standard_Failure&) {}
+    BRepAdaptor_Curve curve(edge);
+    gp_Pnt p;
+    gp_Vec vs, ve;
+    curve.D1(curve.FirstParameter(), p, vs);
+    curve.D1(curve.LastParameter(), p, ve);
+    if (vs.Magnitude() > Precision::Confusion()) {
+        vs.Normalize();
+        sx = vs.X(); sy = vs.Y(); sz = vs.Z();
+    }
+    if (ve.Magnitude() > Precision::Confusion()) {
+        ve.Normalize();
+        ex = ve.X(); ey = ve.Y(); ez = ve.Z();
+    }
 }
 
 double precision_confusion() {
@@ -1281,40 +1265,36 @@ bool edge_project_point(const TopoDS_Edge& edge,
 {
     cpx = 0.0; cpy = 0.0; cpz = 0.0;
     tx = 0.0; ty = 0.0; tz = 0.0;
-    try {
-        // BRepAdaptor_Curve は 3D 曲線を持たない縮退エッジ (球の極・円錐の頂点) でも
-        // pcurve + サーフェス経由で評価できる。BRep_Tool::Curve を直接引くと null で
-        // 落ちるので使わない。ファイル内の他の edge_* 関数もこのアダプタ経由。
-        BRepAdaptor_Curve curve(edge);
-        const double first = curve.FirstParameter();
-        const double last = curve.LastParameter();
-        gp_Pnt target(px, py, pz);
-        Extrema_ExtPC extrema(target, curve, first, last);
-        double u;
-        if (extrema.IsDone() && extrema.NbExt() > 0) {
-            int best = 1;
-            for (int i = 2; i <= extrema.NbExt(); i++) {
-                if (extrema.SquareDistance(i) < extrema.SquareDistance(best)) best = i;
-            }
-            u = extrema.Point(best).Parameter();
-        } else {
-            // 区間内に極値なし — 距離が単調 (端点の外側にある線分など)。近い端点にクランプ。
-            double d_first = target.Distance(curve.Value(first));
-            double d_last  = target.Distance(curve.Value(last));
-            u = (d_first <= d_last) ? first : last;
+    // BRepAdaptor_Curve は 3D 曲線を持たない縮退エッジ (球の極・円錐の頂点) でも
+    // pcurve + サーフェス経由で評価できる。BRep_Tool::Curve を直接引くと null で
+    // 落ちるので使わない。ファイル内の他の edge_* 関数もこのアダプタ経由。
+    BRepAdaptor_Curve curve(edge);
+    const double first = curve.FirstParameter();
+    const double last = curve.LastParameter();
+    gp_Pnt target(px, py, pz);
+    Extrema_ExtPC extrema(target, curve, first, last);
+    double u;
+    if (extrema.IsDone() && extrema.NbExt() > 0) {
+        int best = 1;
+        for (int i = 2; i <= extrema.NbExt(); i++) {
+            if (extrema.SquareDistance(i) < extrema.SquareDistance(best)) best = i;
         }
-        gp_Pnt p;
-        gp_Vec v;
-        curve.D1(u, p, v);
-        cpx = p.X(); cpy = p.Y(); cpz = p.Z();
-        if (v.Magnitude() > Precision::Confusion()) {
-            v.Normalize();
-            tx = v.X(); ty = v.Y(); tz = v.Z();
-        }
-        return true;
-    } catch (const Standard_Failure&) {
-        return false;
+        u = extrema.Point(best).Parameter();
+    } else {
+        // 区間内に極値なし — 距離が単調 (端点の外側にある線分など)。近い端点にクランプ。
+        double d_first = target.Distance(curve.Value(first));
+        double d_last  = target.Distance(curve.Value(last));
+        u = (d_first <= d_last) ? first : last;
     }
+    gp_Pnt p;
+    gp_Vec v;
+    curve.D1(u, p, v);
+    cpx = p.X(); cpy = p.Y(); cpz = p.Z();
+    if (v.Magnitude() > Precision::Confusion()) {
+        v.Normalize();
+        tx = v.X(); ty = v.Y(); tz = v.Z();
+    }
+    return true;
 }
 
 std::unique_ptr<TopoDS_Edge> deep_copy_edge(const TopoDS_Edge& edge) {

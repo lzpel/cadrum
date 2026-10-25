@@ -56,7 +56,7 @@ impl FaceStruct for Face {
 		let (mut zx, mut zy, mut zz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut xx, mut xy, mut xz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut p1, mut p2) = (0.0_f64, 0.0_f64);
-		let kind = match ffi::face_surface(&self.inner, &mut ox, &mut oy, &mut oz, &mut zx, &mut zy, &mut zz, &mut xx, &mut xy, &mut xz, &mut p1, &mut p2) {
+		let kind = match ffi::face_surface(&self.inner, &mut ox, &mut oy, &mut oz, &mut zx, &mut zy, &mut zz, &mut xx, &mut xy, &mut xz, &mut p1, &mut p2).unwrap_or(0) {
 			1 => SurfaceKind::Plane,
 			2 => SurfaceKind::Cylinder { radius: p1 },
 			3 => SurfaceKind::Cone { radius: p1, semi_angle: p2 },
@@ -68,25 +68,26 @@ impl FaceStruct for Face {
 	}
 
 	fn area(&self) -> f64 {
-		ffi::face_surface_area(&self.inner)
+		ffi::face_surface_area(&self.inner).unwrap_or(f64::NAN)
 	}
 
 	fn center(&self) -> DVec3 {
 		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::face_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
+		if ffi::face_center_of_mass(&self.inner, &mut x, &mut y, &mut z).is_err() {
+			return DVec3::NAN;
+		}
 		DVec3::new(x, y, z)
 	}
 
 	fn project(&self, p: DVec3) -> (DVec3, DVec3) {
 		let (mut cpx, mut cpy, mut cpz) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut nx, mut ny, mut nz) = (0.0_f64, 0.0_f64, 0.0_f64);
-		// FFI returns false only when OCCT throws or the face is unbounded: a
-		// bounded face always has a boundary to fall back on.
-		assert!(ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz), "Face::project: OCCT threw or the face has no boundary (this is a bug)");
+		// A bounded face always has a boundary to fall back on, so a failure is a bug.
+		ffi::face_project_point(&self.inner, p.x, p.y, p.z, &mut cpx, &mut cpy, &mut cpz, &mut nx, &mut ny, &mut nz).unwrap_or_else(|e| panic!("Face::project: {}", e.what()));
 		(DVec3::new(cpx, cpy, cpz), DVec3::new(nx, ny, nz))
 	}
 
 	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
-		self.edges.get_or_init(|| ffi::face_edges(&self.inner).iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).iter()
+		self.edges.get_or_init(|| ffi::face_edges(&self.inner).map(|v| v.iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).unwrap_or_default()).iter()
 	}
 }

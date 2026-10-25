@@ -39,22 +39,22 @@ mod ffi_bridge {
 
 		// ==================== Shape Constructors ====================
 
-		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
 		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
 
-		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn deep_copy(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
+		fn deep_copy(shape: &TopoDS_Solid) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		// ==================== STEP I/O ====================
 
@@ -82,7 +82,7 @@ mod ffi_bridge {
 
 		// ==================== Transforms (solid → solid, no history) ====================
 
-		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn transform_rotate(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
@@ -91,21 +91,21 @@ mod ffi_bridge {
 		fn transform_mirror(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		// ==================== Shape Queries ====================
-		fn shape_volume(shape: &TopoDS_Solid) -> f64;
-		fn shape_center_of_mass(shape: &TopoDS_Solid, x: &mut f64, y: &mut f64, z: &mut f64);
-		fn shape_inertia_tensor(shape: &TopoDS_Solid, m00: &mut f64, m01: &mut f64, m02: &mut f64, m10: &mut f64, m11: &mut f64, m12: &mut f64, m20: &mut f64, m21: &mut f64, m22: &mut f64);
-		fn shape_contains_point(shape: &TopoDS_Solid, x: f64, y: f64, z: f64) -> bool;
-		fn shape_bounding_box(shape: &TopoDS_Solid, xmin: &mut f64, ymin: &mut f64, zmin: &mut f64, xmax: &mut f64, ymax: &mut f64, zmax: &mut f64);
+		fn shape_volume(shape: &TopoDS_Solid) -> Result<f64>;
+		fn shape_center_of_mass(shape: &TopoDS_Solid, x: &mut f64, y: &mut f64, z: &mut f64) -> Result<()>;
+		fn shape_inertia_tensor(shape: &TopoDS_Solid, m00: &mut f64, m01: &mut f64, m02: &mut f64, m10: &mut f64, m11: &mut f64, m12: &mut f64, m20: &mut f64, m21: &mut f64, m22: &mut f64) -> Result<()>;
+		fn shape_contains_point(shape: &TopoDS_Solid, x: f64, y: f64, z: f64) -> Result<bool>;
+		fn shape_bounding_box(shape: &TopoDS_Solid, xmin: &mut f64, ymin: &mut f64, zmin: &mut f64, xmax: &mut f64, ymax: &mut f64, zmax: &mut f64) -> Result<()>;
 
 		// ==================== Meshing ====================
 
-		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> MeshData;
+		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
 
 		// ==================== Topology enumeration ====================
 
-		fn solid_edges(shape: &TopoDS_Solid) -> UniquePtr<CxxVector<TopoDS_Edge>>;
-		fn solid_faces(shape: &TopoDS_Solid) -> UniquePtr<CxxVector<TopoDS_Face>>;
-		fn face_edges(face: &TopoDS_Face) -> UniquePtr<CxxVector<TopoDS_Edge>>;
+		fn solid_edges(shape: &TopoDS_Solid) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
+		fn solid_faces(shape: &TopoDS_Solid) -> Result<UniquePtr<CxxVector<TopoDS_Face>>>;
+		fn face_edges(face: &TopoDS_Face) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
 
 		fn clone_solid_handle(solid: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
 		fn clone_edge_handle(edge: &TopoDS_Edge) -> UniquePtr<TopoDS_Edge>;
@@ -117,14 +117,14 @@ mod ffi_bridge {
 		fn solid_tshape_id(solid: &TopoDS_Solid) -> u64;
 		fn edge_tshape_id(edge: &TopoDS_Edge) -> u64;
 
-		fn face_surface(face: &TopoDS_Face, ox: &mut f64, oy: &mut f64, oz: &mut f64, zx: &mut f64, zy: &mut f64, zz: &mut f64, xx: &mut f64, xy: &mut f64, xz: &mut f64, p1: &mut f64, p2: &mut f64) -> u32;
-		fn face_surface_area(face: &TopoDS_Face) -> f64;
-		fn face_center_of_mass(face: &TopoDS_Face, x: &mut f64, y: &mut f64, z: &mut f64);
-		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> bool;
+		fn face_surface(face: &TopoDS_Face, ox: &mut f64, oy: &mut f64, oz: &mut f64, zx: &mut f64, zy: &mut f64, zz: &mut f64, xx: &mut f64, xy: &mut f64, xz: &mut f64, p1: &mut f64, p2: &mut f64) -> Result<u32>;
+		fn face_surface_area(face: &TopoDS_Face) -> Result<f64>;
+		fn face_center_of_mass(face: &TopoDS_Face, x: &mut f64, y: &mut f64, z: &mut f64) -> Result<()>;
+		fn face_project_point(face: &TopoDS_Face, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, nx: &mut f64, ny: &mut f64, nz: &mut f64) -> Result<bool>;
 
 		// ==================== Edge Methods ====================
 
-		fn edge_approximation_segments(edge: &TopoDS_Edge, linear: f64, angular: f64, relative: bool) -> Vec<f64>;
+		fn edge_approximation_segments(edge: &TopoDS_Edge, linear: f64, angular: f64, relative: bool) -> Result<Vec<f64>>;
 
 		fn make_helix_edge(ax: f64, ay: f64, az: f64, xrx: f64, xry: f64, xrz: f64, radius: f64, pitch: f64, height: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn make_polygon_edges(coords: &[f64]) -> Result<UniquePtr<CxxVector<TopoDS_Edge>>>;
@@ -133,10 +133,10 @@ mod ffi_bridge {
 		fn make_arc_edge(sx: f64, sy: f64, sz: f64, mx: f64, my: f64, mz: f64, ex: f64, ey: f64, ez: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn make_bspline_edge(coords: &[f64], end_kind: u32, sx: f64, sy: f64, sz: f64, ex: f64, ey: f64, ez: f64) -> Result<UniquePtr<TopoDS_Edge>>;
 
-		fn edge_endpoints(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64);
-		fn edge_tangents(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64);
+		fn edge_endpoints(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64) -> Result<()>;
+		fn edge_tangents(edge: &TopoDS_Edge, sx: &mut f64, sy: &mut f64, sz: &mut f64, ex: &mut f64, ey: &mut f64, ez: &mut f64) -> Result<()>;
 		fn precision_confusion() -> f64;
-		fn edge_project_point(edge: &TopoDS_Edge, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, tx: &mut f64, ty: &mut f64, tz: &mut f64) -> bool;
+		fn edge_project_point(edge: &TopoDS_Edge, px: f64, py: f64, pz: f64, cpx: &mut f64, cpy: &mut f64, cpz: &mut f64, tx: &mut f64, ty: &mut f64, tz: &mut f64) -> Result<bool>;
 
 		fn deep_copy_edge(edge: &TopoDS_Edge) -> Result<UniquePtr<TopoDS_Edge>>;
 

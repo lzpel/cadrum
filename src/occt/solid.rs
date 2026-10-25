@@ -19,8 +19,7 @@ fn encode_orient(orient: ProfileOrient<'_>) -> (u32, f64, f64, f64, &[Edge]) {
 
 fn remap_colormap_by_order(old_inner: &ffi::TopoDS_Solid, new_inner: &ffi::TopoDS_Solid, old_colormap: &std::collections::HashMap<u64, crate::common::color::Color>) -> std::collections::HashMap<u64, crate::common::color::Color> {
 	let mut colormap = std::collections::HashMap::new();
-	let old_faces = ffi::solid_faces(old_inner);
-	let new_faces = ffi::solid_faces(new_inner);
+	let (Ok(old_faces), Ok(new_faces)) = (ffi::solid_faces(old_inner), ffi::solid_faces(new_inner)) else { return colormap };
 	for (old_face, new_face) in old_faces.iter().zip(new_faces.iter()) {
 		if let Some(&color) = old_colormap.get(&ffi::face_tshape_id(old_face)) {
 			colormap.insert(ffi::face_tshape_id(new_face), color);
@@ -95,7 +94,7 @@ impl Solid {
 		solids
 			.iter()
 			.map(|s| {
-				let local: std::collections::HashSet<u64> = ffi::solid_faces(s).iter().map(ffi::face_tshape_id).collect();
+				let local: std::collections::HashSet<u64> = ffi::solid_faces(s).map(|v| v.iter().map(ffi::face_tshape_id).collect()).unwrap_or_default();
 				let history = history.chunks_exact(2).filter(|p| local.contains(&p[0])).flatten().copied().collect();
 				Solid::new(ffi::clone_solid_handle(s), colormap.clone(), history)
 			})
@@ -146,32 +145,32 @@ impl SolidStruct for Solid {
 	// ==================== Constructors ====================
 
 	fn cube(corner0: DVec3, corner1: DVec3) -> Solid {
-		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z);
+		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z).unwrap_or_else(|e| panic!("Solid::cube: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn cylinder(r: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length());
+		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length()).unwrap_or_else(|e| panic!("Solid::cylinder: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn sphere(radius: f64) -> Solid {
-		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius);
+		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius).unwrap_or_else(|e| panic!("Solid::sphere: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn cone(r1: f64, r2: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length());
+		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length()).unwrap_or_else(|e| panic!("Solid::cone: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn torus(r1: f64, r2: f64, axis: DVec3) -> Solid {
-		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2);
+		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2).unwrap_or_else(|e| panic!("Solid::torus: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
 	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
-		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z);
+		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Solid::half_space: {}", e.what()));
 		Solid::new(inner, std::collections::HashMap::new(), Default::default())
 	}
 
@@ -184,11 +183,11 @@ impl SolidStruct for Solid {
 	// `OnceLock::new()`). See `notes/20260420-OCCTトポロジ不変性と設計含意.md`.
 
 	fn iter_edge(&self) -> impl Iterator<Item = &Edge> + '_ {
-		self.edges.get_or_init(|| ffi::solid_edges(&self.inner).iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).iter()
+		self.edges.get_or_init(|| ffi::solid_edges(&self.inner).map(|v| v.iter().map(|e_ref| Edge { inner: ffi::clone_edge_handle(e_ref) }).collect()).unwrap_or_default()).iter()
 	}
 
 	fn iter_face(&self) -> impl Iterator<Item = &Face> + '_ {
-		self.faces.get_or_init(|| ffi::solid_faces(&self.inner).iter().map(|f_ref| Face::new(ffi::clone_face_handle(f_ref))).collect()).iter()
+		self.faces.get_or_init(|| ffi::solid_faces(&self.inner).map(|v| v.iter().map(|f_ref| Face::new(ffi::clone_face_handle(f_ref))).collect()).unwrap_or_default()).iter()
 	}
 
 	fn iter_history(&self) -> impl Iterator<Item = [u64; 2]> + '_ {
@@ -432,12 +431,14 @@ impl SolidStruct for Solid {
 	// ==================== Queries ====================
 
 	fn volume(&self) -> f64 {
-		ffi::shape_volume(&self.inner)
+		ffi::shape_volume(&self.inner).unwrap_or(f64::NAN)
 	}
 
 	fn center(&self) -> DVec3 {
 		let (mut x, mut y, mut z) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z);
+		if ffi::shape_center_of_mass(&self.inner, &mut x, &mut y, &mut z).is_err() {
+			return DVec3::NAN;
+		}
 		DVec3::new(x, y, z)
 	}
 
@@ -445,20 +446,24 @@ impl SolidStruct for Solid {
 		let (mut m00, mut m01, mut m02) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut m10, mut m11, mut m12) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut m20, mut m21, mut m22) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_inertia_tensor(&self.inner, &mut m00, &mut m01, &mut m02, &mut m10, &mut m11, &mut m12, &mut m20, &mut m21, &mut m22);
+		if ffi::shape_inertia_tensor(&self.inner, &mut m00, &mut m01, &mut m02, &mut m10, &mut m11, &mut m12, &mut m20, &mut m21, &mut m22).is_err() {
+			return glam::DMat3::NAN;
+		}
 		// OCCT fills row-major; DMat3::from_cols_array is column-major so
 		// transpose when handing the components over.
 		glam::DMat3::from_cols_array(&[m00, m10, m20, m01, m11, m21, m02, m12, m22])
 	}
 
 	fn contains(&self, point: DVec3) -> bool {
-		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z)
+		ffi::shape_contains_point(&self.inner, point.x, point.y, point.z).unwrap_or(false)
 	}
 
 	fn bounding_box(&self) -> [DVec3; 2] {
 		let (mut xmin, mut ymin, mut zmin) = (0.0_f64, 0.0_f64, 0.0_f64);
 		let (mut xmax, mut ymax, mut zmax) = (0.0_f64, 0.0_f64, 0.0_f64);
-		ffi::shape_bounding_box(&self.inner, &mut xmin, &mut ymin, &mut zmin, &mut xmax, &mut ymax, &mut zmax);
+		if ffi::shape_bounding_box(&self.inner, &mut xmin, &mut ymin, &mut zmin, &mut xmax, &mut ymax, &mut zmax).is_err() {
+			return [DVec3::NAN; 2];
+		}
 		[DVec3::new(xmin, ymin, zmin), DVec3::new(xmax, ymax, zmax)]
 	}
 
@@ -481,7 +486,7 @@ impl SolidStruct for Solid {
 
 impl Transform for Solid {
 	fn translate(self, translation: DVec3) -> Self {
-		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z);
+		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z).unwrap_or_else(|e| panic!("Solid::translate: {}", e.what()));
 		// translate/rotate use shape.Moved() — TShape is shared but Location
 		// changes, so cached edges/faces (which embed Location) would go stale.
 		// Solid::new gives a fresh OnceLock::new() cache matching the new Location.
@@ -522,7 +527,7 @@ impl Transform for Solid {
 
 impl Clone for Solid {
 	fn clone(&self) -> Self {
-		let inner = ffi::deep_copy(&self.inner);
+		let inner = ffi::deep_copy(&self.inner).unwrap_or_else(|e| panic!("Solid::clone: {}", e.what()));
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// deep_copy rebuilds topology — post_ids in `history` no longer point
 		// to faces of the new shape. Drop history rather than remapping.

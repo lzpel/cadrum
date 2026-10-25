@@ -45,7 +45,7 @@ fn read_color_trailer(tail: &[u8]) -> std::collections::HashMap<u32, Color> {
 /// carries explicit ids instead.
 fn trailer_ids(solids: &cxx::CxxVector<ffi::TopoDS_Solid>) -> Vec<u64> {
 	// Every solid first, then every solid's faces in the same solid order.
-	let faces = solids.iter().flat_map(|s| ffi::solid_faces(s).iter().map(ffi::face_tshape_id).collect::<Vec<_>>());
+	let faces = solids.iter().flat_map(|s| ffi::solid_faces(s).map(|v| v.iter().map(ffi::face_tshape_id).collect::<Vec<_>>()).unwrap_or_default());
 	solids.iter().map(ffi::solid_tshape_id).chain(faces).collect()
 }
 
@@ -140,7 +140,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		let mut map = std::collections::HashMap::new();
 		for s in solids.iter().copied() {
 			if let Some(&c) = s.colormap().get(&s.id()) {
-				for f in ffi::solid_faces(s.inner()).iter() {
+				for f in ffi::solid_faces(s.inner()).iter().flat_map(|v| v.iter()) {
 					map.insert(ffi::face_tshape_id(f), c);
 				}
 			}
@@ -150,7 +150,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		map
 	};
 
-	let data = ffi::mesh_shape(&Solid::to_ffi(solids.iter().copied()), options.deflection_linear, options.deflection_angular, options.relative_linear);
+	let data = ffi::mesh_shape(&Solid::to_ffi(solids.iter().copied()), options.deflection_linear, options.deflection_angular, options.relative_linear).map_err(|_| Error::Tesselation)?;
 	if !data.success {
 		return Err(Error::Tesselation);
 	}
@@ -165,9 +165,9 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	// surface triangulation only; edges use `deflection_linear` as an absolute
 	// chord here.
 	let mut edges: Vec<DVec3> = Vec::new();
-	let solid_edges: Vec<_> = solids.iter().map(|s| ffi::solid_edges(s.inner())).collect();
+	let solid_edges: Vec<_> = solids.iter().filter_map(|s| ffi::solid_edges(s.inner()).ok()).collect();
 	for e in solid_edges.iter().flat_map(|v| v.iter()) {
-		let segs = ffi::edge_approximation_segments(e, options.deflection_linear, options.deflection_angular, options.relative_linear);
+		let segs = ffi::edge_approximation_segments(e, options.deflection_linear, options.deflection_angular, options.relative_linear).unwrap_or_default();
 		if segs.len() < 6 {
 			continue; // fewer than 2 points — nothing to draw
 		}
