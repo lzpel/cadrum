@@ -1078,14 +1078,10 @@ use std::f64::consts::{FRAC_PI_2, FRAC_PI_8};
 /// Regular tetrahedron on every other corner of `[-a, a]³`, its faces sharing the six lines between them.
 fn sew_tetrahedron() -> Result<Solid, Error> {
 	let a = 2.0;
-	// The cube's corners in Gray-code order; taken alternately, they keep one sign parity.
-	let cube: [DVec3; 8] = std::array::from_fn(|i| {
-		let g = i ^ (i >> 1);
-		DVec3::new([-a, a][g & 1], [-a, a][(g >> 1) & 1], [-a, a][(g >> 2) & 1])
-	});
-	let corners: [DVec3; 4] = std::array::from_fn(|i| cube[2 * i]);
-	let pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
-	let edges: [Edge; 6] = std::array::from_fn(|n| Edge::line(corners[pairs[n].0], corners[pairs[n].1]).expect("distinct corners"));
+	let cube: [DVec3; 8] = std::array::from_fn(|i| DVec3::new(if i & 1 != 0 { a } else { -a }, if i & 2 != 0 { a } else { -a }, if i & 4 != 0 { a } else { -a }));
+	// Corners 0, 3, 5 and 6 have an even number of +a: a regular tetrahedron.
+	let pairs = [(0, 3), (0, 6), (0, 5), (3, 6), (3, 5), (6, 5)];
+	let edges: [Edge; 6] = std::array::from_fn(|n| Edge::line(cube[pairs[n].0], cube[pairs[n].1]).expect("distinct corners"));
 	// Each face lists its edges counterclockwise about its outward normal, the first edge running forward.
 	let loops: [[usize; 3]; 4] = [[3, 5, 4], [2, 5, 1], [0, 4, 2], [1, 3, 0]];
 	let faces: [Face; 4] = loops.map(|l| {
