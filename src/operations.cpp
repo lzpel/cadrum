@@ -88,3 +88,50 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
     return out;
 } OP_CATCH
 }
+
+#include <BRepBuilderAPI_GTransform.hxx>
+#include <gp_GTrsf.hxx>
+#include <gp_Mat.hxx>
+namespace cadrum {
+template<class Builder>
+static OperationData operation_result(Builder& builder, const std::vector<TopoDS_Shape>& inputs) {
+    const TopoDS_Shape result = builder.Shape();
+    if (result.IsNull()) throw std::runtime_error("kernel produced null topology");
+    OperationData out;
+    out.shape = std::make_unique<TopoDS_Shape>(result);
+    out.complete = true;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> targets;
+    TopExp::MapShapes(result, targets);
+    for (size_t operand = 0; operand < inputs.size(); ++operand) {
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> sources;
+        TopExp::MapShapes(inputs[operand], sources);
+        for (int i = 1; i <= sources.Extent(); ++i) {
+            const auto& source = sources(i);
+            if (source.ShapeType() != TopAbs_VERTEX && source.ShapeType() != TopAbs_EDGE && source.ShapeType() != TopAbs_FACE) continue;
+            bool found = false;
+            auto add = [&](const TopoDS_Shape& target, uint32_t relation) {
+                const int index = targets.FindIndex(target);
+                if (index == 0) return;
+                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), uint32_t(index), relation, uint32_t(source.ShapeType()), uint32_t(target.ShapeType()), reinterpret_cast<uint64_t>(source.TShape().get()), reinterpret_cast<uint64_t>(target.TShape().get())});
+                found = true;
+            };
+            for (const auto& modified : builder.Modified(source)) add(modified, 0);
+            for (const auto& generated : builder.Generated(source)) add(generated, 1);
+            if (targets.Contains(source)) add(source, 3);
+            if (!found) {
+                const bool removed = builder.IsDeleted(source);
+                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), 0, uint32_t(removed ? 2 : 4), uint32_t(source.ShapeType()), 0, reinterpret_cast<uint64_t>(source.TShape().get()), 0});
+                if (!removed) out.complete = false;
+            }
+        }
+    }
+    return out;
+}
+OperationData op_affine(const TopoDS_Shape& s, rust::Slice<const double> v) try {
+    if (v.size() != 12) throw std::runtime_error("affine: expected 12 matrix coefficients");
+    gp_GTrsf t(gp_Mat(v[0],v[1],v[2],v[4],v[5],v[6],v[8],v[9],v[10]), gp_XYZ(v[3],v[7],v[11]));
+    BRepBuilderAPI_GTransform builder(s, t, true);
+    if (!builder.IsDone()) throw std::runtime_error("affine: transform failed");
+    return operation_result(builder, {s});
+} OP_CATCH
+}

@@ -62,3 +62,15 @@ Repair is explicit. `Shape::repair` copies geometry before running permitted
 ShapeFix tools, measures maximum topology tolerances and boundary counts, and
 rejects tolerance overruns or unrequested closure. Its report includes validation
 before and after repair; repair does not silently certify an invalid result.
+
+## 3. General affine transforms
+
+Affine matrices use column vectors. `Shape::affine` computes `M * [x,y,z,1]`,
+accepts glam's column-major `DMat4`, and rejects perspective, non-finite, and
+singular matrices before FFI. `A * B` applies B first; translation entries and
+scaling origins use model length units. `scale_xyz` scales around an explicit origin.
+
+General transforms may change geometry representation. OCCT's GTransform can
+convert analytic geometry to B-splines while preserving native trim boundaries.
+Results include indexed vertex, edge, and face correspondence and inherited face
+styles; missing correspondence is explicitly unknown rather than deleted.

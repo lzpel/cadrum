@@ -13,6 +13,7 @@ pub struct Diagnostic {
 
 #[derive(Debug)]
 pub struct OperationResult<T> {
+	pub history: History,
 	pub value: T,
 	pub warnings: Vec<Diagnostic>,
 	pub diagnostics: Vec<Diagnostic>,
@@ -137,5 +138,63 @@ impl Shape {
 			boundary_edges_before: data.boundary_before as usize,
 			boundary_edges_after: data.boundary_after as usize,
 		})
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum RelationKind {
+	Modified,
+	Generated,
+	Removed,
+	Unchanged,
+	Unknown,
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TopologyRef {
+	pub operand: usize,
+	pub index: usize,
+	pub kind: ShapeKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TopologyRelation {
+	pub source: TopologyRef,
+	pub target: Option<TopologyRef>,
+	pub relation: RelationKind,
+}
+#[derive(Clone, Debug, Default)]
+pub struct History {
+	pub relations: Vec<TopologyRelation>,
+	pub complete: bool,
+}
+impl Shape {
+	pub(crate) fn operation(data: ffi::OperationData, inputs: &[&Shape]) -> OperationResult<Shape> {
+		let mut value = Shape::new(data.shape);
+		let mut relations = Vec::new();
+		for row in data.history {
+			if let Some(source) = inputs.get(row.operand as usize) {
+				if row.target > 0 && row.target_kind == ShapeKind::Face as u32 {
+					if let Some(&color) = source.colormap.get(&row.source_id) {
+						value.colormap.insert(row.target_id, color);
+					}
+				}
+			}
+			relations.push(TopologyRelation {
+				source: TopologyRef { operand: row.operand as usize, index: row.source as usize, kind: ShapeKind::from_native(row.source_kind) },
+				target: (row.target > 0).then(|| TopologyRef { operand: 0, index: row.target as usize, kind: ShapeKind::from_native(row.target_kind) }),
+				relation: match row.relation {
+					0 => RelationKind::Modified,
+					1 => RelationKind::Generated,
+					2 => RelationKind::Removed,
+					3 => RelationKind::Unchanged,
+					_ => RelationKind::Unknown,
+				},
+			});
+		}
+		OperationResult {
+			value,
+			history: History { relations, complete: data.complete },
+			warnings: data.warnings.into_iter().map(|message| Diagnostic { message, subshapes: vec![] }).collect(),
+			diagnostics: vec![],
+		}
 	}
 }

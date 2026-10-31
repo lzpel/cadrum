@@ -12,6 +12,23 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct HistoryEntry {
+		operand: u32,
+		source: u32,
+		target: u32,
+		relation: u32,
+		source_kind: u32,
+		target_kind: u32,
+		source_id: u64,
+		target_id: u64,
+	}
+	struct OperationData {
+		shape: UniquePtr<TopoDS_Shape>,
+		history: Vec<HistoryEntry>,
+		complete: bool,
+		warnings: Vec<String>,
+	}
+
 	struct RepairData {
 		shape: UniquePtr<TopoDS_Shape>,
 		changed: bool,
@@ -51,6 +68,7 @@ mod ffi_bridge {
 		type TopoDS_Wire;
 
 		type TopoDS_Shape;
+		fn op_affine(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
 		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, flags: &[bool]) -> Result<RepairData>;
 		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;
 		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;

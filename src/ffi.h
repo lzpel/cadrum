@@ -26,6 +26,8 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct OperationData;
+OperationData op_affine(const TopoDS_Shape& shape, rust::Slice<const double> values);
 struct ValidationData;
 struct RepairData;
 RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, rust::Slice<const bool> flags);

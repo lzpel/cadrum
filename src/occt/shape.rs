@@ -7,7 +7,7 @@ use std::{
 };
 
 /// The native topology category. An empty compound is a valid empty result.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u32)]
 pub enum ShapeKind {
 	Compound = 0,
@@ -274,6 +274,27 @@ impl Shape {
 		Ok(out)
 	}
 }
+impl Shape {
+	/// Apply a column-vector affine matrix: output = matrix * [x, y, z, 1].
+	/// Composition A * B applies B first. Translation uses the model's length units.
+	pub fn affine(&self, matrix: crate::DMat4) -> Result<crate::OperationResult<Self>, Error> {
+		use super::report::{finite, kernel};
+		finite(matrix.to_cols_array(), "affine")?;
+		if matrix.x_axis.w != 0.0 || matrix.y_axis.w != 0.0 || matrix.z_axis.w != 0.0 || matrix.w_axis.w != 1.0 {
+			return Err(Error::Validation("affine: perspective matrices are unsupported".into()));
+		}
+		let determinant = crate::DMat3::from_mat4(matrix).determinant();
+		if !determinant.is_finite() || determinant == 0.0 {
+			return Err(Error::Validation("affine: singular matrix".into()));
+		}
+		let v = [matrix.x_axis.x, matrix.y_axis.x, matrix.z_axis.x, matrix.w_axis.x, matrix.x_axis.y, matrix.y_axis.y, matrix.z_axis.y, matrix.w_axis.y, matrix.x_axis.z, matrix.y_axis.z, matrix.z_axis.z, matrix.w_axis.z];
+		Ok(Self::operation(ffi::op_affine(&self.inner, &v).map_err(|e| kernel("affine", e))?, &[self]))
+	}
+	pub fn scale_xyz(&self, origin: DVec3, factors: DVec3) -> Result<crate::OperationResult<Self>, Error> {
+		self.affine(crate::DMat4::from_translation(origin) * crate::DMat4::from_scale(factors) * crate::DMat4::from_translation(-origin))
+	}
+}
+
 impl Clone for Shape {
 	fn clone(&self) -> Self {
 		let mut out = Self::new(ffi::native_copy(&self.inner).expect("Shape::clone"));

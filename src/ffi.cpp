@@ -670,7 +670,7 @@ std::unique_ptr<TopoDS_Solid> transform_mirror(
 
 double shape_volume(const TopoDS_Solid& shape) {
     GProp_GProps props;
-    BRepGProp::VolumeProperties(shape, props);
+    BRepGProp::VolumeProperties(shape, props, 1e-9);
     return props.Mass();
 }
 
@@ -678,7 +678,7 @@ void shape_center_of_mass(const TopoDS_Solid& shape,
     double& x, double& y, double& z)
 {
     GProp_GProps props;
-    BRepGProp::VolumeProperties(shape, props);
+    BRepGProp::VolumeProperties(shape, props, 1e-9);
     gp_Pnt com = props.CentreOfMass();
     x = com.X(); y = com.Y(); z = com.Z();
 }
@@ -694,7 +694,7 @@ void shape_inertia_tensor(const TopoDS_Solid& shape,
     // folded in). Shift here with I_world = I_com + m·(|d|² I - d⊗d),
     // where d = COM vector from world origin, m = volume (uniform density).
     GProp_GProps props;
-    BRepGProp::VolumeProperties(shape, props);
+    BRepGProp::VolumeProperties(shape, props, 1e-9);
     gp_Mat ic = props.MatrixOfInertia();
     gp_Pnt com = props.CentreOfMass();
     double mass = props.Mass();
