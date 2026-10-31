@@ -28,6 +28,18 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct GeometryInfoData;
+struct DistanceData;
+GeometryInfoData op_curve_info(const TopoDS_Edge&);
+GeometryInfoData op_surface_info(const TopoDS_Face&);
+double op_curve_length(const TopoDS_Edge&,double);
+rust::Vec<double> op_curve_abscissae(const TopoDS_Edge&,uint32_t,double);
+uint32_t op_classify_uv(const TopoDS_Face&,double,double,double);
+std::unique_ptr<std::vector<TopoDS_Shape>> op_boundary_wires(const TopoDS_Face&);
+rust::Vec<double> op_properties(const TopoDS_Shape&,uint32_t,double);
+uint32_t op_classify_point(const TopoDS_Shape&,double,double,double,double);
+DistanceData op_distance(const TopoDS_Shape&,const TopoDS_Shape&,double);
+std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape&,const TopoDS_Shape&,uint32_t);
 struct SplineData;
 std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData&,rust::Slice<const double>);
 std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData&,rust::Slice<const double>);

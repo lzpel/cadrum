@@ -213,3 +213,30 @@ typed topology views implement neither `Send` nor `Sync`, since extracted topolo
 can share mutable geometry even when each wrapper owns its handle. Earlier unsafe
 `Send` implementations have been removed. Independent workers may construct their
 own native shapes; mesh data and cancellation tokens remain transferable.
+
+## 11. Measurements and geometric frames
+
+Geometry classification preserves analytic parameters. `curve_info` and
+`surface_info` identify elementary, Bezier, B-spline, and other native families,
+parameter domains, periodicity, and available analytic frames/radii. Ellipse
+parameters are major/minor radii; cone parameters are reference radius and signed
+semi-angle. Curve evaluation supplies tangents through its first derivative.
+
+Measurements use native geometry. `Edge::length` and `sample_by_length` accept
+absolute integration/inversion tolerances; samples include trimmed endpoints.
+`mass_properties` integrates lengths, trimmed areas, or closed-solid volumes and
+returns center, inertia, and the native relative-error estimate. Surface/volume
+accuracy controls adaptive Gauss integration; length properties use OCCT's native
+linear-properties integration. Empty measurements have zero mass.
+
+Differential queries respect orientation and trimming. `curvature` evaluates curve
+curvature, while `curvature_uv` returns principal curvatures/directions, mean, and
+Gaussian curvature using the oriented face normal and first/second fundamental
+forms. Singular parameterizations return errors. `classify_uv` checks the actual
+trimmed domain, including holes; `boundary_wires` identifies outer/hole loops.
+
+Closest-point reports retain supporting topology. `distance` returns all minimum
+solutions reported by OCCT, their point pairs, native support shapes, and inner
+solution status; continuous families are represented by the kernel's finite set.
+`classify_point` supports solids, and `ancestors` traverses native adjacency while
+rejecting foreign subshapes. Existing convenience measurements remain available.

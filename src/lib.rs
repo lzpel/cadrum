@@ -22,6 +22,8 @@ pub use occt::modeling::{BooleanOp, JoinType, OffsetOptions, Partition, Partitio
 #[cfg(not(feature = "pure"))]
 pub use occt::modeling::{BooleanOptions, GluePolicy};
 #[cfg(not(feature = "pure"))]
+pub use occt::query::{BoundaryWire, ClosestPair, CurveInfo, CurveKind, DistanceReport, GeometrySurfaceKind, MassProperties, MeasurementKind, PointLocation, SurfaceCurvature, SurfaceInfo};
+#[cfg(not(feature = "pure"))]
 pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, RepairOptions, RepairReport, TopologyRef, TopologyRelation, ValidationIssue, ValidationReport};
 #[cfg(not(feature = "pure"))]
 pub use occt::{

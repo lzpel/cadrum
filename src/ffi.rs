@@ -16,6 +16,24 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct GeometryInfoData {
+		kind: u32,
+		range: Vec<f64>,
+		u_periodic: bool,
+		v_periodic: bool,
+		u_period: f64,
+		v_period: f64,
+		frame: Vec<f64>,
+		parameters: Vec<f64>,
+	}
+	struct DistanceData {
+		distance: f64,
+		inner_solution: bool,
+		points: Vec<f64>,
+		first: UniquePtr<CxxVector<TopoDS_Shape>>,
+		second: UniquePtr<CxxVector<TopoDS_Shape>>,
+	}
+
 	struct BooleanConfig {
 		fuzzy: f64,
 		glue: u32,
@@ -113,6 +131,17 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_curve_info(edge: &TopoDS_Edge) -> Result<GeometryInfoData>;
+		fn op_surface_info(face: &TopoDS_Face) -> Result<GeometryInfoData>;
+		fn op_curve_length(edge: &TopoDS_Edge, tolerance: f64) -> Result<f64>;
+		fn op_curve_abscissae(edge: &TopoDS_Edge, count: u32, tolerance: f64) -> Result<Vec<f64>>;
+		fn op_classify_uv(face: &TopoDS_Face, u: f64, v: f64, tolerance: f64) -> Result<u32>;
+		fn op_boundary_wires(face: &TopoDS_Face) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn op_properties(shape: &TopoDS_Shape, kind: u32, accuracy: f64) -> Result<Vec<f64>>;
+		fn op_classify_point(shape: &TopoDS_Shape, x: f64, y: f64, z: f64, tolerance: f64) -> Result<u32>;
+		fn op_distance(a: &TopoDS_Shape, b: &TopoDS_Shape, tolerance: f64) -> Result<DistanceData>;
+		fn op_ancestors(parent: &TopoDS_Shape, subshape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+
 		fn op_plane(values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn op_section(a: &TopoDS_Shape, b: &TopoDS_Shape, tolerance: f64, flags: &[bool]) -> Result<OperationData>;
 		fn op_split(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;

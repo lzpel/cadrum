@@ -439,3 +439,60 @@ rust::Vec<uint8_t> op_write_step(const TopoDS_Shape& s,const OperationControl& c
     rust::Vec<uint8_t> out;for(unsigned char c:os.str())out.push_back(c);return out;
 } OP_CATCH
 }
+
+#include <GCPnts_AbscissaPoint.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+namespace cadrum {
+static void append_frame(rust::Vec<double>& out,const gp_Ax2& f){append_xyz(out,f.Location().XYZ());append_xyz(out,f.Direction().XYZ());append_xyz(out,f.XDirection().XYZ());}
+GeometryInfoData op_curve_info(const TopoDS_Edge& edge) try {
+    BRepAdaptor_Curve c(edge);GeometryInfoData d{};d.kind=c.GetType();d.range={c.FirstParameter(),c.LastParameter()};d.u_periodic=c.IsPeriodic();if(d.u_periodic)d.u_period=c.Period();
+    switch(c.GetType()){
+    case GeomAbs_Line:append_xyz(d.frame,c.Line().Location().XYZ());append_xyz(d.frame,c.Line().Direction().XYZ());break;
+    case GeomAbs_Circle:append_frame(d.frame,c.Circle().Position());d.parameters.push_back(c.Circle().Radius());break;
+    case GeomAbs_Ellipse:append_frame(d.frame,c.Ellipse().Position());d.parameters={c.Ellipse().MajorRadius(),c.Ellipse().MinorRadius()};break;
+    default:break;}return d;
+} OP_CATCH
+GeometryInfoData op_surface_info(const TopoDS_Face& face) try {
+    BRepAdaptor_Surface s(face);GeometryInfoData d{};d.kind=s.GetType();double a,b,c,e;BRepTools::UVBounds(face,a,b,c,e);d.range={a,b,c,e};d.u_periodic=s.IsUPeriodic();d.v_periodic=s.IsVPeriodic();if(d.u_periodic)d.u_period=s.UPeriod();if(d.v_periodic)d.v_period=s.VPeriod();
+    switch(s.GetType()){
+    case GeomAbs_Plane:append_frame(d.frame,s.Plane().Position().Ax2());break;
+    case GeomAbs_Cylinder:append_frame(d.frame,s.Cylinder().Position().Ax2());d.parameters={s.Cylinder().Radius()};break;
+    case GeomAbs_Cone:append_frame(d.frame,s.Cone().Position().Ax2());d.parameters={s.Cone().RefRadius(),s.Cone().SemiAngle()};break;
+    case GeomAbs_Sphere:append_frame(d.frame,s.Sphere().Position().Ax2());d.parameters={s.Sphere().Radius()};break;
+    case GeomAbs_Torus:append_frame(d.frame,s.Torus().Position().Ax2());d.parameters={s.Torus().MajorRadius(),s.Torus().MinorRadius()};break;
+    default:break;}return d;
+} OP_CATCH
+double op_curve_length(const TopoDS_Edge& edge,double tolerance) try {BRepAdaptor_Curve c(edge);return GCPnts_AbscissaPoint::Length(c,c.FirstParameter(),c.LastParameter(),tolerance);} OP_CATCH
+rust::Vec<double> op_curve_abscissae(const TopoDS_Edge& edge,uint32_t count,double tolerance) try {
+    BRepAdaptor_Curve c(edge);const double length=GCPnts_AbscissaPoint::Length(c,tolerance);rust::Vec<double> out;out.push_back(c.FirstParameter());
+    for(uint32_t i=1;i+1<count;++i){GCPnts_AbscissaPoint point(tolerance,c,length*double(i)/double(count-1),c.FirstParameter());if(!point.IsDone())throw std::runtime_error("arc-length inversion failed");out.push_back(point.Parameter());}out.push_back(c.LastParameter());return out;
+} OP_CATCH
+uint32_t op_classify_uv(const TopoDS_Face& face,double u,double v,double tolerance) try {BRepClass_FaceClassifier classifier(face,gp_Pnt2d(u,v),tolerance);return classifier.State();} OP_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> op_boundary_wires(const TopoDS_Face& face) try {
+    auto out=native_vec_new();const auto outer=BRepTools::OuterWire(face);if(!outer.IsNull())out->push_back(outer);
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(face,TopAbs_WIRE,map);for(int i=1;i<=map.Extent();++i)if(!map(i).IsSame(outer))out->push_back(map(i));return out;
+} OP_CATCH
+rust::Vec<double> op_properties(const TopoDS_Shape& s,uint32_t kind,double accuracy) try {
+    GProp_GProps p;double error=0.0;
+    if(kind==0)BRepGProp::LinearProperties(s,p);
+    else if(kind==1)error=BRepGProp::SurfaceProperties(s,p,accuracy);
+    else {if(!TopExp_Explorer(s,TopAbs_SOLID).More()&&!native_empty(s))throw std::runtime_error("unsupported: volume requires solid topology");error=BRepGProp::VolumeProperties(s,p,accuracy,true);}
+    const auto c=p.CentreOfMass();const auto i=p.MatrixOfInertia();return {p.Mass(),c.X(),c.Y(),c.Z(),i(1,1),i(1,2),i(1,3),i(2,1),i(2,2),i(2,3),i(3,1),i(3,2),i(3,3),error};
+} OP_CATCH
+uint32_t op_classify_point(const TopoDS_Shape& s,double x,double y,double z,double tolerance) try {
+    bool found=false,boundary=false;for(TopExp_Explorer ex(s,TopAbs_SOLID);ex.More();ex.Next()){found=true;BRepClass3d_SolidClassifier classifier(ex.Current(),gp_Pnt(x,y,z),tolerance);if(classifier.State()==TopAbs_IN)return TopAbs_IN;if(classifier.State()==TopAbs_ON)boundary=true;}
+    if(!found)throw std::runtime_error("unsupported: point containment requires solids");
+    return boundary?TopAbs_ON:TopAbs_OUT;
+} OP_CATCH
+DistanceData op_distance(const TopoDS_Shape& a,const TopoDS_Shape& b,double tolerance) try {
+    if(native_empty(a)||native_empty(b))throw std::runtime_error("unsupported: distance to empty topology");
+    BRepExtrema_DistShapeShape distance(a,b,tolerance);if(!distance.IsDone())throw std::runtime_error("closest-point search failed");
+    DistanceData out{};out.distance=distance.Value();out.inner_solution=distance.InnerSolution();out.first=native_vec_new();out.second=native_vec_new();
+    for(int i=1;i<=distance.NbSolution();++i){append_xyz(out.points,distance.PointOnShape1(i).XYZ());append_xyz(out.points,distance.PointOnShape2(i).XYZ());out.first->push_back(distance.SupportOnShape1(i));out.second->push_back(distance.SupportOnShape2(i));}return out;
+} OP_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape& parent,const TopoDS_Shape& subshape,uint32_t kind) try {
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> all;TopExp::MapShapes(parent,all);if(!all.Contains(subshape))throw std::runtime_error("foreign subshape in adjacency query");
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> ancestors;TopExp::MapShapes(parent,static_cast<TopAbs_ShapeEnum>(kind),ancestors);auto out=native_vec_new();
+    for(int i=1;i<=ancestors.Extent();++i){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(ancestors(i),members);if(members.Contains(subshape))out->push_back(ancestors(i));}return out;
+} OP_CATCH
+}
