@@ -94,3 +94,17 @@ Authored data remains inspectable. `control_data`, `parameter_range`, `evaluate`
 and `evaluate_uv` read poles, weights, spline axes, positions, and first/second
 derivatives. Surface normals follow face orientation. Existing native profile and
 solid operations accept these edges and faces; BRep round trips preserve authored data.
+
+## 5. Reusable profiles
+
+Profiles normalize planar loop nesting. `Shape::profile` accepts wires in either
+winding and constructs faces for outer loops and islands, with direct child loops
+as holes. It rejects open, non-planar, crossing, touching, and coincident contours.
+`Face::from_wires` additionally requires the designated outer loop to contain every
+hole and rejects nested holes or disconnected outer regions.
+
+Native faces remain reusable. `Shape::extrude` retains holes and disconnected
+regions under oblique displacement; `revolve` takes an explicit axis and signed
+angle in radians, limited to one full turn. Both operations return native output
+and builder-provided vertex/edge/face history, including profile-edge to side-face
+relations. General profile construction currently marks history as incomplete.

@@ -66,6 +66,9 @@ impl Shape {
 }
 
 pub(crate) fn kernel(operation: &str, error: cxx::Exception) -> Error {
+	if let Some(kind) = error.what().strip_prefix("unsupported: ") {
+		return Error::Unsupported { operation: operation.into(), kind: kind.into() };
+	}
 	Error::Operation { operation: operation.into(), diagnostics: vec![error.what().into()], subshapes: Vec::new() }
 }
 pub(crate) fn finite(values: impl IntoIterator<Item = f64>, operation: &str) -> Result<(), Error> {

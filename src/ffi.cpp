@@ -275,7 +275,7 @@ std::unique_ptr<TopoDS_Face> make_face(
     if (fixed.IsNull() || fixed.ShapeType() != TopAbs_FACE) throw std::runtime_error("loops bound no single region");
     const TopoDS_Face& face = TopoDS::Face(fixed);
     GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
+    BRepGProp::SurfaceProperties(face, props, 1e-9);
     if (!(props.Mass() > 0) || !BRepCheck_Analyzer(face).IsValid()) throw std::runtime_error("loops bound no finite region: wind each loop counterclockwise about the surface normal round the face, so holes run clockwise");
     // The fix widens an edge's tolerance to cover its distance from the surface.
     if (BRep_Tool::MaxTolerance(face, TopAbs_EDGE) > 1.0e-4) throw std::runtime_error("profile does not lie on the surface");
@@ -881,7 +881,7 @@ uint64_t edge_tshape_id(const TopoDS_Edge& edge) {
 
 double face_surface_area(const TopoDS_Face& face) {
     GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
+    BRepGProp::SurfaceProperties(face, props, 1e-9);
     return props.Mass();
 }
 
@@ -943,7 +943,7 @@ void face_center_of_mass(const TopoDS_Face& face,
     double& x, double& y, double& z)
 {
     GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
+    BRepGProp::SurfaceProperties(face, props, 1e-9);
     gp_Pnt center = props.CentreOfMass();
     x = center.X(); y = center.Y(); z = center.Z();
 }

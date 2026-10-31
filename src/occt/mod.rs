@@ -12,3 +12,5 @@ pub mod shape;
 pub mod report;
 
 pub mod geometry;
+
+pub mod modeling;

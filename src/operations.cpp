@@ -223,3 +223,65 @@ std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face,rust::Slice
     BRepBuilderAPI_MakeFace builder(s,trim[0],trim[1],trim[2],trim[3],1e-7);if(!builder.IsDone())throw std::runtime_error("surface trim failed");return std::make_unique<TopoDS_Face>(builder.Face());
 } OP_CATCH
 }
+
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <BRepClass_FaceClassifier.hxx>
+#include <BRep_Builder.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Iterator.hxx>
+#include <gp_Pln.hxx>
+namespace cadrum {
+OperationData op_profile(const std::vector<TopoDS_Shape>& wires,double tolerance,bool explicit_outer) try {
+    if(wires.empty())throw std::runtime_error("profile: no boundary wires");
+    std::vector<TopoDS_Face> disks;
+    std::vector<TopoDS_Wire> normalized;
+    gp_Pln plane;
+    for(size_t i=0;i<wires.size();++i) {
+        const auto& wire=TopoDS::Wire(wires[i]);
+        if(!BRep_Tool::IsClosed(wire)||!BRepCheck_Analyzer(wire).IsValid())throw std::runtime_error("profile: invalid or open wire");
+        BRepBuilderAPI_MakeFace maker(wire,true);
+        if(!maker.IsDone()||!BRepCheck_Analyzer(maker.Face()).IsValid())throw std::runtime_error("profile: non-planar or self-intersecting wire");
+        const gp_Pln local=BRepAdaptor_Surface(maker.Face()).Plane();
+        if(i==0)plane=local;
+        if(std::abs(local.Axis().Direction().Dot(plane.Axis().Direction()))<1.0-1e-10||plane.Distance(local.Location())>tolerance)throw std::runtime_error("profile: wires are not coplanar");
+        BRepBuilderAPI_MakeFace on_plane(plane,wire,true);
+        disks.push_back(on_plane.Face());normalized.push_back(BRepTools::OuterWire(on_plane.Face()));
+    }
+    std::vector<std::vector<bool>> inside(wires.size(),std::vector<bool>(wires.size(),false));
+    std::vector<int> depth(wires.size(),0);
+    for(size_t i=0;i<wires.size();++i) for(size_t j=i+1;j<wires.size();++j) {
+        BRepExtrema_DistShapeShape distance(wires[i],wires[j]);
+        if(!distance.IsDone()||distance.Value()<=tolerance)throw std::runtime_error("profile: loops intersect or touch");
+    }
+    for(size_t i=0;i<wires.size();++i) {
+        TopExp_Explorer vertex(wires[i],TopAbs_VERTEX);if(!vertex.More())throw std::runtime_error("profile: wire has no vertex");
+        const gp_Pnt point=BRep_Tool::Pnt(TopoDS::Vertex(vertex.Current()));
+        for(size_t j=0;j<wires.size();++j) if(i!=j) { BRepClass_FaceClassifier classifier(disks[j],point,tolerance);inside[i][j]=classifier.State()==TopAbs_IN;if(inside[i][j])++depth[i]; }
+    }
+    if(explicit_outer) { if(depth[0]!=0)throw std::runtime_error("face: outer wire is inside a hole");for(size_t i=1;i<wires.size();++i)if(depth[i]!=1||!inside[i][0])throw std::runtime_error("face: hole is outside outer wire or nested"); }
+    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0;
+    for(size_t i=0;i<wires.size();++i) if(depth[i]%2==0) {
+        BRepBuilderAPI_MakeFace face(plane,normalized[i],true);
+        for(size_t j=0;j<wires.size();++j)if(depth[j]==depth[i]+1&&inside[j][i])face.Add(TopoDS::Wire(normalized[j].Reversed()));
+        if(!face.IsDone()||!BRepCheck_Analyzer(face.Face()).IsValid())throw std::runtime_error("profile: invalid nested region");
+        only=face.Face();b.Add(compound,only);++count;
+    }
+    OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(count==1?only:compound);out.complete=false;return out;
+} OP_CATCH
+static void require_profile(const TopoDS_Shape& s) {
+    if(s.ShapeType()==TopAbs_FACE)return;
+    if(s.ShapeType()!=TopAbs_COMPOUND)throw std::runtime_error("unsupported: expected face or compound of faces");
+    for(TopoDS_Iterator it(s);it.More();it.Next())require_profile(it.Value());
+}
+OperationData op_prism(const TopoDS_Shape& s,double x,double y,double z) try {
+    require_profile(s);if(!BRepCheck_Analyzer(s).IsValid())throw std::runtime_error("extrude: invalid profile");
+    BRepPrimAPI_MakePrism builder(s,gp_Vec(x,y,z),true);if(!builder.IsDone())throw std::runtime_error("extrude failed");return operation_result(builder,{s});
+} OP_CATCH
+OperationData op_revolution(const TopoDS_Shape& s,rust::Slice<const double> v) try {
+    require_profile(s);if(!BRepCheck_Analyzer(s).IsValid())throw std::runtime_error("revolve: invalid profile");
+    BRepPrimAPI_MakeRevol builder(s,gp_Ax1(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])),v[6],true);if(!builder.IsDone())throw std::runtime_error("revolve failed");return operation_result(builder,{s});
+} OP_CATCH
+}
