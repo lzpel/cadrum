@@ -29,6 +29,13 @@ struct RustWriter;
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
 struct OperationData;
+struct StepDefinitionData;
+struct StepInstanceData;
+struct StepReadData;
+struct StepWriteConfig;
+struct StepWriteData;
+StepReadData op_step_read(rust::Slice<const uint8_t>,double,bool,bool,bool,const OperationControl&);
+StepWriteData op_step_write(const std::vector<TopoDS_Shape>&,rust::Slice<const StepDefinitionData>,rust::Slice<const StepInstanceData>,rust::Slice<const uint64_t>,rust::Slice<const float>,const StepWriteConfig&,const OperationControl&);
 struct DraftData;
 DraftData op_draft(const TopoDS_Shape&,const std::vector<TopoDS_Shape>&,rust::Slice<const double>,bool,const OperationControl&);
 OperationData op_project(const TopoDS_Shape&,const TopoDS_Shape&,rust::Slice<const double>,bool,double,bool,bool,bool);

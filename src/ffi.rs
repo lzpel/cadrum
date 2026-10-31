@@ -16,6 +16,43 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct StepDefinitionData {
+		id: String,
+		name: String,
+		shape: i32,
+	}
+	struct StepInstanceData {
+		id: String,
+		name: String,
+		reference: String,
+		has_reference: bool,
+		parent: i32,
+		definition: u32,
+		transform: Vec<f64>,
+	}
+	struct StepReadData {
+		operation: OperationData,
+		units: Vec<String>,
+		normalized_unit: f64,
+		roots: usize,
+		transferred: usize,
+		geometry: UniquePtr<CxxVector<TopoDS_Shape>>,
+		definitions: Vec<StepDefinitionData>,
+		instances: Vec<StepInstanceData>,
+		color_ids: Vec<u64>,
+		rgb: Vec<f32>,
+	}
+	struct StepWriteConfig {
+		model_unit: f64,
+		write_unit: u32,
+		schema: u32,
+		assembly: bool,
+	}
+	struct StepWriteData {
+		bytes: Vec<u8>,
+		warnings: Vec<String>,
+	}
+
 	struct DraftData {
 		operation: OperationData,
 		statuses: Vec<u32>,
@@ -178,6 +215,8 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_step_read(data: &[u8], unit: f64, allow_missing: bool, allow_partial: bool, document: bool, control: &OperationControl) -> Result<StepReadData>;
+		fn op_step_write(geometry: &CxxVector<TopoDS_Shape>, definitions: &[StepDefinitionData], instances: &[StepInstanceData], ids: &[u64], rgb: &[f32], config: &StepWriteConfig, control: &OperationControl) -> Result<StepWriteData>;
 		fn op_draft(shape: &TopoDS_Shape, faces: &CxxVector<TopoDS_Shape>, values: &[f64], flag: bool, control: &OperationControl) -> Result<DraftData>;
 		fn op_project(source: &TopoDS_Shape, target: &TopoDS_Shape, vector: &[f64], point: bool, tolerance: f64, untrimmed: bool, reject_multiple: bool, reject_empty: bool) -> Result<OperationData>;
 		fn op_chamfer(shape: &TopoDS_Shape, selected: &CxxVector<TopoDS_Shape>, values: &[f64], control: &OperationControl) -> Result<OperationData>;

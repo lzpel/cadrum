@@ -2436,3 +2436,107 @@ void write_step_color_stream(
 
 } // namespace cadrum
 
+
+#include <XSControl_TransferReader.hxx>
+#include <StepRepr_NextAssemblyUsageOccurrence.hxx>
+#include <StepRepr_GlobalUnitAssignedContext.hxx>
+#include <StepRepr_ProductDefinitionShape.hxx>
+#include <StepShape_ContextDependentShapeRepresentation.hxx>
+#include <StepRepr_RepresentationRelationshipWithTransformation.hxx>
+#include <StepRepr_ItemDefinedTransformation.hxx>
+#include <StepGeom_Axis2Placement3d.hxx>
+#include <StepGeom_GeomRepContextAndGlobUnitAssCtxAndGlobUncertaintyAssCtx.hxx>
+#include <StepGeom_GeometricRepresentationContextAndGlobalUnitAssignedContext.hxx>
+#include <STEPConstruct_UnitContext.hxx>
+#include <STEPConstruct_Assembly.hxx>
+#include <StepToGeom.hxx>
+#include <StepData_Factors.hxx>
+#include <Geom_Axis2Placement.hxx>
+#include <UnitsMethods.hxx>
+#include <functional>
+#include <unordered_set>
+namespace cadrum {
+static std::string step_text(const Handle(TCollection_HAsciiString)& s){return s.IsNull()?std::string():std::string(s->ToCString());}
+static rust::Vec<double> step_matrix(const gp_Trsf& t){rust::Vec<double> out;for(int col=1;col<=4;++col)for(int row=1;row<=4;++row)out.push_back(row==4?(col==4?1.0:0.0):t.Value(row,col));return out;}
+static gp_Trsf step_transform(const rust::Vec<double>& v){if(v.size()!=16)throw std::runtime_error("unresolved instance placement");gp_Trsf t;t.SetValues(v[0],v[4],v[8],v[12],v[1],v[5],v[9],v[13],v[2],v[6],v[10],v[14]);return t;}
+static bool step_placement(const Handle(StepShape_ContextDependentShapeRepresentation)& cdsr,const Interface_Graph& graph,double unit,gp_Trsf& t){
+    const auto relationship=Handle(StepRepr_RepresentationRelationshipWithTransformation)::DownCast(cdsr->RepresentationRelation());if(relationship.IsNull())return false;
+    const auto transform=relationship->TransformationOperator().ItemDefinedTransformation();if(transform.IsNull())return false;
+    const auto first=Handle(StepGeom_Axis2Placement3d)::DownCast(transform->TransformItem1()),second=Handle(StepGeom_Axis2Placement3d)::DownCast(transform->TransformItem2());if(first.IsNull()||second.IsNull())return false;
+    const auto context=relationship->Rep2()->ContextOfItems();Handle(StepRepr_GlobalUnitAssignedContext) global=Handle(StepRepr_GlobalUnitAssignedContext)::DownCast(context);
+    const auto combined=Handle(StepGeom_GeomRepContextAndGlobUnitAssCtxAndGlobUncertaintyAssCtx)::DownCast(context);if(!combined.IsNull())global=combined->GlobalUnitAssignedContext();
+    const auto simple=Handle(StepGeom_GeometricRepresentationContextAndGlobalUnitAssignedContext)::DownCast(context);if(!simple.IsNull())global=simple->GlobalUnitAssignedContext();
+    if(global.IsNull())return false;
+    StepData_Factors factors;factors.SetCascadeUnit(unit);STEPConstruct_UnitContext units;if(units.ComputeFactors(global,factors)!=0)return false;factors.InitializeFactors(units.LengthFactor(),units.PlaneAngleFactor(),units.SolidAngleFactor());
+    const auto a=StepToGeom::MakeAxis2Placement(first,factors),b=StepToGeom::MakeAxis2Placement(second,factors);if(a.IsNull()||b.IsNull())return false;
+    t.SetDisplacement(gp_Ax3(a->Ax2()),gp_Ax3(b->Ax2()));if(STEPConstruct_Assembly::CheckSRRReversesNAUO(graph,cdsr))t.Invert();return true;
+}
+StepReadData op_step_read(rust::Slice<const uint8_t> bytes,double unit,bool allow_missing,bool allow_partial,bool document,const OperationControl& control) try {
+    std::istringstream is(std::string(reinterpret_cast<const char*>(bytes.data()),bytes.size()));STEPControl_Reader reader;DESTEP_Parameters params;params.ReadProductMetadata=document;
+    if(reader.ReadStream("memory.step",params,is)!=IFSelect_RetDone)throw std::runtime_error("STEP parse failed");
+    StepReadData out{};out.geometry=native_vec_new();out.normalized_unit=unit;NCollection_Sequence<TCollection_AsciiString> lengths,angles,solid_angles;reader.FileUnits(lengths,angles,solid_angles);for(const auto& name:lengths)out.units.push_back(name.ToCString());
+    if(lengths.IsEmpty()){if(!allow_missing)throw std::runtime_error("STEP length units are missing");out.operation.warnings.push_back("STEP length units missing; kernel fallback is used before normalization");}
+    reader.SetSystemLengthUnit(unit);out.roots=reader.NbRootsForTransfer();Handle(NativeProgress) progress=new NativeProgress(control);out.transferred=reader.TransferRoots(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    if(out.transferred<out.roots){if(!allow_partial)throw std::runtime_error("STEP transfer was partial");out.operation.warnings.push_back("STEP transfer was partial");}
+    if(reader.OneShape().IsNull())throw std::runtime_error("STEP contains no transferred geometry");
+    out.operation.shape=std::make_unique<TopoDS_Shape>(reader.OneShape());out.operation.complete=false;
+    STEPConstruct_Styles styles(reader.WS());std::vector<std::pair<TopoDS_Shape,Quantity_Color>> painted;
+    if(styles.LoadStyles()){const auto& graph=styles.Graph();for(int i=1;i<=styles.NbRootStyles();++i)if(!is_overridden(graph,styles.RootStyle(i),true))paint(styles,styles.RootStyle(i),painted);for(int i=1;i<=styles.NbStyles();++i)if(!is_overridden(graph,styles.Style(i),false))paint(styles,styles.Style(i),painted);}
+    for(int i=1;i<=styles.NbStyles();++i){Handle(StepVisual_Colour) surface,boundary,curve;STEPConstruct_RenderingProperties properties;bool component=false;styles.GetColors(styles.Style(i),surface,boundary,curve,properties,component);if(properties.IsDefined()&&properties.GetRGBAColor().Alpha()<1.0)out.operation.warnings.push_back("STEP surface transparency is not retained");}
+    std::unordered_map<uint64_t,Quantity_Color> painted_colors;bool conflicting_colors=false;
+    for(const auto& entry:painted){const auto key=reinterpret_cast<uint64_t>(entry.first.TShape().get());const auto found=painted_colors.find(key);if(found!=painted_colors.end()&&!found->second.IsEqual(entry.second))conflicting_colors=true;painted_colors[key]=entry.second;}
+    if(conflicting_colors)out.operation.warnings.push_back("Conflicting styles on shared STEP topology are flattened with the last style winning");
+    std::unordered_map<uint64_t,std::array<float,3>> colors;collect_colors(painted,colors);for(const auto& pair:colors){out.color_ids.push_back(pair.first);for(float c:pair.second)out.rgb.push_back(c);}
+    if(!document)return out;
+    const auto model=reader.StepModel();const auto tp=reader.WS()->TransferReader()->TransientProcess();const auto& graph=reader.WS()->Graph();
+    std::unordered_map<const StepBasic_ProductDefinition*,size_t> definitions;
+    for(int i=1;i<=model->NbEntities();++i){const auto sdr=Handle(StepShape_ShapeDefinitionRepresentation)::DownCast(model->Value(i));if(sdr.IsNull())continue;const auto property=sdr->Definition().PropertyDefinition();if(property.IsNull())continue;const auto pd=property->Definition().ProductDefinition();if(pd.IsNull()||definitions.count(pd.get()))continue;
+        StepDefinitionData d{};if(!pd->Formation().IsNull()&&!pd->Formation()->OfProduct().IsNull()){d.id=step_text(pd->Formation()->OfProduct()->Id());d.name=step_text(pd->Formation()->OfProduct()->Name());}if(d.name.empty())out.operation.warnings.push_back("STEP product has no name");
+        TopoDS_Shape shape=TransferBRep::ShapeResult(tp,pd);if(shape.IsNull())shape=TransferBRep::ShapeResult(tp,sdr->UsedRepresentation());d.shape=-1;if(!shape.IsNull()){d.shape=int(out.geometry->size());out.geometry->push_back(shape);}else out.operation.warnings.push_back("STEP definition has no transferred geometry");definitions[pd.get()]=out.definitions.size();out.definitions.push_back(std::move(d));
+    }
+    std::unordered_map<const StepRepr_NextAssemblyUsageOccurrence*,size_t> occurrences;std::vector<bool> child(out.definitions.size(),false);
+    for(int i=1;i<=model->NbEntities();++i){const auto nauo=Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(model->Value(i));if(nauo.IsNull())continue;const auto parent=definitions.find(nauo->RelatingProductDefinition().get()),part=definitions.find(nauo->RelatedProductDefinition().get());if(parent==definitions.end()||part==definitions.end()){out.operation.warnings.push_back("STEP assembly occurrence references an unsupported definition");continue;}
+        StepInstanceData instance{};instance.id=step_text(nauo->Id());instance.name=step_text(nauo->Name());instance.has_reference=nauo->HasReferenceDesignator();instance.reference=step_text(nauo->ReferenceDesignator());instance.parent=int(parent->second);instance.definition=part->second;child[part->second]=true;occurrences[nauo.get()]=out.instances.size();out.instances.push_back(std::move(instance));
+    }
+    for(int i=1;i<=model->NbEntities();++i){const auto cdsr=Handle(StepShape_ContextDependentShapeRepresentation)::DownCast(model->Value(i));if(cdsr.IsNull()||cdsr->RepresentedProductRelation().IsNull())continue;const auto nauo=Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(cdsr->RepresentedProductRelation()->Definition().ProductDefinitionRelationship());if(nauo.IsNull())continue;const auto found=occurrences.find(nauo.get());if(found==occurrences.end())continue;gp_Trsf t;if(step_placement(cdsr,graph,unit,t))out.instances[found->second].transform=step_matrix(t);else out.operation.warnings.push_back("STEP occurrence placement is unsupported or unresolved");}
+    for(size_t i=0;i<out.definitions.size();++i)if(!child[i]){StepInstanceData root{};root.parent=-1;root.definition=i;root.name=out.definitions[i].name;root.transform=step_matrix(gp_Trsf());out.instances.push_back(std::move(root));}
+    if(out.definitions.empty())out.operation.warnings.push_back("STEP product metadata was unavailable");
+    return out;
+} catch(const Standard_Failure& e){throw std::runtime_error(e.what());}
+StepWriteData op_step_write(const std::vector<TopoDS_Shape>& geometry,rust::Slice<const StepDefinitionData> definitions,rust::Slice<const StepInstanceData> instances,rust::Slice<const uint64_t> ids,rust::Slice<const float> rgb,const StepWriteConfig& config,const OperationControl& control) try {
+    StepWriteData out{};std::unordered_map<uint64_t,Quantity_Color> colors;for(size_t i=0;i<ids.size();++i)colors.emplace(ids[i],Quantity_Color(rgb[3*i],rgb[3*i+1],rgb[3*i+2],Quantity_TOC_RGB));
+    std::vector<TopoDS_Shape> cached(definitions.size());std::vector<int> state(definitions.size(),0);std::function<TopoDS_Shape(size_t)> build=[&](size_t index)->TopoDS_Shape{
+        if(index>=definitions.size())throw std::runtime_error("definition index out of bounds");
+        if(state[index]==1)throw std::runtime_error("cyclic assembly");
+        if(state[index]==2)return cached[index];
+        state[index]=1;const auto& d=definitions[index];
+        if(d.shape>=0){if(size_t(d.shape)>=geometry.size())throw std::runtime_error("definition geometry index out of bounds");BRepBuilderAPI_Copy copy(geometry[d.shape]);cached[index]=copy.Shape();NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> old;TopExp::MapShapes(geometry[d.shape],old);for(int i=1;i<=old.Extent();++i){const auto found=colors.find(reinterpret_cast<uint64_t>(old(i).TShape().get()));if(found!=colors.end()){const Quantity_Color color=found->second;const auto shape=copy.ModifiedShape(old(i));colors[reinterpret_cast<uint64_t>(shape.TShape().get())]=color;}}}
+        else{BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);for(const auto& instance:instances)if(instance.parent==int(index))b.Add(compound,build(instance.definition).Moved(TopLoc_Location(step_transform(instance.transform))));cached[index]=compound;}
+        state[index]=2;return cached[index];
+    };
+    std::vector<TopoDS_Shape> roots;if(definitions.empty())roots=geometry;else for(const auto& instance:instances)if(instance.parent<0)roots.push_back(build(instance.definition).Moved(TopLoc_Location(step_transform(instance.transform))));if(roots.empty())throw std::runtime_error("STEP has no roots");
+    STEPControl_Writer writer;writer.SetShapeProcessFlags(ShapeProcess::OperationsFlags{});DESTEP_Parameters params;params.WriteUnit=static_cast<UnitsMethods_LengthUnit>(config.write_unit);params.WriteSchema=static_cast<DESTEP_Parameters::WriteMode_StepSchema>(config.schema);params.WriteAssembly=config.assembly?DESTEP_Parameters::WriteMode_Assembly_On:DESTEP_Parameters::WriteMode_Assembly_Off;writer.Model()->SetLocalLengthUnit(config.model_unit);writer.Model()->SetWriteLengthUnit(UnitsMethods::GetLengthUnitScale(params.WriteUnit,UnitsMethods_LengthUnit_Millimeter));
+    for(const auto& root:roots){Handle(NativeProgress) progress=new NativeProgress(control);if(writer.Transfer(root,STEPControl_AsIs,params,true,progress->Start())!=IFSelect_RetDone)throw std::runtime_error("STEP transfer failed");if(operation_cancelled(control))throw std::runtime_error("cancelled");}
+    const auto ws=writer.WS();const auto fp=ws->TransferWriter()->FinderProcess();std::unordered_map<const StepBasic_ProductDefinition*,size_t> product_indices;
+    std::unordered_set<const StepBasic_ProductDefinition*> children;
+    for(int i=1;i<=writer.Model()->NbEntities();++i){const auto link=Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(writer.Model()->Value(i));if(!link.IsNull())children.insert(link->RelatedProductDefinition().get());}
+    std::vector<Handle(StepBasic_ProductDefinition)> root_products;std::unordered_set<const StepBasic_ProductDefinition*> seen_products;
+    for(int i=1;i<=writer.Model()->NbEntities();++i){const auto sdr=Handle(StepShape_ShapeDefinitionRepresentation)::DownCast(writer.Model()->Value(i));if(sdr.IsNull()||sdr->Definition().PropertyDefinition().IsNull())continue;const auto pd=sdr->Definition().PropertyDefinition()->Definition().ProductDefinition();if(!pd.IsNull()&&!children.count(pd.get())&&seen_products.insert(pd.get()).second)root_products.push_back(pd);}
+    std::unordered_map<size_t,Handle(StepBasic_ProductDefinition)> roots_by_definition;size_t root_index=0;
+    for(const auto& instance:instances)if(instance.parent<0){if(root_products.size()==roots.size())roots_by_definition[instance.definition]=root_products[root_index];++root_index;}
+    for(size_t i=0;i<definitions.size();++i)if(state[i]==2){
+        Handle(StepBasic_ProductDefinition) pd;const auto root=roots_by_definition.find(i);if(root!=roots_by_definition.end())pd=root->second;
+        if(pd.IsNull()){
+            Handle(StepShape_ShapeDefinitionRepresentation) sdr;fp->FindTypedTransient(TransferBRep::ShapeMapper(fp,cached[i]),STANDARD_TYPE(StepShape_ShapeDefinitionRepresentation),sdr);
+            if(sdr.IsNull())for(const auto& instance:instances)if(instance.definition==i){const auto placed=cached[i].Moved(TopLoc_Location(step_transform(instance.transform)));fp->FindTypedTransient(TransferBRep::ShapeMapper(fp,placed),STANDARD_TYPE(StepShape_ShapeDefinitionRepresentation),sdr);if(!sdr.IsNull())break;}
+            if(!sdr.IsNull())pd=sdr->Definition().PropertyDefinition()->Definition().ProductDefinition();
+        }
+        if(!pd.IsNull()){const auto product=pd->Formation()->OfProduct();product->SetId(new TCollection_HAsciiString(std::string(definitions[i].id).c_str()));product->SetName(new TCollection_HAsciiString(std::string(definitions[i].name).c_str()));product_indices[pd.get()]=i;}else out.warnings.push_back("STEP definition name could not be associated: "+std::string(definitions[i].name));
+    }
+    std::vector<bool> assigned(instances.size(),false);auto model=writer.Model();for(int i=1;i<=model->NbEntities();++i){const auto nauo=Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(model->Value(i));if(nauo.IsNull())continue;const auto parent=product_indices.find(nauo->RelatingProductDefinition().get()),part=product_indices.find(nauo->RelatedProductDefinition().get());if(parent==product_indices.end()||part==product_indices.end())continue;for(size_t j=0;j<instances.size();++j)if(!assigned[j]&&instances[j].parent==int(parent->second)&&instances[j].definition==part->second){const auto& instance=instances[j];nauo->Init(new TCollection_HAsciiString(std::string(instance.id).c_str()),new TCollection_HAsciiString(std::string(instance.name).c_str()),false,nullptr,nauo->RelatingProductDefinition(),nauo->RelatedProductDefinition(),instance.has_reference,new TCollection_HAsciiString(std::string(instance.reference).c_str()));assigned[j]=true;break;}}
+    for(size_t i=0;i<instances.size();++i)if(instances[i].parent>=0&&!assigned[i])out.warnings.push_back("STEP occurrence metadata could not be associated with its product link");
+    if(config.schema==3&&!colors.empty())out.warnings.push_back("AP203 export omits face and solid colors; use AP214 or AP242 for styling");
+    ws->ComputeGraph(true);STEPConstruct_Styles styles(ws);if(config.schema!=3)for(const auto& root:roots){const auto context=styles.FindContext(root);if(context.IsNull()){if(!colors.empty())out.warnings.push_back("STEP style context unavailable");continue;}StyleWriter{styles,colors,{},{},{}}.walk(root,nullptr,nullptr);Handle(StepVisual_MechanicalDesignGeometricPresentationRepresentation) presentation;if(styles.CreateMDGPR(context,presentation,model))model->AddWithRefs(presentation);styles.ClearStyles();}
+    ws->ComputeGraph(true);std::ostringstream os;if(writer.WriteStream(os)!=IFSelect_RetDone)throw std::runtime_error("STEP write failed");for(unsigned char c:os.str())out.bytes.push_back(c);return out;
+} catch(const Standard_Failure& e){throw std::runtime_error(e.what());}
+}

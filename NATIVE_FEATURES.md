@@ -331,3 +331,39 @@ Projection policies preserve all retained hits. Results are connected into wires
 within the explicit tolerance, and no first-hit ordering is implied. Incomplete
 projection history is explicit. Curved target trimming is enforced by the native
 projector; untrimmed mode requires a single target face.
+
+## 16. STEP units, products, and assemblies
+
+STEP units are explicit at both boundaries. `read_step_with_options` reports
+source length-unit names, selected normalization, candidate roots, and transferred
+roots. Missing units and partial transfers are errors unless explicitly allowed;
+allowed fallback and partial transfer produce warnings. `write_step_with_options`
+separates model units from export units and selects AP203, AP214, or AP242.
+Millimetres, metres, inches, feet, kilometres, micrometres, and centimetres are supported.
+
+Supported styling survives controlled STEP I/O. Solid and face RGB colors use the
+existing style machinery. AP214/AP242 preserve those styles, while AP203 export
+omits them with a warning. Instance-specific style flattening and unsupported
+transparency are reported. Geometry-only `Shape` and existing `Solid` streams stay
+available without product-document APIs or extra document-oriented native libraries.
+
+Assembly documents are optional. Enable `step-document` to use `StepDocument`,
+`StepDefinition`, and `StepInstance`; the implementation uses the existing STEP
+toolkit and adds no OCAF/XCAF libraries. Definitions retain product IDs, names,
+native leaf geometry, and component links. Repeated components reference the same
+definition, while each occurrence retains its ID, name, reference designator, and
+proper rigid transform. Nested assemblies and independent roots round-trip.
+
+Unresolved metadata stays explicit. Imported placements that cannot be represented
+are `None` with warnings and cannot be re-exported until resolved. Cycles, invalid
+references, non-rigid placements, and mixed geometry/component definitions are
+rejected. Regions correspond to STEP product definitions and NAUO links; arbitrary
+OCAF attributes, external references, layers, materials, and mapped-item-only
+assembly conventions are outside this document representation.
+
+Root products have no assembly occurrence link. Root placements may be absorbed
+into their representation geometry, and root-only occurrence labels are omitted
+with a warning; product IDs/names remain. Repeated root definitions must instead
+be represented as components of an assembly. Unreferenced definitions are omitted
+with warnings. Import preserves the full transferred native result even when
+some metadata or placement is unavailable.

@@ -20,6 +20,8 @@ source = ["dep:cmake"]
 png = ["dep:tiny-skia"]
 # Pure Rust CAD backend (no OCCT dependency)
 pure = []
+# Product and assembly documents use the existing STEP toolkit, without OCAF.
+step-document = []
 
 [dependencies]
 cxx = "1"

@@ -29,6 +29,10 @@ pub use occt::modeling::{BooleanOptions, GluePolicy};
 pub use occt::query::{BoundaryWire, ClosestPair, CurveInfo, CurveKind, DistanceReport, GeometrySurfaceKind, MassProperties, MeasurementKind, PointLocation, SurfaceCurvature, SurfaceInfo};
 #[cfg(not(feature = "pure"))]
 pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, RepairOptions, RepairReport, TopologyRef, TopologyRelation, ValidationIssue, ValidationReport};
+#[cfg(all(not(feature = "pure"), feature = "step-document"))]
+pub use occt::step::document::{StepDefinition, StepDocument, StepDocumentRead, StepInstance};
+#[cfg(not(feature = "pure"))]
+pub use occt::step::{LengthUnit, StepReadOptions, StepReadReport, StepReadResult, StepSchema, StepWriteOptions};
 #[cfg(not(feature = "pure"))]
 pub use occt::sweep::{AuxiliaryContact, SweepOptions, SweepOrientation, SweepResult, SweepSection, SweepTransition};
 #[cfg(not(feature = "pure"))]
