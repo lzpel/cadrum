@@ -112,3 +112,128 @@ impl Shape {
 		Ok(Self::new(ffi::op_topology_at(&self.inner, index).map_err(|e| kernel("topology index", e))?))
 	}
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Plane {
+	pub origin: DVec3,
+	pub normal: DVec3,
+}
+impl Plane {
+	pub fn face(&self) -> Result<Face, Error> {
+		finite(self.origin.to_array(), "plane origin")?;
+		axis(self.normal, "plane normal")?;
+		Shape::new(ffi::op_plane(&[self.origin.x, self.origin.y, self.origin.z, self.normal.x, self.normal.y, self.normal.z]).map_err(|e| kernel("plane", e))?).as_face()
+	}
+}
+#[derive(Clone, Copy, Debug)]
+pub struct SectionOptions {
+	pub tolerance: f64,
+	pub approximation: bool,
+	pub pcurves_on_first: bool,
+	pub pcurves_on_second: bool,
+}
+impl Default for SectionOptions {
+	fn default() -> Self {
+		Self { tolerance: 1e-7, approximation: false, pcurves_on_first: true, pcurves_on_second: true }
+	}
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JoinType {
+	Arc,
+	Intersection,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct OffsetOptions {
+	pub tolerance: f64,
+	pub join: JoinType,
+	pub intersect_all: bool,
+}
+impl Default for OffsetOptions {
+	fn default() -> Self {
+		Self { tolerance: 1e-7, join: JoinType::Intersection, intersect_all: false }
+	}
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PartitionSide {
+	Positive,
+	Negative,
+	OnPlane,
+}
+#[derive(Debug)]
+pub struct Partition {
+	pub shape: Shape,
+	pub side: PartitionSide,
+	pub ancestors: Vec<crate::TopologyRef>,
+}
+#[derive(Debug)]
+pub struct PlaneSplit {
+	pub result: OperationResult<Shape>,
+	pub partitions: Vec<Partition>,
+}
+impl Shape {
+	pub fn section(&self, other: &Shape, options: SectionOptions) -> Result<OperationResult<Self>, Error> {
+		positive(options.tolerance, "section tolerance")?;
+		Ok(Self::operation(ffi::op_section(&self.inner, &other.inner, options.tolerance, &[options.approximation, options.pcurves_on_first, options.pcurves_on_second]).map_err(|e| kernel("section", e))?, &[self, other]))
+	}
+	pub fn split(&self, tools: &[&Shape], tolerance: f64) -> Result<OperationResult<Self>, Error> {
+		positive(tolerance, "split tolerance")?;
+		if tools.is_empty() {
+			return Err(Error::Validation("split requires at least one tool".into()));
+		}
+		let inputs: Vec<_> = std::iter::once(self).chain(tools.iter().copied()).collect();
+		Ok(Self::operation(ffi::op_split(&Self::vector(inputs.iter().copied()), tolerance).map_err(|e| kernel("split", e))?, &inputs))
+	}
+	pub fn children(&self) -> Result<Vec<Self>, Error> {
+		let data = ffi::op_children(&self.inner).map_err(|e| kernel("children", e))?;
+		Ok((0..data.len())
+			.map(|i| {
+				let mut s = Self::new(ffi::native_take(&data, i));
+				s.colormap = self.colormap.clone();
+				s
+			})
+			.collect())
+	}
+	pub fn split_by_plane(&self, plane: Plane, tolerance: f64) -> Result<PlaneSplit, Error> {
+		let tool = Shape::from(&plane.face()?);
+		let result = self.split(&[&tool], tolerance)?;
+		let pieces = if result.value.kind() == ShapeKind::Compound { result.value.children()? } else { vec![result.value.copied()?.value] };
+		let mut partitions = Vec::new();
+		for shape in pieces {
+			let center = ffi::op_centroid(&shape.inner).map_err(|e| kernel("partition centroid", e))?;
+			let distance = (DVec3::from_slice(&center) - plane.origin).dot(plane.normal.normalize());
+			let side = if distance > tolerance {
+				PartitionSide::Positive
+			} else if distance < -tolerance {
+				PartitionSide::Negative
+			} else {
+				PartitionSide::OnPlane
+			};
+			let members = ffi::op_member_indices(&result.value.inner, &shape.inner).map_err(|e| kernel("partition provenance", e))?;
+			let mut ancestors = Vec::new();
+			for relation in &result.history.relations {
+				if relation.target.is_some_and(|t| members.contains(&(t.index as u32))) && !ancestors.contains(&relation.source) {
+					ancestors.push(relation.source);
+				}
+			}
+			partitions.push(Partition { shape, side, ancestors });
+		}
+		Ok(PlaneSplit { result, partitions })
+	}
+	pub fn offset_surface(&self, distance: f64, options: OffsetOptions) -> Result<OperationResult<Self>, Error> {
+		self.surface_offset(distance, options, false)
+	}
+	pub fn thicken_with_options(&self, thickness: f64, options: OffsetOptions) -> Result<OperationResult<Self>, Error> {
+		self.surface_offset(thickness, options, true)
+	}
+	fn surface_offset(&self, distance: f64, options: OffsetOptions, thicken: bool) -> Result<OperationResult<Self>, Error> {
+		positive(distance.abs(), "offset distance")?;
+		positive(options.tolerance, "offset tolerance")?;
+		if !matches!(self.kind(), ShapeKind::Face | ShapeKind::Shell) {
+			return Err(supported(if thicken { "thicken" } else { "surface offset" }, self.kind()));
+		}
+		if thicken && self.kind() == ShapeKind::Shell && self.is_closed()? {
+			return Err(Error::Validation("thicken requires an open shell".into()));
+		}
+		Ok(Self::operation(ffi::op_surface_offset(&self.inner, distance, options.tolerance, options.join == JoinType::Intersection, options.intersect_all, thicken).map_err(|e| kernel(if thicken { "thicken" } else { "surface offset" }, e))?, &[self]))
+	}
+}

@@ -98,6 +98,14 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_plane(values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_section(a: &TopoDS_Shape, b: &TopoDS_Shape, tolerance: f64, flags: &[bool]) -> Result<OperationData>;
+		fn op_split(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_children(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn op_centroid(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn op_member_indices(parent: &TopoDS_Shape, child: &TopoDS_Shape) -> Result<Vec<u32>>;
+		fn op_surface_offset(shape: &TopoDS_Shape, distance: f64, tolerance: f64, intersection_join: bool, intersect_all: bool, thicken: bool) -> Result<OperationData>;
+
 		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
 		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
 		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, operation: u32) -> Result<OperationData>;

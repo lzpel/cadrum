@@ -14,7 +14,7 @@ pub use occt::geometry::{CurveControlData, CurveEvaluation, Frame, SplineAxis, S
 #[cfg(not(feature = "pure"))]
 pub use occt::mesh_import::{MeshImportOptions, MeshImportReport, MeshImportResult, MeshOutcome, MeshRepair, TriangleMesh};
 #[cfg(not(feature = "pure"))]
-pub use occt::modeling::{BooleanOp, ShapeTransform};
+pub use occt::modeling::{BooleanOp, JoinType, OffsetOptions, Partition, PartitionSide, Plane, PlaneSplit, SectionOptions, ShapeTransform};
 #[cfg(not(feature = "pure"))]
 pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, RepairOptions, RepairReport, TopologyRef, TopologyRelation, ValidationIssue, ValidationReport};
 #[cfg(not(feature = "pure"))]

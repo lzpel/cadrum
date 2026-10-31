@@ -153,3 +153,22 @@ face styles and generated faces inherit available styled ancestors; when multipl
 styled ancestors merge, the last input operand wins. Missing history is exposed
 rather than treated as deletion. Existing `Solid::iter_history` remains available
 with its original face-pair contract; the general APIs expose the richer history.
+
+## 8. Section, split, and surface operations
+
+Sections remain native curves. `Shape::section` computes intersection topology with
+explicit tolerance, approximation, and pcurve policies; disjoint or tangent inputs
+may produce valid empty or lower-dimensional results. `Plane::face` constructs an
+unbounded positioned plane without moving the requested origin or normal.
+
+Splitting retains every partition. `Shape::split` accepts native face, shell, and
+solid tools and returns native partitions plus history. `split_by_plane` additionally
+classifies partition centroids into positive/negative/on-plane sides and records
+available ancestor references against its combined result. `children` traverses
+direct children, while typed accessors traverse all matching subshapes.
+
+Offsets and thickening are distinct operations. `offset_surface` constructs a
+parallel face/shell; `thicken_with_options` adds boundary walls and requires a solid
+result. Both expose signed distance, intersection/arc joins, and coincidence
+tolerance. Face removal stays separate; existing solid hollowing remains available.
+Kernel limitations on excessive offsets and self-intersections still apply.

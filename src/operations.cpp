@@ -367,3 +367,41 @@ OperationData op_sew_history(const std::vector<TopoDS_Shape>& inputs,double tole
 } OP_CATCH
 std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape& s,uint32_t index) try {NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(s,map);if(index<1||index>uint32_t(map.Extent()))throw std::runtime_error("topology index out of bounds");return std::make_unique<TopoDS_Shape>(map(int(index)));} OP_CATCH
 }
+
+#include <BRepAlgoAPI_Section.hxx>
+#include <BOPAlgo_Splitter.hxx>
+#include <BRepOffset_MakeOffset.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
+namespace cadrum {
+std::unique_ptr<TopoDS_Shape> op_plane(rust::Slice<const double> v) try {return std::make_unique<TopoDS_Shape>(BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5]))).Face());} OP_CATCH
+OperationData op_section(const TopoDS_Shape& a,const TopoDS_Shape& b,double tolerance,rust::Slice<const bool> flags) try {
+    BRepAlgoAPI_Section builder(a,b,false);builder.Approximation(flags[0]);builder.ComputePCurveOn1(flags[1]);builder.ComputePCurveOn2(flags[2]);builder.SetFuzzyValue(tolerance);builder.SetNonDestructive(true);builder.Build();
+    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}return operation_result(builder,{a,b});
+} OP_CATCH
+OperationData op_split(const std::vector<TopoDS_Shape>& inputs,double tolerance) try {
+    BOPAlgo_Splitter builder;builder.AddArgument(inputs[0]);for(size_t i=1;i<inputs.size();++i)builder.AddTool(inputs[i]);builder.SetFuzzyValue(tolerance);builder.SetNonDestructive(true);builder.Perform();
+    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}return operation_result(builder,inputs);
+} OP_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> op_children(const TopoDS_Shape& s) try {auto out=native_vec_new();for(TopoDS_Iterator it(s);it.More();it.Next())out->push_back(it.Value());return out;} OP_CATCH
+rust::Vec<double> op_centroid(const TopoDS_Shape& s) try {
+    GProp_GProps p;
+    if(TopExp_Explorer(s,TopAbs_SOLID).More())BRepGProp::VolumeProperties(s,p,1e-9);
+    else if(TopExp_Explorer(s,TopAbs_FACE).More())BRepGProp::SurfaceProperties(s,p,1e-9);
+    else BRepGProp::LinearProperties(s,p);
+    if(std::abs(p.Mass())<1e-30){TopExp_Explorer ex(s,TopAbs_VERTEX);if(!ex.More())return {0.0,0.0,0.0};const auto v=BRep_Tool::Pnt(TopoDS::Vertex(ex.Current()));return {v.X(),v.Y(),v.Z()};}
+    const auto v=p.CentreOfMass();return {v.X(),v.Y(),v.Z()};
+} OP_CATCH
+rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape& parent,const TopoDS_Shape& child) try {
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> all,members;TopExp::MapShapes(parent,all);TopExp::MapShapes(child,members);rust::Vec<uint32_t> out;
+    for(int i=1;i<=members.Extent();++i){const int index=all.FindIndex(members(i));if(index>0)out.push_back(index);}return out;
+} OP_CATCH
+OperationData op_surface_offset(const TopoDS_Shape& s,double distance,double tolerance,bool intersection_join,bool intersect_all,bool thicken) try {
+    BRepOffset_MakeOffset builder;builder.Initialize(s,distance,tolerance,BRepOffset_Skin,intersect_all,false,intersection_join?GeomAbs_Intersection:GeomAbs_Arc,thicken);builder.MakeOffsetShape();
+    if(!builder.IsDone()||builder.Shape().IsNull())throw std::runtime_error("offset failed");
+    TopoDS_Shape result=builder.Shape();
+    if(thicken){if(result.ShapeType()!=TopAbs_SOLID)throw std::runtime_error("thickening did not produce a solid");auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient thickened solid");result=solid;}
+    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid offset result");
+    return collect_history(result,{s},[&](const TopoDS_Shape& v){return builder.Modified(v);},[&](const TopoDS_Shape& v){return builder.Generated(v);},[&](const TopoDS_Shape& v){return builder.IsDeleted(v);});
+} OP_CATCH
+}
