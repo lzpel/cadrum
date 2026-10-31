@@ -16,6 +16,11 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct DraftData {
+		operation: OperationData,
+		statuses: Vec<u32>,
+	}
+
 	struct LoftConfig {
 		solid: bool,
 		ruled: bool,
@@ -173,6 +178,8 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_draft(shape: &TopoDS_Shape, faces: &CxxVector<TopoDS_Shape>, values: &[f64], flag: bool, control: &OperationControl) -> Result<DraftData>;
+		fn op_project(source: &TopoDS_Shape, target: &TopoDS_Shape, vector: &[f64], point: bool, tolerance: f64, untrimmed: bool, reject_multiple: bool, reject_empty: bool) -> Result<OperationData>;
 		fn op_chamfer(shape: &TopoDS_Shape, selected: &CxxVector<TopoDS_Shape>, values: &[f64], control: &OperationControl) -> Result<OperationData>;
 		fn op_variable_fillet(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, values: &[f64], counts: &[u32], control: &OperationControl) -> Result<OperationData>;
 		fn op_reversed(shape: &TopoDS_Shape) -> Result<OperationData>;

@@ -623,3 +623,41 @@ OperationData op_planar_blend(const TopoDS_Face& face,const std::vector<TopoDS_S
     return collect_history(combined.Face(),{face},[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
 } OP_CATCH
 }
+
+#include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepProj_Projection.hxx>
+#include <GeomProjLib.hxx>
+#include <Geom_Plane.hxx>
+#include <BRepAlgoAPI_Common.hxx>
+#include <BRepTools_WireExplorer.hxx>
+#include <ShapeAnalysis_FreeBounds.hxx>
+#include <NCollection_HSequence.hxx>
+namespace cadrum {
+DraftData op_draft(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& faces,rust::Slice<const double> v,bool flag,const OperationControl& control) try {
+    BRepOffsetAPI_DraftAngle builder(s);DraftData out{};const gp_Dir direction(v[6],v[7],v[8]);const gp_Pln plane(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5]));
+    for(size_t i=0;i<faces.size();++i){require_member(s,faces[i]);builder.Add(TopoDS::Face(faces[i]),direction,v[9],plane,flag);if(!builder.AddDone())throw std::runtime_error("draft selection "+std::to_string(i)+" status "+std::to_string(int(builder.Status())));out.statuses.push_back(0);}
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("draft build failed");out.operation=operation_result(builder,{s});return out;
+} OP_CATCH
+static TopoDS_Shape connected_projection(const TopoDS_Shape& s,double tolerance,size_t& count){
+    Handle(NCollection_HSequence<TopoDS_Shape>) edges=new NCollection_HSequence<TopoDS_Shape>,wires=new NCollection_HSequence<TopoDS_Shape>;
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(s,TopAbs_EDGE,map);for(int i=1;i<=map.Extent();++i)edges->Append(map(i));
+    if(!edges->IsEmpty())wires=ShapeAnalysis_FreeBounds::ConnectEdgesToWires(edges,tolerance,false);
+    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);for(int i=1;i<=wires->Length();++i)b.Add(compound,wires->Value(i));count=wires->Length();return compound;
+}
+OperationData op_project(const TopoDS_Shape& source,const TopoDS_Shape& target,rust::Slice<const double> v,bool point,double tolerance,bool untrimmed,bool reject_multiple,bool reject_empty) try {
+    if(!BRepCheck_Analyzer(source).IsValid()||!BRepCheck_Analyzer(target).IsValid())throw std::runtime_error("projection: invalid input topology");
+    TopoDS_Shape result;const gp_Vec direction(v[0],v[1],v[2]);
+    if(!point&&target.ShapeType()==TopAbs_FACE&&BRepAdaptor_Surface(TopoDS::Face(target)).GetType()==GeomAbs_Plane){
+        const gp_Pln plane=BRepAdaptor_Surface(TopoDS::Face(target)).Plane();if(std::abs(plane.Axis().Direction().Dot(gp_Dir(direction)))<1e-12)throw std::runtime_error("projection direction is parallel to plane");
+        Handle(Geom_Plane) surface=new Geom_Plane(plane);BRep_Builder b;TopoDS_Compound projected;b.MakeCompound(projected);
+        for(TopExp_Explorer ex(source,TopAbs_EDGE);ex.More();ex.Next()){double first,last;const auto curve=BRep_Tool::Curve(TopoDS::Edge(ex.Current()),first,last);if(curve.IsNull())throw std::runtime_error("unsupported: projection of degenerate edge");const auto projected_curve=GeomProjLib::ProjectOnPlane(curve,surface,gp_Dir(direction),true);if(projected_curve.IsNull())throw std::runtime_error("planar curve projection failed");BRepBuilderAPI_MakeEdge edge(projected_curve,first,last);if(!edge.IsDone())throw std::runtime_error("projected edge construction failed");b.Add(projected,edge.Edge());}
+        if(untrimmed)result=projected;else{BRepAlgoAPI_Common clip(projected,target);if(!clip.IsDone()||clip.HasErrors())throw std::runtime_error("projection clipping failed");result=clip.Shape();}
+    }else{
+        TopoDS_Shape support=target;if(untrimmed){BRepBuilderAPI_MakeFace face(BRep_Tool::Surface(TopoDS::Face(target)),tolerance);if(!face.IsDone())throw std::runtime_error("untrimmed target construction failed");support=face.Face();}
+        std::unique_ptr<BRepProj_Projection> projection;if(point)projection=std::make_unique<BRepProj_Projection>(source,support,gp_Pnt(v[0],v[1],v[2]));else projection=std::make_unique<BRepProj_Projection>(source,support,gp_Dir(direction));
+        if(!projection->IsDone())throw std::runtime_error("projection kernel failed or reported no intersection");
+        result=projection->Shape();
+    }
+    size_t count=0;result=connected_projection(result,tolerance,count);if(reject_empty&&count==0)throw std::runtime_error("projection has no hit");if(reject_multiple&&count>1)throw std::runtime_error("projection has multiple results");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;return out;
+} OP_CATCH
+}

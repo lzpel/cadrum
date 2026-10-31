@@ -12,6 +12,8 @@ pub mod occt;
 #[cfg(not(feature = "pure"))]
 pub use occt::control::{CancellationToken, OperationControl, ProgressUpdate};
 #[cfg(not(feature = "pure"))]
+pub use occt::draft::{DraftFaceStatus, DraftOptions, DraftResult, MultipleResults, NoHitPolicy, Projection, ProjectionOptions};
+#[cfg(not(feature = "pure"))]
 pub use occt::geometry::{CurveControlData, CurveEvaluation, Frame, SplineAxis, SurfaceControlData, SurfaceEvaluation};
 #[cfg(not(feature = "pure"))]
 pub use occt::io::ShapeMesh;

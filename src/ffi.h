@@ -29,6 +29,9 @@ struct RustWriter;
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
 struct OperationData;
+struct DraftData;
+DraftData op_draft(const TopoDS_Shape&,const std::vector<TopoDS_Shape>&,rust::Slice<const double>,bool,const OperationControl&);
+OperationData op_project(const TopoDS_Shape&,const TopoDS_Shape&,rust::Slice<const double>,bool,double,bool,bool,bool);
 struct LoftConfig;
 OperationData op_chamfer(const TopoDS_Shape&,const std::vector<TopoDS_Shape>&,rust::Slice<const double>,const OperationControl&);
 OperationData op_variable_fillet(const TopoDS_Shape&,const std::vector<TopoDS_Shape>&,rust::Slice<const double>,rust::Slice<const uint32_t>,const OperationControl&);

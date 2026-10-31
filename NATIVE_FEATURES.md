@@ -310,3 +310,24 @@ native planar algorithm supports line/circular-arc boundaries and reports its
 status on failure. Generated arc/chamfer edges have explicit provenance. Fillets
 provide tangential G1 joins where the kernel succeeds; C2 continuity is not promised,
 and chamfers introduce C0 corners.
+
+## 15. Draft and projection
+
+Draft uses an explicit neutral plane and pull direction. `Shape::draft` applies a
+signed angle in radians to selected faces and returns per-selection success codes
+and native history; rejected additions identify their selection and kernel status.
+`Face::tapered_extrude` is a separate planar-profile construction that extrudes,
+drafts generated side faces, and composes provenance through both operations.
+
+Projection returns reusable native wires. `project_onto` supports infinite
+parallel-line projection or central projection from a point onto faces, shells,
+solids, and compounds. Options choose trimmed clipping versus the underlying face,
+retain or reject multiple connected results, and select empty/error no-hit policy.
+Planar directional projection preserves curve parameters and clips exact topology.
+General projection retains the native kernel's intersection limitations; an
+undifferentiated kernel failure/no-intersection status remains an error.
+
+Projection policies preserve all retained hits. Results are connected into wires
+within the explicit tolerance, and no first-hit ordering is implied. Incomplete
+projection history is explicit. Curved target trimming is enforced by the native
+projector; untrimmed mode requires a single target face.
