@@ -285,3 +285,34 @@ OperationData op_revolution(const TopoDS_Shape& s,rust::Slice<const double> v) t
     BRepPrimAPI_MakeRevol builder(s,gp_Ax1(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])),v[6],true);if(!builder.IsDone())throw std::runtime_error("revolve failed");return operation_result(builder,{s});
 } OP_CATCH
 }
+
+#include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
+#include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepLib.hxx>
+namespace cadrum {
+std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> positions,rust::Slice<const uint32_t> indices,double tolerance,bool solid) try {
+    BRepBuilderAPI_Sewing sewing(tolerance);
+    for(size_t i=0;i<indices.size();i+=3){
+        BRepBuilderAPI_MakePolygon polygon;
+        for(int j=0;j<3;++j){size_t k=size_t(indices[i+j])*3;polygon.Add(gp_Pnt(positions[k],positions[k+1],positions[k+2]));}polygon.Close();
+        BRepBuilderAPI_MakeFace face(polygon.Wire());if(!face.IsDone())throw std::runtime_error("triangle face construction failed");sewing.Add(face.Face());
+    }
+    if(indices.empty())return native_build({},TopAbs_COMPOUND);
+    sewing.Perform();TopoDS_Shape result=sewing.SewedShape();
+    if(result.IsNull())throw std::runtime_error("mesh sewing returned null topology");
+    if(solid){
+        BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0,face_count=0;
+        for(TopExp_Explorer ex(result,TopAbs_SHELL);ex.More();ex.Next()){
+            auto shell=TopoDS::Shell(ex.Current());if(!BRep_Tool::IsClosed(shell))throw std::runtime_error("reconstructed shell is open");
+            TopoDS_Solid body=BRepBuilderAPI_MakeSolid(shell).Solid();if(!BRepLib::OrientClosedSolid(body)||!BRepCheck_Analyzer(body).IsValid())throw std::runtime_error("reconstructed solid is invalid");
+            for(TopExp_Explorer f(body,TopAbs_FACE);f.More();f.Next())++face_count;
+            b.Add(compound,body);only=body;++count;
+        }
+        if(face_count!=indices.size()/3||count==0)throw std::runtime_error("solid reconstruction would lose faces");
+        result=count==1?only:compound;
+    }else if(result.ShapeType()==TopAbs_FACE){BRep_Builder b;TopoDS_Shell shell;b.MakeShell(shell);b.Add(shell,result);result=shell;}
+    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("reconstructed topology is invalid");
+    return std::make_unique<TopoDS_Shape>(result);
+} OP_CATCH
+}

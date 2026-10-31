@@ -97,6 +97,7 @@ mod ffi_bridge {
 		fn op_surface_evaluate(face: &TopoDS_Face, u: f64, v: f64) -> Result<Vec<f64>>;
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
+		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn op_profile(wires: &CxxVector<TopoDS_Shape>, tolerance: f64, explicit_outer: bool) -> Result<OperationData>;
 		fn op_prism(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> Result<OperationData>;
 		fn op_revolution(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;

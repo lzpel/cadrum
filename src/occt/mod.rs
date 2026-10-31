@@ -14,3 +14,5 @@ pub mod report;
 pub mod geometry;
 
 pub mod modeling;
+
+pub mod mesh_import;

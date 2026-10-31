@@ -39,6 +39,7 @@ rust::Vec<double> op_surface_range(const TopoDS_Face&);
 rust::Vec<double> op_surface_evaluate(const TopoDS_Face&,double,double);
 std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face&,rust::Slice<const double>);
 struct OperationData;
+std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double>,rust::Slice<const uint32_t>,double,bool);
 OperationData op_profile(const std::vector<TopoDS_Shape>&,double,bool);
 OperationData op_prism(const TopoDS_Shape&,double,double,double);
 OperationData op_revolution(const TopoDS_Shape&,rust::Slice<const double>);

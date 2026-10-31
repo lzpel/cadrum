@@ -108,3 +108,28 @@ regions under oblique displacement; `revolve` takes an explicit axis and signed
 angle in radians, limited to one full turn. Both operations return native output
 and builder-provided vertex/edge/face history, including profile-edge to side-face
 relations. General profile construction currently marks history as incomplete.
+
+## 6. Faceted mesh and STL import
+
+Mesh validation precedes reconstruction. `TriangleMesh::import` checks finite
+positions, index bounds, area, duplicate triangles, edge incidence, winding,
+orientability, components, and signed component volumes. Its report records
+boundary/non-manifold edges, removed triangles, weld counts, orientation changes,
+and component volumes. Invalid index and resource inputs return named errors.
+
+Reconstruction is an explicit outcome. `MeshOnly` retains triangle data and
+reports topology defects; `OpenShell` builds sewn faceted BRep, while `ClosedSolid`
+requires closed manifold components with outward winding. Every disconnected
+component survives in a compound. Sewing tolerance is explicit; attaching a
+triangulation alone never establishes a solid or reconstructs analytic surfaces.
+
+Repair is opt-in. Welding, duplicate/degenerate removal, and component orientation
+have separate flags. Welding uses a spatial grid and the selected tolerance;
+closed components are oriented outward only when requested. Import limits bound
+vertices, triangles, and STL bytes before native construction.
+
+STL units require an explicit scale. `TriangleMesh::read_stl(reader, scale,
+options)` accepts ASCII and binary files, validates complete facets, and converts
+file coordinates into model length units. Exact repeated STL coordinates become
+shared indexed vertices; tolerance-based welding remains an explicit repair.
+Reconstructed solids support existing native Booleans and STEP export.
