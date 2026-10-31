@@ -133,3 +133,23 @@ options)` accepts ASCII and binary files, validates complete facets, and convert
 file coordinates into model length units. Exact repeated STL coordinates become
 shared indexed vertices; tolerance-based welding remains an explicit repair.
 Reconstructed solids support existing native Booleans and STEP export.
+
+## 7. Topology correspondence
+
+History describes explicit relations. Operation results carry modified, generated,
+removed, unchanged, and unknown relations for vertices, edges, and faces; unknown
+relations make `complete` false. Builder-confirmed deletion is the only source of
+`Removed`. Copies, restricted/affine transforms, profile operations, Booleans,
+blends, sewing, and face unification expose available builder correspondence.
+
+References identify their operand and traversal index. `topology_at` resolves a
+one-based index against the original operand or result; references are runtime
+operation data, not durable document names or serialized labels. Relations retain
+one-to-many descendants and separate operand ancestry. `History::compose` joins
+relations across an intermediate operand and preserves unrelated next operands.
+
+Styles propagate through available ancestry. Split descendants inherit source
+face styles and generated faces inherit available styled ancestors; when multiple
+styled ancestors merge, the last input operand wins. Missing history is exposed
+rather than treated as deletion. Existing `Solid::iter_history` remains available
+with its original face-pair contract; the general APIs expose the richer history.

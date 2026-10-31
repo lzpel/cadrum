@@ -1,0 +1,47 @@
+use cadrum::{BooleanOp, DVec3, RelationKind, Shape, ShapeKind, ShapeTransform, Solid};
+#[test]
+fn copy_transform_and_composed_history_resolve_topology() {
+	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE));
+	let copied = shape.copied().unwrap();
+	assert!(copied.history.complete);
+	assert_eq!(copied.history.relations.len(), 26);
+	let mirrored = copied.value.transform_with_history(ShapeTransform::Mirror { origin: DVec3::ZERO, normal: DVec3::new(1.0, 1.0, 0.0) }).unwrap();
+	for r in &mirrored.history.relations {
+		assert_eq!(copied.value.topology_at(r.source.index).unwrap().kind(), r.source.kind);
+		if let Some(target) = r.target {
+			assert_eq!(mirrored.value.topology_at(target.index).unwrap().kind(), target.kind);
+		}
+	}
+	let composed = copied.history.compose(&mirrored.history, 0);
+	assert!(composed.complete);
+	assert_eq!(composed.relations.len(), 26);
+	assert!(composed.relations.iter().all(|r| r.target.is_some()));
+}
+#[test]
+fn boolean_ancestry_and_confirmed_deletion_are_distinct() {
+	let a = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::splat(2.0)));
+	let b = Shape::from(&Solid::cube(DVec3::X, DVec3::new(3.0, 2.0, 2.0)));
+	let union = a.boolean(BooleanOp::Union, &[&b]).unwrap();
+	assert!(union.history.relations.iter().any(|r| r.source.operand == 0));
+	assert!(union.history.relations.iter().any(|r| r.source.operand == 1));
+	assert!((union.value.solids().unwrap().iter().map(Solid::volume).sum::<f64>() - 12.0).abs() < 1e-8);
+	let unified = union.value.unify_faces(1e-7, 1e-7).unwrap();
+	assert_eq!(unified.value.faces().unwrap().len(), 6);
+	assert!(unified.history.relations.iter().any(|r| r.relation == RelationKind::Modified));
+	let empty = a.boolean(BooleanOp::Difference, &[&a]).unwrap();
+	assert!(empty.value.is_empty().unwrap());
+	assert!(empty.history.relations.iter().any(|r| r.relation == RelationKind::Removed));
+	assert!(!empty.history.relations.iter().any(|r| r.target.is_some()));
+}
+#[test]
+fn blend_and_sewing_history_include_generated_and_retained_topology() {
+	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::splat(5.0)));
+	let edges = shape.edges().unwrap();
+	let blend = shape.fillet_edges(0.2, &[&edges[0]]).unwrap();
+	assert!(blend.history.relations.iter().any(|r| r.relation == RelationKind::Generated && r.source.kind == ShapeKind::Edge && r.target.is_some_and(|v| v.kind == ShapeKind::Face)));
+	let faces: Vec<Shape> = shape.faces().unwrap().iter().map(Shape::from).collect();
+	let refs: Vec<_> = faces.iter().collect();
+	let sewn = Shape::sew_with_history(&refs, 1e-7).unwrap();
+	assert_eq!(sewn.value.faces().unwrap().len(), 6);
+	assert!(sewn.history.relations.iter().any(|r| r.relation == RelationKind::Unchanged));
+}

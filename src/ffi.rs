@@ -98,6 +98,14 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
+		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
+		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, operation: u32) -> Result<OperationData>;
+		fn op_blend(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, radius: f64, chamfer: bool) -> Result<OperationData>;
+		fn op_unify(shape: &TopoDS_Shape, linear: f64, angular: f64) -> Result<OperationData>;
+		fn op_sew_history(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_topology_at(shape: &TopoDS_Shape, index: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+
 		fn op_profile(wires: &CxxVector<TopoDS_Shape>, tolerance: f64, explicit_outer: bool) -> Result<OperationData>;
 		fn op_prism(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> Result<OperationData>;
 		fn op_revolution(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;

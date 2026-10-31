@@ -93,9 +93,8 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
 #include <gp_GTrsf.hxx>
 #include <gp_Mat.hxx>
 namespace cadrum {
-template<class Builder>
-static OperationData operation_result(Builder& builder, const std::vector<TopoDS_Shape>& inputs) {
-    const TopoDS_Shape result = builder.Shape();
+template<class Modified, class Generated, class Deleted>
+static OperationData collect_history(const TopoDS_Shape& result, const std::vector<TopoDS_Shape>& inputs, Modified modified_shapes, Generated generated_shapes, Deleted is_deleted) {
     if (result.IsNull()) throw std::runtime_error("kernel produced null topology");
     OperationData out{};
     out.shape = std::make_unique<TopoDS_Shape>(result);
@@ -115,11 +114,11 @@ static OperationData operation_result(Builder& builder, const std::vector<TopoDS
                 out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), uint32_t(index), relation, uint32_t(source.ShapeType()), uint32_t(target.ShapeType()), reinterpret_cast<uint64_t>(source.TShape().get()), reinterpret_cast<uint64_t>(target.TShape().get())});
                 found = true;
             };
-            for (const auto& modified : builder.Modified(source)) add(modified, 0);
-            for (const auto& generated : builder.Generated(source)) add(generated, 1);
+            for (const auto& modified : modified_shapes(source)) add(modified, 0);
+            for (const auto& generated : generated_shapes(source)) add(generated, 1);
             if (targets.Contains(source)) add(source, 3);
             if (!found) {
-                const bool removed = builder.IsDeleted(source);
+                const bool removed = is_deleted(source);
                 out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), 0, uint32_t(removed ? 2 : 4), uint32_t(source.ShapeType()), 0, reinterpret_cast<uint64_t>(source.TShape().get()), 0});
                 if (!removed) out.complete = false;
             }
@@ -127,6 +126,14 @@ static OperationData operation_result(Builder& builder, const std::vector<TopoDS
     }
     return out;
 }
+template<class Builder>
+static OperationData operation_result(Builder& builder, const std::vector<TopoDS_Shape>& inputs) {
+    return collect_history(builder.Shape(), inputs,
+        [&](const TopoDS_Shape& s) { return builder.Modified(s); },
+        [&](const TopoDS_Shape& s) { return builder.Generated(s); },
+        [&](const TopoDS_Shape& s) { return builder.IsDeleted(s); });
+}
+
 OperationData op_affine(const TopoDS_Shape& s, rust::Slice<const double> v) try {
     if (v.size() != 12) throw std::runtime_error("affine: expected 12 matrix coefficients");
     gp_GTrsf t(gp_Mat(v[0],v[1],v[2],v[4],v[5],v[6],v[8],v[9],v[10]), gp_XYZ(v[3],v[7],v[11]));
@@ -315,4 +322,48 @@ std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> position
     if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("reconstructed topology is invalid");
     return std::make_unique<TopoDS_Shape>(result);
 } OP_CATCH
+}
+
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepAlgoAPI_BooleanOperation.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
+#include <BRepFilletAPI_MakeChamfer.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <BRepTools_History.hxx>
+#include <sstream>
+namespace cadrum {
+OperationData op_copy(const TopoDS_Shape& s) try { BRepBuilderAPI_Copy builder(s);return operation_result(builder,{s}); } OP_CATCH
+OperationData op_transform(const TopoDS_Shape& s,uint32_t kind,rust::Slice<const double> v) try {
+    gp_Trsf t;
+    if(kind==0)t.SetTranslation(gp_Vec(v[0],v[1],v[2]));
+    else if(kind==1)t.SetRotation(gp_Ax1(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])),v[6]);
+    else if(kind==2)t.SetScale(gp_Pnt(v[0],v[1],v[2]),v[3]);
+    else t.SetMirror(gp_Ax2(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])));
+    BRepBuilderAPI_Transform builder(s,t,true);return operation_result(builder,{s});
+} OP_CATCH
+OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs,uint32_t operation) try {
+    if(inputs.size()<2)throw std::runtime_error("boolean: no tools");
+    NCollection_List<TopoDS_Shape> args,tools;args.Append(inputs[0]);for(size_t i=1;i<inputs.size();++i)tools.Append(inputs[i]);
+    BRepAlgoAPI_BooleanOperation builder;builder.SetArguments(args);builder.SetTools(tools);builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));builder.SetNonDestructive(true);builder.Build();
+    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}
+    auto out=operation_result(builder,inputs);if(builder.HasWarnings()){std::ostringstream warnings;builder.DumpWarnings(warnings);out.warnings.push_back(warnings.str());}return out;
+} OP_CATCH
+OperationData op_blend(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& edges,double radius,bool chamfer) try {
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(s,TopAbs_EDGE,members);
+    for(const auto& edge:edges)if(!members.Contains(edge))throw std::runtime_error("selected edge is not a member of the input shape");
+    if(edges.empty())throw std::runtime_error("no selected edges");
+    if(chamfer){BRepFilletAPI_MakeChamfer builder(s);for(const auto& edge:edges)builder.Add(radius,TopoDS::Edge(edge));builder.Build();if(!builder.IsDone())throw std::runtime_error("chamfer failed");return operation_result(builder,{s});}
+    BRepFilletAPI_MakeFillet builder(s);for(const auto& edge:edges)builder.Add(radius,TopoDS::Edge(edge));builder.Build();if(!builder.IsDone())throw std::runtime_error("fillet failed");return operation_result(builder,{s});
+} OP_CATCH
+OperationData op_unify(const TopoDS_Shape& s,double linear,double angular) try {
+    ShapeUpgrade_UnifySameDomain builder(s,true,true,false);builder.SetLinearTolerance(linear);builder.SetAngularTolerance(angular);builder.Build();const auto& history=builder.History();
+    return collect_history(builder.Shape(),{s},[&](const TopoDS_Shape& v){return history->Modified(v);},[&](const TopoDS_Shape& v){return history->Generated(v);},[&](const TopoDS_Shape& v){return history->IsRemoved(v);});
+} OP_CATCH
+OperationData op_sew_history(const std::vector<TopoDS_Shape>& inputs,double tolerance) try {
+    if(inputs.empty()){OperationData out{};out.shape=native_build({},TopAbs_COMPOUND);out.complete=true;return out;}
+    BRepBuilderAPI_Sewing sewing(tolerance);for(const auto& s:inputs){if(!native_loose(s)->empty())throw std::runtime_error("unsupported: sewing requires face-based topology");sewing.Add(s);}sewing.Perform();
+    auto modified=[&](const TopoDS_Shape& s){NCollection_List<TopoDS_Shape> out;if(sewing.IsModifiedSubShape(s))out.Append(sewing.ModifiedSubShape(s));else if(sewing.IsModified(s))out.Append(sewing.Modified(s));return out;};
+    return collect_history(sewing.SewedShape(),inputs,modified,[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return false;});
+} OP_CATCH
+std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape& s,uint32_t index) try {NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(s,map);if(index<1||index>uint32_t(map.Extent()))throw std::runtime_error("topology index out of bounds");return std::make_unique<TopoDS_Shape>(map(int(index)));} OP_CATCH
 }

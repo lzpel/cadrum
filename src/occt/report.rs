@@ -201,3 +201,44 @@ impl Shape {
 		}
 	}
 }
+
+impl History {
+	/// Compose descendants through the specified operand of the next operation.
+	/// Other next-operation operands retain identity after the first history's operands.
+	pub fn compose(&self, next: &History, intermediate_operand: usize) -> History {
+		let mut out = History { relations: Vec::new(), complete: self.complete && next.complete };
+		let offset = self.relations.iter().map(|r| r.source.operand).max().map_or(0, |n| n + 1);
+		for first in &self.relations {
+			let Some(target) = first.target else {
+				out.relations.push(first.clone());
+				continue;
+			};
+			let mut found = false;
+			for second in next.relations.iter().filter(|r| r.source.operand == intermediate_operand && r.source.index == target.index && r.source.kind == target.kind) {
+				found = true;
+				let relation = match (first.relation, second.relation) {
+					(_, RelationKind::Removed) => RelationKind::Removed,
+					(_, RelationKind::Unknown) | (RelationKind::Unknown, _) => RelationKind::Unknown,
+					(RelationKind::Generated, _) | (_, RelationKind::Generated) => RelationKind::Generated,
+					(RelationKind::Unchanged, RelationKind::Unchanged) => RelationKind::Unchanged,
+					_ => RelationKind::Modified,
+				};
+				out.relations.push(TopologyRelation { source: first.source, target: second.target, relation });
+			}
+			if !found {
+				out.complete = false;
+				out.relations.push(TopologyRelation { source: first.source, target: None, relation: RelationKind::Unknown });
+			}
+		}
+		for relation in &next.relations {
+			if relation.source.operand != intermediate_operand {
+				let mut relation = relation.clone();
+				relation.source.operand = offset + relation.source.operand - usize::from(relation.source.operand > intermediate_operand);
+				out.relations.push(relation);
+			}
+		}
+		let mut seen = std::collections::HashSet::new();
+		out.relations.retain(|r| seen.insert((r.source, r.target, r.relation)));
+		out
+	}
+}

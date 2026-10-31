@@ -41,3 +41,74 @@ impl Face {
 		Shape::operation(ffi::op_profile(&Shape::vector(inputs.iter().copied()), tolerance, true).map_err(|e| kernel("face from wires", e))?, &inputs).value.as_face()
 	}
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum ShapeTransform {
+	Translation(DVec3),
+	Rotation { origin: DVec3, axis: DVec3, angle: f64 },
+	Scale { origin: DVec3, factor: f64 },
+	Mirror { origin: DVec3, normal: DVec3 },
+}
+#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
+pub enum BooleanOp {
+	Union = 1,
+	Intersection = 0,
+	Difference = 2,
+}
+impl Shape {
+	pub fn copied(&self) -> Result<OperationResult<Self>, Error> {
+		Ok(Self::operation(ffi::op_copy(&self.inner).map_err(|e| kernel("copy", e))?, &[self]))
+	}
+	pub fn transform_with_history(&self, transform: ShapeTransform) -> Result<OperationResult<Self>, Error> {
+		let (kind, values) = match transform {
+			ShapeTransform::Translation(v) => (0, v.to_array().to_vec()),
+			ShapeTransform::Rotation { origin, axis: direction, angle } => {
+				axis(direction, "rotation axis")?;
+				(1, vec![origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, angle])
+			}
+			ShapeTransform::Scale { origin, factor } => {
+				positive(factor.abs(), "scale factor")?;
+				(2, vec![origin.x, origin.y, origin.z, factor])
+			}
+			ShapeTransform::Mirror { origin, normal } => {
+				axis(normal, "mirror normal")?;
+				(3, vec![origin.x, origin.y, origin.z, normal.x, normal.y, normal.z])
+			}
+		};
+		finite(values.iter().copied(), "transform")?;
+		Ok(Self::operation(ffi::op_transform(&self.inner, kind, &values).map_err(|e| kernel("transform", e))?, &[self]))
+	}
+	pub fn boolean(&self, operation: BooleanOp, tools: &[&Shape]) -> Result<OperationResult<Self>, Error> {
+		if tools.is_empty() {
+			return Err(Error::Validation("boolean: no tools".into()));
+		}
+		let inputs: Vec<_> = std::iter::once(self).chain(tools.iter().copied()).collect();
+		Ok(Self::operation(ffi::op_boolean(&Self::vector(inputs.iter().copied()), operation as u32).map_err(|e| kernel("boolean", e))?, &inputs))
+	}
+	pub fn fillet_edges(&self, radius: f64, edges: &[&crate::Edge]) -> Result<OperationResult<Self>, Error> {
+		self.blend(radius, edges, false)
+	}
+	pub fn chamfer_edges(&self, distance: f64, edges: &[&crate::Edge]) -> Result<OperationResult<Self>, Error> {
+		self.blend(distance, edges, true)
+	}
+	fn blend(&self, radius: f64, edges: &[&crate::Edge], chamfer: bool) -> Result<OperationResult<Self>, Error> {
+		positive(radius, "blend size")?;
+		let selected: Vec<Shape> = edges.iter().map(|e| Shape::from(*e)).collect();
+		Ok(Self::operation(ffi::op_blend(&self.inner, &Self::vector(&selected), radius, chamfer).map_err(|e| kernel(if chamfer { "chamfer" } else { "fillet" }, e))?, &[self]))
+	}
+	pub fn unify_faces(&self, linear_tolerance: f64, angular_tolerance: f64) -> Result<OperationResult<Self>, Error> {
+		positive(linear_tolerance, "unify linear tolerance")?;
+		positive(angular_tolerance, "unify angular tolerance")?;
+		Ok(Self::operation(ffi::op_unify(&self.inner, linear_tolerance, angular_tolerance).map_err(|e| kernel("unify faces", e))?, &[self]))
+	}
+	pub fn sew_with_history(shapes: &[&Shape], tolerance: f64) -> Result<OperationResult<Self>, Error> {
+		positive(tolerance, "sew tolerance")?;
+		Ok(Self::operation(ffi::op_sew_history(&Self::vector(shapes.iter().copied()), tolerance).map_err(|e| kernel("sew", e))?, shapes))
+	}
+	/// Resolve a one-based report/history index against the original operand or result.
+	pub fn topology_at(&self, index: usize) -> Result<Self, Error> {
+		let index = u32::try_from(index).map_err(|_| Error::Validation("topology index overflow".into()))?;
+		Ok(Self::new(ffi::op_topology_at(&self.inner, index).map_err(|e| kernel("topology index", e))?))
+	}
+}
