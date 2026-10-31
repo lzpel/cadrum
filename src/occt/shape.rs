@@ -224,9 +224,17 @@ impl Shape {
 	}
 	/// Mesh faces and discretize edges; vertices and empty compounds have no triangles.
 	pub fn mesh(&self, options: Tessellation) -> Result<Mesh, Error> {
+		Ok(self.tessellate(options, &crate::OperationControl::default())?.value.mesh)
+	}
+	pub fn tessellate(&self, options: Tessellation, control: &crate::OperationControl) -> Result<crate::OperationResult<super::io::ShapeMesh>, Error> {
 		positive(options.deflection_linear, "linear deflection")?;
 		positive(options.deflection_angular, "angular deflection")?;
-		let data = ffi::native_mesh(&self.inner, options.deflection_linear, options.deflection_angular, options.relative_linear).map_err(failure)?;
+		control.check("tessellate")?;
+		let data = ffi::op_tessellate(&self.inner, options.deflection_linear, options.deflection_angular, options.relative_linear, control);
+		control.check("tessellate")?;
+		let data = data.map_err(|e| super::report::kernel("tessellate", e))?;
+		let uvs = data.uvs.chunks_exact(2).zip(&data.uv_valid).map(|(uv, &valid)| valid.then(|| crate::DVec2::from_slice(uv))).collect();
+		let status = data.status;
 		if !data.success {
 			return Err(Error::Tesselation);
 		}
@@ -241,13 +249,19 @@ impl Shape {
 			}
 			edges.extend(points);
 		}
-		Ok(Mesh {
+		let mesh = Mesh {
 			vertices: data.vertices.chunks_exact(3).map(DVec3::from_slice).collect(),
 			normals: data.normals.chunks_exact(3).map(DVec3::from_slice).collect(),
 			indices: data.indices.into_iter().map(|i| i as usize).collect(),
 			face_ids: data.face_tshape_ids,
 			colormap: self.colormap.clone(),
 			edges,
+		};
+		Ok(crate::OperationResult {
+			value: super::io::ShapeMesh { mesh, uvs, status },
+			history: crate::History::default(),
+			warnings: if status == 0 { vec![] } else { vec![crate::Diagnostic { message: format!("OCCT mesh status flags: {status}"), subshapes: vec![] }] },
+			diagnostics: vec![],
 		})
 	}
 	/// Write exact geometry as binary BRep, without mesh, colors, or operation history.

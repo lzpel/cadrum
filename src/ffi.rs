@@ -10,6 +10,9 @@ mod ffi_bridge {
 		normals: Vec<f64>,  // flat xyz, one per vertex
 		indices: Vec<u32>,
 		face_tshape_ids: Vec<u64>, // per-triangle TShape* address
+		uvs: Vec<f64>,
+		uv_valid: Vec<bool>,
+		status: u32,
 		success: bool,
 	}
 
@@ -118,6 +121,8 @@ mod ffi_bridge {
 		fn op_member_indices(parent: &TopoDS_Shape, child: &TopoDS_Shape) -> Result<Vec<u32>>;
 		fn op_surface_offset(shape: &TopoDS_Shape, distance: f64, tolerance: f64, intersection_join: bool, intersect_all: bool, thicken: bool) -> Result<OperationData>;
 
+		fn op_read_step(data: &[u8], control: &OperationControl) -> Result<OperationData>;
+		fn op_write_step(shape: &TopoDS_Shape, control: &OperationControl) -> Result<Vec<u8>>;
 		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
 		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
 		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, argument_count: usize, operation: u32, config: &BooleanConfig, control: &OperationControl) -> Result<OperationData>;
@@ -156,7 +161,7 @@ mod ffi_bridge {
 		fn native_solidify(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
 		fn native_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_bounds(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
-		fn native_mesh(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
+		fn op_tessellate(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool, control: &OperationControl) -> Result<MeshData>;
 		fn native_write_brep(shape: &TopoDS_Shape) -> Result<Vec<u8>>;
 		fn native_read_brep(data: &[u8]) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_thicken(shape: &TopoDS_Shape, thickness: f64) -> Result<UniquePtr<TopoDS_Shape>>;
@@ -351,17 +356,4 @@ pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
 }
 
-// cxx opaque types default to `!Send + !Sync`. We mark them `Send` here so
-// that `UniquePtr<TopoDS_Solid>` (and friends) become `Send`, which in turn
-// makes our wrapper types (`Shape`, `Solid`, `Face`, `Edge`) auto-Send.
-//
-// Safety rationale:
-//   - `UniquePtr` gives exclusive ownership — no aliasing is possible.
-//   - These values are never shared across threads simultaneously; they are
-//     only *moved* to another thread, which is what `Send` permits.
-//   - `Sync` is intentionally NOT implemented: OCC's `Handle<Geom_XXX>`
-//     reference counts are non-atomic, so concurrent `&T` access across
-//     threads would be unsound.
-unsafe impl Send for TopoDS_Solid {}
-unsafe impl Send for TopoDS_Face {}
-unsafe impl Send for TopoDS_Edge {}
+// Native topology can share mutable geometry; opaque handles remain !Send and !Sync.

@@ -331,15 +331,10 @@ std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> position
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 #include <sstream>
-#include <Message_ProgressIndicator.hxx>
+#include "progress.h"
 namespace cadrum {
-class RustProgress final : public Message_ProgressIndicator {
-    const OperationControl& control;
-public:
-    explicit RustProgress(const OperationControl& value):control(value){}
-    bool UserBreak() override { return operation_cancelled(control); }
-    void Show(const Message_ProgressScope&, const bool) override { operation_progress(control,GetPosition()); }
-};
+bool NativeProgress::UserBreak() { return operation_cancelled(control); }
+void NativeProgress::Show(const Message_ProgressScope&, const bool) { operation_progress(control,GetPosition()); }
 }
 namespace cadrum {
 OperationData op_copy(const TopoDS_Shape& s) try { BRepBuilderAPI_Copy builder(s);return operation_result(builder,{s}); } OP_CATCH
@@ -355,7 +350,7 @@ OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs,size_t argument
     if(operation_cancelled(control))throw std::runtime_error("cancelled");
     NCollection_List<TopoDS_Shape> args,tools;for(size_t i=0;i<argument_count;++i)args.Append(inputs[i]);for(size_t i=argument_count;i<inputs.size();++i)tools.Append(inputs[i]);
     BRepAlgoAPI_BooleanOperation builder;builder.SetArguments(args);builder.SetTools(tools);builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));builder.SetNonDestructive(config.non_destructive);builder.SetRunParallel(config.parallel);builder.SetFuzzyValue(config.fuzzy);builder.SetGlue(static_cast<BOPAlgo_GlueEnum>(config.glue));
-    Handle(RustProgress) progress=new RustProgress(control);builder.Build(progress->Start());
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());
     if(operation_cancelled(control))throw std::runtime_error("cancelled");
     if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}
     auto out=operation_result(builder,inputs);if(builder.HasWarnings()){std::ostringstream warnings;builder.DumpWarnings(warnings);out.warnings.push_back(warnings.str());}
@@ -417,5 +412,30 @@ OperationData op_surface_offset(const TopoDS_Shape& s,double distance,double tol
     if(thicken){if(result.ShapeType()!=TopAbs_SOLID)throw std::runtime_error("thickening did not produce a solid");auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient thickened solid");result=solid;}
     if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid offset result");
     return collect_history(result,{s},[&](const TopoDS_Shape& v){return builder.Modified(v);},[&](const TopoDS_Shape& v){return builder.Generated(v);},[&](const TopoDS_Shape& v){return builder.IsDeleted(v);});
+} OP_CATCH
+}
+
+#include <STEPControl_Reader.hxx>
+#include <STEPControl_Writer.hxx>
+namespace cadrum {
+OperationData op_read_step(rust::Slice<const uint8_t> data,const OperationControl& control) try {
+    std::istringstream is(std::string(reinterpret_cast<const char*>(data.data()),data.size()));STEPControl_Reader reader;
+    if(reader.ReadStream("memory.step",is)!=IFSelect_RetDone)throw std::runtime_error("STEP parse failed");
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    Handle(NativeProgress) progress=new NativeProgress(control);
+    const int roots=reader.NbRootsForTransfer();const int transferred=reader.TransferRoots(progress->Start());
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    if(reader.OneShape().IsNull())throw std::runtime_error("STEP contains no transferred geometry");
+    OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(reader.OneShape());out.complete=false;
+    if(transferred<roots)out.warnings.push_back("STEP transfer was partial");
+    return out;
+} OP_CATCH
+rust::Vec<uint8_t> op_write_step(const TopoDS_Shape& s,const OperationControl& control) try {
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    Handle(NativeProgress) progress=new NativeProgress(control);
+    STEPControl_Writer writer;if(writer.Transfer(s,STEPControl_AsIs,true,progress->Start())!=IFSelect_RetDone)throw std::runtime_error("STEP transfer failed");
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    std::ostringstream os;if(writer.WriteStream(os)!=IFSelect_RetDone)throw std::runtime_error("STEP write failed");
+    rust::Vec<uint8_t> out;for(unsigned char c:os.str())out.push_back(c);return out;
 } OP_CATCH
 }

@@ -198,6 +198,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	println!("cargo:rerun-if-changed=src/ffi.h");
 	println!("cargo:rerun-if-changed=src/ffi.cpp");
 	println!("cargo:rerun-if-changed=src/operations.cpp");
+	println!("cargo:rerun-if-changed=src/progress.h");
 }
 
 /// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.

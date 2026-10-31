@@ -191,3 +191,28 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 
 	Ok(Mesh { vertices, normals, indices, face_ids, colormap, edges })
 }
+
+/// Disposable tessellation with per-vertex UV availability and OCCT mesh status flags.
+#[derive(Debug)]
+pub struct ShapeMesh {
+	pub mesh: crate::Mesh,
+	pub uvs: Vec<Option<crate::DVec2>>,
+	pub status: u32,
+}
+impl crate::Shape {
+	pub fn read_step<R: Read>(reader: &mut R, control: &crate::OperationControl) -> Result<crate::OperationResult<Self>, Error> {
+		control.check("STEP read")?;
+		let mut bytes = Vec::new();
+		reader.read_to_end(&mut bytes)?;
+		let result = ffi::op_read_step(&bytes, control);
+		control.check("STEP read")?;
+		Ok(Self::operation(result.map_err(|e| super::report::kernel("STEP read", e))?, &[]))
+	}
+	pub fn write_step<W: Write>(&self, writer: &mut W, control: &crate::OperationControl) -> Result<(), Error> {
+		control.check("STEP write")?;
+		let result = ffi::op_write_step(&self.inner, control);
+		control.check("STEP write")?;
+		writer.write_all(&result.map_err(|e| super::report::kernel("STEP write", e))?)?;
+		Ok(())
+	}
+}

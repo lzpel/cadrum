@@ -49,6 +49,8 @@ std::unique_ptr<std::vector<TopoDS_Shape>> op_children(const TopoDS_Shape&);
 rust::Vec<double> op_centroid(const TopoDS_Shape&);
 rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape&,const TopoDS_Shape&);
 OperationData op_surface_offset(const TopoDS_Shape&,double,double,bool,bool,bool);
+OperationData op_read_step(rust::Slice<const uint8_t>,const OperationControl&);
+rust::Vec<uint8_t> op_write_step(const TopoDS_Shape&,const OperationControl&);
 OperationData op_copy(const TopoDS_Shape&);
 OperationData op_transform(const TopoDS_Shape&,uint32_t,rust::Slice<const double>);
 OperationData op_boolean(const std::vector<TopoDS_Shape>&,size_t,uint32_t,const BooleanConfig&,const OperationControl&);
@@ -89,7 +91,7 @@ std::unique_ptr<TopoDS_Shape> native_sew(const std::vector<TopoDS_Face>& faces, 
 std::unique_ptr<TopoDS_Solid> native_solidify(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Shape> native_transform(const TopoDS_Shape& shape, uint32_t kind, rust::Slice<const double> values);
 rust::Vec<double> native_bounds(const TopoDS_Shape& shape);
-MeshData native_mesh(const TopoDS_Shape& shape, double linear, double angular, bool relative);
+MeshData op_tessellate(const TopoDS_Shape&,double,double,bool,const OperationControl&);
 rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Shape> native_read_brep(rust::Slice<const uint8_t> data);
 std::unique_ptr<TopoDS_Shape> native_thicken(const TopoDS_Shape& shape, double thickness);

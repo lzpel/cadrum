@@ -14,6 +14,8 @@ pub use occt::control::{CancellationToken, OperationControl, ProgressUpdate};
 #[cfg(not(feature = "pure"))]
 pub use occt::geometry::{CurveControlData, CurveEvaluation, Frame, SplineAxis, SurfaceControlData, SurfaceEvaluation};
 #[cfg(not(feature = "pure"))]
+pub use occt::io::ShapeMesh;
+#[cfg(not(feature = "pure"))]
 pub use occt::mesh_import::{MeshImportOptions, MeshImportReport, MeshImportResult, MeshOutcome, MeshRepair, TriangleMesh};
 #[cfg(not(feature = "pure"))]
 pub use occt::modeling::{BooleanOp, JoinType, OffsetOptions, Partition, PartitionSide, Plane, PlaneSplit, SectionOptions, ShapeTransform};

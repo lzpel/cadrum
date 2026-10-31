@@ -192,3 +192,24 @@ Cancellation is cooperative. The native progress indicator polls the token durin
 supported kernel phases and discards partial results on cancellation. The error
 is `Cancelled`, rather than a valid empty result; callback failures remain errors.
 Callback reentrancy or concurrent reuse of one active control is rejected.
+
+## 10. Tessellation and native data boundaries
+
+Tessellation is disposable output. `Shape::tessellate` returns the existing mesh,
+per-vertex optional UVs, OCCT status flags, warnings, and cooperative progress or
+cancellation. Linear and angular deflection retain the existing absolute/relative
+policy. Face orientation determines normals and winding, including reflections;
+native triangulation is cleaned on completion and failure.
+
+Native I/O preserves open geometry. `Shape::read_step` and `write_step` operate on
+memory buffers without solid filtering, retaining open surfaces and disconnected
+components. They support the same operation control and report partial transfer.
+Geometry-only STEP and binary BRep omit styles and history; existing color-aware
+Solid I/O remains available. Binary BRep compatibility follows the linked OCCT
+format version rather than a portable cross-version serialization guarantee.
+
+Native handles remain thread-confined. `Shape`, `Solid`, `Face`, `Edge`, and the
+typed topology views implement neither `Send` nor `Sync`, since extracted topology
+can share mutable geometry even when each wrapper owns its handle. Earlier unsafe
+`Send` implementations have been removed. Independent workers may construct their
+own native shapes; mesh data and cancellation tokens remain transferable.

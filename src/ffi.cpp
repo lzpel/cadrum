@@ -1,4 +1,6 @@
 #include "cadrum/src/ffi.rs.h"
+#include "progress.h"
+#include <IMeshTools_Parameters.hxx>
 
 // ==================== OCCT headers (impl only — not exposed via wrapper.h) ====================
 //
@@ -725,12 +727,18 @@ void shape_bounding_box(const TopoDS_Solid& shape,
 
 // ==================== Meshing ====================
 
-static MeshData mesh_native_shape(const TopoDS_Shape& shape, double linear, double angular, bool relative) {
+static MeshData mesh_native_shape(const TopoDS_Shape& shape, double linear, double angular, bool relative, const OperationControl* control = nullptr) {
     MeshData result;
     result.success = false;
 
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
-    BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
+    struct CleanMesh { const TopoDS_Shape& shape; ~CleanMesh() { try { BRepTools::Clean(shape); } catch (...) {} } } cleanup{shape};
+    IMeshTools_Parameters parameters; parameters.Deflection=linear; parameters.Angle=angular; parameters.Relative=relative;
+    Handle(NativeProgress) progress;
+    if (control) { if (operation_cancelled(*control)) throw std::runtime_error("cancelled"); progress = new NativeProgress(*control); }
+    BRepMesh_IncrementalMesh mesher(shape, parameters, progress.IsNull() ? Message_ProgressRange() : progress->Start());
+    result.status = static_cast<uint32_t>(mesher.GetStatusFlags());
+    if (control && operation_cancelled(*control)) throw std::runtime_error("cancelled");
     if (!mesher.IsDone()) {
         return result;
     }
@@ -765,6 +773,9 @@ static MeshData mesh_native_shape(const TopoDS_Shape& shape, double linear, doub
 
         // Position and normal of every node in one pass.
         for (int i = 1; i <= nb_nodes; i++) {
+            result.uv_valid.push_back(triangulation->HasUVNodes());
+            const gp_Pnt2d uv = triangulation->HasUVNodes() ? triangulation->UVNode(i) : gp_Pnt2d(0.0, 0.0);
+            result.uvs.push_back(uv.X()); result.uvs.push_back(uv.Y());
             gp_Pnt p = triangulation->Node(i);
             p.Transform(location.Transformation());
             result.vertices.push_back(p.X());
@@ -807,7 +818,6 @@ static MeshData mesh_native_shape(const TopoDS_Shape& shape, double linear, doub
     }
 
     // BRepMesh stores its triangulation in the caller's faces; drop it so no later call sees it.
-    BRepTools::Clean(shape);
     result.success = true;
     return result;
 }
@@ -2091,9 +2101,10 @@ rust::Vec<double> native_bounds(const TopoDS_Shape& s) try {
     double x, y, z, xx, yy, zz; b.Get(x, y, z, xx, yy, zz);
     return {x, y, z, xx, yy, zz};
 } NATIVE_CATCH
-MeshData native_mesh(const TopoDS_Shape& s, double linear, double angular, bool relative) try {
-    return mesh_native_shape(s, linear, angular, relative);
+MeshData op_tessellate(const TopoDS_Shape& s, double linear, double angular, bool relative, const OperationControl& control) try {
+    return mesh_native_shape(s,linear,angular,relative,&control);
 } NATIVE_CATCH
+
 rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& s) try {
     std::ostringstream os;
     BinTools::Write(s, os, false, false, BinTools_FormatVersion_CURRENT);
