@@ -6,3 +6,5 @@ pub mod face;
 mod ffi;
 pub mod io;
 pub mod solid;
+
+pub mod shape;

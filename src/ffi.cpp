@@ -12,6 +12,7 @@
 // --- Topology types & navigation ---
 #include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
@@ -724,10 +725,9 @@ void shape_bounding_box(const TopoDS_Solid& shape,
 
 // ==================== Meshing ====================
 
-MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, double angular, bool relative) {
+static MeshData mesh_native_shape(const TopoDS_Shape& shape, double linear, double angular, bool relative) {
     MeshData result;
     result.success = false;
-    TopoDS_Compound shape = compound_of(solids);
 
     // BRepMesh_IncrementalMesh(shape, linDeflection, isRelative, angDeflection, isInParallel)
     BRepMesh_IncrementalMesh mesher(shape, linear, relative, angular, false);
@@ -810,6 +810,10 @@ MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, doub
     BRepTools::Clean(shape);
     result.success = true;
     return result;
+}
+
+MeshData mesh_shape(const std::vector<TopoDS_Solid>& solids, double linear, double angular, bool relative) {
+    return mesh_native_shape(compound_of(solids), linear, angular, relative);
 }
 
 // ==================== Topology enumeration ====================
@@ -1979,6 +1983,147 @@ void write_brep_stream(const std::vector<TopoDS_Solid>& solids, RustWriter& writ
     BinTools::Write(compound_of(solids), os, false, false, BinTools_FormatVersion_CURRENT);
     if (!os.good()) throw std::runtime_error("stream write failed");
 }
+
+
+#define NATIVE_CATCH catch (const Standard_Failure& e) { throw std::runtime_error(e.what()); }
+
+std::unique_ptr<TopoDS_Shape> native_from_solid(const TopoDS_Solid& s) { return std::make_unique<TopoDS_Shape>(s); }
+std::unique_ptr<TopoDS_Shape> native_from_face(const TopoDS_Face& s) { return std::make_unique<TopoDS_Shape>(s); }
+std::unique_ptr<TopoDS_Shape> native_from_edge(const TopoDS_Edge& s) { return std::make_unique<TopoDS_Shape>(s); }
+std::unique_ptr<TopoDS_Solid> native_as_solid(const TopoDS_Shape& s) try { return std::make_unique<TopoDS_Solid>(TopoDS::Solid(s)); } NATIVE_CATCH
+std::unique_ptr<TopoDS_Face> native_as_face(const TopoDS_Shape& s) try { return std::make_unique<TopoDS_Face>(TopoDS::Face(s)); } NATIVE_CATCH
+std::unique_ptr<TopoDS_Edge> native_as_edge(const TopoDS_Shape& s) try { return std::make_unique<TopoDS_Edge>(TopoDS::Edge(s)); } NATIVE_CATCH
+bool native_same_face(const TopoDS_Face& a, const TopoDS_Face& b) { return a.IsSame(b); }
+bool native_empty(const TopoDS_Shape& s) {
+    if (s.ShapeType() != TopAbs_COMPOUND && s.ShapeType() != TopAbs_COMPSOLID) return false;
+    for (TopoDS_Iterator it(s); it.More(); it.Next()) if (!native_empty(it.Value())) return false;
+    return true;
+}
+uint32_t native_kind(const TopoDS_Shape& s) { return static_cast<uint32_t>(s.ShapeType()); }
+bool native_valid(const TopoDS_Shape& s) try { return BRepCheck_Analyzer(s).IsValid(); } NATIVE_CATCH
+bool native_closed(const TopoDS_Shape& s) try { return BRep_Tool::IsClosed(s); } NATIVE_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> native_loose(const TopoDS_Shape& s) try {
+    auto out = native_vec_new();
+    if (s.ShapeType() == TopAbs_FACE) return out;
+    if (s.ShapeType() >= TopAbs_WIRE) { out->push_back(s); return out; }
+    for (TopoDS_Iterator it(s); it.More(); it.Next()) {
+        auto children = native_loose(it.Value());
+        out->insert(out->end(), children->begin(), children->end());
+    }
+    return out;
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_copy(const TopoDS_Shape& s) try {
+    return std::make_unique<TopoDS_Shape>(BRepBuilderAPI_Copy(s).Shape());
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_take(const std::vector<TopoDS_Shape>& shapes, size_t index) { return std::make_unique<TopoDS_Shape>(shapes.at(index)); }
+std::unique_ptr<std::vector<TopoDS_Shape>> native_vec_new() { return std::make_unique<std::vector<TopoDS_Shape>>(); }
+void native_vec_push(std::vector<TopoDS_Shape>& shapes, const TopoDS_Shape& s) { shapes.push_back(s); }
+std::unique_ptr<std::vector<TopoDS_Shape>> native_subshapes(const TopoDS_Shape& s, uint32_t kind) try {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(s, static_cast<TopAbs_ShapeEnum>(kind), map);
+    auto out = native_vec_new();
+    for (int i = 1; i <= map.Extent(); ++i) out->push_back(map(i));
+    return out;
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_vertex(double x, double y, double z) try {
+    return std::make_unique<TopoDS_Shape>(BRepBuilderAPI_MakeVertex(gp_Pnt(x, y, z)).Shape());
+} NATIVE_CATCH
+rust::Vec<double> native_point(const TopoDS_Shape& s) try {
+    const gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(s));
+    return {p.X(), p.Y(), p.Z()};
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_build(const std::vector<TopoDS_Shape>& shapes, uint32_t kind) try {
+    BRep_Builder b;
+    if (kind == TopAbs_WIRE) {
+        if (shapes.empty()) throw std::runtime_error("wire: no edges");
+        BRepBuilderAPI_MakeWire wire;
+        for (const auto& s : shapes) {
+            wire.Add(TopoDS::Edge(s));
+            if (!wire.IsDone()) throw std::runtime_error("wire: disconnected edges");
+        }
+        if (!wire.IsDone()) throw std::runtime_error("wire: disconnected edges");
+        return std::make_unique<TopoDS_Shape>(wire.Wire());
+    }
+    TopoDS_Shape out;
+    if (kind == TopAbs_SHELL) {
+        if (shapes.empty()) throw std::runtime_error("shell: no faces");
+        TopoDS_Shell shell; b.MakeShell(shell); out = shell;
+    } else {
+        TopoDS_Compound compound; b.MakeCompound(compound); out = compound;
+    }
+    for (const auto& s : shapes) b.Add(out, s);
+    if (kind == TopAbs_SHELL && !BRepCheck_Analyzer(out).IsValid()) throw std::runtime_error("shell: invalid topology; sew independent faces first");
+    return std::make_unique<TopoDS_Shape>(out);
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_sew(const std::vector<TopoDS_Face>& faces, double tolerance, rust::Vec<uint64_t>& history) try {
+    if (faces.empty()) return native_build({}, TopAbs_COMPOUND);
+    BRepBuilderAPI_Sewing sewing(tolerance);
+    for (const auto& f : faces) sewing.Add(f);
+    sewing.Perform();
+    if (sewing.SewedShape().IsNull()) throw std::runtime_error("sew: no result");
+    for (const auto& f : faces) {
+        const TopoDS_Shape mapped = sewing.IsModified(f) ? sewing.Modified(f) : f;
+        for (TopExp_Explorer ex(mapped, TopAbs_FACE); ex.More(); ex.Next()) {
+            history.push_back(reinterpret_cast<uint64_t>(ex.Current().TShape().get()));
+            history.push_back(reinterpret_cast<uint64_t>(f.TShape().get()));
+        }
+    }
+    return std::make_unique<TopoDS_Shape>(sewing.SewedShape());
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Solid> native_solidify(const TopoDS_Shape& s) try {
+    if (s.ShapeType() != TopAbs_SHELL) throw std::runtime_error("solidify: expected one closed shell");
+    if (!BRepCheck_Analyzer(s).IsValid() || !BRep_Tool::IsClosed(s)) throw std::runtime_error("solidify: expected a valid closed shell");
+    TopoDS_Solid solid = BRepBuilderAPI_MakeSolid(TopoDS::Shell(s)).Solid();
+    if (!BRepLib::OrientClosedSolid(solid) || !BRepCheck_Analyzer(solid).IsValid()) throw std::runtime_error("solidify: invalid solid");
+    return std::make_unique<TopoDS_Solid>(solid);
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_transform(const TopoDS_Shape& s, uint32_t kind, rust::Slice<const double> v) try {
+    gp_Trsf t;
+    if (kind == 0) t.SetTranslation(gp_Vec(v[0], v[1], v[2]));
+    else if (kind == 1) t.SetRotation(gp_Ax1(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5])), v[6]);
+    else if (kind == 2) t.SetScale(gp_Pnt(v[0], v[1], v[2]), v[3]);
+    else t.SetMirror(gp_Ax2(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5])));
+    return std::make_unique<TopoDS_Shape>(BRepBuilderAPI_Transform(s, t, true).Shape());
+} NATIVE_CATCH
+rust::Vec<double> native_bounds(const TopoDS_Shape& s) try {
+    Bnd_Box b; BRepBndLib::Add(s, b);
+    if (b.IsVoid()) return {};
+    double x, y, z, xx, yy, zz; b.Get(x, y, z, xx, yy, zz);
+    return {x, y, z, xx, yy, zz};
+} NATIVE_CATCH
+MeshData native_mesh(const TopoDS_Shape& s, double linear, double angular, bool relative) try {
+    return mesh_native_shape(s, linear, angular, relative);
+} NATIVE_CATCH
+rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& s) try {
+    std::ostringstream os;
+    BinTools::Write(s, os, false, false, BinTools_FormatVersion_CURRENT);
+    if (!os.good()) throw std::runtime_error("brep: write failed");
+    rust::Vec<uint8_t> out;
+    for (unsigned char c : os.str()) out.push_back(c);
+    return out;
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_read_brep(rust::Slice<const uint8_t> data) try {
+    std::istringstream is(std::string(reinterpret_cast<const char*>(data.data()), data.size()));
+    TopoDS_Shape s; BinTools::Read(s, is);
+    if (s.IsNull() || is.bad() || is.fail()) throw std::runtime_error("brep: invalid data");
+    return std::make_unique<TopoDS_Shape>(s);
+} NATIVE_CATCH
+std::unique_ptr<TopoDS_Shape> native_thicken(const TopoDS_Shape& s, double thickness) try {
+    if (s.ShapeType() != TopAbs_FACE && s.ShapeType() != TopAbs_SHELL) throw std::runtime_error("thicken: expected face or shell");
+    if (!BRepCheck_Analyzer(s).IsValid() || (s.ShapeType() == TopAbs_SHELL && BRep_Tool::IsClosed(s))) throw std::runtime_error("thicken: expected valid open topology");
+    BRepOffset_MakeOffset builder;
+    builder.Initialize(s, thickness, Precision::Confusion(), BRepOffset_Skin,
+                       false, false, GeomAbs_Intersection, true);
+    builder.MakeOffsetShape();
+    if (!builder.IsDone() || builder.Shape().IsNull()) throw std::runtime_error("thicken: kernel failed");
+    TopoDS_Shape out = builder.Shape();
+    if (out.ShapeType() != TopAbs_SOLID) throw std::runtime_error("thicken: expected solid result");
+    TopoDS_Solid solid = TopoDS::Solid(out);
+    if (!BRepLib::OrientClosedSolid(solid) || !BRepCheck_Analyzer(solid).IsValid()) throw std::runtime_error("thicken: invalid result");
+    out = solid;
+    return std::make_unique<TopoDS_Shape>(out);
+} NATIVE_CATCH
+#undef NATIVE_CATCH
 
 } // namespace cadrum
 

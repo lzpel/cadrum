@@ -1,6 +1,8 @@
 /// Errors that can occur during CAD operations.
 #[derive(Debug)]
 pub enum Error {
+	/// General native topology operation failed.
+	Shape(String),
 	/// Caller-side misuse: an argument that cannot be interpreted, such as an invalid color string.
 	Validation(String),
 
@@ -56,6 +58,7 @@ pub enum Error {
 impl std::fmt::Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
+			Error::Shape(msg) => write!(f, "Shape operation failed: {msg}"),
 			Error::Validation(msg) => write!(f, "Validation failed: {msg}"),
 			Error::Io(e) => write!(f, "IO failed: {e}"),
 			Error::Tesselation => write!(f, "Tesselation failed"),

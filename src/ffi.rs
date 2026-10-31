@@ -30,6 +30,36 @@ mod ffi_bridge {
 		type TopoDS_Edge;
 		type TopoDS_Wire;
 
+		type TopoDS_Shape;
+		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_face(shape: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_edge(shape: &TopoDS_Edge) -> UniquePtr<TopoDS_Shape>;
+		fn native_as_solid(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_as_face(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Face>>;
+		fn native_as_edge(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn native_same_face(a: &TopoDS_Face, b: &TopoDS_Face) -> bool;
+		fn native_empty(shape: &TopoDS_Shape) -> bool;
+		fn native_kind(shape: &TopoDS_Shape) -> u32;
+		fn native_valid(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_closed(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_loose(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_copy(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_subshapes(shape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_take(shapes: &CxxVector<TopoDS_Shape>, index: usize) -> UniquePtr<TopoDS_Shape>;
+		fn native_vec_new() -> UniquePtr<CxxVector<TopoDS_Shape>>;
+		fn native_vec_push(shapes: Pin<&mut CxxVector<TopoDS_Shape>>, shape: &TopoDS_Shape);
+		fn native_vertex(x: f64, y: f64, z: f64) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_point(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn native_build(shapes: &CxxVector<TopoDS_Shape>, kind: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_sew(faces: &CxxVector<TopoDS_Face>, tolerance: f64, history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_solidify(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_bounds(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn native_mesh(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
+		fn native_write_brep(shape: &TopoDS_Shape) -> Result<Vec<u8>>;
+		fn native_read_brep(data: &[u8]) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_thicken(shape: &TopoDS_Shape, thickness: f64) -> Result<UniquePtr<TopoDS_Shape>>;
+
 		// ==================== Shape I/O (streambuf callback) ====================
 
 		// `out_consumed` = payload length, where the color trailer begins. Written only
