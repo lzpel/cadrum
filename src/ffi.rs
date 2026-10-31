@@ -12,6 +12,23 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	#[derive(Default)]
+	struct SplineData {
+		bezier: bool,
+		poles: Vec<f64>,
+		weights: Vec<f64>,
+		u_count: u32,
+		v_count: u32,
+		u_degree: u32,
+		v_degree: u32,
+		u_knots: Vec<f64>,
+		v_knots: Vec<f64>,
+		u_mults: Vec<i32>,
+		v_mults: Vec<i32>,
+		u_periodic: bool,
+		v_periodic: bool,
+	}
+
 	struct HistoryEntry {
 		operand: u32,
 		source: u32,
@@ -68,6 +85,18 @@ mod ffi_bridge {
 		type TopoDS_Wire;
 
 		type TopoDS_Shape;
+		fn op_authored_curve(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_authored_surface(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
+		fn op_ellipse(frame: &[f64], major: f64, minor: f64, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_curve_control(edge: &TopoDS_Edge) -> Result<SplineData>;
+		fn op_surface_control(face: &TopoDS_Face) -> Result<SplineData>;
+		fn op_curve_range(edge: &TopoDS_Edge) -> Result<Vec<f64>>;
+		fn op_curve_evaluate(edge: &TopoDS_Edge, parameter: f64) -> Result<Vec<f64>>;
+		fn op_trim_edge(edge: &TopoDS_Edge, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_surface_range(face: &TopoDS_Face) -> Result<Vec<f64>>;
+		fn op_surface_evaluate(face: &TopoDS_Face, u: f64, v: f64) -> Result<Vec<f64>>;
+		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
+
 		fn op_affine(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
 		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, flags: &[bool]) -> Result<RepairData>;
 		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;

@@ -26,6 +26,18 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct SplineData;
+std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData&,rust::Slice<const double>);
+std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData&,rust::Slice<const double>);
+std::unique_ptr<TopoDS_Edge> op_ellipse(rust::Slice<const double>,double,double,rust::Slice<const double>);
+SplineData op_curve_control(const TopoDS_Edge&);
+SplineData op_surface_control(const TopoDS_Face&);
+rust::Vec<double> op_curve_range(const TopoDS_Edge&);
+rust::Vec<double> op_curve_evaluate(const TopoDS_Edge&,double);
+std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge&,rust::Slice<const double>);
+rust::Vec<double> op_surface_range(const TopoDS_Face&);
+rust::Vec<double> op_surface_evaluate(const TopoDS_Face&,double,double);
+std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face&,rust::Slice<const double>);
 struct OperationData;
 OperationData op_affine(const TopoDS_Shape& shape, rust::Slice<const double> values);
 struct ValidationData;

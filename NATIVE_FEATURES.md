@@ -74,3 +74,23 @@ General transforms may change geometry representation. OCCT's GTransform can
 convert analytic geometry to B-splines while preserving native trim boundaries.
 Results include indexed vertex, edge, and face correspondence and inherited face
 styles; missing correspondence is explicitly unknown rather than deleted.
+
+## 4. Authored curves and surfaces
+
+Control data defines geometry directly. `CurveControlData::Bezier` and `BSpline`
+construct edges from poles, optional positive weights, degree, strictly increasing
+knots, multiplicities, and periodicity; `SurfaceControlData` does the same for
+independent U/V axes. Empty weights mean all ones. Control nets use U-major order:
+`poles[u * v_count + v]`. These APIs do not interpolate their poles.
+
+Trims use native parameters. `edge(Some([first,last]))` and
+`face(Some([umin,umax,vmin,vmax]))` preserve exact underlying native geometry.
+`Edge::ellipse` uses a perpendicular right-handed `Frame`, major/minor radii, and
+optional increasing angular bounds in radians; its frame directions are normalized.
+`Edge::trimmed` restricts an existing edge, while `Face::surface_patch` creates a
+rectangular patch of its underlying surface rather than retaining old trim wires.
+
+Authored data remains inspectable. `control_data`, `parameter_range`, `evaluate`,
+and `evaluate_uv` read poles, weights, spline axes, positions, and first/second
+derivatives. Surface normals follow face orientation. Existing native profile and
+solid operations accept these edges and faces; BRep round trips preserve authored data.

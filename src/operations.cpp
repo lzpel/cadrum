@@ -13,7 +13,7 @@
 
 namespace cadrum {
 ValidationData op_validate(const TopoDS_Shape& shape) try {
-    ValidationData out;
+    ValidationData out{};
     BRepCheck_Analyzer analyzer(shape);
     out.valid = analyzer.IsValid();
     out.closed = BRep_Tool::IsClosed(shape);
@@ -75,7 +75,7 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
     fix.FixShellTool()->FixFaceMode() = flags[1];
     fix.FixFaceTool()->FixWireMode() = flags[0];
     fix.FixVertexTolMode() = 0;
-    RepairData out;
+    RepairData out{};
     out.changed = fix.Perform();
     const TopoDS_Shape result = fix.Shape();
     out.tolerance_before = maximum_tolerance(shape);
@@ -97,7 +97,7 @@ template<class Builder>
 static OperationData operation_result(Builder& builder, const std::vector<TopoDS_Shape>& inputs) {
     const TopoDS_Shape result = builder.Shape();
     if (result.IsNull()) throw std::runtime_error("kernel produced null topology");
-    OperationData out;
+    OperationData out{};
     out.shape = std::make_unique<TopoDS_Shape>(result);
     out.complete = true;
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> targets;
@@ -133,5 +133,93 @@ OperationData op_affine(const TopoDS_Shape& s, rust::Slice<const double> v) try 
     BRepBuilderAPI_GTransform builder(s, t, true);
     if (!builder.IsDone()) throw std::runtime_error("affine: transform failed");
     return operation_result(builder, {s});
+} OP_CATCH
+}
+
+#include <Geom_BezierCurve.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <Geom_BezierSurface.hxx>
+#include <Geom_BSplineSurface.hxx>
+#include <Geom_Ellipse.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepTools.hxx>
+#include <NCollection_Array1.hxx>
+#include <NCollection_Array2.hxx>
+namespace cadrum {
+template<class T> static NCollection_Array1<T> array1(const rust::Vec<T>& v) {
+    NCollection_Array1<T> out(1, int(v.size())); for (int i=1;i<=out.Length();++i) out(i)=v[i-1]; return out;
+}
+static Handle(Geom_Curve) authored_curve(const SplineData& d) {
+    NCollection_Array1<gp_Pnt> p(1,int(d.u_count));
+    for(int i=1;i<=p.Length();++i) p(i)=gp_Pnt(d.poles[3*(i-1)],d.poles[3*(i-1)+1],d.poles[3*(i-1)+2]);
+    if(d.bezier) return new Geom_BezierCurve(p,array1(d.weights));
+    return new Geom_BSplineCurve(p,array1(d.weights),array1(d.u_knots),array1(d.u_mults),int(d.u_degree),d.u_periodic);
+}
+std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData& d,rust::Slice<const double> trim) try {
+    const auto c=authored_curve(d);
+    double a=c->FirstParameter(),b=c->LastParameter();
+    if(trim.size()==2) { if(trim[0]<a || trim[1]>b) throw std::runtime_error("curve trim outside domain"); a=trim[0]; b=trim[1]; }
+    BRepBuilderAPI_MakeEdge builder(c,a,b);
+    if(!builder.IsDone()) throw std::runtime_error("authored curve construction failed");
+    return std::make_unique<TopoDS_Edge>(builder.Edge());
+} OP_CATCH
+std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData& d,rust::Slice<const double> trim) try {
+    NCollection_Array2<gp_Pnt> p(1,int(d.u_count),1,int(d.v_count));
+    NCollection_Array2<double> w(1,int(d.u_count),1,int(d.v_count));
+    for(int i=1;i<=int(d.u_count);++i) for(int j=1;j<=int(d.v_count);++j) {
+        const size_t k=size_t(i-1)*d.v_count+j-1; p(i,j)=gp_Pnt(d.poles[3*k],d.poles[3*k+1],d.poles[3*k+2]); w(i,j)=d.weights[k];
+    }
+    Handle(Geom_Surface) surface;
+    if(d.bezier) surface=new Geom_BezierSurface(p,w);
+    else surface=new Geom_BSplineSurface(p,w,array1(d.u_knots),array1(d.v_knots),array1(d.u_mults),array1(d.v_mults),d.u_degree,d.v_degree,d.u_periodic,d.v_periodic);
+    double a,b,c,e; surface->Bounds(a,b,c,e);
+    if(trim.size()==4) { if(trim[0]<a||trim[1]>b||trim[2]<c||trim[3]>e) throw std::runtime_error("surface trim outside domain"); a=trim[0];b=trim[1];c=trim[2];e=trim[3]; }
+    BRepBuilderAPI_MakeFace builder(surface,a,b,c,e,1e-7);
+    if(!builder.IsDone()) throw std::runtime_error("authored surface construction failed");
+    return std::make_unique<TopoDS_Face>(builder.Face());
+} OP_CATCH
+std::unique_ptr<TopoDS_Edge> op_ellipse(rust::Slice<const double> f,double major,double minor,rust::Slice<const double> trim) try {
+    Handle(Geom_Ellipse) c=new Geom_Ellipse(gp_Ax2(gp_Pnt(f[0],f[1],f[2]),gp_Dir(f[3],f[4],f[5]),gp_Dir(f[6],f[7],f[8])),major,minor);
+    const double a=trim.empty()?0.0:trim[0],b=trim.empty()?2.0*M_PI:trim[1];
+    if(b-a>2.0*M_PI+1e-12) throw std::runtime_error("ellipse arc exceeds one turn");
+    BRepBuilderAPI_MakeEdge builder(c,a,b);
+    if(!builder.IsDone()) throw std::runtime_error("ellipse construction failed");
+    return std::make_unique<TopoDS_Edge>(builder.Edge());
+} OP_CATCH
+static void append_xyz(rust::Vec<double>& out,const gp_XYZ& p) { out.push_back(p.X());out.push_back(p.Y());out.push_back(p.Z()); }
+SplineData op_curve_control(const TopoDS_Edge& edge) try {
+    double a,b; const Handle(Geom_Curve) c=BRep_Tool::Curve(edge,a,b);
+    const auto bez=Handle(Geom_BezierCurve)::DownCast(c); const auto bs=Handle(Geom_BSplineCurve)::DownCast(c);
+    if(bez.IsNull()&&bs.IsNull()) throw std::runtime_error("curve is neither Bezier nor B-spline");
+    SplineData d{};d.bezier=!bez.IsNull();d.u_count=d.bezier?bez->NbPoles():bs->NbPoles();d.v_count=1;
+    for(int i=1;i<=int(d.u_count);++i) { append_xyz(d.poles,(d.bezier?bez->Pole(i):bs->Pole(i)).XYZ()); d.weights.push_back(d.bezier?bez->Weight(i):bs->Weight(i)); }
+    d.u_degree=d.bezier?bez->Degree():bs->Degree();
+    if(!d.bezier) { d.u_periodic=bs->IsPeriodic(); for(int i=1;i<=bs->NbKnots();++i) {d.u_knots.push_back(bs->Knot(i));d.u_mults.push_back(bs->Multiplicity(i));} }
+    return d;
+} OP_CATCH
+SplineData op_surface_control(const TopoDS_Face& face) try {
+    const auto surface=BRep_Tool::Surface(face); const auto bez=Handle(Geom_BezierSurface)::DownCast(surface);const auto bs=Handle(Geom_BSplineSurface)::DownCast(surface);
+    if(bez.IsNull()&&bs.IsNull()) throw std::runtime_error("surface is neither Bezier nor B-spline");
+    SplineData d{};d.bezier=!bez.IsNull();d.u_count=d.bezier?bez->NbUPoles():bs->NbUPoles();d.v_count=d.bezier?bez->NbVPoles():bs->NbVPoles();
+    for(int i=1;i<=int(d.u_count);++i) for(int j=1;j<=int(d.v_count);++j) {append_xyz(d.poles,(d.bezier?bez->Pole(i,j):bs->Pole(i,j)).XYZ());d.weights.push_back(d.bezier?bez->Weight(i,j):bs->Weight(i,j));}
+    d.u_degree=d.bezier?bez->UDegree():bs->UDegree();d.v_degree=d.bezier?bez->VDegree():bs->VDegree();
+    if(!d.bezier) { d.u_periodic=bs->IsUPeriodic();d.v_periodic=bs->IsVPeriodic();for(int i=1;i<=bs->NbUKnots();++i){d.u_knots.push_back(bs->UKnot(i));d.u_mults.push_back(bs->UMultiplicity(i));}for(int i=1;i<=bs->NbVKnots();++i){d.v_knots.push_back(bs->VKnot(i));d.v_mults.push_back(bs->VMultiplicity(i));} }
+    return d;
+} OP_CATCH
+rust::Vec<double> op_curve_range(const TopoDS_Edge& edge) try { BRepAdaptor_Curve c(edge);return {c.FirstParameter(),c.LastParameter()}; } OP_CATCH
+rust::Vec<double> op_curve_evaluate(const TopoDS_Edge& edge,double t) try { BRepAdaptor_Curve c(edge);gp_Pnt p;gp_Vec d1,d2;c.D2(t,p,d1,d2);rust::Vec<double> out;append_xyz(out,p.XYZ());append_xyz(out,d1.XYZ());append_xyz(out,d2.XYZ());return out; } OP_CATCH
+std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge& edge,rust::Slice<const double> trim) try { double a,b;auto c=BRep_Tool::Curve(edge,a,b);BRepBuilderAPI_MakeEdge builder(c,trim[0],trim[1]);if(!builder.IsDone())throw std::runtime_error("edge trim failed");return std::make_unique<TopoDS_Edge>(builder.Edge()); } OP_CATCH
+rust::Vec<double> op_surface_range(const TopoDS_Face& face) try {double a,b,c,d;BRepTools::UVBounds(face,a,b,c,d);return {a,b,c,d};} OP_CATCH
+rust::Vec<double> op_surface_evaluate(const TopoDS_Face& face,double u,double v) try {
+    BRepAdaptor_Surface s(face);gp_Pnt p;gp_Vec du,dv,duu,dvv,duv;s.D2(u,v,p,du,dv,duu,dvv,duv);
+    gp_Vec normal=du.Crossed(dv);if(normal.SquareMagnitude()>1e-30) normal.Normalize();if(face.Orientation()==TopAbs_REVERSED)normal.Reverse();
+    rust::Vec<double> out;for(const auto& xyz:{p.XYZ(),du.XYZ(),dv.XYZ(),duu.XYZ(),duv.XYZ(),dvv.XYZ(),normal.XYZ()})append_xyz(out,xyz);return out;
+} OP_CATCH
+std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face,rust::Slice<const double> trim) try {
+    auto s=BRep_Tool::Surface(face);double a,b,c,d;s->Bounds(a,b,c,d);if(trim[0]<a||trim[1]>b||trim[2]<c||trim[3]>d)throw std::runtime_error("surface trim outside domain");
+    BRepBuilderAPI_MakeFace builder(s,trim[0],trim[1],trim[2],trim[3],1e-7);if(!builder.IsDone())throw std::runtime_error("surface trim failed");return std::make_unique<TopoDS_Face>(builder.Face());
 } OP_CATCH
 }
