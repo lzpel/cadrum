@@ -268,3 +268,25 @@ building that history, so scaling sweeps disable native history and return an
 explicit incomplete-history warning. Legacy `Solid::volume` retains its original
 integration policy; `Shape::mass_properties` accepts an accuracy target and reports
 the native estimate for callers needing controlled integration.
+
+## 13. Loft controls and healing reports
+
+Lofts expose their approximation policy. `Shape::loft` accepts shell/solid choice,
+ruled/smooth construction, compatibility/orientation normalization, tolerance,
+smoothing, parameterization, requested continuity, maximum degree, and optimization
+weights. Native input topology is kept immutable. Point vertices are permitted at
+ends when at least one wire section exists; direct wire lofts expose native history.
+
+Profile correspondence is explicit by order. Face and compound-profile sections
+must have matching region and hole counts; regions and hole loops correspond in
+native traversal order. Solid construction lofts each outer region and subtracts
+its corresponding hole lofts. Shell construction retains outer and reversed inner
+shells separately. Incompatible topology is rejected, and composite profile lofts
+report incomplete history rather than claiming correspondence through subtraction.
+
+Healing reports measured changes. Repair reports now include context-replaced or
+tolerance-changed subshape indices, boundary counts, tolerance maxima, sample count,
+and maximum sampled deviation. Vertices and five curve samples per edge are checked
+against repaired geometry, and exceeding the requested sampled limit rejects the
+repair. This measure is not a continuous Hausdorff bound on surface interiors.
+Intentional openings remain unless closure is explicitly allowed.

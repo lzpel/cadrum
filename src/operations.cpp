@@ -1,5 +1,9 @@
 #include "cadrum/src/ffi.rs.h"
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <ShapeBuild_ReShape.hxx>
 #include <BRepCheck_Result.hxx>
 #include <BRep_Tool.hxx>
 #include <TopExp.hxx>
@@ -62,9 +66,10 @@ static size_t boundary_edges(const TopoDS_Shape& s) {
     for (int i = 1; i <= map.Extent(); ++i) if (map.FindFromIndex(i).Extent() == 1 && !BRep_Tool::IsClosed(TopoDS::Edge(map.FindKey(i)), TopoDS::Face(map.FindFromIndex(i).First()))) ++count;
     return count;
 }
-RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, rust::Slice<const bool> flags) try {
+RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, double max_deviation, rust::Slice<const bool> flags) try {
     if (flags.size() != 5) throw std::runtime_error("repair: invalid flags");
-    const TopoDS_Shape copy = BRepBuilderAPI_Copy(shape).Shape();
+    BRepBuilderAPI_Copy copier(shape);
+    const TopoDS_Shape copy = copier.Shape();
     ShapeFix_Shape fix(copy);
     fix.SetPrecision(precision);
     fix.SetMaxTolerance(max_tolerance);
@@ -84,6 +89,24 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
     out.boundary_after = boundary_edges(result);
     if (out.tolerance_after > max_tolerance * (1.0 + 1e-10)) throw std::runtime_error("repair: maximum tolerance exceeded");
     if (!flags[4] && out.boundary_after < out.boundary_before) throw std::runtime_error("repair: closing a boundary is not permitted");
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> original;
+    TopExp::MapShapes(shape, original);
+    auto measure = [&](const gp_Pnt& point) {
+        BRepExtrema_DistShapeShape distance(BRepBuilderAPI_MakeVertex(point).Vertex(), result);
+        if (!distance.IsDone()) throw std::runtime_error("repair deviation measurement failed");
+        out.maximum_deviation = std::max(out.maximum_deviation, distance.Value()); ++out.sample_count;
+        if (out.maximum_deviation > max_deviation) throw std::runtime_error("repair sampled deviation exceeds limit");
+    };
+    for (int i=1;i<=original.Extent();++i) {
+        const auto copied=copier.ModifiedShape(original(i));
+        const auto repaired=fix.Context()->Apply(copied);
+        if (!copied.IsSame(repaired) || maximum_tolerance(original(i)) != maximum_tolerance(repaired)) out.changed_subshapes.push_back(i);
+        if (original(i).ShapeType()==TopAbs_VERTEX) measure(BRep_Tool::Pnt(TopoDS::Vertex(original(i))));
+        if (original(i).ShapeType()==TopAbs_EDGE && !BRep_Tool::Degenerated(TopoDS::Edge(original(i)))) {
+            BRepAdaptor_Curve curve(TopoDS::Edge(original(i)));
+            if (std::isfinite(curve.FirstParameter()) && std::isfinite(curve.LastParameter())) for(int j=0;j<=4;++j) measure(curve.Value(curve.FirstParameter()+(curve.LastParameter()-curve.FirstParameter())*j/4.0));
+        }
+    }
     out.shape = std::make_unique<TopoDS_Shape>(result);
     return out;
 } OP_CATCH
@@ -528,5 +551,36 @@ SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,
     if(!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("sweep: invalid result");
     if(config.law.empty())out.operation=operation_result(builder,inputs);else{out.operation.shape=std::make_unique<TopoDS_Shape>(builder.Shape());out.operation.complete=false;out.operation.warnings.push_back("OCCT scaling-law history is unavailable; native history building is disabled to avoid its kernel crash");}
     out.status=builder.GetStatus();out.error=builder.ErrorOnSurface();return out;
+} OP_CATCH
+}
+
+#include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepAlgoAPI_Cut.hxx>
+namespace cadrum {
+static std::unique_ptr<BRepOffsetAPI_ThruSections> loft_piece(const std::vector<TopoDS_Shape>& sections,const LoftConfig& config,const OperationControl& control){
+    auto builder=std::make_unique<BRepOffsetAPI_ThruSections>(config.solid,config.ruled,config.tolerance);builder->CheckCompatibility(config.compatibility);builder->SetMutableInput(false);builder->SetSmoothing(config.smoothing);builder->SetParType(static_cast<Approx_ParametrizationType>(config.parametrization));builder->SetContinuity(static_cast<GeomAbs_Shape>(config.continuity));builder->SetMaxDegree(config.max_degree);builder->SetCriteriumWeight(config.weights[0],config.weights[1],config.weights[2]);
+    bool has_wire=false;for(const auto& s:sections){if(s.ShapeType()==TopAbs_VERTEX)builder->AddVertex(TopoDS::Vertex(s));else{has_wire=true;if(config.solid&&!BRep_Tool::IsClosed(s))throw std::runtime_error("solid loft requires closed wires");builder->AddWire(TopoDS::Wire(s));}}
+    if(!has_wire)throw std::runtime_error("loft requires at least one wire section");
+    Handle(NativeProgress) progress=new NativeProgress(control);builder->Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    if(!builder->IsDone()||builder->Shape().IsNull())throw std::runtime_error("loft construction failed");
+    return builder;
+}
+OperationData op_loft(const std::vector<TopoDS_Shape>& sections,const LoftConfig& config,const OperationControl& control) try {
+    bool simple=true;for(const auto& s:sections)if(s.ShapeType()!=TopAbs_WIRE&&s.ShapeType()!=TopAbs_VERTEX)simple=false;
+    if(simple){auto builder=loft_piece(sections,config,control);if(!BRepCheck_Analyzer(builder->Shape()).IsValid())throw std::runtime_error("invalid loft result");return operation_result(*builder,sections);}
+    std::vector<std::vector<TopoDS_Face>> profiles;
+    for(const auto& s:sections){require_profile(s);std::vector<TopoDS_Face> faces;for(TopExp_Explorer ex(s,TopAbs_FACE);ex.More();ex.Next())faces.push_back(TopoDS::Face(ex.Current()));if(faces.empty()||(!profiles.empty()&&faces.size()!=profiles[0].size()))throw std::runtime_error("loft profiles have incompatible region counts");profiles.push_back(faces);}
+    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0;
+    for(size_t region=0;region<profiles[0].size();++region){
+        std::vector<std::vector<TopoDS_Shape>> loops;
+        for(const auto& profile:profiles){auto wires=op_boundary_wires(profile[region]);if(!loops.empty()&&wires->size()!=loops[0].size())throw std::runtime_error("loft profiles have incompatible hole counts");loops.push_back(*wires);}
+        TopoDS_Shape body;
+        for(size_t loop=0;loop<loops[0].size();++loop){std::vector<TopoDS_Shape> wires;for(const auto& section:loops)wires.push_back(section[loop]);auto builder=loft_piece(wires,config,control);TopoDS_Shape result=builder->Shape();
+            if(config.solid){auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient profile loft");result=solid;if(loop==0)body=result;else{BRepAlgoAPI_Cut cut(body,result);if(!cut.IsDone()||cut.HasErrors())throw std::runtime_error("hole loft subtraction failed");body=cut.Shape();}}
+            else{if(loop>0)result.Reverse();b.Add(compound,result);only=result;++count;}
+        }
+        if(config.solid){b.Add(compound,body);only=body;++count;}
+    }
+    const TopoDS_Shape result=count==1?only:compound;if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid composite loft");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;out.warnings.push_back("composite profile loft history is incomplete");return out;
 } OP_CATCH
 }

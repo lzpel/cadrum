@@ -28,6 +28,9 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct OperationData;
+struct LoftConfig;
+OperationData op_loft(const std::vector<TopoDS_Shape>&,const LoftConfig&,const OperationControl&);
 struct SweepConfig;
 struct SweepData;
 SweepData op_sweep(const std::vector<TopoDS_Shape>&,size_t,const SweepConfig&,const OperationControl&);
@@ -79,7 +82,7 @@ OperationData op_revolution(const TopoDS_Shape&,rust::Slice<const double>);
 OperationData op_affine(const TopoDS_Shape& shape, rust::Slice<const double> values);
 struct ValidationData;
 struct RepairData;
-RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, rust::Slice<const bool> flags);
+RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, double max_deviation, rust::Slice<const bool> flags);
 ValidationData op_validate(const TopoDS_Shape& shape);
 
 std::unique_ptr<TopoDS_Shape> native_from_solid(const TopoDS_Solid& shape);

@@ -16,6 +16,8 @@ pub use occt::geometry::{CurveControlData, CurveEvaluation, Frame, SplineAxis, S
 #[cfg(not(feature = "pure"))]
 pub use occt::io::ShapeMesh;
 #[cfg(not(feature = "pure"))]
+pub use occt::loft::{LoftContinuity, LoftOptions, LoftParametrization};
+#[cfg(not(feature = "pure"))]
 pub use occt::mesh_import::{MeshImportOptions, MeshImportReport, MeshImportResult, MeshOutcome, MeshRepair, TriangleMesh};
 #[cfg(not(feature = "pure"))]
 pub use occt::modeling::{BooleanOp, JoinType, OffsetOptions, Partition, PartitionSide, Plane, PlaneSplit, SectionOptions, ShapeTransform};

@@ -16,6 +16,18 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct LoftConfig {
+		solid: bool,
+		ruled: bool,
+		compatibility: bool,
+		tolerance: f64,
+		smoothing: bool,
+		parametrization: u32,
+		continuity: u32,
+		max_degree: u32,
+		weights: Vec<f64>,
+	}
+
 	struct SweepConfig {
 		mode: u32,
 		frame: Vec<f64>,
@@ -110,6 +122,9 @@ mod ffi_bridge {
 		tolerance_after: f64,
 		boundary_before: usize,
 		boundary_after: usize,
+		changed_subshapes: Vec<u32>,
+		maximum_deviation: f64,
+		sample_count: usize,
 	}
 	struct ValidationEntry {
 		subshape: u32,
@@ -158,6 +173,7 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_loft(sections: &CxxVector<TopoDS_Shape>, config: &LoftConfig, control: &OperationControl) -> Result<OperationData>;
 		fn op_sweep(inputs: &CxxVector<TopoDS_Shape>, section_count: usize, config: &SweepConfig, control: &OperationControl) -> Result<SweepData>;
 		fn op_curve_info(edge: &TopoDS_Edge) -> Result<GeometryInfoData>;
 		fn op_surface_info(face: &TopoDS_Face) -> Result<GeometryInfoData>;
@@ -192,7 +208,7 @@ mod ffi_bridge {
 		fn op_prism(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> Result<OperationData>;
 		fn op_revolution(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
 		fn op_affine(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
-		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, flags: &[bool]) -> Result<RepairData>;
+		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, max_deviation: f64, flags: &[bool]) -> Result<RepairData>;
 		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;
 		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;
 		fn native_from_face(shape: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;

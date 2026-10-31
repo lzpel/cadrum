@@ -22,3 +22,5 @@ pub mod control;
 pub mod query;
 
 pub mod sweep;
+
+pub mod loft;

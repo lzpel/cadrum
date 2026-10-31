@@ -100,6 +100,7 @@ pub(crate) fn supported(operation: &str, kind: ShapeKind) -> Error {
 pub struct RepairOptions {
 	pub precision: f64,
 	pub max_tolerance: f64,
+	pub max_sampled_deviation: f64,
 	pub fix_wires: bool,
 	pub fix_faces: bool,
 	pub fix_shells: bool,
@@ -108,7 +109,7 @@ pub struct RepairOptions {
 }
 impl Default for RepairOptions {
 	fn default() -> Self {
-		Self { precision: 1e-7, max_tolerance: 1e-5, fix_wires: true, fix_faces: true, fix_shells: true, fix_solids: false, allow_closing: false }
+		Self { precision: 1e-7, max_tolerance: 1e-5, max_sampled_deviation: 1e-5, fix_wires: true, fix_faces: true, fix_shells: true, fix_solids: false, allow_closing: false }
 	}
 }
 #[derive(Debug)]
@@ -121,17 +122,21 @@ pub struct RepairReport {
 	pub maximum_tolerance_after: f64,
 	pub boundary_edges_before: usize,
 	pub boundary_edges_after: usize,
+	pub changed_subshapes: Vec<usize>,
+	pub maximum_sampled_deviation: f64,
+	pub sample_count: usize,
 }
 impl Shape {
 	/// Repair an independent copy under explicit permissions and tolerance limits.
 	pub fn repair(&self, options: RepairOptions) -> Result<RepairReport, Error> {
 		positive(options.precision, "repair precision")?;
+		positive(options.max_sampled_deviation, "repair maximum sampled deviation")?;
 		positive(options.max_tolerance, "repair maximum tolerance")?;
 		if options.max_tolerance < options.precision {
 			return Err(Error::Validation("repair: maximum tolerance below precision".into()));
 		}
 		let before = self.validate(None)?;
-		let data = ffi::op_repair(&self.inner, options.precision, options.max_tolerance, &[options.fix_wires, options.fix_faces, options.fix_shells, options.fix_solids, options.allow_closing]).map_err(|e| kernel("repair", e))?;
+		let data = ffi::op_repair(&self.inner, options.precision, options.max_tolerance, options.max_sampled_deviation, &[options.fix_wires, options.fix_faces, options.fix_shells, options.fix_solids, options.allow_closing]).map_err(|e| kernel("repair", e))?;
 		let shape = Shape::new(data.shape);
 		let after = shape.validate(None)?;
 		Ok(RepairReport {
@@ -143,6 +148,9 @@ impl Shape {
 			maximum_tolerance_after: data.tolerance_after,
 			boundary_edges_before: data.boundary_before as usize,
 			boundary_edges_after: data.boundary_after as usize,
+			changed_subshapes: data.changed_subshapes.into_iter().map(|i| i as usize).collect(),
+			maximum_sampled_deviation: data.maximum_deviation,
+			sample_count: data.sample_count,
 		})
 	}
 }
