@@ -26,6 +26,8 @@ pub use occt::query::{BoundaryWire, ClosestPair, CurveInfo, CurveKind, DistanceR
 #[cfg(not(feature = "pure"))]
 pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, RepairOptions, RepairReport, TopologyRef, TopologyRelation, ValidationIssue, ValidationReport};
 #[cfg(not(feature = "pure"))]
+pub use occt::sweep::{AuxiliaryContact, SweepOptions, SweepOrientation, SweepResult, SweepSection, SweepTransition};
+#[cfg(not(feature = "pure"))]
 pub use occt::{
 	edge::Edge,
 	face::Face,

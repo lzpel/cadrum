@@ -240,3 +240,31 @@ solutions reported by OCCT, their point pairs, native support shapes, and inner
 solution status; continuous families are represented by the kernel's finite set.
 `classify_point` supports solids, and `ancestors` traverses native adjacency while
 rejecting foreign subshapes. Existing convenience measurements remain available.
+
+## 12. Advanced sweeps
+
+Sweep controls map to native pipe-shell settings. `Wire::sweep` accepts ordered
+wire/endpoint-vertex sections with optional spine-vertex locations and per-section
+contact/correction flags. Options expose transition policy, three tolerances, C1
+approximation requests, maximum degree/segments, simulation count, and explicit
+shell/solid output. Results include pipe status, approximation error, history, and
+simulated section wires, with cooperative cancellation during native building.
+
+Orientation policies remain distinct. Corrected Frenet, Frenet, fixed frame,
+fixed binormal, discrete, support-surface, and auxiliary-spine modes are available.
+Support mode requires native pcurves on the supplied support; auxiliary mode
+exposes curvilinear matching and no-contact/contact/boundary contact choices.
+Round corners work best with section correction; transformed sharp corners may
+self-intersect, and right-corner intersections retain kernel limitations.
+
+Scaling laws are homothetic. Positive scale samples interpolate over normalized
+spine position from zero to one, with matching endpoint values on closed spines.
+A scaling law requires one section and is incompatible with auxiliary-spine mode.
+It does not represent arbitrary twist. Invalid combinations return errors before
+native evaluation; incompatible geometry reports the native pipe status.
+
+Scaling-law history is unavailable in the pinned kernel. OCCT 8.0.1 crashes while
+building that history, so scaling sweeps disable native history and return an
+explicit incomplete-history warning. Legacy `Solid::volume` retains its original
+integration policy; `Shape::mass_properties` accepts an accuracy target and reports
+the native estimate for callers needing controlled integration.

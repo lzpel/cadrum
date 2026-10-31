@@ -28,6 +28,9 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct SweepConfig;
+struct SweepData;
+SweepData op_sweep(const std::vector<TopoDS_Shape>&,size_t,const SweepConfig&,const OperationControl&);
 struct GeometryInfoData;
 struct DistanceData;
 GeometryInfoData op_curve_info(const TopoDS_Edge&);

@@ -16,6 +16,33 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct SweepConfig {
+		mode: u32,
+		frame: Vec<f64>,
+		transition: u32,
+		tolerance: f64,
+		boundary_tolerance: f64,
+		angular_tolerance: f64,
+		force_c1: bool,
+		max_degree: u32,
+		max_segments: u32,
+		solid: bool,
+		contact: Vec<bool>,
+		correction: Vec<bool>,
+		locations: Vec<i32>,
+		law: Vec<f64>,
+		guide: i32,
+		curvilinear: bool,
+		auxiliary_contact: u32,
+		simulation: u32,
+	}
+	struct SweepData {
+		operation: OperationData,
+		sections: UniquePtr<CxxVector<TopoDS_Shape>>,
+		status: u32,
+		error: f64,
+	}
+
 	struct GeometryInfoData {
 		kind: u32,
 		range: Vec<f64>,
@@ -131,6 +158,7 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_sweep(inputs: &CxxVector<TopoDS_Shape>, section_count: usize, config: &SweepConfig, control: &OperationControl) -> Result<SweepData>;
 		fn op_curve_info(edge: &TopoDS_Edge) -> Result<GeometryInfoData>;
 		fn op_surface_info(face: &TopoDS_Face) -> Result<GeometryInfoData>;
 		fn op_curve_length(edge: &TopoDS_Edge, tolerance: f64) -> Result<f64>;

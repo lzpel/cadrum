@@ -496,3 +496,37 @@ std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape& pare
     for(int i=1;i<=ancestors.Extent();++i){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(ancestors(i),members);if(members.Contains(subshape))out->push_back(ancestors(i));}return out;
 } OP_CATCH
 }
+
+#include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <Law_Interpol.hxx>
+namespace cadrum {
+SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) try {
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    const auto spine=TopoDS::Wire(inputs[0]);BRepOffsetAPI_MakePipeShell builder(spine);builder.SetIsBuildHistory(config.law.empty());
+    builder.SetTransitionMode(static_cast<BRepBuilderAPI_TransitionMode>(config.transition));builder.SetTolerance(config.tolerance,config.boundary_tolerance,config.angular_tolerance);builder.SetForceApproxC1(config.force_c1);builder.SetMaxDegree(config.max_degree);builder.SetMaxSegments(config.max_segments);
+    switch(config.mode){
+    case 0:builder.SetMode(false);break;case 1:builder.SetMode(true);break;
+    case 2:builder.SetMode(gp_Ax2(gp_Pnt(config.frame[0],config.frame[1],config.frame[2]),gp_Dir(config.frame[3],config.frame[4],config.frame[5]),gp_Dir(config.frame[6],config.frame[7],config.frame[8])));break;
+    case 3:builder.SetMode(gp_Dir(config.frame[0],config.frame[1],config.frame[2]));break;
+    case 4:builder.SetDiscreteMode();break;
+    case 5:if(!builder.SetMode(inputs[config.guide]))throw std::runtime_error("unsupported: spine lacks pcurves on the selected support");break;
+    case 6:builder.SetMode(TopoDS::Wire(inputs[config.guide]),config.curvilinear,static_cast<BRepFill_TypeOfContact>(config.auxiliary_contact));break;
+    }
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> vertices;TopExp::MapShapes(spine,TopAbs_VERTEX,vertices);
+    for(size_t i=0;i<section_count;++i){
+        const auto& profile=inputs[i+1];const int location=config.locations[i];if(location>=0&&!vertices.Contains(inputs[location]))throw std::runtime_error("sweep: explicit section location is not a spine vertex");
+        if(!config.law.empty()){
+            NCollection_Array1<gp_Pnt2d> samples(1,int(config.law.size()/2));for(int j=1;j<=samples.Length();++j)samples(j)=gp_Pnt2d(config.law[2*(j-1)],config.law[2*(j-1)+1]);Handle(Law_Interpol) law=new Law_Interpol;law->Set(samples,spine.Closed());
+            if(location>=0)builder.SetLaw(profile,law,TopoDS::Vertex(inputs[location]),config.contact[i],config.correction[i]);else builder.SetLaw(profile,law,config.contact[i],config.correction[i]);
+        }else if(location>=0)builder.Add(profile,TopoDS::Vertex(inputs[location]),config.contact[i],config.correction[i]);else builder.Add(profile,config.contact[i],config.correction[i]);
+    }
+    if(!builder.IsReady())throw std::runtime_error("sweep: pipe is not ready");
+    SweepData out{};out.sections=native_vec_new();if(config.simulation>0){NCollection_List<TopoDS_Shape> result;builder.Simulate(config.simulation,result);for(const auto& shape:result)out.sections->push_back(shape);}
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    if(!builder.IsDone())throw std::runtime_error("sweep: pipe status "+std::to_string(int(builder.GetStatus())));
+    if(config.solid&&!builder.MakeSolid())throw std::runtime_error("sweep: open profile cannot produce a solid");
+    if(!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("sweep: invalid result");
+    if(config.law.empty())out.operation=operation_result(builder,inputs);else{out.operation.shape=std::make_unique<TopoDS_Shape>(builder.Shape());out.operation.complete=false;out.operation.warnings.push_back("OCCT scaling-law history is unavailable; native history building is disabled to avoid its kernel crash");}
+    out.status=builder.GetStatus();out.error=builder.ErrorOnSurface();return out;
+} OP_CATCH
+}
