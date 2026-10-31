@@ -80,12 +80,21 @@ impl Shape {
 		Ok(Self::operation(ffi::op_transform(&self.inner, kind, &values).map_err(|e| kernel("transform", e))?, &[self]))
 	}
 	pub fn boolean(&self, operation: BooleanOp, tools: &[&Shape]) -> Result<OperationResult<Self>, Error> {
-		if tools.is_empty() {
-			return Err(Error::Validation("boolean: no tools".into()));
-		}
-		let inputs: Vec<_> = std::iter::once(self).chain(tools.iter().copied()).collect();
-		Ok(Self::operation(ffi::op_boolean(&Self::vector(inputs.iter().copied()), operation as u32).map_err(|e| kernel("boolean", e))?, &inputs))
+		Self::boolean_batch(operation, &[self], tools, BooleanOptions::default(), &crate::OperationControl::default())
 	}
+	pub fn boolean_batch(operation: BooleanOp, arguments: &[&Shape], tools: &[&Shape], options: BooleanOptions, control: &crate::OperationControl) -> Result<OperationResult<Self>, Error> {
+		finite([options.fuzzy_tolerance], "Boolean fuzzy tolerance")?;
+		if options.fuzzy_tolerance < 0.0 || arguments.is_empty() || tools.is_empty() {
+			return Err(Error::Validation("Boolean requires arguments, tools, and nonnegative tolerance".into()));
+		}
+		control.check("boolean")?;
+		let inputs: Vec<_> = arguments.iter().chain(tools).copied().collect();
+		let config = ffi::BooleanConfig { fuzzy: options.fuzzy_tolerance, glue: options.glue as u32, non_destructive: options.non_destructive, parallel: options.parallel };
+		let result = ffi::op_boolean(&Self::vector(inputs.iter().copied()), arguments.len(), operation as u32, &config, control);
+		control.check("boolean")?;
+		Ok(Self::operation(result.map_err(|e| kernel("boolean", e))?, &inputs))
+	}
+
 	pub fn fillet_edges(&self, radius: f64, edges: &[&crate::Edge]) -> Result<OperationResult<Self>, Error> {
 		self.blend(radius, edges, false)
 	}
@@ -235,5 +244,25 @@ impl Shape {
 			return Err(Error::Validation("thicken requires an open shell".into()));
 		}
 		Ok(Self::operation(ffi::op_surface_offset(&self.inner, distance, options.tolerance, options.join == JoinType::Intersection, options.intersect_all, thicken).map_err(|e| kernel(if thicken { "thicken" } else { "surface offset" }, e))?, &[self]))
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
+pub enum GluePolicy {
+	None = 0,
+	Shift = 1,
+	Full = 2,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct BooleanOptions {
+	pub fuzzy_tolerance: f64,
+	pub glue: GluePolicy,
+	pub non_destructive: bool,
+	pub parallel: bool,
+}
+impl Default for BooleanOptions {
+	fn default() -> Self {
+		Self { fuzzy_tolerance: 0.0, glue: GluePolicy::None, non_destructive: true, parallel: false }
 	}
 }

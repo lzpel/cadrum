@@ -172,3 +172,23 @@ parallel face/shell; `thicken_with_options` adds boundary walls and requires a s
 result. Both expose signed distance, intersection/arc joins, and coincidence
 tolerance. Face removal stays separate; existing solid hollowing remains available.
 Kernel limitations on excessive offsets and self-intersections still apply.
+
+## 9. Boolean controls and cancellation
+
+Boolean execution policies are explicit. `Shape::boolean_batch` accepts argument
+and tool lists, fuzzy tolerance, glue policy, non-destructive mode, and native
+parallel execution. Defaults preserve inputs, disable glue and parallelism, and
+use the kernel's default numerical floor; diagnostics record effective options.
+Native errors, warnings, empty output, and history remain separate.
+
+Progress callbacks are synchronous and serialized. `OperationControl` owns a
+`Send + 'static` callback that may execute on an OCCT worker thread; it must return
+promptly and must not reuse its active control. Returning false requests
+cancellation. A cloneable `CancellationToken` can also cancel from another thread.
+Callback panics are caught in Rust and reported as operation errors without
+unwinding across native frames. No callback survives the synchronous call.
+
+Cancellation is cooperative. The native progress indicator polls the token during
+supported kernel phases and discards partial results on cancellation. The error
+is `Cancelled`, rather than a valid empty result; callback failures remain errors.
+Callback reentrancy or concurrent reuse of one active control is rejected.

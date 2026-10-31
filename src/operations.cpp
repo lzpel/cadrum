@@ -331,6 +331,16 @@ std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> position
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 #include <sstream>
+#include <Message_ProgressIndicator.hxx>
+namespace cadrum {
+class RustProgress final : public Message_ProgressIndicator {
+    const OperationControl& control;
+public:
+    explicit RustProgress(const OperationControl& value):control(value){}
+    bool UserBreak() override { return operation_cancelled(control); }
+    void Show(const Message_ProgressScope&, const bool) override { operation_progress(control,GetPosition()); }
+};
+}
 namespace cadrum {
 OperationData op_copy(const TopoDS_Shape& s) try { BRepBuilderAPI_Copy builder(s);return operation_result(builder,{s}); } OP_CATCH
 OperationData op_transform(const TopoDS_Shape& s,uint32_t kind,rust::Slice<const double> v) try {
@@ -341,13 +351,17 @@ OperationData op_transform(const TopoDS_Shape& s,uint32_t kind,rust::Slice<const
     else t.SetMirror(gp_Ax2(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])));
     BRepBuilderAPI_Transform builder(s,t,true);return operation_result(builder,{s});
 } OP_CATCH
-OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs,uint32_t operation) try {
-    if(inputs.size()<2)throw std::runtime_error("boolean: no tools");
-    NCollection_List<TopoDS_Shape> args,tools;args.Append(inputs[0]);for(size_t i=1;i<inputs.size();++i)tools.Append(inputs[i]);
-    BRepAlgoAPI_BooleanOperation builder;builder.SetArguments(args);builder.SetTools(tools);builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));builder.SetNonDestructive(true);builder.Build();
+OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs,size_t argument_count,uint32_t operation,const BooleanConfig& config,const OperationControl& control) try {
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    NCollection_List<TopoDS_Shape> args,tools;for(size_t i=0;i<argument_count;++i)args.Append(inputs[i]);for(size_t i=argument_count;i<inputs.size();++i)tools.Append(inputs[i]);
+    BRepAlgoAPI_BooleanOperation builder;builder.SetArguments(args);builder.SetTools(tools);builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));builder.SetNonDestructive(config.non_destructive);builder.SetRunParallel(config.parallel);builder.SetFuzzyValue(config.fuzzy);builder.SetGlue(static_cast<BOPAlgo_GlueEnum>(config.glue));
+    Handle(RustProgress) progress=new RustProgress(control);builder.Build(progress->Start());
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
     if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}
-    auto out=operation_result(builder,inputs);if(builder.HasWarnings()){std::ostringstream warnings;builder.DumpWarnings(warnings);out.warnings.push_back(warnings.str());}return out;
+    auto out=operation_result(builder,inputs);if(builder.HasWarnings()){std::ostringstream warnings;builder.DumpWarnings(warnings);out.warnings.push_back(warnings.str());}
+    std::ostringstream effective;effective<<"fuzzy="<<builder.FuzzyValue()<<" glue="<<config.glue<<" non_destructive="<<config.non_destructive<<" parallel="<<config.parallel;out.diagnostics.push_back(effective.str());return out;
 } OP_CATCH
+
 OperationData op_blend(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& edges,double radius,bool chamfer) try {
     NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(s,TopAbs_EDGE,members);
     for(const auto& edge:edges)if(!members.Contains(edge))throw std::runtime_error("selected edge is not a member of the input shape");

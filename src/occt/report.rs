@@ -66,6 +66,9 @@ impl Shape {
 }
 
 pub(crate) fn kernel(operation: &str, error: cxx::Exception) -> Error {
+	if error.what() == "cancelled" {
+		return Error::Cancelled { operation: operation.into() };
+	}
 	if let Some(kind) = error.what().strip_prefix("unsupported: ") {
 		return Error::Unsupported { operation: operation.into(), kind: kind.into() };
 	}
@@ -197,7 +200,7 @@ impl Shape {
 			value,
 			history: History { relations, complete: data.complete },
 			warnings: data.warnings.into_iter().map(|message| Diagnostic { message, subshapes: vec![] }).collect(),
-			diagnostics: vec![],
+			diagnostics: data.diagnostics.into_iter().map(|message| Diagnostic { message, subshapes: vec![] }).collect(),
 		}
 	}
 }

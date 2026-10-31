@@ -1,3 +1,4 @@
+use super::control::{operation_cancelled, operation_progress, OperationControl};
 use std::io::{Read, Write};
 
 #[cxx::bridge(namespace = "cadrum")]
@@ -10,6 +11,13 @@ mod ffi_bridge {
 		indices: Vec<u32>,
 		face_tshape_ids: Vec<u64>, // per-triangle TShape* address
 		success: bool,
+	}
+
+	struct BooleanConfig {
+		fuzzy: f64,
+		glue: u32,
+		non_destructive: bool,
+		parallel: bool,
 	}
 
 	#[derive(Default)]
@@ -44,6 +52,7 @@ mod ffi_bridge {
 		history: Vec<HistoryEntry>,
 		complete: bool,
 		warnings: Vec<String>,
+		diagnostics: Vec<String>,
 	}
 
 	struct RepairData {
@@ -68,6 +77,9 @@ mod ffi_bridge {
 
 	// Expose Rust stream types to C++ for streambuf callbacks
 	extern "Rust" {
+		type OperationControl;
+		fn operation_cancelled(control: &OperationControl) -> bool;
+		fn operation_progress(control: &OperationControl, fraction: f64);
 		type RustReader;
 		type RustWriter;
 
@@ -108,7 +120,7 @@ mod ffi_bridge {
 
 		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
 		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
-		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, operation: u32) -> Result<OperationData>;
+		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, argument_count: usize, operation: u32, config: &BooleanConfig, control: &OperationControl) -> Result<OperationData>;
 		fn op_blend(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, radius: f64, chamfer: bool) -> Result<OperationData>;
 		fn op_unify(shape: &TopoDS_Shape, linear: f64, angular: f64) -> Result<OperationData>;
 		fn op_sew_history(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;

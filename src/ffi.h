@@ -21,6 +21,8 @@ using TopoDS_Edge = ::TopoDS_Edge;
 using TopoDS_Wire = ::TopoDS_Wire;
 
 // Forward-declare the Rust opaque types (defined by cxx in ffi.rs.h)
+struct OperationControl;
+struct BooleanConfig;
 struct RustReader;
 struct RustWriter;
 
@@ -49,7 +51,7 @@ rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape&,const TopoDS_Shape&);
 OperationData op_surface_offset(const TopoDS_Shape&,double,double,bool,bool,bool);
 OperationData op_copy(const TopoDS_Shape&);
 OperationData op_transform(const TopoDS_Shape&,uint32_t,rust::Slice<const double>);
-OperationData op_boolean(const std::vector<TopoDS_Shape>&,uint32_t);
+OperationData op_boolean(const std::vector<TopoDS_Shape>&,size_t,uint32_t,const BooleanConfig&,const OperationControl&);
 OperationData op_blend(const TopoDS_Shape&,const std::vector<TopoDS_Shape>&,double,bool);
 OperationData op_unify(const TopoDS_Shape&,double,double);
 OperationData op_sew_history(const std::vector<TopoDS_Shape>&,double);

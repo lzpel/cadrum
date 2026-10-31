@@ -16,3 +16,5 @@ pub mod geometry;
 pub mod modeling;
 
 pub mod mesh_import;
+
+pub mod control;
