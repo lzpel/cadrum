@@ -584,3 +584,42 @@ OperationData op_loft(const std::vector<TopoDS_Shape>& sections,const LoftConfig
     const TopoDS_Shape result=count==1?only:compound;if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid composite loft");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;out.warnings.push_back("composite profile loft history is incomplete");return out;
 } OP_CATCH
 }
+
+#include <BRepFilletAPI_MakeFillet2d.hxx>
+namespace cadrum {
+static void require_member(const TopoDS_Shape& parent,const TopoDS_Shape& child){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(parent,map);if(!map.Contains(child))throw std::runtime_error("selected topology is not a member of its input");}
+OperationData op_chamfer(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& selected,rust::Slice<const double> values,const OperationControl& control) try {
+    BRepFilletAPI_MakeChamfer builder(s);
+    for(size_t i=0;i<selected.size()/2;++i){const auto edge=TopoDS::Edge(selected[2*i]);const auto face=TopoDS::Face(selected[2*i+1]);require_member(s,face);require_member(face,edge);if(values[3*i]==0.0)builder.Add(values[3*i+1],values[3*i+2],edge,face);else builder.AddDA(values[3*i+1],values[3*i+2],edge,face);}
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("chamfer rejected local dimensions or geometry");return operation_result(builder,{s});
+} OP_CATCH
+OperationData op_variable_fillet(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& edges,rust::Slice<const double> values,rust::Slice<const uint32_t> counts,const OperationControl& control) try {
+    BRepFilletAPI_MakeFillet builder(s);size_t offset=0;for(size_t i=0;i<edges.size();++i){require_member(s,edges[i]);NCollection_Array1<gp_Pnt2d> samples(1,int(counts[i]));for(int j=1;j<=samples.Length();++j){samples(j)=gp_Pnt2d(values[offset],values[offset+1]);offset+=2;}builder.Add(samples,TopoDS::Edge(edges[i]));}
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("variable fillet rejected local radii or geometry");return operation_result(builder,{s});
+} OP_CATCH
+OperationData op_reversed(const TopoDS_Shape& s) try {return collect_history(s.Reversed(),{s},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return false;});} OP_CATCH
+OperationData op_planar_blend(const TopoDS_Face& face,const std::vector<TopoDS_Shape>& selected,rust::Slice<const double> values,bool chamfer) try {
+    BRepAdaptor_Surface surface(face);if(surface.GetType()!=GeomAbs_Plane)throw std::runtime_error("unsupported: planar corner treatments require a planar face");
+    for(const auto& selection:selected)require_member(face,selection);
+    auto wires=op_boundary_wires(face);std::vector<TopoDS_Wire> boundaries;Handle(BRepTools_History) history=new BRepTools_History;
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> source;TopExp::MapShapes(face,source);
+    for(const auto& wire:*wires){
+        BRepBuilderAPI_MakeFace disk(surface.Plane(),TopoDS::Wire(wire),true);BRepFilletAPI_MakeFillet2d builder(disk.Face());bool changed=false;
+        NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(wire,members);
+        if(chamfer){for(size_t i=0;i<selected.size()/2;++i)if(members.Contains(selected[2*i])){
+            if(!members.Contains(selected[2*i+1]))throw std::runtime_error("planar chamfer edges belong to different loops");
+            const auto edge=builder.AddChamfer(TopoDS::Edge(selected[2*i]),TopoDS::Edge(selected[2*i+1]),values[2*i],values[2*i+1]);if(builder.Status()!=ChFi2d_IsDone)throw std::runtime_error("planar chamfer status "+std::to_string(int(builder.Status())));
+            history->AddGenerated(selected[2*i],edge);history->AddGenerated(selected[2*i+1],edge);changed=true;
+        }}else for(const auto& vertex:selected)if(members.Contains(vertex)){
+            const auto edge=builder.AddFillet(TopoDS::Vertex(vertex),values[0]);if(builder.Status()!=ChFi2d_IsDone)throw std::runtime_error("planar fillet status "+std::to_string(int(builder.Status())));history->AddGenerated(vertex,edge);changed=true;
+        }
+        if(changed){builder.Build();if(!builder.IsDone())throw std::runtime_error("planar treatment failed");const auto result=TopoDS::Face(builder.Shape());if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid planar boundary treatment");boundaries.push_back(BRepTools::OuterWire(result));
+            for(int i=1;i<=source.Extent();++i)if(source(i).ShapeType()==TopAbs_EDGE&&members.Contains(source(i))&&builder.IsModified(TopoDS::Edge(source(i))))for(const auto& modified:builder.Modified(source(i)))history->AddModified(source(i),modified);
+        }else boundaries.push_back(BRepTools::OuterWire(disk.Face()));
+    }
+    BRepBuilderAPI_MakeFace combined(surface.Plane(),boundaries[0],true);for(size_t i=1;i<boundaries.size();++i)combined.Add(TopoDS::Wire(boundaries[i].Reversed()));
+    if(!combined.IsDone()||!BRepCheck_Analyzer(combined.Face()).IsValid())throw std::runtime_error("invalid planar corner treatment");
+    history->AddModified(face,combined.Face());
+    return collect_history(combined.Face(),{face},[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
+} OP_CATCH
+}

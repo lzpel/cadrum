@@ -30,6 +30,8 @@ pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, Repai
 #[cfg(not(feature = "pure"))]
 pub use occt::sweep::{AuxiliaryContact, SweepOptions, SweepOrientation, SweepResult, SweepSection, SweepTransition};
 #[cfg(not(feature = "pure"))]
+pub use occt::treatments::{ChamferKind, ChamferSpec, PlanarChamfer, VariableFillet};
+#[cfg(not(feature = "pure"))]
 pub use occt::{
 	edge::Edge,
 	face::Face,

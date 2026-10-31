@@ -290,3 +290,23 @@ and maximum sampled deviation. Vertices and five curve samples per edge are chec
 against repaired geometry, and exceeding the requested sampled limit rejects the
 repair. This measure is not a continuous Hausdorff bound on surface interiors.
 Intentional openings remain unless closure is explicitly allowed.
+
+## 14. Additional edge treatments
+
+Chamfers identify their reference side. `Shape::chamfer` accepts selected edge/face
+pairs with two distances or a distance and angle in radians; the first distance is
+measured on the reference face. Foreign or non-adjacent topology and invalid local
+dimensions return named errors. `Shape::reversed` exposes explicit orientation
+reversal while retaining native topology identity.
+
+Variable fillets use normalized radius laws. `variable_fillet` interpolates positive
+radii at strictly increasing relative spine parameters from zero to one and returns
+native generated/modified history. Native building supports cancellation and reports
+excessive radii or incompatible local geometry without returning partial results.
+
+Planar corner treatments preserve hole topology. `Face::fillet_corners` selects
+vertices, while `chamfer_corners` selects adjacent edges and their distances. The
+native planar algorithm supports line/circular-arc boundaries and reports its
+status on failure. Generated arc/chamfer edges have explicit provenance. Fillets
+provide tangential G1 joins where the kernel succeeds; C2 continuity is not promised,
+and chamfers introduce C0 corners.

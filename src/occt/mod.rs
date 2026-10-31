@@ -24,3 +24,5 @@ pub mod query;
 pub mod sweep;
 
 pub mod loft;
+
+pub mod treatments;

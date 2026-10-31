@@ -173,6 +173,10 @@ mod ffi_bridge {
 		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 
 		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_chamfer(shape: &TopoDS_Shape, selected: &CxxVector<TopoDS_Shape>, values: &[f64], control: &OperationControl) -> Result<OperationData>;
+		fn op_variable_fillet(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, values: &[f64], counts: &[u32], control: &OperationControl) -> Result<OperationData>;
+		fn op_reversed(shape: &TopoDS_Shape) -> Result<OperationData>;
+		fn op_planar_blend(face: &TopoDS_Face, selected: &CxxVector<TopoDS_Shape>, values: &[f64], chamfer: bool) -> Result<OperationData>;
 		fn op_loft(sections: &CxxVector<TopoDS_Shape>, config: &LoftConfig, control: &OperationControl) -> Result<OperationData>;
 		fn op_sweep(inputs: &CxxVector<TopoDS_Shape>, section_count: usize, config: &SweepConfig, control: &OperationControl) -> Result<SweepData>;
 		fn op_curve_info(edge: &TopoDS_Edge) -> Result<GeometryInfoData>;
