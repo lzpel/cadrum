@@ -12,6 +12,26 @@ mod ffi_bridge {
 		success: bool,
 	}
 
+	struct RepairData {
+		shape: UniquePtr<TopoDS_Shape>,
+		changed: bool,
+		tolerance_before: f64,
+		tolerance_after: f64,
+		boundary_before: usize,
+		boundary_after: usize,
+	}
+	struct ValidationEntry {
+		subshape: u32,
+		context: u32,
+		kind: u32,
+		status: u32,
+	}
+	struct ValidationData {
+		valid: bool,
+		closed: bool,
+		issues: Vec<ValidationEntry>,
+	}
+
 	// Expose Rust stream types to C++ for streambuf callbacks
 	extern "Rust" {
 		type RustReader;
@@ -31,6 +51,8 @@ mod ffi_bridge {
 		type TopoDS_Wire;
 
 		type TopoDS_Shape;
+		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, flags: &[bool]) -> Result<RepairData>;
+		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;
 		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;
 		fn native_from_face(shape: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;
 		fn native_from_edge(shape: &TopoDS_Edge) -> UniquePtr<TopoDS_Shape>;

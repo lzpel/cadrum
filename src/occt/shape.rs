@@ -20,11 +20,27 @@ pub enum ShapeKind {
 	Vertex = 7,
 }
 
+impl ShapeKind {
+	pub(crate) fn from_native(value: u32) -> Self {
+		match value {
+			0 => ShapeKind::Compound,
+			1 => ShapeKind::CompSolid,
+			2 => ShapeKind::Solid,
+			3 => ShapeKind::Shell,
+			4 => ShapeKind::Face,
+			5 => ShapeKind::Wire,
+			6 => ShapeKind::Edge,
+			7 => ShapeKind::Vertex,
+			_ => unreachable!("Shape never owns null topology"),
+		}
+	}
+}
+
 /// An owning native shape. Views share topology; clone copies geometry; RAII releases handles.
 /// This type is neither Send nor Sync, because views can share native geometry.
 pub struct Shape {
-	inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
-	colormap: HashMap<u64, Color>,
+	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
+	pub(crate) colormap: HashMap<u64, Color>,
 }
 
 fn failure(e: cxx::Exception) -> Error {
@@ -39,10 +55,10 @@ fn positive(value: f64, name: &str) -> Result<(), Error> {
 }
 
 impl Shape {
-	fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>) -> Self {
+	pub(crate) fn new(inner: cxx::UniquePtr<ffi::TopoDS_Shape>) -> Self {
 		Self { inner, colormap: HashMap::new() }
 	}
-	fn vector<'a>(shapes: impl IntoIterator<Item = &'a Shape>) -> cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Shape>> {
+	pub(crate) fn vector<'a>(shapes: impl IntoIterator<Item = &'a Shape>) -> cxx::UniquePtr<cxx::CxxVector<ffi::TopoDS_Shape>> {
 		let mut out = ffi::native_vec_new();
 		for s in shapes {
 			ffi::native_vec_push(out.pin_mut(), &s.inner);
@@ -51,17 +67,7 @@ impl Shape {
 	}
 	/// Return the exact native category, including compounds containing mixed topology.
 	pub fn kind(&self) -> ShapeKind {
-		match ffi::native_kind(&self.inner) {
-			0 => ShapeKind::Compound,
-			1 => ShapeKind::CompSolid,
-			2 => ShapeKind::Solid,
-			3 => ShapeKind::Shell,
-			4 => ShapeKind::Face,
-			5 => ShapeKind::Wire,
-			6 => ShapeKind::Edge,
-			7 => ShapeKind::Vertex,
-			_ => unreachable!("Shape never owns null topology"),
-		}
+		ShapeKind::from_native(ffi::native_kind(&self.inner))
 	}
 	pub fn is_valid(&self) -> Result<bool, Error> {
 		ffi::native_valid(&self.inner).map_err(failure)
@@ -259,6 +265,9 @@ impl Shape {
 	/// Thicken a face or open shell with intersection joins and boundary walls.
 	/// Signed thickness follows normals; coincidence tolerance is OCCT's Precision::Confusion().
 	pub fn thicken(&self, thickness: f64) -> Result<Self, Error> {
+		if !matches!(self.kind(), ShapeKind::Face | ShapeKind::Shell) {
+			return Err(super::report::supported("thicken", self.kind()));
+		}
 		positive(thickness.abs(), "absolute thickness")?;
 		let mut out = Self::new(ffi::native_thicken(&self.inner, thickness).map_err(failure)?);
 		out.colormap = self.colormap.clone();

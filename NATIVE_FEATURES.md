@@ -44,3 +44,21 @@ OCCT version. Existing `Solid` color-aware I/O remains available.
 The open-box example exercises the full chain. Run
 `cargo run --example open_shape` to construct, open, transform, mesh, serialize,
 restore, and thicken a box shell entirely through native shapes.
+
+## 2. Validation and operation outcomes
+
+Validation separates geometric validity from category expectations. `Shape::validate`
+returns validity, closure, empty state, expected category matching, and indexed
+BRepCheck status codes including contextual subshape errors and orientation issues.
+Indices refer to the native traversal of the shape supplied to validation.
+
+New operations report named errors. `Error::Operation` carries kernel diagnostics
+and available implicated indices, `Unsupported` identifies unsupported categories,
+and `Cancelled` identifies cooperative cancellation. `OperationResult` separates
+successful values from warnings and diagnostics; empty geometry remains a value.
+Legacy convenience APIs retain their existing error variants and signatures.
+
+Repair is explicit. `Shape::repair` copies geometry before running permitted
+ShapeFix tools, measures maximum topology tolerances and boundary counts, and
+rejects tolerance overruns or unrequested closure. Its report includes validation
+before and after repair; repair does not silently certify an invalid result.

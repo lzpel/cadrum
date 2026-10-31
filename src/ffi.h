@@ -26,6 +26,10 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct ValidationData;
+struct RepairData;
+RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, rust::Slice<const bool> flags);
+ValidationData op_validate(const TopoDS_Shape& shape);
 
 std::unique_ptr<TopoDS_Shape> native_from_solid(const TopoDS_Solid& shape);
 std::unique_ptr<TopoDS_Shape> native_from_face(const TopoDS_Face& shape);

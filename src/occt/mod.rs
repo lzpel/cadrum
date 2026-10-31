@@ -8,3 +8,5 @@ pub mod io;
 pub mod solid;
 
 pub mod shape;
+
+pub mod report;

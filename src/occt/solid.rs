@@ -1,6 +1,9 @@
 use super::edge::{wires_from_edges, Edge};
 use super::face::Face;
-use super::ffi;
+use super::{
+	ffi,
+	report::{axis, finite, positive},
+};
 use crate::common::boolean::Boolean;
 use crate::common::error::Error;
 use crate::traits::{ProfileOrient, SolidStruct, Transform};
@@ -198,11 +201,14 @@ impl SolidStruct for Solid {
 	// ==================== Extrude ====================
 
 	fn extrude<'a>(profile: impl IntoIterator<Item = &'a Edge>, dir: DVec3) -> Result<Self, Error> {
+		axis(dir, "extrude direction")?;
 		let shape = wires_from_edges(profile).and_then(|w| ffi::make_extrude(&w, dir.x, dir.y, dir.z)).map_err(|e| Error::Extrude(e.what().into()))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
 
 	fn revolve<'a>(profile: impl IntoIterator<Item = &'a Edge>, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Result<Self, Error> {
+		finite(axis_origin.to_array().into_iter().chain([angle]), "revolve")?;
+		axis(axis_direction, "revolve axis")?;
 		let shape = wires_from_edges(profile).and_then(|w| ffi::make_revolve(&w, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle)).map_err(|e| Error::Revolve(format!("angle={angle} about {axis_direction:?} through {axis_origin:?}: {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
@@ -210,6 +216,7 @@ impl SolidStruct for Solid {
 	// ==================== Shell ====================
 
 	fn shell<'a>(&self, thickness: f64, open_faces: impl IntoIterator<Item = &'a Face>) -> Result<Self, Error> {
+		finite([thickness], "shell")?;
 		let mut face_vec = ffi::face_vec_new();
 		for f in open_faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
@@ -306,6 +313,7 @@ impl SolidStruct for Solid {
 		if count == 0 {
 			return Err(Error::Sew("sew: no faces given (need a face set forming one closed shell)".into()));
 		}
+		positive(tolerance, "sewing tolerance")?;
 		let shape = ffi::make_sewn_solid(&face_vec, tolerance).map_err(|e| Error::Sew(format!("sew: {count} faces do not form exactly one closed shell within tolerance {tolerance}: {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}
@@ -313,6 +321,7 @@ impl SolidStruct for Solid {
 	// ==================== Offset surface ====================
 
 	fn offset<'a>(&self, offset: f64, faces: impl IntoIterator<Item = &'a Face>) -> Result<Self, Error> {
+		finite([offset], "offset")?;
 		let mut face_vec = ffi::face_vec_new();
 		for f in faces {
 			ffi::face_vec_push(face_vec.pin_mut(), &f.inner);
@@ -330,8 +339,10 @@ impl SolidStruct for Solid {
 			return Err(Error::Bspline(format!("grid is too small (u={u}, v={v}, u_periodic={u_periodic}, v_periodic={v_periodic})")));
 		}
 
-		let coords: Vec<f64> = (0..u * v).flat_map(|k| point(k / v, k % v).to_array()).collect();
+		let count = u.checked_mul(v).filter(|_| u <= u32::MAX as usize && v <= u32::MAX as usize).ok_or_else(|| Error::Validation("bspline grid size overflow".into()))?;
+		let coords: Vec<f64> = (0..count).flat_map(|k| point(k / v, k % v).to_array()).collect();
 
+		finite(coords.iter().copied(), "bspline grid")?;
 		let shape = ffi::make_bspline_solid(&coords, u as u32, v as u32, u_periodic, v_periodic).map_err(|e| Error::Bspline(format!("OCCT construction failed (u={u}, v={v}, u_periodic={u_periodic}, v_periodic={v_periodic}): {}", e.what())))?;
 		Ok(Solid::new(shape, std::collections::HashMap::new(), Default::default()))
 	}

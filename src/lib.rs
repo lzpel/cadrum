@@ -10,6 +10,8 @@ pub mod occt;
 // #[cfg(feature = "pure")]
 // pub mod pure;
 #[cfg(not(feature = "pure"))]
+pub use occt::report::{Diagnostic, OperationResult, RepairOptions, RepairReport, ValidationIssue, ValidationReport};
+#[cfg(not(feature = "pure"))]
 pub use occt::{
 	edge::Edge,
 	face::Face,
