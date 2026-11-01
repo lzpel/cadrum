@@ -304,7 +304,12 @@ OperationData op_profile(const std::vector<TopoDS_Shape>& wires,double tolerance
         if(!face.IsDone()||!BRepCheck_Analyzer(face.Face()).IsValid())throw std::runtime_error("profile: invalid nested region");
         only=face.Face();b.Add(compound,only);++count;
     }
-    OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(count==1?only:compound);out.complete=false;return out;
+    const TopoDS_Shape result=count==1?only:compound;
+    return collect_history(result,wires,[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>{};},[&](const TopoDS_Shape& source){
+        NCollection_List<TopoDS_Shape> generated;if(source.ShapeType()!=TopAbs_EDGE)return generated;
+        for(TopExp_Explorer face(result,TopAbs_FACE);face.More();face.Next()){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(face.Current(),members);if(members.Contains(source))generated.Append(face.Current());}
+        return generated;
+    },[](const TopoDS_Shape&){return false;});
 } OP_CATCH
 static void require_profile(const TopoDS_Shape& s) {
     if(s.ShapeType()==TopAbs_FACE)return;

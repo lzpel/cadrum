@@ -24,7 +24,14 @@ fn nesting_disconnected_regions_and_reversed_winding() {
 	let b = square(1.0, 9.0);
 	let c = square(2.0, 8.0);
 	let d = square(20.0, 22.0);
-	let p = Shape::profile(&[&a, &b, &c, &d], 1e-7).unwrap().value;
+	let result = Shape::profile(&[&a, &b, &c, &d], 1e-7).unwrap();
+	assert!(result.history.complete);
+	for operand in 0..4 {
+		let edges: Vec<_> = result.history.relations.iter().filter(|r| r.source.operand == operand && r.source.kind == cadrum::ShapeKind::Edge).collect();
+		assert!(edges.iter().any(|r| r.relation == RelationKind::Unchanged));
+		assert!(edges.iter().any(|r| r.relation == RelationKind::Generated && r.target.unwrap().kind == cadrum::ShapeKind::Face));
+	}
+	let p = result.value;
 	assert_eq!(p.faces().unwrap().len(), 3);
 	assert!((p.extrude(DVec3::Z).unwrap().value.solids().unwrap().iter().map(Solid::volume).sum::<f64>() - 76.0).abs() < 1e-7);
 	let rev = Wire::new(&Edge::polygon(&[DVec3::ZERO, DVec3::Y, DVec3::ONE * DVec3::new(1.0, 1.0, 0.0), DVec3::X]).unwrap()).unwrap();

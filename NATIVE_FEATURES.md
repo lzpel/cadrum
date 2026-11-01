@@ -107,7 +107,9 @@ Native faces remain reusable. `Shape::extrude` retains holes and disconnected
 regions under oblique displacement; `revolve` takes an explicit axis and signed
 angle in radians, limited to one full turn. Both operations return native output
 and builder-provided vertex/edge/face history, including profile-edge to side-face
-relations. General profile construction currently marks history as incomplete.
+relations. Profile construction retains vertex/edge identity through loop
+orientation changes and records each boundary edge's generated region face,
+including holes, islands, and disconnected regions.
 
 ## 6. Faceted mesh and STL import
 

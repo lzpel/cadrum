@@ -68,11 +68,14 @@ fn deleting_one_split_descendant_does_not_delete_its_ancestor() {
 }
 
 #[test]
-fn history_counts_inputs_without_topology_relations() {
+fn profile_history_composes_through_extrusion() {
 	let circle = cadrum::Wire::new([&cadrum::Edge::circle(1.0, DVec3::Z).unwrap()]).unwrap();
 	let profile = Shape::profile(&[&circle], 1e-7).unwrap();
-	assert!(profile.history.relations.is_empty());
+	assert!(profile.history.complete);
+	assert!(profile.history.relations.iter().any(|r| r.source.kind == ShapeKind::Edge && r.target.is_some_and(|t| t.kind == ShapeKind::Face)));
 	assert_eq!(profile.history.operand_count, 1);
 	let prism = profile.value.extrude(DVec3::Z).unwrap();
-	assert_eq!(profile.history.compose(&prism.history, 0).operand_count, 1);
+	let composed = profile.history.compose(&prism.history, 0);
+	assert_eq!(composed.operand_count, 1);
+	assert!(composed.complete);
 }
