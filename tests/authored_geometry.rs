@@ -57,3 +57,11 @@ fn ellipses_and_invalid_control_data() {
 	assert!(CurveControlData::Bezier { poles: vec![DVec3::ZERO, DVec3::X], weights: vec![0.0, 1.0] }.edge(None).is_err());
 	assert!(Edge::ellipse(Frame::default(), 1.0, 2.0, None).is_err());
 }
+
+#[test]
+fn trimming_preserves_reversed_topology_orientation() {
+	let face = SurfaceControlData::Bezier { u_count: 2, v_count: 2, poles: vec![DVec3::ZERO, DVec3::Y, DVec3::X, DVec3::X + DVec3::Y], weights: vec![] }.face(None).unwrap();
+	let reversed = Shape::from(&face).reversed().unwrap().value.as_face().unwrap();
+	let patch = reversed.surface_patch([0.2, 0.8, 0.2, 0.8]).unwrap();
+	assert!(patch.evaluate_uv(0.5, 0.5).unwrap().normal.dot(reversed.evaluate_uv(0.5, 0.5).unwrap().normal) > 0.999);
+}

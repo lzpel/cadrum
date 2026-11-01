@@ -246,7 +246,7 @@ SplineData op_surface_control(const TopoDS_Face& face) try {
 } OP_CATCH
 rust::Vec<double> op_curve_range(const TopoDS_Edge& edge) try { BRepAdaptor_Curve c(edge);return {c.FirstParameter(),c.LastParameter()}; } OP_CATCH
 rust::Vec<double> op_curve_evaluate(const TopoDS_Edge& edge,double t) try { BRepAdaptor_Curve c(edge);gp_Pnt p;gp_Vec d1,d2;c.D2(t,p,d1,d2);rust::Vec<double> out;append_xyz(out,p.XYZ());append_xyz(out,d1.XYZ());append_xyz(out,d2.XYZ());return out; } OP_CATCH
-std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge& edge,rust::Slice<const double> trim) try { double a,b;auto c=BRep_Tool::Curve(edge,a,b);BRepBuilderAPI_MakeEdge builder(c,trim[0],trim[1]);if(!builder.IsDone())throw std::runtime_error("edge trim failed");return std::make_unique<TopoDS_Edge>(builder.Edge()); } OP_CATCH
+std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge& edge,rust::Slice<const double> trim) try { double a,b;auto c=BRep_Tool::Curve(edge,a,b);BRepBuilderAPI_MakeEdge builder(c,trim[0],trim[1]);if(!builder.IsDone())throw std::runtime_error("edge trim failed");auto result=builder.Edge();result.Orientation(edge.Orientation());return std::make_unique<TopoDS_Edge>(result); } OP_CATCH
 rust::Vec<double> op_surface_range(const TopoDS_Face& face) try {double a,b,c,d;BRepTools::UVBounds(face,a,b,c,d);return {a,b,c,d};} OP_CATCH
 rust::Vec<double> op_surface_evaluate(const TopoDS_Face& face,double u,double v) try {
     BRepAdaptor_Surface s(face);gp_Pnt p;gp_Vec du,dv,duu,dvv,duv;s.D2(u,v,p,du,dv,duu,dvv,duv);
@@ -255,7 +255,7 @@ rust::Vec<double> op_surface_evaluate(const TopoDS_Face& face,double u,double v)
 } OP_CATCH
 std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face,rust::Slice<const double> trim) try {
     auto s=BRep_Tool::Surface(face);double a,b,c,d;s->Bounds(a,b,c,d);if(trim[0]<a||trim[1]>b||trim[2]<c||trim[3]>d)throw std::runtime_error("surface trim outside domain");
-    BRepBuilderAPI_MakeFace builder(s,trim[0],trim[1],trim[2],trim[3],1e-7);if(!builder.IsDone())throw std::runtime_error("surface trim failed");return std::make_unique<TopoDS_Face>(builder.Face());
+    BRepBuilderAPI_MakeFace builder(s,trim[0],trim[1],trim[2],trim[3],1e-7);if(!builder.IsDone())throw std::runtime_error("surface trim failed");auto result=builder.Face();result.Orientation(face.Orientation());return std::make_unique<TopoDS_Face>(result);
 } OP_CATCH
 }
 
