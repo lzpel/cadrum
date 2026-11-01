@@ -101,7 +101,7 @@ impl TriangleMesh {
 			let mut map = Vec::new();
 			for &p in &mesh.positions {
 				let key = (p / options.weld_tolerance).floor();
-				if key.abs().max_element() > (i64::MAX - 2) as f64 {
+				if key.abs().max_element() >= (i64::MAX - 2048) as f64 {
 					return Err(Error::Validation("welding coordinate grid overflows; change tolerance or origin".into()));
 				}
 				let [x, y, z] = key.to_array().map(|v| v as i64);
@@ -251,8 +251,12 @@ impl TriangleMesh {
 			None
 		} else {
 			let positions: Vec<_> = mesh.positions.iter().flat_map(|p| p.to_array()).collect();
-			let indices: Vec<u32> = mesh.triangles.iter().flatten().map(|&v| v as u32).collect();
-			Some(Shape::new(ffi::op_faceted_mesh(&positions, &indices, options.sewing_tolerance, options.outcome == MeshOutcome::ClosedSolid).map_err(|e| kernel("faceted mesh reconstruction", e))?))
+			let mut bodies = Vec::new();
+			for component in &components {
+				let indices: Vec<u32> = component.iter().flat_map(|&i| mesh.triangles[i]).map(|v| v as u32).collect();
+				bodies.push(Shape::new(ffi::op_faceted_mesh(&positions, &indices, options.sewing_tolerance, options.outcome == MeshOutcome::ClosedSolid).map_err(|e| kernel("faceted mesh reconstruction", e))?));
+			}
+			Some(if bodies.len() == 1 { bodies.pop().unwrap() } else { Shape::compound(&bodies)?.into() })
 		};
 		Ok(MeshImportResult { mesh, shape, report })
 	}

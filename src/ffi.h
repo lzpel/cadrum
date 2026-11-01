@@ -111,7 +111,6 @@ uint32_t native_kind(const TopoDS_Shape& shape);
 bool native_valid(const TopoDS_Shape& shape);
 bool native_closed(const TopoDS_Shape& shape);
 std::unique_ptr<std::vector<TopoDS_Shape>> native_loose(const TopoDS_Shape& shape);
-std::unique_ptr<TopoDS_Shape> native_copy(const TopoDS_Shape& shape);
 std::unique_ptr<std::vector<TopoDS_Shape>> native_subshapes(const TopoDS_Shape& shape, uint32_t kind);
 std::unique_ptr<TopoDS_Shape> native_take(const std::vector<TopoDS_Shape>& shapes, size_t index);
 std::unique_ptr<std::vector<TopoDS_Shape>> native_vec_new();
@@ -121,12 +120,10 @@ rust::Vec<double> native_point(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Shape> native_build(const std::vector<TopoDS_Shape>& shapes, uint32_t kind);
 std::unique_ptr<TopoDS_Shape> native_sew(const std::vector<TopoDS_Face>& faces, double tolerance, rust::Vec<uint64_t>& history);
 std::unique_ptr<TopoDS_Solid> native_solidify(const TopoDS_Shape& shape);
-std::unique_ptr<TopoDS_Shape> native_transform(const TopoDS_Shape& shape, uint32_t kind, rust::Slice<const double> values);
 rust::Vec<double> native_bounds(const TopoDS_Shape& shape);
 MeshData op_tessellate(const TopoDS_Shape&,double,double,bool,const OperationControl&);
 rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& shape);
 std::unique_ptr<TopoDS_Shape> native_read_brep(rust::Slice<const uint8_t> data);
-std::unique_ptr<TopoDS_Shape> native_thicken(const TopoDS_Shape& shape, double thickness);
 
 // ==================== Shape I/O (streambuf callback) ====================
 

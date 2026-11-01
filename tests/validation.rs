@@ -37,3 +37,21 @@ fn boundary_errors_and_unsupported_inputs_are_typed() {
 	let malformed = solid.repair(RepairOptions { max_tolerance: 1e-12, ..Default::default() });
 	assert!(matches!(malformed, Err(Error::Validation(_))));
 }
+
+#[test]
+fn legacy_native_boundaries_reject_nonfinite_parameters() {
+	assert!(matches!(Solid::primitive(cadrum::Primitive::Sphere { radius: f64::NAN }), Err(Error::Validation(_))));
+	assert!(matches!(Solid::primitive(cadrum::Primitive::Cylinder { radius: 1.0, height: DVec3::ZERO }), Err(Error::Validation(_))));
+	assert!(matches!(Solid::primitive(cadrum::Primitive::Cone { radii: [1.0, 1.0], height: DVec3::Z }), Err(Error::Operation { .. })));
+	let solid = Solid::sphere(1.0);
+	assert!(matches!(Solid::mesh([&solid], cadrum::Tessellation { deflection_linear: f64::INFINITY, ..Default::default() }), Err(Error::Validation(_))));
+	assert!(matches!(solid.fillet_edges(f64::NAN, solid.iter_edge()), Err(Error::Validation(_))));
+}
+
+#[test]
+fn healing_preserves_styles_through_native_replacements() {
+	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE).color("#336699"));
+	let report = shape.repair(RepairOptions::default()).unwrap();
+	let mesh = report.shape.mesh(Default::default()).unwrap();
+	assert!(mesh.face_ids.iter().all(|id| mesh.colormap.contains_key(id)));
+}

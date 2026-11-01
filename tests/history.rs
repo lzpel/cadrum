@@ -4,6 +4,7 @@ fn copy_transform_and_composed_history_resolve_topology() {
 	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE));
 	let copied = shape.copied().unwrap();
 	assert!(copied.history.complete);
+	assert_eq!(copied.history.operand_count, 1);
 	assert_eq!(copied.history.relations.len(), 26);
 	let mirrored = copied.value.transform_with_history(ShapeTransform::Mirror { origin: DVec3::ZERO, normal: DVec3::new(1.0, 1.0, 0.0) }).unwrap();
 	for r in &mirrored.history.relations {
@@ -14,6 +15,7 @@ fn copy_transform_and_composed_history_resolve_topology() {
 	}
 	let composed = copied.history.compose(&mirrored.history, 0);
 	assert!(composed.complete);
+	assert_eq!(composed.operand_count, 1);
 	assert_eq!(composed.relations.len(), 26);
 	assert!(composed.relations.iter().all(|r| r.target.is_some()));
 }
@@ -44,4 +46,33 @@ fn blend_and_sewing_history_include_generated_and_retained_topology() {
 	let sewn = Shape::sew_with_history(&refs, 1e-7).unwrap();
 	assert_eq!(sewn.value.faces().unwrap().len(), 6);
 	assert!(sewn.history.relations.iter().any(|r| r.relation == RelationKind::Unchanged));
+}
+
+#[test]
+fn deleting_one_split_descendant_does_not_delete_its_ancestor() {
+	let original = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::splat(10.0)));
+	let middle = Shape::from(&Solid::cube(DVec3::new(4.0, -1.0, -1.0), DVec3::new(6.0, 11.0, 11.0)));
+	let split = original.boolean(BooleanOp::Difference, &[&middle]).unwrap();
+	let left = Shape::from(&Solid::cube(DVec3::splat(-1.0), DVec3::new(5.0, 11.0, 11.0)));
+	let retained = split.value.boolean(BooleanOp::Difference, &[&left]).unwrap();
+	let mut descendants = std::collections::HashMap::new();
+	for relation in &split.history.relations {
+		if relation.source.operand == 0 && relation.source.kind == ShapeKind::Face && relation.target.is_some() {
+			descendants.entry(relation.source).or_insert_with(Vec::new).push(relation.target.unwrap());
+		}
+	}
+	let ancestor = *descendants.iter().find(|(_, targets)| targets.len() > 1).unwrap().0;
+	let composed = split.history.compose(&retained.history, 0);
+	assert!(composed.relations.iter().any(|r| r.source == ancestor && r.target.is_some()));
+	assert!(!composed.relations.iter().any(|r| r.source == ancestor && r.relation == RelationKind::Removed));
+}
+
+#[test]
+fn history_counts_inputs_without_topology_relations() {
+	let circle = cadrum::Wire::new([&cadrum::Edge::circle(1.0, DVec3::Z).unwrap()]).unwrap();
+	let profile = Shape::profile(&[&circle], 1e-7).unwrap();
+	assert!(profile.history.relations.is_empty());
+	assert_eq!(profile.history.operand_count, 1);
+	let prism = profile.value.extrude(DVec3::Z).unwrap();
+	assert_eq!(profile.history.compose(&prism.history, 0).operand_count, 1);
 }

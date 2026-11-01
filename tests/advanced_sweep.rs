@@ -16,6 +16,9 @@ fn scaling_law_simulation_and_multiple_sections() {
 	assert!((sweep.result.value.as_solid().unwrap().volume() - 35.0 * std::f64::consts::PI / 3.0).abs() < 1e-5);
 	assert!(!sweep.result.history.complete);
 	assert!(!sweep.result.warnings.is_empty());
+	let simulated = spine.sweep(&sections, SweepOptions { simulation_sections: 3, ..Default::default() }, &OperationControl::default()).unwrap();
+	assert_eq!(simulated.sections.len(), 3);
+	assert!(!simulated.result.history.relations.is_empty());
 	let end = section(5.0, 2.0);
 	let vertices = spine.vertices().unwrap();
 	let sections = [SweepSection { profile: &profile, location: Some(&vertices[0]), contact: false, correction: true }, SweepSection { profile: &end, location: Some(&vertices[1]), contact: false, correction: true }];

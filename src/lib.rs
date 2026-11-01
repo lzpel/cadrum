@@ -1,4 +1,5 @@
-#![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "png", doc = include_str!("../README.md"))]
+#![cfg_attr(not(feature = "pure"), doc = include_str!("../NATIVE_FEATURES.md"))]
 
 pub mod common;
 #[cfg(not(feature = "pure"))]
@@ -24,7 +25,7 @@ pub use occt::mesh_import::{MeshImportOptions, MeshImportReport, MeshImportResul
 #[cfg(not(feature = "pure"))]
 pub use occt::modeling::{BooleanOp, JoinType, OffsetOptions, Partition, PartitionSide, Plane, PlaneSplit, SectionOptions, ShapeTransform};
 #[cfg(not(feature = "pure"))]
-pub use occt::modeling::{BooleanOptions, GluePolicy};
+pub use occt::modeling::{BooleanOptions, GluePolicy, Primitive};
 #[cfg(not(feature = "pure"))]
 pub use occt::query::{BoundaryWire, ClosestPair, CurveInfo, CurveKind, DistanceReport, GeometrySurfaceKind, MassProperties, MeasurementKind, PointLocation, SurfaceCurvature, SurfaceInfo};
 #[cfg(not(feature = "pure"))]

@@ -43,6 +43,10 @@ impl FaceStruct for Face {
 			SurfaceKind::Torus { major_radius, minor_radius } => (5, major_radius, minor_radius),
 		};
 		let (o, z, x) = (surface.origin, surface.axis_z, surface.axis_x);
+		super::report::finite(o.to_array().into_iter().chain([p1, p2]), "surface")?;
+		super::report::axis(z, "surface Z axis")?;
+		super::report::axis(x, "surface X axis")?;
+		super::report::axis(z.cross(x), "surface frame cross product")?;
 		let inner = ffi::make_face(kind, o.x, o.y, o.z, z.x, z.y, z.z, x.x, x.y, x.z, p1, p2, &wires).map_err(|e| Error::Validation(format!("face: surface={surface:?}: {}", e.what())))?;
 		Ok(Face::new(inner))
 	}

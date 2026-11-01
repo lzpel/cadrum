@@ -266,3 +266,58 @@ impl Default for BooleanOptions {
 		Self { fuzzy_tolerance: 0.0, glue: GluePolicy::None, non_destructive: true, parallel: false }
 	}
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum Primitive {
+	Box { corners: [DVec3; 2] },
+	Sphere { radius: f64 },
+	Cylinder { radius: f64, height: DVec3 },
+	Cone { radii: [f64; 2], height: DVec3 },
+	Torus { major: f64, minor: f64, axis: DVec3 },
+	HalfSpace(Plane),
+}
+impl crate::Solid {
+	/// Construct a primitive with typed validation and kernel errors.
+	pub fn primitive(specification: Primitive) -> Result<Self, Error> {
+		let inner = match specification {
+			Primitive::Box { corners: [a, b] } => {
+				finite(a.to_array().into_iter().chain(b.to_array()), "box")?;
+				finite((a - b).to_array(), "box dimensions")?;
+				if (a - b).abs().min_element() == 0.0 {
+					return Err(Error::Validation("box dimensions must be nonzero".into()));
+				}
+				ffi::make_box(a.x, a.y, a.z, b.x, b.y, b.z)
+			}
+			Primitive::Sphere { radius } => {
+				positive(radius, "sphere radius")?;
+				ffi::make_sphere(0.0, 0.0, 0.0, radius)
+			}
+			Primitive::Cylinder { radius, height } => {
+				positive(radius, "cylinder radius")?;
+				axis(height, "cylinder height")?;
+				ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, radius, height.length())
+			}
+			Primitive::Cone { radii: [a, b], height } => {
+				finite([a, b], "cone radii")?;
+				axis(height, "cone height")?;
+				if a < 0.0 || b < 0.0 || a + b == 0.0 {
+					return Err(Error::Validation("cone radii must be nonnegative and at least one positive".into()));
+				}
+				ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, a, b, height.length())
+			}
+			Primitive::Torus { major, minor, axis: direction } => {
+				positive(major, "torus major radius")?;
+				positive(minor, "torus minor radius")?;
+				axis(direction, "torus axis")?;
+				ffi::make_torus(0.0, 0.0, 0.0, direction.x, direction.y, direction.z, major, minor)
+			}
+			Primitive::HalfSpace(Plane { origin, normal }) => {
+				finite(origin.to_array(), "half-space origin")?;
+				axis(normal, "half-space normal")?;
+				ffi::make_half_space(origin.x, origin.y, origin.z, normal.x, normal.y, normal.z)
+			}
+		}
+		.map_err(|e| kernel("primitive", e))?;
+		Ok(Self::new(inner, Default::default(), Vec::new()))
+	}
+}

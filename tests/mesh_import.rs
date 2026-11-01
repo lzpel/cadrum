@@ -88,3 +88,13 @@ fn welding_is_an_explicit_repair() {
 	assert_eq!(result.report.welded_vertices, 8);
 	assert_eq!(result.mesh.positions.len(), 4);
 }
+
+#[test]
+fn unwelded_coincident_components_remain_separate_bodies() {
+	let mut mesh = tetra();
+	mesh.positions.extend(tetra().positions);
+	mesh.triangles.extend(tetra().triangles.into_iter().map(|t| t.map(|v| v + 4)));
+	let imported = mesh.import(options(MeshOutcome::ClosedSolid)).unwrap();
+	assert_eq!(imported.report.components, 2);
+	assert_eq!(imported.shape.unwrap().solids().unwrap().len(), 2);
+}

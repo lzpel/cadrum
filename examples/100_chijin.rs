@@ -58,12 +58,13 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	#[cfg(feature = "png")]
 	scene.write_png([1280, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 	// This size 1280 x 640 is special because 100_chijin.png is used for github repository social media preview image.
 	// > we recommend a size of at least 640 by 320 pixels (1280 by 640 pixels for best display).　See https://docs.github.com/ja/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview
 
-	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }

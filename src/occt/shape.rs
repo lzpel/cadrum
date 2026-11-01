@@ -193,13 +193,7 @@ impl Shape {
 		if !values.iter().all(|v| v.is_finite()) {
 			return Err(Error::Validation("transform: non-finite parameter".into()));
 		}
-		let mut out = Self::new(ffi::native_transform(&self.inner, kind, values).map_err(failure)?);
-		for (old, new) in self.faces()?.iter().zip(out.faces()?.iter()) {
-			if let Some(&color) = self.colormap.get(&old.id()) {
-				out.colormap.insert(new.id(), color);
-			}
-		}
-		Ok(out)
+		Ok(Self::operation(ffi::op_transform(&self.inner, kind, values).map_err(|e| super::report::kernel("transform", e))?, &[self]).value)
 	}
 	pub fn translate(&self, v: DVec3) -> Result<Self, Error> {
 		self.transformed(0, &v.to_array())
@@ -236,7 +230,7 @@ impl Shape {
 		let uvs = data.uvs.chunks_exact(2).zip(&data.uv_valid).map(|(uv, &valid)| valid.then(|| crate::DVec2::from_slice(uv))).collect();
 		let status = data.status;
 		if !data.success {
-			return Err(Error::Tesselation);
+			return Err(Error::Operation { operation: "tessellate".into(), diagnostics: vec![format!("OCCT meshing failed with status flags {}", data.status)], subshapes: vec![] });
 		}
 		let mut edges = Vec::new();
 		for edge in self.edges()? {
@@ -279,13 +273,7 @@ impl Shape {
 	/// Thicken a face or open shell with intersection joins and boundary walls.
 	/// Signed thickness follows normals; coincidence tolerance is OCCT's Precision::Confusion().
 	pub fn thicken(&self, thickness: f64) -> Result<Self, Error> {
-		if !matches!(self.kind(), ShapeKind::Face | ShapeKind::Shell) {
-			return Err(super::report::supported("thicken", self.kind()));
-		}
-		positive(thickness.abs(), "absolute thickness")?;
-		let mut out = Self::new(ffi::native_thicken(&self.inner, thickness).map_err(failure)?);
-		out.colormap = self.colormap.clone();
-		Ok(out)
+		Ok(self.thicken_with_options(thickness, super::modeling::OffsetOptions::default())?.value)
 	}
 }
 impl Shape {
@@ -311,15 +299,10 @@ impl Shape {
 
 impl Clone for Shape {
 	fn clone(&self) -> Self {
-		let mut out = Self::new(ffi::native_copy(&self.inner).expect("Shape::clone"));
-		for (old, new) in self.faces().expect("Shape::clone faces").iter().zip(out.faces().expect("Shape::clone faces").iter()) {
-			if let Some(&c) = self.colormap.get(&old.id()) {
-				out.colormap.insert(new.id(), c);
-			}
-		}
-		out
+		self.copied().expect("Shape::clone").value
 	}
 }
+
 impl std::fmt::Debug for Shape {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Shape").field("kind", &self.kind()).finish()

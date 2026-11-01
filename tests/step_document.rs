@@ -16,7 +16,8 @@ fn document() -> StepDocument {
 }
 #[test]
 fn nested_shared_assemblies_names_labels_placements_and_colors_round_trip() {
-	let doc = document();
+	let mut doc = document();
+	doc.definitions[2].components[1].transform = Some(DMat4::from_translation(DVec3::new(10.0, 0.0, 5.0)) * DMat4::from_rotation_z(std::f64::consts::FRAC_PI_2));
 	let mut bytes = Vec::new();
 	let warnings = doc.write(&mut bytes, StepWriteOptions { output_unit: LengthUnit::Meter, ..Default::default() }, &OperationControl::default()).unwrap();
 	assert!(warnings.is_empty(), "{warnings:?}");
@@ -32,6 +33,7 @@ fn nested_shared_assemblies_names_labels_placements_and_colors_round_trip() {
 	assert_eq!(top.components[0].definition, top.components[1].definition);
 	let second = top.components.iter().find(|i| i.name == "second").unwrap();
 	assert!((second.transform.unwrap().w_axis.truncate() - DVec3::new(10.0, 0.0, 5.0)).length() < 1e-6);
+	assert!((second.transform.unwrap().x_axis.truncate() - DVec3::Y).length() < 1e-6);
 	let sub = &read.document.definitions[second.definition];
 	assert_eq!(sub.name, "Subassembly");
 	assert_eq!(sub.components.len(), 2);

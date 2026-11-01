@@ -12,10 +12,11 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&solids, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	#[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }

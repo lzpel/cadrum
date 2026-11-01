@@ -17,11 +17,12 @@ fn main() -> Result<(), cadrum::Error> {
 	let corner_cut = Solid::sphere(10.0).translate(DVec3::new(20.0, 15.0, 10.0));
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
+	#[cfg(feature = "png")]
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	let mesh = Solid::mesh([&part], Default::default())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-	println!("wrote {example_name}.png / {example_name}.stl / {example_name}.glb");
+	println!("wrote {example_name}.stl / {example_name}.glb");
 	Ok(())
 }

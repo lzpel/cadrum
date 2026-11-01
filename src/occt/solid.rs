@@ -149,33 +149,22 @@ impl SolidStruct for Solid {
 	// ==================== Constructors ====================
 
 	fn cube(corner0: DVec3, corner1: DVec3) -> Solid {
-		let inner = ffi::make_box(corner0.x, corner0.y, corner0.z, corner1.x, corner1.y, corner1.z);
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+		Self::primitive(super::modeling::Primitive::Box { corners: [corner0, corner1] }).expect("Solid::cube")
 	}
-
-	fn cylinder(r: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cylinder(0.0, 0.0, 0.0, height.x, height.y, height.z, r, height.length());
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn cylinder(radius: f64, height: DVec3) -> Solid {
+		Self::primitive(super::modeling::Primitive::Cylinder { radius, height }).expect("Solid::cylinder")
 	}
-
 	fn sphere(radius: f64) -> Solid {
-		let inner = ffi::make_sphere(0.0, 0.0, 0.0, radius);
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+		Self::primitive(super::modeling::Primitive::Sphere { radius }).expect("Solid::sphere")
 	}
-
-	fn cone(r1: f64, r2: f64, height: DVec3) -> Solid {
-		let inner = ffi::make_cone(0.0, 0.0, 0.0, height.x, height.y, height.z, r1, r2, height.length());
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn cone(a: f64, b: f64, height: DVec3) -> Solid {
+		Self::primitive(super::modeling::Primitive::Cone { radii: [a, b], height }).expect("Solid::cone")
 	}
-
-	fn torus(r1: f64, r2: f64, axis: DVec3) -> Solid {
-		let inner = ffi::make_torus(0.0, 0.0, 0.0, axis.x, axis.y, axis.z, r1, r2);
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn torus(major: f64, minor: f64, direction: DVec3) -> Solid {
+		Self::primitive(super::modeling::Primitive::Torus { major, minor, axis: direction }).expect("Solid::torus")
 	}
-
-	fn half_space(plane_origin: DVec3, plane_normal: DVec3) -> Solid {
-		let inner = ffi::make_half_space(plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z);
-		Solid::new(inner, std::collections::HashMap::new(), Default::default())
+	fn half_space(origin: DVec3, normal: DVec3) -> Solid {
+		Self::primitive(super::modeling::Primitive::HalfSpace(super::modeling::Plane { origin, normal })).expect("Solid::half_space")
 	}
 
 	// ==================== Topology iteration ====================
@@ -230,6 +219,7 @@ impl SolidStruct for Solid {
 	// ==================== Fillet / Chamfer ====================
 
 	fn fillet_edges<'a>(&self, radius: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
+		finite([radius], "fillet radius")?;
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
@@ -241,6 +231,7 @@ impl SolidStruct for Solid {
 	}
 
 	fn chamfer_edges<'a>(&self, distance: f64, edges: impl IntoIterator<Item = &'a Edge>) -> Result<Self, Error> {
+		finite([distance], "chamfer distance")?;
 		let mut edge_vec = ffi::edge_vec_new();
 		for e in edges {
 			ffi::edge_vec_push(edge_vec.pin_mut(), &e.inner);
@@ -256,6 +247,9 @@ impl SolidStruct for Solid {
 	fn sweep<'a, 'b, 'c>(profile: impl IntoIterator<Item = &'a Edge>, spine: impl IntoIterator<Item = &'b Edge>, orient: ProfileOrient<'c>) -> Result<Self, Error> {
 		let (profile, spine): (Vec<&Edge>, Vec<&Edge>) = (profile.into_iter().collect(), spine.into_iter().collect());
 		let (kind, ux, uy, uz, aux) = encode_orient(orient);
+		if kind == 2 {
+			axis(DVec3::new(ux, uy, uz), "sweep binormal")?;
+		}
 		let shape = (|| {
 			let (p, s, a) = (wires_from_edges(profile.iter().copied())?, wires_from_edges(spine.iter().copied())?, wires_from_edges(aux)?);
 			ffi::make_pipe_shell(&p, &s, kind, ux, uy, uz, &a)
@@ -492,7 +486,8 @@ impl SolidStruct for Solid {
 
 impl Transform for Solid {
 	fn translate(self, translation: DVec3) -> Self {
-		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z);
+		finite(translation.to_array(), "translate").expect("Solid::translate");
+		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z).expect("Solid::translate");
 		// translate/rotate use shape.Moved() — TShape is shared but Location
 		// changes, so cached edges/faces (which embed Location) would go stale.
 		// Solid::new gives a fresh OnceLock::new() cache matching the new Location.
@@ -501,6 +496,8 @@ impl Transform for Solid {
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
+		finite(axis_origin.to_array().into_iter().chain([angle]), "rotate").expect("Solid::rotate");
+		axis(axis_direction, "rotation axis").expect("Solid::rotate");
 		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Solid::rotate: {}", e.what()));
 		Solid::new(inner, self.colormap, self.history)
 	}
@@ -516,6 +513,8 @@ impl Transform for Solid {
 	//      BRepBuilderAPI_Transform.cxx:48-49 (myUseModif branch)
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
+		finite(center.to_array(), "scale").expect("Solid::scale");
+		positive(factor.abs(), "scale factor").expect("Solid::scale");
 		let inner = ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Solid::scale: {}", e.what()));
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// scale/mirror rebuild topology via BRepBuilderAPI_Transform → post_ids
@@ -525,6 +524,8 @@ impl Transform for Solid {
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
+		finite(plane_origin.to_array(), "mirror").expect("Solid::mirror");
+		axis(plane_normal, "mirror normal").expect("Solid::mirror");
 		let inner = ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Solid::mirror: {}", e.what()));
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(inner, colormap, Default::default())
@@ -533,7 +534,7 @@ impl Transform for Solid {
 
 impl Clone for Solid {
 	fn clone(&self) -> Self {
-		let inner = ffi::deep_copy(&self.inner);
+		let inner = ffi::deep_copy(&self.inner).expect("Solid::clone");
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// deep_copy rebuilds topology — post_ids in `history` no longer point
 		// to faces of the new shape. Drop history rather than remapping.

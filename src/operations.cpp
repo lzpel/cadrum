@@ -100,6 +100,11 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
     for (int i=1;i<=original.Extent();++i) {
         const auto copied=copier.ModifiedShape(original(i));
         const auto repaired=fix.Context()->Apply(copied);
+        if(original(i).ShapeType()==TopAbs_FACE&&!repaired.IsNull()){
+            for(TopExp_Explorer face(repaired,TopAbs_FACE);face.More();face.Next()){
+                out.face_history.push_back(reinterpret_cast<uint64_t>(original(i).TShape().get()));out.face_history.push_back(reinterpret_cast<uint64_t>(face.Current().TShape().get()));
+            }
+        }
         if (!copied.IsSame(repaired) || maximum_tolerance(original(i)) != maximum_tolerance(repaired)) out.changed_subshapes.push_back(i);
         if (original(i).ShapeType()==TopAbs_VERTEX) measure(BRep_Tool::Pnt(TopoDS::Vertex(original(i))));
         if (original(i).ShapeType()==TopAbs_EDGE && !BRep_Tool::Degenerated(TopoDS::Edge(original(i)))) {
@@ -523,9 +528,9 @@ std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape& pare
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <Law_Interpol.hxx>
 namespace cadrum {
-SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) try {
+static std::unique_ptr<BRepOffsetAPI_MakePipeShell> make_pipe(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) {
     if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    const auto spine=TopoDS::Wire(inputs[0]);BRepOffsetAPI_MakePipeShell builder(spine);builder.SetIsBuildHistory(config.law.empty());
+    const auto spine=TopoDS::Wire(inputs[0]);auto pipe=std::make_unique<BRepOffsetAPI_MakePipeShell>(spine);auto& builder=*pipe;builder.SetIsBuildHistory(config.law.empty());
     builder.SetTransitionMode(static_cast<BRepBuilderAPI_TransitionMode>(config.transition));builder.SetTolerance(config.tolerance,config.boundary_tolerance,config.angular_tolerance);builder.SetForceApproxC1(config.force_c1);builder.SetMaxDegree(config.max_degree);builder.SetMaxSegments(config.max_segments);
     switch(config.mode){
     case 0:builder.SetMode(false);break;case 1:builder.SetMode(true);break;
@@ -544,7 +549,11 @@ SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,
         }else if(location>=0)builder.Add(profile,TopoDS::Vertex(inputs[location]),config.contact[i],config.correction[i]);else builder.Add(profile,config.contact[i],config.correction[i]);
     }
     if(!builder.IsReady())throw std::runtime_error("sweep: pipe is not ready");
-    SweepData out{};out.sections=native_vec_new();if(config.simulation>0){NCollection_List<TopoDS_Shape> result;builder.Simulate(config.simulation,result);for(const auto& shape:result)out.sections->push_back(shape);}
+    return pipe;
+}
+SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) try {
+    SweepData out{};out.sections=native_vec_new();if(config.simulation>0){auto simulator=make_pipe(inputs,section_count,config,control);NCollection_List<TopoDS_Shape> result;simulator->Simulate(config.simulation,result);for(const auto& shape:result)out.sections->push_back(shape);}
+    auto pipe=make_pipe(inputs,section_count,config,control);auto& builder=*pipe;
     Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
     if(!builder.IsDone())throw std::runtime_error("sweep: pipe status "+std::to_string(int(builder.GetStatus())));
     if(config.solid&&!builder.MakeSolid())throw std::runtime_error("sweep: open profile cannot produce a solid");
@@ -635,7 +644,7 @@ OperationData op_planar_blend(const TopoDS_Face& face,const std::vector<TopoDS_S
 namespace cadrum {
 DraftData op_draft(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& faces,rust::Slice<const double> v,bool flag,const OperationControl& control) try {
     BRepOffsetAPI_DraftAngle builder(s);DraftData out{};const gp_Dir direction(v[6],v[7],v[8]);const gp_Pln plane(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5]));
-    for(size_t i=0;i<faces.size();++i){require_member(s,faces[i]);builder.Add(TopoDS::Face(faces[i]),direction,v[9],plane,flag);if(!builder.AddDone())throw std::runtime_error("draft selection "+std::to_string(i)+" status "+std::to_string(int(builder.Status())));out.statuses.push_back(0);}
+    for(size_t i=0;i<faces.size();++i){require_member(s,faces[i]);builder.Add(TopoDS::Face(faces[i]),direction,v[9],plane,flag);if(!builder.AddDone())throw std::runtime_error("subshape["+std::to_string(op_member_indices(s,faces[i])[0])+"] draft selection "+std::to_string(i)+" status "+std::to_string(int(builder.Status())));out.statuses.push_back(0);}
     Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("draft build failed");out.operation=operation_result(builder,{s});return out;
 } OP_CATCH
 static TopoDS_Shape connected_projection(const TopoDS_Shape& s,double tolerance,size_t& count){

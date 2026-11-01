@@ -43,10 +43,11 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&objects, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(0.05, 0.05, 1.0), up: DVec3::Y, hidden_edges: false, shading: true });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+	#[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
 
-	println!("wrote {example_name}.step / {example_name}.svg / {example_name}.png");
+	println!("wrote {example_name}.step / {example_name}.svg");
 	Ok(())
 }

@@ -165,6 +165,7 @@ mod ffi_bridge {
 		boundary_before: usize,
 		boundary_after: usize,
 		changed_subshapes: Vec<u32>,
+		face_history: Vec<u64>,
 		maximum_deviation: f64,
 		sample_count: usize,
 	}
@@ -272,7 +273,6 @@ mod ffi_bridge {
 		fn native_valid(shape: &TopoDS_Shape) -> Result<bool>;
 		fn native_closed(shape: &TopoDS_Shape) -> Result<bool>;
 		fn native_loose(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
-		fn native_copy(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_subshapes(shape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
 		fn native_take(shapes: &CxxVector<TopoDS_Shape>, index: usize) -> UniquePtr<TopoDS_Shape>;
 		fn native_vec_new() -> UniquePtr<CxxVector<TopoDS_Shape>>;
@@ -282,12 +282,10 @@ mod ffi_bridge {
 		fn native_build(shapes: &CxxVector<TopoDS_Shape>, kind: u32) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_sew(faces: &CxxVector<TopoDS_Face>, tolerance: f64, history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_solidify(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
-		fn native_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
 		fn native_bounds(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
 		fn op_tessellate(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool, control: &OperationControl) -> Result<MeshData>;
 		fn native_write_brep(shape: &TopoDS_Shape) -> Result<Vec<u8>>;
 		fn native_read_brep(data: &[u8]) -> Result<UniquePtr<TopoDS_Shape>>;
-		fn native_thicken(shape: &TopoDS_Shape, thickness: f64) -> Result<UniquePtr<TopoDS_Shape>>;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -298,22 +296,22 @@ mod ffi_bridge {
 
 		// ==================== Shape Constructors ====================
 
-		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
 		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
 
-		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn deep_copy(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
+		fn deep_copy(shape: &TopoDS_Solid) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		// ==================== STEP I/O ====================
 
@@ -341,7 +339,7 @@ mod ffi_bridge {
 
 		// ==================== Transforms (solid → solid, no history) ====================
 
-		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn transform_rotate(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
@@ -358,7 +356,7 @@ mod ffi_bridge {
 
 		// ==================== Meshing ====================
 
-		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> MeshData;
+		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
 
 		// ==================== Topology enumeration ====================
 

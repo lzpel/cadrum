@@ -36,8 +36,8 @@ and the existing convenience APIs.
 
 Styles follow existing faces in memory. Conversion from `Solid` expands whole-body
 colors onto faces, and copying, transforms, extraction, and removal retain face
-colors through topology correspondence. Newly generated thickening faces have no
-assigned style. Shape BRep I/O stores exact geometry and the root category but
+colors through topology correspondence. Generated thickening faces inherit available
+styled face ancestry; other generated faces remain unassigned. Shape BRep I/O stores exact geometry and the root category but
 omits colors, history, and triangulation; binary compatibility follows the linked
 OCCT version. Existing `Solid` color-aware I/O remains available.
 
@@ -145,8 +145,10 @@ blends, sewing, and face unification expose available builder correspondence.
 References identify their operand and traversal index. `topology_at` resolves a
 one-based index against the original operand or result; references are runtime
 operation data, not durable document names or serialized labels. Relations retain
-one-to-many descendants and separate operand ancestry. `History::compose` joins
-relations across an intermediate operand and preserves unrelated next operands.
+one-to-many descendants and separate operand ancestry. `operand_count` retains inputs
+even when no subshape relations are available. `History::compose` joins relations
+across an intermediate operand, preserves unrelated next operands, and confirms
+deletion only when every known descendant is removed.
 
 Styles propagate through available ancestry. Split descendants inherit source
 face styles and generated faces inherit available styled ancestors; when multiple
@@ -367,3 +369,96 @@ with a warning; product IDs/names remain. Repeated root definitions must instead
 be represented as components of an assembly. Unreferenced definitions are omitted
 with warnings. Import preserves the full transferred native result even when
 some metadata or placement is unavailable.
+
+## Checked legacy boundaries and runnable examples
+
+Checked primitive construction is available. `Solid::primitive(Primitive)` returns
+typed validation or kernel errors for boxes, spheres, cylinders, cones, tori, and
+half-spaces. Existing infallible convenience constructors use this checked path
+and retain their signatures, panicking in Rust on invalid input. Legacy transforms,
+meshing, spline tangents, surface frames, and blend sizes also reject non-finite
+parameters before native evaluation; fallible native entry points catch exceptions.
+
+The feature example runs every family. Use
+`cargo run --example native_features --features step-document` to exercise items
+2–16, or pass an item number after `--` to run that family in isolation. Each run
+prints first/repeat operation times and Linux process high-water memory when
+available. Timings exclude common fixture construction and do not flush OS caches;
+peak memory includes the process, fixtures, and native kernel. Run one family per
+process when comparing peaks. `open_shape` remains the item-1 acceptance example.
+
+## Local timing sample
+
+Each family was measured in a fresh Linux x86-64 process. The debug build used
+Rust 1.99.1, OCCT 8.0.1 revision 3, and `step-document`; values are first-call
+microseconds, repeated-call microseconds, and process peak KiB. They are local
+measurements rather than performance guarantees and include the fixture/process
+memory described above.
+
+```text
+item family             first_us repeat_us peak_KiB
+2    validation              534       440    27428
+3    affine                  806       622    27496
+4    authored                 50         8    27448
+5    profiles                335       208    27528
+6    faceted                1580      1468    27692
+7    history                 271       235    27532
+8    split                  5351      4758    28344
+9    boolean                2986      2716    28348
+10   tessellation          13433     12510    31184
+11   measurements           1087      1027    27476
+12   sweep                   781       651    27600
+13   loft-repair            7913      7925    27416
+14   edge-treatments        11131     10408    37408
+15   draft-projection       1346      1096    27756
+16   STEP                  16786     13423    29224
+```
+
+Checked native chains stay in memory. This example validates a sphere, constructs
+an ellipsoid, and tessellates it without intermediate files.
+
+```rust
+use cadrum::{DVec3, Error, OperationControl, Primitive, Shape, ShapeKind, Solid, Tessellation};
+let sphere = Solid::primitive(Primitive::Sphere { radius: 2.0 })?;
+let shape = Shape::from(&sphere);
+assert!(shape.validate(Some(ShapeKind::Solid))?.valid);
+let ellipsoid = shape.scale_xyz(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0))?;
+let tessellation = ellipsoid.value.tessellate(Tessellation::default(), &OperationControl::default())?;
+assert!(!tessellation.value.mesh.indices.is_empty());
+# Ok::<(), Error>(())
+```
+
+Verification keeps feature boundaries explicit. PNG export statements in the
+existing examples are feature-gated, and the PNG-dependent gallery is embedded
+in crate documentation when PNG is enabled. This native guide is included in
+all native builds. No README edits are required for these feature combinations.
+
+
+## Verification
+
+Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
+passed 181 tests with two ignored, and the separate documentation run passed 17
+with one ignored. The geometry-only `--no-default-features --offline` run passed
+178 tests with two ignored. The complete `native_features` example also passed.
+
+Windows acceptance tests pass under Wine. The GNU target used POSIX MinGW
+compilers and passed all 24 selected tests for sweeps, history, mesh import,
+STEP assemblies and units, and validation. These include rotated component
+placements, coincident disconnected mesh components, and retained repair styles.
+
+The source feature accepts a prepared OCCT installation. An offline
+`cargo check --features source,step-document` passed with `OCCT_ROOT` pointing at
+the existing Linux OCCT cache; this check does not establish a fresh source build.
+macOS remains unverified because this host has no Apple SDK.
+
+
+WebAssembly compilation and a runtime smoke test pass. The repository's published
+cross-build image compiled the library with `--no-default-features` and
+`step-document`. A separate linked module instantiated in Node with zero external
+imports and exercised checked box construction, affine scaling, validation, and
+tessellation, returning the expected volume of 24. This is a smoke test rather
+than the complete native acceptance suite.
+
+The pure Rust backend remains unavailable. Checks with `--features pure` fail
+because the existing backend is unimplemented and native concrete types are
+configured out; these OCCT additions do not supply that backend.

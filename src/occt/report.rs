@@ -72,7 +72,11 @@ pub(crate) fn kernel(operation: &str, error: cxx::Exception) -> Error {
 	if let Some(kind) = error.what().strip_prefix("unsupported: ") {
 		return Error::Unsupported { operation: operation.into(), kind: kind.into() };
 	}
-	Error::Operation { operation: operation.into(), diagnostics: vec![error.what().into()], subshapes: Vec::new() }
+	Error::Operation {
+		operation: operation.into(),
+		diagnostics: vec![error.what().into()],
+		subshapes: error.what().split("subshape[").nth(1).and_then(|v| v.split(']').next()).and_then(|v| v.parse().ok()).into_iter().collect(),
+	}
 }
 pub(crate) fn finite(values: impl IntoIterator<Item = f64>, operation: &str) -> Result<(), Error> {
 	if values.into_iter().all(f64::is_finite) {
@@ -137,7 +141,12 @@ impl Shape {
 		}
 		let before = self.validate(None)?;
 		let data = ffi::op_repair(&self.inner, options.precision, options.max_tolerance, options.max_sampled_deviation, &[options.fix_wires, options.fix_faces, options.fix_shells, options.fix_solids, options.allow_closing]).map_err(|e| kernel("repair", e))?;
-		let shape = Shape::new(data.shape);
+		let mut shape = Shape::new(data.shape);
+		for pair in data.face_history.chunks_exact(2) {
+			if let Some(&color) = self.colormap.get(&pair[0]) {
+				shape.colormap.insert(pair[1], color);
+			}
+		}
 		let after = shape.validate(None)?;
 		Ok(RepairReport {
 			shape,
@@ -177,6 +186,7 @@ pub struct TopologyRelation {
 }
 #[derive(Clone, Debug, Default)]
 pub struct History {
+	pub operand_count: usize,
 	pub relations: Vec<TopologyRelation>,
 	pub complete: bool,
 }
@@ -206,7 +216,7 @@ impl Shape {
 		}
 		OperationResult {
 			value,
-			history: History { relations, complete: data.complete },
+			history: History { operand_count: inputs.len(), relations, complete: data.complete },
 			warnings: data.warnings.into_iter().map(|message| Diagnostic { message, subshapes: vec![] }).collect(),
 			diagnostics: data.diagnostics.into_iter().map(|message| Diagnostic { message, subshapes: vec![] }).collect(),
 		}
@@ -217,8 +227,9 @@ impl History {
 	/// Compose descendants through the specified operand of the next operation.
 	/// Other next-operation operands retain identity after the first history's operands.
 	pub fn compose(&self, next: &History, intermediate_operand: usize) -> History {
-		let mut out = History { relations: Vec::new(), complete: self.complete && next.complete };
-		let offset = self.relations.iter().map(|r| r.source.operand).max().map_or(0, |n| n + 1);
+		let offset = self.operand_count;
+		let consumed = usize::from(intermediate_operand < next.operand_count);
+		let mut out = History { operand_count: offset + next.operand_count - consumed, relations: Vec::new(), complete: self.complete && next.complete && consumed == 1 };
 		for first in &self.relations {
 			let Some(target) = first.target else {
 				out.relations.push(first.clone());
@@ -248,8 +259,9 @@ impl History {
 				out.relations.push(relation);
 			}
 		}
+		let retained_or_unknown: std::collections::HashSet<_> = out.relations.iter().filter(|r| r.target.is_some() || r.relation == RelationKind::Unknown).map(|r| r.source).collect();
 		let mut seen = std::collections::HashSet::new();
-		out.relations.retain(|r| seen.insert((r.source, r.target, r.relation)));
+		out.relations.retain(|r| (r.relation != RelationKind::Removed || !retained_or_unknown.contains(&r.source)) && seen.insert((r.source, r.target, r.relation)));
 		out
 	}
 }

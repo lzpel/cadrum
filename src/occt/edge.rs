@@ -146,6 +146,7 @@ impl EdgeStruct for Edge {
 			BSplineEnd::Clamped { start: s, end: e } => (2u32, s.x, s.y, s.z, e.x, e.y, e.z),
 		};
 
+		finite([sx, sy, sz, ex, ey, ez], "bspline end tangents")?;
 		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez).map_err(|e| Error::Edge(format!("bspline: {} points, end={end:?}: {}", pts.len(), e.what())))?;
 		Ok(Edge { inner })
 	}
