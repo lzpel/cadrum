@@ -49,3 +49,12 @@ fn open_surface_offsets_and_configurable_thickening() {
 	assert!(offset.value.is_valid().unwrap());
 	assert!(!offset.value.faces().unwrap().is_empty());
 }
+
+#[test]
+fn plane_missing_a_shape_preserves_partition_provenance() {
+	let cube = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE));
+	let split = cube.split_by_plane(Plane { origin: DVec3::Z * 3.0, normal: DVec3::Z }, 1e-7).unwrap();
+	assert_eq!(split.partitions.len(), 1);
+	assert_eq!(split.partitions[0].side, PartitionSide::Negative);
+	assert!(!split.partitions[0].ancestors.is_empty());
+}

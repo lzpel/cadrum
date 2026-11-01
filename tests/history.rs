@@ -79,3 +79,14 @@ fn profile_history_composes_through_extrusion() {
 	assert_eq!(composed.operand_count, 1);
 	assert!(composed.complete);
 }
+
+#[test]
+fn resolving_history_topology_retains_face_styles() {
+	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE).color("#ff0000"));
+	let copied = shape.copied().unwrap();
+	let target = copied.history.relations.iter().find_map(|r| r.target.filter(|t| t.kind == ShapeKind::Face)).unwrap();
+	let face = copied.value.topology_at(target.index).unwrap();
+	let mesh = face.mesh(Default::default()).unwrap();
+	assert!(!mesh.face_ids.is_empty());
+	assert!(mesh.face_ids.iter().all(|id| mesh.colormap.contains_key(id)));
+}

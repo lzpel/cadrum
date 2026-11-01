@@ -118,7 +118,9 @@ impl Shape {
 	/// Resolve a one-based report/history index against the original operand or result.
 	pub fn topology_at(&self, index: usize) -> Result<Self, Error> {
 		let index = u32::try_from(index).map_err(|_| Error::Validation("topology index overflow".into()))?;
-		Ok(Self::new(ffi::op_topology_at(&self.inner, index).map_err(|e| kernel("topology index", e))?))
+		let mut shape = Self::new(ffi::op_topology_at(&self.inner, index).map_err(|e| kernel("topology index", e))?);
+		shape.colormap = self.colormap.clone();
+		Ok(shape)
 	}
 }
 
@@ -205,7 +207,7 @@ impl Shape {
 	pub fn split_by_plane(&self, plane: Plane, tolerance: f64) -> Result<PlaneSplit, Error> {
 		let tool = Shape::from(&plane.face()?);
 		let result = self.split(&[&tool], tolerance)?;
-		let pieces = if result.value.kind() == ShapeKind::Compound { result.value.children()? } else { vec![result.value.copied()?.value] };
+		let pieces = if result.value.kind() == ShapeKind::Compound { result.value.children()? } else { vec![result.value.topology_at(1)?] };
 		let mut partitions = Vec::new();
 		for shape in pieces {
 			let center = ffi::op_centroid(&shape.inner).map_err(|e| kernel("partition centroid", e))?;
