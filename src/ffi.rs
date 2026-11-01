@@ -495,4 +495,13 @@ pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
 }
 
-// Native topology can share mutable geometry; opaque handles remain !Send and !Sync.
+// cxx opaque types default to !Send + !Sync. Send lets owning UniquePtr wrappers
+// move between threads, preserving the existing Solid, Face, and Edge contract.
+unsafe impl Send for TopoDS_Solid {}
+unsafe impl Send for TopoDS_Face {}
+unsafe impl Send for TopoDS_Edge {}
+unsafe impl Send for TopoDS_Shape {}
+unsafe impl Send for TopoDS_Wire {}
+
+// Sync remains disabled because native queries and operations can mutate caches.
+// Shared native aliases must stay on one worker; deep copies can be independent.

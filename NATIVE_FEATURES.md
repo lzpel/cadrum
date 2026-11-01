@@ -30,8 +30,8 @@ guaranteed to be detected.
 
 Ownership follows native topology lifetimes. Views own shared subshape handles,
 so dropping a parent does not invalidate them; cloning copies geometry
-independently. `Shape`, `Vertex`, `Wire`, `Shell`, and `Compound` implement neither
-`Send` nor `Sync`. Native results remain directly usable through typed accessors
+independently. `Shape`, `Vertex`, `Wire`, `Shell`, and `Compound` implement `Send`
+but not `Sync`. Native results remain directly usable through typed accessors
 and the existing convenience APIs.
 
 Styles follow existing faces in memory. Conversion from `Solid` expands whole-body
@@ -212,11 +212,17 @@ Geometry-only STEP and binary BRep omit styles and history; existing color-aware
 Solid I/O remains available. Binary BRep compatibility follows the linked OCCT
 format version rather than a portable cross-version serialization guarantee.
 
-Native handles remain thread-confined. `Shape`, `Solid`, `Face`, `Edge`, and the
-typed topology views implement neither `Send` nor `Sync`, since extracted topology
-can share mutable geometry even when each wrapper owns its handle. Earlier unsafe
-`Send` implementations have been removed. Independent workers may construct their
-own native shapes; mesh data and cancellation tokens remain transferable.
+Owned native handles can move between threads. `Shape`, `Solid`, `Face`, `Edge`,
+and typed topology views implement `Send` but not `Sync`, preserving the original
+transfer contract and extending it to the new owning wrappers. Workers may create,
+receive, retain, return, and drop owned shapes. Meshes and operation results also
+remain transferable.
+
+Native aliases require serialized use. Extracted topology and shallow native
+conversions can share geometry with a parent; `Send` does not make simultaneous
+operations on those aliases safe. Keep related aliases on one worker, or use
+independent deep copies when operating in parallel. `Sync` is not implemented
+because native evaluation and meshing can mutate geometry and caches.
 
 ## 11. Measurements and geometric frames
 

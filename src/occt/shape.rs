@@ -37,7 +37,7 @@ impl ShapeKind {
 }
 
 /// An owning native shape. Views share topology; clone copies geometry; RAII releases handles.
-/// This type is neither Send nor Sync, because views can share native geometry.
+/// Owned handles are Send but not Sync; shared native aliases require serialized use.
 pub struct Shape {
 	pub(crate) inner: cxx::UniquePtr<ffi::TopoDS_Shape>,
 	pub(crate) colormap: HashMap<u64, Color>,
