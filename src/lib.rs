@@ -35,6 +35,8 @@ pub use occt::step::document::{StepDefinition, StepDocument, StepDocumentRead, S
 #[cfg(not(feature = "pure"))]
 pub use occt::step::{LengthUnit, StepReadOptions, StepReadReport, StepReadResult, StepSchema, StepWriteOptions};
 #[cfg(not(feature = "pure"))]
+pub use occt::surface_modeling::{FillBoundary, FillContinuity, FillingOptions, FillingResult, SurfaceBoundary};
+#[cfg(not(feature = "pure"))]
 pub use occt::sweep::{AuxiliaryContact, SweepOptions, SweepOrientation, SweepResult, SweepSection, SweepTransition};
 #[cfg(not(feature = "pure"))]
 pub use occt::treatments::{ChamferKind, ChamferSpec, PlanarChamfer, VariableFillet};

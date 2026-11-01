@@ -370,6 +370,57 @@ be represented as components of an assembly. Unreferenced definitions are omitte
 with warnings. Import preserves the full transferred native result even when
 some metadata or placement is unavailable.
 
+## 17. Native surface modeling
+
+Four native operations are available. They add checked Rust/C++ entry points
+without new Rust dependencies or linked OCCT toolkits.
+
+- `Face::fill` binds `BRepOffsetAPI_MakeFilling` for one ordered, connected,
+  closed boundary, optional interior points, and optional initial/support faces.
+  `FillContinuity` selects position, tangent, or curvature constraints; tangent
+  and curvature constraints require existing pcurves on explicit support faces.
+  `FillingOptions` controls distance, angular, curvature, degree, and segment
+  limits. An initial surface must have orthogonal local U/V directions, as
+  required by OCCT. Inputs are copied before native construction.
+- `Face::retrim_surface` rebuilds trims on the underlying surface using an outer
+  wire and optional holes, constructs missing pcurves on copied edges, and
+  validates the result. It replaces original trims rather than intersecting
+  them. Curves must lie on the support surface; ambiguous periodic/seam cases
+  can fail rather than being resolved automatically.
+- `Face::extend_surface` binds `GeomLib::ExtendSurfByLength` for a natural,
+  rectangular, nonperiodic Bezier/BSpline face. `SurfaceBoundary` selects U/V
+  minimum/maximum; extension length uses model units and continuity selects
+  parametric C1, C2, or C3. Existing trims and holes are rejected. The result
+  preserves orientation and reports incomplete boundary correspondence.
+- `Shape::imprint` splits a member face using on-face edges or wires through the
+  existing `BOPAlgo_Splitter` toolkit. It preserves native operation history and
+  face styles where mapped, without adding material.
+
+Filling returns native constraint estimates. `FillingResult.maximum_errors`
+contains distance, normal-angle, and curvature errors; exceeding a requested
+limit produces an operation error with the measured values. These are OCCT
+solver estimates, not a certified global deviation bound for the final
+approximated surface. The pinned OCCT 8.0.1 filling implementation forwards its
+continuity enum directly as a derivative count, so the bridge supplies counts
+0/1/2 explicitly to avoid its G2 enum mismatch. See the
+[constraint dispatch](https://github.com/Open-Cascade-SAS/OCCT/blob/V8_0_1/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_Filling.cxx)
+and [derivative-order check](https://github.com/Open-Cascade-SAS/OCCT/blob/V8_0_1/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_CurveConstraint.cxx).
+
+Native checks have explicit limits. Trimming and imprinting check 33 samples per
+edge against the support surface or trimmed face; this is not an exhaustive
+containment proof. The finished topology is checked with `BRepCheck_Analyzer`.
+Filling checks cancellation before and after the solve: OCCT 8.0.1 ignores its
+progress range inside filling and cannot interrupt that solve. Imprinting uses
+the splitter's cooperative native progress range. Retrimming and extension are
+synchronous operations without progress callbacks.
+
+The surface example exercises all four bindings. Run
+`cargo run --example surface_modeling` for filling, extension, a hole-bearing
+trim, and imprint previews in `out/surface_modeling/`, or supply another output
+directory after `--`. PNGs require the default PNG feature; geometry construction
+and printed bounds also run without it. These local previews and generated
+exchange files are not added to Git. Existing examples remain unchanged.
+
 ## Checked legacy boundaries and runnable examples
 
 Checked primitive construction is available. `Solid::primitive(Primitive)` returns
@@ -492,7 +543,7 @@ guide is included in native crate documentation; README remains unchanged.
 ## Verification
 
 Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
-passed 182 tests with two ignored, and the separate documentation run passed 17
+passed 191 tests with two ignored, and the separate documentation run passed 17
 with one ignored. Geometry-only checks select native test targets and the new
 example directly because the original examples require PNG. The complete
 `native_features` example also passed.
@@ -525,3 +576,11 @@ includes the curve-only preview regression, and all 18 PNG previews are nonblank
 Every PNG gallery link was checked. Other generated output files remain local
 and are ignored by Git. The renderer's 10 geometry-only tests and all 17 enabled
 doctests also pass.
+
+
+Surface bindings pass native acceptance checks. All nine focused tests pass on
+Linux with and without PNG and on the Windows GNU target under Wine. They cover
+G0/G1/G2 filling, a nonplanar point constraint, curved support, all extension
+boundaries with C1/C2/C3, reversed orientation, hole-bearing and cylindrical trims,
+closed-loop imprints, preserved volume/styles, invalid input, and cancellation.
+The `surface_modeling` example also runs successfully and saves local PNGs.

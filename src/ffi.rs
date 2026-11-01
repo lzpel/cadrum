@@ -53,6 +53,20 @@ mod ffi_bridge {
 		warnings: Vec<String>,
 	}
 
+	struct FillingConfig {
+		initial: i32,
+		tolerance: f64,
+		angular_tolerance: f64,
+		curvature_tolerance: f64,
+		max_degree: u32,
+		max_segments: u32,
+	}
+	struct FillingData {
+		operation: OperationData,
+		distance_error: f64,
+		angle_error: f64,
+		curvature_error: f64,
+	}
 	struct DraftData {
 		operation: OperationData,
 		statuses: Vec<u32>,
@@ -203,6 +217,10 @@ mod ffi_bridge {
 		type TopoDS_Wire;
 
 		type TopoDS_Shape;
+		fn op_fill(inputs: &CxxVector<TopoDS_Shape>, supports: &[i32], orders: &[u32], points: &[f64], config: &FillingConfig, control: &OperationControl) -> Result<FillingData>;
+		fn op_retrim(face: &TopoDS_Face, wires: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_extend_surface(face: &TopoDS_Face, boundary: u32, length: f64, continuity: u32, tolerance: f64) -> Result<OperationData>;
+		fn op_imprint(shape: &TopoDS_Shape, face: &TopoDS_Face, curves: &CxxVector<TopoDS_Shape>, tolerance: f64, control: &OperationControl) -> Result<OperationData>;
 		fn op_authored_curve(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
 		fn op_authored_surface(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
 		fn op_ellipse(frame: &[f64], major: f64, minor: f64, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;

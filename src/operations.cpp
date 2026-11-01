@@ -670,3 +670,86 @@ OperationData op_project(const TopoDS_Shape& source,const TopoDS_Shape& target,r
     size_t count=0;result=connected_projection(result,tolerance,count);if(reject_empty&&count==0)throw std::runtime_error("projection has no hit");if(reject_multiple&&count>1)throw std::runtime_error("projection has multiple results");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;return out;
 } OP_CATCH
 }
+
+#include <BRepOffsetAPI_MakeFilling.hxx>
+#include <GeomLib.hxx>
+#include <Geom_BoundedSurface.hxx>
+#include <Geom2dAdaptor_Curve.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <ShapeFix_Edge.hxx>
+
+namespace cadrum {
+static OperationData rebuilt_surface(const TopoDS_Face& result,const std::vector<TopoDS_Shape>& inputs) {
+    auto out=collect_history(result,inputs,[&](const TopoDS_Shape& s){NCollection_List<TopoDS_Shape> list;if(s.IsSame(inputs[0]))list.Append(result);return list;},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>{};},[](const TopoDS_Shape&){return false;});
+    out.complete=false;out.warnings.push_back("rebuilt surface boundary correspondence is unavailable; face correspondence is retained");return out;
+}
+static void check_surface_curves(const TopoDS_Shape& curves,const TopoDS_Face& face,double tolerance,bool trimmed) {
+    const auto surface=BRep_Tool::Surface(face);
+    for(TopExp_Explorer ex(curves,TopAbs_EDGE);ex.More();ex.Next()) {
+        BRepAdaptor_Curve curve(TopoDS::Edge(ex.Current()));const double a=curve.FirstParameter(),b=curve.LastParameter();
+        if(!std::isfinite(a)||!std::isfinite(b))throw std::runtime_error("surface boundary requires finite curves");
+        for(int i=0;i<=32;++i){const auto p=curve.Value(a+(b-a)*i/32.0);
+            double distance;
+            if(trimmed){BRepExtrema_DistShapeShape test(BRepBuilderAPI_MakeVertex(p).Shape(),face);if(!test.IsDone())throw std::runtime_error("surface boundary distance failed");distance=test.Value();}
+            else{GeomAPI_ProjectPointOnSurf test(p,surface);if(test.NbPoints()==0)throw std::runtime_error("surface boundary projection failed");distance=test.LowerDistance();}
+            if(distance>tolerance)throw std::runtime_error("surface boundary sample lies outside the supported surface/domain");
+        }
+    }
+}
+FillingData op_fill(const std::vector<TopoDS_Shape>& inputs,rust::Slice<const int32_t> supports,rust::Slice<const uint32_t> orders,rust::Slice<const double> points,const FillingConfig& config,const OperationControl& control) try {
+    if(supports.empty()||supports.size()!=orders.size()||inputs.size()<supports.size()||points.size()%3)throw std::runtime_error("invalid filling constraints");
+    if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    BRep_Builder batch_builder;TopoDS_Compound batch;batch_builder.MakeCompound(batch);for(const auto& input:inputs)batch_builder.Add(batch,input);BRepBuilderAPI_Copy copy(batch);std::vector<TopoDS_Shape> work;for(const auto& input:inputs)work.push_back(copy.ModifiedShape(input));
+    BRepBuilderAPI_MakeWire wire;for(size_t i=0;i<supports.size();++i)wire.Add(TopoDS::Edge(work[i]));
+    if(!wire.IsDone()||!BRep_Tool::IsClosed(wire.Wire()))throw std::runtime_error("filling requires one connected closed boundary");
+    BRepOffsetAPI_MakeFilling builder(4,15,2,false,config.tolerance,config.tolerance,config.angular_tolerance,config.curvature_tolerance,config.max_degree,config.max_segments);
+    if(config.initial>=0)builder.LoadInitSurface(TopoDS::Face(work.at(config.initial)));
+    bool tangent=false,curvature=false;
+    for(size_t i=0;i<supports.size();++i){
+        if(orders[i]>2)throw std::runtime_error("invalid filling continuity");
+        const auto edge=TopoDS::Edge(work[i]);
+        // OCCT 8.0.1 forwards the enum as a derivative count; GeomAbs_G2 is 3.
+        // Its plate solver accepts only counts 0, 1, and 2.
+        const auto order=static_cast<GeomAbs_Shape>(orders[i]);
+        if(supports[i]>=0&&orders[i]>0){const auto face=TopoDS::Face(work.at(supports[i]));double a,b;if(orders[i]>0&&BRep_Tool::CurveOnSurface(edge,face,a,b).IsNull())throw std::runtime_error("filling support requires an existing pcurve");builder.Add(edge,face,order);}
+        else builder.Add(edge,order);
+        tangent=tangent||orders[i]>0;curvature=curvature||orders[i]==2;
+    }
+    for(size_t i=0;i<points.size();i+=3)builder.Add(gp_Pnt(points[i],points[i+1],points[i+2]));
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
+    if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("surface filling failed or produced invalid topology");
+    FillingData out{};out.distance_error=builder.G0Error();out.angle_error=tangent?builder.G1Error():0.0;out.curvature_error=curvature?builder.G2Error():0.0;
+    if(!std::isfinite(out.distance_error)||!std::isfinite(out.angle_error)||!std::isfinite(out.curvature_error)||out.distance_error>config.tolerance||out.angle_error>config.angular_tolerance||out.curvature_error>config.curvature_tolerance)throw std::runtime_error("surface filling did not meet requested constraint tolerances: distance="+std::to_string(out.distance_error)+", angle="+std::to_string(out.angle_error)+", curvature="+std::to_string(out.curvature_error));
+    out.operation=collect_history(builder.Shape(),inputs,[&](const TopoDS_Shape& s){return builder.Modified(copy.ModifiedShape(s));},[&](const TopoDS_Shape& s){return builder.Generated(copy.ModifiedShape(s));},[&](const TopoDS_Shape& s){return builder.IsDeleted(copy.ModifiedShape(s));});return out;
+} OP_CATCH
+OperationData op_retrim(const TopoDS_Face& face,const std::vector<TopoDS_Shape>& wires,double tolerance) try {
+    if(wires.empty())throw std::runtime_error("surface trimming requires an outer wire");
+    const auto surface=BRep_Tool::Surface(face);std::vector<TopoDS_Wire> copied;
+    for(const auto& wire:wires){if(!BRep_Tool::IsClosed(wire))throw std::runtime_error("surface trimming requires closed wires");check_surface_curves(wire,face,tolerance,false);BRepBuilderAPI_Copy copy(wire);auto w=TopoDS::Wire(copy.Shape());
+        for(TopExp_Explorer ex(w,TopAbs_EDGE);ex.More();ex.Next())ShapeFix_Edge{}.FixAddPCurve(TopoDS::Edge(ex.Current()),surface,TopLoc_Location{},false,tolerance);
+        copied.push_back(w);
+    }
+    BRepBuilderAPI_MakeFace builder(surface,copied[0],true);for(size_t i=1;i<copied.size();++i)builder.Add(copied[i]);
+    if(!builder.IsDone())throw std::runtime_error("surface trimming failed");
+    ShapeFix_Face fix(builder.Face());fix.SetPrecision(tolerance);fix.FixOrientation();auto result=fix.Face();result.Orientation(face.Orientation());
+    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid surface trims");
+    std::vector<TopoDS_Shape> inputs{face};inputs.insert(inputs.end(),wires.begin(),wires.end());return rebuilt_surface(result,inputs);
+} OP_CATCH
+OperationData op_extend_surface(const TopoDS_Face& face,uint32_t boundary,double length,uint32_t continuity,double tolerance) try {
+    const auto original=BRep_Tool::Surface(face);const auto bounded=Handle(Geom_BoundedSurface)::DownCast(original);
+    if(bounded.IsNull()||(!original->IsKind(STANDARD_TYPE(Geom_BSplineSurface))&&!original->IsKind(STANDARD_TYPE(Geom_BezierSurface)))||original->IsUPeriodic()||original->IsVPeriodic())throw std::runtime_error("unsupported: extension requires a nonperiodic natural Bezier/BSpline patch");
+    double a,b,c,d;original->Bounds(a,b,c,d);double x,y,z,w;BRepTools::UVBounds(face,x,y,z,w);
+    if(std::abs(a-x)>1e-9||std::abs(b-y)>1e-9||std::abs(c-z)>1e-9||std::abs(d-w)>1e-9)throw std::runtime_error("unsupported: extension does not preserve existing trims");
+    int edges=0,wires=0;for(TopExp_Explorer ex(face,TopAbs_WIRE);ex.More();ex.Next())++wires;
+    for(TopExp_Explorer ex(face,TopAbs_EDGE);ex.More();ex.Next()){++edges;double f,l;auto pcurve=BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()),face,f,l);if(pcurve.IsNull()||Geom2dAdaptor_Curve(pcurve).GetType()!=GeomAbs_Line)throw std::runtime_error("unsupported: extension requires rectangular natural boundaries");const auto p=pcurve->Value(f),q=pcurve->Value(l);if(!((std::abs(p.X()-q.X())<1e-9&&(std::abs(p.X()-a)<1e-9||std::abs(p.X()-b)<1e-9))||(std::abs(p.Y()-q.Y())<1e-9&&(std::abs(p.Y()-c)<1e-9||std::abs(p.Y()-d)<1e-9))))throw std::runtime_error("unsupported: extension requires natural isoparametric boundaries");}
+    if(edges!=4||wires!=1)throw std::runtime_error("unsupported: extension requires a rectangular patch without holes");
+    auto extended=Handle(Geom_BoundedSurface)::DownCast(bounded->Copy());GeomLib::ExtendSurfByLength(extended,length,continuity,boundary<2,boundary%2==1);
+    extended->Bounds(x,y,z,w);if(x>=a&&y<=b&&z>=c&&w<=d)throw std::runtime_error("surface extension did not extend its parameter domain");
+    BRepBuilderAPI_MakeFace builder(extended,tolerance);if(!builder.IsDone())throw std::runtime_error("surface extension failed");auto result=builder.Face();result.Orientation(face.Orientation());if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid extended surface");return rebuilt_surface(result,{face});
+} OP_CATCH
+OperationData op_imprint(const TopoDS_Shape& shape,const TopoDS_Face& face,const std::vector<TopoDS_Shape>& curves,double tolerance,const OperationControl& control) try {
+    require_member(shape,face);for(const auto& curve:curves)check_surface_curves(curve,face,tolerance,true);
+    BOPAlgo_Splitter builder;builder.SetNonDestructive(true);builder.SetFuzzyValue(tolerance);builder.AddArgument(shape);for(const auto& curve:curves)builder.AddTool(curve);
+    Handle(NativeProgress) progress=new NativeProgress(control);builder.Perform(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(builder.HasErrors()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("surface imprint failed");std::vector<TopoDS_Shape> inputs{shape};inputs.insert(inputs.end(),curves.begin(),curves.end());return operation_result(builder,inputs);
+} OP_CATCH
+}
