@@ -14,3 +14,6 @@ linkedin.md
 uv.lock
 *.dockerignore
 .DS_Store
+
+# Native feature gallery previews.
+!figure/native_features/*.png

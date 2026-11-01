@@ -265,3 +265,24 @@ mod png {
 		}
 	}
 }
+
+#[test]
+fn curve_only_previews_include_polylines_in_the_viewbox() {
+	let edge = cadrum::Edge::line(DVec3::new(-4.0, -3.0, 0.0), DVec3::new(-2.0, -1.0, 0.0)).unwrap();
+	let mesh = cadrum::Shape::from(&edge).mesh(Tessellation::default()).unwrap();
+	assert!(mesh.indices.is_empty());
+	let mut scene = mesh.scene(cadrum::SceneOption { view: DVec3::Z, up: DVec3::Y, ..Default::default() });
+	assert_eq!(scene.viewbox(), [cadrum::DVec2::new(-4.0, -3.0), cadrum::DVec2::new(-2.0, -1.0)]);
+	scene.edges_hidden.extend([cadrum::DVec2::NAN, cadrum::DVec2::new(2.0, 3.0)]);
+	assert_eq!(scene.viewbox()[1], cadrum::DVec2::new(2.0, 3.0));
+	let mut svg = Vec::new();
+	scene.write_svg(&mut svg).unwrap();
+	assert!(String::from_utf8(svg).unwrap().contains("<polyline"));
+	#[cfg(feature = "png")]
+	{
+		let mut png = Vec::new();
+		scene.write_png([320, 240], &mut png).unwrap();
+		let image = tiny_skia::Pixmap::decode_png(&png).unwrap();
+		assert!(image.pixels().iter().filter(|p| p.alpha() != 0).count() > 100);
+	}
+}

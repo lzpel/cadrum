@@ -381,13 +381,68 @@ parameters before native evaluation; fallible native entry points catch exceptio
 
 The feature example runs every family. Use
 `cargo run --example native_features --features step-document` to exercise items
-2–16, or pass an item number after `--` to run that family in isolation. Each run
+1–16, or pass an item number after `--` to run that family in isolation. Each run
 prints first/repeat operation times and Linux process high-water memory when
-available. Timings exclude common fixture construction and do not flush OS caches;
+available. Timings exclude common fixture construction and artifact export, and do
+not flush OS caches;
 peak memory includes the process, fixtures, and native kernel. Run one family per
 process when comparing peaks. `open_shape` remains the item-1 acceptance example.
 
-## Local timing sample
+## Visual gallery
+
+Every feature has a saved visual example. The previews below are rendered from
+the native example results, with additional curve/surface and projection views.
+Validation, history, controls, and measurement examples show the geometry being
+inspected or operated on; the reports themselves remain structured data.
+
+PNG previews are checked in. The gallery contains representative images for
+all 16 features, including extra authored-surface and projection views. Other
+generated output formats remain local artifacts and are excluded from Git.
+
+The example regenerates this gallery. With the default PNG feature and
+`step-document`, the following commands write the complete gallery or one item
+to an alternate directory. Existing files with the same names are overwritten.
+
+```sh
+cargo run --example native_features --features step-document -- all
+cargo run --example native_features --features step-document -- 8 target/feature-preview
+```
+
+PNG output is optional. With `--no-default-features`, the example still writes
+STEP, STL where applicable, and SVG, but skips PNG. Without `step-document`, item
+16 exports a single geometry round trip instead of the two-instance assembly.
+
+| Feature and visible result | Preview |
+| --- | --- |
+| **1. Open topology.** Open shell with the top face removed. | ![1. Open topology](figure/native_features/01-open-topology.png) |
+| **2. Validation.** Validated solid; the report does not change its geometry. | ![2. Validation](figure/native_features/02-validation.png) |
+| **3. Affine transforms.** Sphere scaled independently along three axes. | ![3. Affine transforms](figure/native_features/03-affine.png) |
+| **4. Authored curve.** Exact rational Bezier quarter-circle, shown in isometric view. | ![4. Authored curve](figure/native_features/04-authored.png) |
+| **4. Authored surface.** Bezier patch with a raised central control pole. | ![4. Authored surface](figure/native_features/04-authored-surface.png) |
+| **5. Profiles.** Oblique extrusion of a circular profile with a through-hole. | ![5. Profiles](figure/native_features/05-profiles.png) |
+| **6. Mesh import.** Indexed tetrahedron reconstructed as a faceted solid. | ![6. Mesh import](figure/native_features/06-faceted.png) |
+| **7. History.** Source cube and mirrored descendant, separated for display. | ![7. History](figure/native_features/07-history.png) |
+| **8. Splitting.** Oblique sphere partitions, moved apart to reveal the cut. | ![8. Splitting](figure/native_features/08-split.png) |
+| **9. Boolean controls.** Spherical subtraction from a cube with a visible opening. | ![9. Boolean controls](figure/native_features/09-boolean.png) |
+| **10. Tessellation.** Triangulated sphere used for the mesh/UV query. | ![10. Tessellation](figure/native_features/10-tessellation.png) |
+| **11. Measurements.** Separated cube and sphere used for distance and mass queries. | ![11. Measurements](figure/native_features/11-measurements.png) |
+| **12. Sweeps.** Circular profile swept with a growing radius law. | ![12. Sweeps](figure/native_features/12-sweep.png) |
+| **13. Loft and repair.** Loft from a circle to an offset elliptical section; repair is exercised separately. | ![13. Loft and repair](figure/native_features/13-loft-repair.png) |
+| **14. Edge treatments.** Cube with a radius-law fillet along one edge. | ![14. Edge treatments](figure/native_features/14-edge-treatments.png) |
+| **15. Draft.** Cube with a drafted side face. | ![15. Draft](figure/native_features/15-draft-projection.png) |
+| **15. Projection.** Source edge above its projection onto the profile plane. | ![15. Projection](figure/native_features/15-projected-curves.png) |
+| **16. STEP assemblies.** Two placed instances of one shared cube definition. | ![16. STEP assemblies](figure/native_features/16-step.png) |
+
+Curve-only previews use projected polylines. The scene renderer includes their
+finite points in image bounds, preserving line visibility without adding fake
+surfaces. PNG gallery backgrounds are white so black curves remain readable in
+both light and dark document viewers.
+
+## Original timing sample
+
+These timings describe the original acceptance fixtures. The gallery later added
+visible placements, varying sweep/loft sections, and assembly instances, so current
+example runs measure different demonstration workloads.
 
 Each family was measured in a fresh Linux x86-64 process. The debug build used
 Rust 1.99.1, OCCT 8.0.1 revision 3, and `step-document`; values are first-call
@@ -437,7 +492,7 @@ all native builds. No README edits are required for these feature combinations.
 ## Verification
 
 Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
-passed 181 tests with two ignored, and the separate documentation run passed 17
+passed 182 tests with two ignored, and the separate documentation run passed 17
 with one ignored. The geometry-only `--no-default-features --offline` run passed
 178 tests with two ignored. The complete `native_features` example also passed.
 
@@ -462,3 +517,10 @@ than the complete native acceptance suite.
 The pure Rust backend remains unavailable. Checks with `--features pure` fail
 because the existing backend is unimplemented and native concrete types are
 configured out; these OCCT additions do not supply that backend.
+
+
+Gallery generation passes with and without PNG. The full native acceptance suite
+includes the curve-only preview regression, and all 18 PNG previews are nonblank.
+Every PNG gallery link was checked. Other generated output files remain local
+and are ignored by Git. The renderer's 10 geometry-only tests and all 17 enabled
+doctests also pass.
