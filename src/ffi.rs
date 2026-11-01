@@ -495,6 +495,17 @@ pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 	unsafe { (*writer.inner).write(buf).unwrap_or(0) }
 }
 
+// cxx opaque types default to `!Send + !Sync`. We mark them `Send` here so
+// that `UniquePtr<TopoDS_Solid>` (and friends) become `Send`, which in turn
+// makes our wrapper types (`Shape`, `Solid`, `Face`, `Edge`) auto-Send.
+//
+// Safety rationale:
+//   - `UniquePtr` gives exclusive ownership — no aliasing is possible.
+//   - These values are never shared across threads simultaneously; they are
+//     only *moved* to another thread, which is what `Send` permits.
+//   - `Sync` is intentionally NOT implemented: OCC's `Handle<Geom_XXX>`
+//     reference counts are non-atomic, so concurrent `&T` access across
+//     threads would be unsound.
 // cxx opaque types default to !Send + !Sync. Send lets owning UniquePtr wrappers
 // move between threads, preserving the existing Solid, Face, and Edge contract.
 unsafe impl Send for TopoDS_Solid {}
