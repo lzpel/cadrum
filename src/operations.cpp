@@ -448,31 +448,6 @@ OperationData op_surface_offset(const TopoDS_Shape& s,double distance,double tol
 } OP_CATCH
 }
 
-#include <STEPControl_Reader.hxx>
-#include <STEPControl_Writer.hxx>
-namespace cadrum {
-OperationData op_read_step(rust::Slice<const uint8_t> data,const OperationControl& control) try {
-    std::istringstream is(std::string(reinterpret_cast<const char*>(data.data()),data.size()));STEPControl_Reader reader;
-    if(reader.ReadStream("memory.step",is)!=IFSelect_RetDone)throw std::runtime_error("STEP parse failed");
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    Handle(NativeProgress) progress=new NativeProgress(control);
-    const int roots=reader.NbRootsForTransfer();const int transferred=reader.TransferRoots(progress->Start());
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    if(reader.OneShape().IsNull())throw std::runtime_error("STEP contains no transferred geometry");
-    OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(reader.OneShape());out.complete=false;
-    if(transferred<roots)out.warnings.push_back("STEP transfer was partial");
-    return out;
-} OP_CATCH
-rust::Vec<uint8_t> op_write_step(const TopoDS_Shape& s,const OperationControl& control) try {
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    Handle(NativeProgress) progress=new NativeProgress(control);
-    STEPControl_Writer writer;if(writer.Transfer(s,STEPControl_AsIs,true,progress->Start())!=IFSelect_RetDone)throw std::runtime_error("STEP transfer failed");
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    std::ostringstream os;if(writer.WriteStream(os)!=IFSelect_RetDone)throw std::runtime_error("STEP write failed");
-    rust::Vec<uint8_t> out;for(unsigned char c:os.str())out.push_back(c);return out;
-} OP_CATCH
-}
-
 #include <GCPnts_AbscissaPoint.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
 namespace cadrum {

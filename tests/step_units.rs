@@ -30,3 +30,14 @@ fn absent_units_are_rejected_before_transfer() {
 	let error = Shape::read_step_with_options(&mut step.as_slice(), StepReadOptions::default(), &OperationControl::default()).unwrap_err();
 	assert!(error.to_string().contains("units are missing"), "{error}");
 }
+
+#[test]
+fn convenience_step_io_retains_styles() {
+	let shape = Shape::from(&Solid::cube(DVec3::ZERO, DVec3::ONE).color("#c04020"));
+	let mut bytes = Vec::new();
+	shape.write_step(&mut bytes, &OperationControl::default()).unwrap();
+	let read = Shape::read_step(&mut bytes.as_slice(), &OperationControl::default()).unwrap();
+	let mesh = read.value.mesh(Default::default()).unwrap();
+	assert!(!mesh.face_ids.is_empty());
+	assert!(mesh.face_ids.iter().all(|id| mesh.colormap.contains_key(id)));
+}

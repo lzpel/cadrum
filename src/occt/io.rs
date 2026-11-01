@@ -203,18 +203,11 @@ pub struct ShapeMesh {
 }
 impl crate::Shape {
 	pub fn read_step<R: Read>(reader: &mut R, control: &crate::OperationControl) -> Result<crate::OperationResult<Self>, Error> {
-		let _operation = control.begin("STEP read")?;
-		let mut bytes = Vec::new();
-		reader.read_to_end(&mut bytes)?;
-		let result = ffi::op_read_step(&bytes, control);
-		control.check("STEP read")?;
-		Ok(Self::operation(result.map_err(|e| super::report::kernel("STEP read", e))?, &[]))
+		let options = crate::StepReadOptions { allow_missing_units: true, allow_partial_transfer: true, ..Default::default() };
+		Ok(Self::read_step_with_options(reader, options, control)?.result)
 	}
 	pub fn write_step<W: Write>(&self, writer: &mut W, control: &crate::OperationControl) -> Result<(), Error> {
-		let _operation = control.begin("STEP write")?;
-		let result = ffi::op_write_step(&self.inner, control);
-		control.check("STEP write")?;
-		writer.write_all(&result.map_err(|e| super::report::kernel("STEP write", e))?)?;
+		self.write_step_with_options(writer, crate::StepWriteOptions::default(), control)?;
 		Ok(())
 	}
 }

@@ -263,8 +263,6 @@ mod ffi_bridge {
 		fn op_member_indices(parent: &TopoDS_Shape, child: &TopoDS_Shape) -> Result<Vec<u32>>;
 		fn op_surface_offset(shape: &TopoDS_Shape, distance: f64, tolerance: f64, intersection_join: bool, intersect_all: bool, thicken: bool) -> Result<OperationData>;
 
-		fn op_read_step(data: &[u8], control: &OperationControl) -> Result<OperationData>;
-		fn op_write_step(shape: &TopoDS_Shape, control: &OperationControl) -> Result<Vec<u8>>;
 		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
 		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
 		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, argument_count: usize, operation: u32, config: &BooleanConfig, control: &OperationControl) -> Result<OperationData>;
