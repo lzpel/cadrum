@@ -455,10 +455,10 @@ the original 2-by-2 patch on the left and the extended 3-by-2 patch on the right
 
 | Operation | Native preview |
 | --- | --- |
-| **Filling.** A closed square boundary and an interior point at height 0.5 constrain the curved patch. | ![Surface filling through an interior point](figure/native_features/17-filling.png) |
-| **Extension.** The right-hand patch extends UMax by length 1 with C2 continuity; the left-hand patch is the original. | ![Original and extended surface at the same scale](figure/native_features/17-extension.png) |
-| **Trimming.** A circular inner wire cuts a radius-0.3 hole from the support face. | ![Surface trim with a circular hole](figure/native_features/17-hole-trim.png) |
-| **Imprint.** The line becomes a shared edge between two coplanar faces, preserving the surface area. | ![Surface imprint dividing one face into two](figure/native_features/17-imprint.png) |
+| **Filling.** A closed square boundary and an interior point at height 0.5 constrain the curved patch. | ![Surface filling through an interior point](../figure/native_features/17-filling.png) |
+| **Extension.** The right-hand patch extends UMax by length 1 with C2 continuity; the left-hand patch is the original. | ![Original and extended surface at the same scale](../figure/native_features/17-extension.png) |
+| **Trimming.** A circular inner wire cuts a radius-0.3 hole from the support face. | ![Surface trim with a circular hole](../figure/native_features/17-hole-trim.png) |
+| **Imprint.** The line becomes a shared edge between two coplanar faces, preserving the surface area. | ![Surface imprint dividing one face into two](../figure/native_features/17-imprint.png) |
 
 The checked-in images can be regenerated. Run
 `cargo run --example surface_modeling -- figure/native_features` with PNG enabled
@@ -508,24 +508,24 @@ STEP, STL where applicable, and SVG, but skips PNG. Without `step-document`, ite
 
 | Feature and visible result | Preview |
 | --- | --- |
-| **1. Open topology.** Open shell with the top face removed. | ![1. Open topology](figure/native_features/01-open-topology.png) |
-| **2. Validation.** Validated solid; the report does not change its geometry. | ![2. Validation](figure/native_features/02-validation.png) |
-| **3. Affine transforms.** Sphere scaled independently along three axes. | ![3. Affine transforms](figure/native_features/03-affine.png) |
-| **4. Authored curve.** Exact rational Bezier quarter-circle, shown in isometric view. | ![4. Authored curve](figure/native_features/04-authored.png) |
-| **4. Authored surface.** Bezier patch with a raised central control pole. | ![4. Authored surface](figure/native_features/04-authored-surface.png) |
-| **5. Profiles.** Oblique extrusion of a circular profile with a through-hole. | ![5. Profiles](figure/native_features/05-profiles.png) |
-| **6. Mesh import.** Indexed tetrahedron reconstructed as a faceted solid. | ![6. Mesh import](figure/native_features/06-faceted.png) |
-| **7. History.** Source cube and mirrored descendant, separated for display. | ![7. History](figure/native_features/07-history.png) |
-| **8. Splitting.** Oblique sphere partitions, moved apart to reveal the cut. | ![8. Splitting](figure/native_features/08-split.png) |
-| **9. Boolean controls.** Spherical subtraction from a cube with a visible opening. | ![9. Boolean controls](figure/native_features/09-boolean.png) |
-| **10. Tessellation.** Triangulated sphere used for the mesh/UV query. | ![10. Tessellation](figure/native_features/10-tessellation.png) |
-| **11. Measurements.** Separated cube and sphere used for distance and mass queries. | ![11. Measurements](figure/native_features/11-measurements.png) |
-| **12. Sweeps.** Circular profile swept with a growing radius law. | ![12. Sweeps](figure/native_features/12-sweep.png) |
-| **13. Loft and repair.** Loft from a circle to an offset elliptical section; repair is exercised separately. | ![13. Loft and repair](figure/native_features/13-loft-repair.png) |
-| **14. Edge treatments.** Cube with a radius-law fillet along one edge. | ![14. Edge treatments](figure/native_features/14-edge-treatments.png) |
-| **15. Draft.** Cube with a drafted side face. | ![15. Draft](figure/native_features/15-draft-projection.png) |
-| **15. Projection.** Source edge above its projection onto the profile plane. | ![15. Projection](figure/native_features/15-projected-curves.png) |
-| **16. STEP assemblies.** Two placed instances of one shared cube definition. | ![16. STEP assemblies](figure/native_features/16-step.png) |
+| **1. Open topology.** Open shell with the top face removed. | ![1. Open topology](../figure/native_features/01-open-topology.png) |
+| **2. Validation.** Validated solid; the report does not change its geometry. | ![2. Validation](../figure/native_features/02-validation.png) |
+| **3. Affine transforms.** Sphere scaled independently along three axes. | ![3. Affine transforms](../figure/native_features/03-affine.png) |
+| **4. Authored curve.** Exact rational Bezier quarter-circle, shown in isometric view. | ![4. Authored curve](../figure/native_features/04-authored.png) |
+| **4. Authored surface.** Bezier patch with a raised central control pole. | ![4. Authored surface](../figure/native_features/04-authored-surface.png) |
+| **5. Profiles.** Oblique extrusion of a circular profile with a through-hole. | ![5. Profiles](../figure/native_features/05-profiles.png) |
+| **6. Mesh import.** Indexed tetrahedron reconstructed as a faceted solid. | ![6. Mesh import](../figure/native_features/06-faceted.png) |
+| **7. History.** Source cube and mirrored descendant, separated for display. | ![7. History](../figure/native_features/07-history.png) |
+| **8. Splitting.** Oblique sphere partitions, moved apart to reveal the cut. | ![8. Splitting](../figure/native_features/08-split.png) |
+| **9. Boolean controls.** Spherical subtraction from a cube with a visible opening. | ![9. Boolean controls](../figure/native_features/09-boolean.png) |
+| **10. Tessellation.** Triangulated sphere used for the mesh/UV query. | ![10. Tessellation](../figure/native_features/10-tessellation.png) |
+| **11. Measurements.** Separated cube and sphere used for distance and mass queries. | ![11. Measurements](../figure/native_features/11-measurements.png) |
+| **12. Sweeps.** Circular profile swept with a growing radius law. | ![12. Sweeps](../figure/native_features/12-sweep.png) |
+| **13. Loft and repair.** Loft from a circle to an offset elliptical section; repair is exercised separately. | ![13. Loft and repair](../figure/native_features/13-loft-repair.png) |
+| **14. Edge treatments.** Cube with a radius-law fillet along one edge. | ![14. Edge treatments](../figure/native_features/14-edge-treatments.png) |
+| **15. Draft.** Cube with a drafted side face. | ![15. Draft](../figure/native_features/15-draft-projection.png) |
+| **15. Projection.** Source edge above its projection onto the profile plane. | ![15. Projection](../figure/native_features/15-projected-curves.png) |
+| **16. STEP assemblies.** Two placed instances of one shared cube definition. | ![16. STEP assemblies](../figure/native_features/16-step.png) |
 
 Curve-only previews use projected polylines. The scene renderer includes their
 finite points in image bounds, preserving line visibility without adding fake
