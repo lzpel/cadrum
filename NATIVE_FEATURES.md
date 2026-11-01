@@ -418,8 +418,26 @@ The surface example exercises all four bindings. Run
 `cargo run --example surface_modeling` for filling, extension, a hole-bearing
 trim, and imprint previews in `out/surface_modeling/`, or supply another output
 directory after `--`. PNGs require the default PNG feature; geometry construction
-and printed bounds also run without it. These local previews and generated
-exchange files are not added to Git. Existing examples remain unchanged.
+and printed bounds also run without it. The four PNG previews below are checked
+in; other generated output stays local. Existing examples remain unchanged.
+
+### Visual examples
+
+The previews show the native operation results. Filling raises a surface through
+an interior point, trimming creates a hole, and imprinting divides one face into
+two without removing material. The extension comparison uses the same scale for
+the original 2-by-2 patch on the left and the extended 3-by-2 patch on the right.
+
+| Operation | Native preview |
+| --- | --- |
+| **Filling.** A closed square boundary and an interior point at height 0.5 constrain the curved patch. | ![Surface filling through an interior point](figure/native_features/17-filling.png) |
+| **Extension.** The right-hand patch extends UMax by length 1 with C2 continuity; the left-hand patch is the original. | ![Original and extended surface at the same scale](figure/native_features/17-extension.png) |
+| **Trimming.** A circular inner wire cuts a radius-0.3 hole from the support face. | ![Surface trim with a circular hole](figure/native_features/17-hole-trim.png) |
+| **Imprint.** The line becomes a shared edge between two coplanar faces, preserving the surface area. | ![Surface imprint dividing one face into two](figure/native_features/17-imprint.png) |
+
+The checked-in images can be regenerated. Run
+`cargo run --example surface_modeling -- figure/native_features` with PNG enabled
+to update these four files. This example writes PNGs only.
 
 ## Checked legacy boundaries and runnable examples
 
@@ -572,7 +590,7 @@ configured out; these OCCT additions do not supply that backend.
 
 
 Gallery generation passes with and without PNG. The full native acceptance suite
-includes the curve-only preview regression, and all 18 PNG previews are nonblank.
+includes the curve-only preview regression, and all 22 PNG previews are nonblank.
 Every PNG gallery link was checked. Other generated output files remain local
 and are ignored by Git. The renderer's 10 geometry-only tests and all 17 enabled
 doctests also pass.

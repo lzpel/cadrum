@@ -16,10 +16,20 @@ fn main() -> Result<(), Error> {
 	let trimmed = patch.retrim_surface(&outer, &[&hole], 1e-7)?;
 	let line = Shape::from(&Edge::line(DVec3::new(0.0, 1.0, 0.0), DVec3::new(2.0, 1.0, 0.0))?);
 	let imprinted = source.imprint(&patch, &[&line], 1e-7, &control)?;
-	for (name, shape) in [("filling", filled.result.value), ("extension", extended.value), ("hole-trim", trimmed.value), ("imprint", imprinted.value)] {
+	let extension_comparison = Shape::compound([&source, &extended.value.translate(DVec3::X * 4.0)?])?;
+	for (name, shape) in [("filling", filled.result.value), ("extension", extension_comparison.into()), ("hole-trim", trimmed.value), ("imprint", imprinted.value)] {
 		println!("{name}: {} faces; bounds {:?}", shape.faces()?.len(), shape.bounding_box()?);
 		#[cfg(feature = "png")]
-		shape.mesh(Tessellation::default())?.scene(SceneOption { shading: true, ..Default::default() }).write_png([640, 480], &mut std::fs::File::create(format!("{output}/{name}.png"))?)?;
+		{
+			let option = if name == "extension" { SceneOption { view: DVec3::Z, up: DVec3::Y, ..Default::default() } } else { SceneOption { shading: true, ..Default::default() } };
+			let mut bytes = Vec::new();
+			shape.mesh(Tessellation::default())?.scene(option).write_png([640, 480], &mut bytes)?;
+			let image = tiny_skia::Pixmap::decode_png(&bytes).map_err(|e| Error::Io(std::io::Error::other(e)))?;
+			let mut background = tiny_skia::Pixmap::new(640, 480).unwrap();
+			background.fill(tiny_skia::Color::WHITE);
+			background.draw_pixmap(0, 0, image.as_ref(), &Default::default(), Default::default(), None);
+			background.save_png(format!("{output}/17-{name}.png")).map_err(|e| Error::Io(std::io::Error::other(e)))?;
+		}
 	}
 	Ok(())
 }
