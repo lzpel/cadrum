@@ -140,8 +140,10 @@ Reconstructed solids support existing native Booleans and STEP export.
 
 History describes explicit relations. Operation results carry modified, generated,
 removed, unchanged, and unknown relations for vertices, edges, and faces; unknown
-relations make `complete` false. Builder-confirmed deletion is the only source of
-`Removed`. Copies, restricted/affine transforms, profile operations, Booleans,
+relations make `complete` false. Native deletion reports and explicit construction
+correspondence establish `Removed` when no retained descendant remains in the
+result; missing correspondence stays unknown. Copies, restricted/affine
+transforms, profile operations, Booleans,
 blends, sewing, and face unification expose available builder correspondence.
 
 References identify their operand and traversal index. `topology_at` resolves a
@@ -341,9 +343,21 @@ General projection retains the native kernel's intersection limitations; an
 undifferentiated kernel failure/no-intersection status remains an error.
 
 Projection policies preserve all retained hits. Results are connected into wires
-within the explicit tolerance, and no first-hit ordering is implied. Incomplete
-projection history is explicit. Curved target trimming is enforced by the native
-projector; untrimmed mode requires a single target face.
+within the explicit tolerance, and no first-hit ordering is implied. Projection
+history records each source edge and supporting target face for every output edge.
+Planar clipping composes native Boolean history; central and curved projection
+construct per-edge/per-face results, then compose edge-union and connector
+correspondence. Coincident output edges are unified while retaining every source
+and target-face ancestor. Curve-handle identity, exact parameter ranges, and the
+connector's native vertex substitutions track topology through wire joining.
+An output edge without source ancestry is an operation error.
+
+Projection references describe the projected result. Surviving endpoint images
+and target-boundary intersections carry vertex ancestry within the larger of the
+requested and native topological tolerances. Clipped-out source endpoints and
+unused target topology have no descendants and are marked removed from the
+result; the source and support models themselves are not deleted. Curved target
+trimming is enforced by the native projector; untrimmed mode requires one face.
 
 ## 16. STEP units, products, and assemblies
 
@@ -548,6 +562,14 @@ item family             first_us repeat_us peak_KiB
 15   draft-projection       1346      1096    27756
 16   STEP                  16786     13423    29224
 ```
+
+Compatibility changes are explicit. Existing modeling method signatures are
+preserved, and owning native handles retain `Send` without `Sync`. New variants
+in the public `Error` enum require updates to exhaustive downstream matches.
+Legacy entry points now validate more inputs, including finite parameters,
+positive meshing deflections, and positive sewing tolerance; this can change error
+variants or panic behavior for invalid input. Curve-only rendering and scene
+bounds include polylines, and README-based crate documentation requires PNG.
 
 Checked native chains stay in memory. This example validates a sphere, constructs
 an ellipsoid, and tessellates it without intermediate files.

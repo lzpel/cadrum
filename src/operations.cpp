@@ -665,27 +665,88 @@ DraftData op_draft(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& faces,
     for(size_t i=0;i<faces.size();++i){require_member(s,faces[i]);builder.Add(TopoDS::Face(faces[i]),direction,v[9],plane,flag);if(!builder.AddDone())throw std::runtime_error("subshape["+std::to_string(op_member_indices(s,faces[i])[0])+"] draft selection "+std::to_string(i)+" status "+std::to_string(int(builder.Status())));out.statuses.push_back(0);}
     Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("draft build failed");out.operation=operation_result(builder,{s});return out;
 } OP_CATCH
-static TopoDS_Shape connected_projection(const TopoDS_Shape& s,double tolerance,size_t& count){
-    Handle(NCollection_HSequence<TopoDS_Shape>) edges=new NCollection_HSequence<TopoDS_Shape>,wires=new NCollection_HSequence<TopoDS_Shape>;
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(s,TopAbs_EDGE,map);for(int i=1;i<=map.Extent();++i)edges->Append(map(i));
-    if(!edges->IsEmpty())wires=ShapeAnalysis_FreeBounds::ConnectEdgesToWires(edges,tolerance,false);
-    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);for(int i=1;i<=wires->Length();++i)b.Add(compound,wires->Value(i));count=wires->Length();return compound;
+static TopoDS_Shape connected_projection(const TopoDS_Shape& s,double tolerance,size_t& count,const Handle(BRepTools_History)& history){
+    Handle(NCollection_HSequence<TopoDS_Shape>) single_wires=new NCollection_HSequence<TopoDS_Shape>,wires=new NCollection_HSequence<TopoDS_Shape>;
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> sources;TopExp::MapShapes(s,sources);
+    BRep_Builder builder;
+    for(int i=1;i<=sources.Extent();++i)if(sources(i).ShapeType()==TopAbs_EDGE){TopoDS_Wire wire;builder.MakeWire(wire);builder.Add(wire,sources(i));single_wires->Append(wire);}
+    NCollection_DataMap<TopoDS_Shape,TopoDS_Shape,TopTools_ShapeMapHasher> vertices;
+    if(!single_wires->IsEmpty())wires=ShapeAnalysis_FreeBounds::ConnectWiresToWires(single_wires,tolerance,false,vertices);
+    TopoDS_Compound compound;builder.MakeCompound(compound);for(int i=1;i<=wires->Length();++i)builder.Add(compound,wires->Value(i));count=wires->Length();
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> targets;TopExp::MapShapes(compound,targets);Handle(BRepTools_History) connection=new BRepTools_History;
+    for(int i=1;i<=sources.Extent();++i){const auto& source=sources(i);if(targets.Contains(source))continue;
+        if(source.ShapeType()==TopAbs_VERTEX){TopoDS_Shape next=source;bool mapped=false;for(int step=0;step<=vertices.Extent()&&vertices.IsBound(next);++step){next=vertices(next);if(targets.Contains(next)){connection->AddModified(source,next);mapped=true;break;}}if(!mapped)throw std::runtime_error("projection connector lost vertex correspondence");}
+        // Joining retains the native curve handle and parameter range, even when it rebuilds vertices.
+        if(source.ShapeType()==TopAbs_EDGE){double a,b;TopLoc_Location location;const auto curve=BRep_Tool::Curve(TopoDS::Edge(source),location,a,b);bool mapped=false;
+            for(int j=1;j<=targets.Extent();++j)if(targets(j).ShapeType()==TopAbs_EDGE){double c,d;TopLoc_Location other;const auto candidate=BRep_Tool::Curve(TopoDS::Edge(targets(j)),other,c,d);if(curve==candidate&&location==other&&a==c&&b==d){connection->AddModified(source,targets(j));mapped=true;}}
+            if(!mapped)throw std::runtime_error("projection connector lost edge correspondence");
+        }
+    }
+    history->Merge(connection);return compound;
+}
+static void projected_ancestry(const Handle(BRepTools_History)& history,const TopoDS_Edge& source,const TopoDS_Face& face,const TopoDS_Shape& result,const gp_Vec& vector,bool point,double tolerance,bool untrimmed){
+    for(TopExp_Explorer ex(result,TopAbs_EDGE);ex.More();ex.Next()){
+        const auto& edge=ex.Current();history->AddGenerated(source,edge);history->AddGenerated(face,edge);
+        for(TopExp_Explorer vertex(edge,TopAbs_VERTEX);vertex.More();vertex.Next()){
+            const auto& target_vertex=vertex.Current();const auto q=BRep_Tool::Pnt(TopoDS::Vertex(target_vertex));const double vertex_tolerance=std::max(tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(target_vertex)));
+            for(TopExp_Explorer sv(source,TopAbs_VERTEX);sv.More();sv.Next()){
+                const auto p=BRep_Tool::Pnt(TopoDS::Vertex(sv.Current()));gp_Vec axis=point?gp_Vec(gp_Pnt(vector.XYZ()),p):vector;
+                if(axis.Magnitude()<=Precision::Confusion())throw std::runtime_error("projection center coincides with an input vertex");
+                axis.Normalize();
+                if(gp_Vec(p,q).Crossed(axis).Magnitude()<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(sv.Current())))&&(!point||gp_Vec(gp_Pnt(vector.XYZ()),q).Dot(axis)>=-vertex_tolerance))history->AddGenerated(sv.Current(),target_vertex);
+            }
+            if(!untrimmed)for(TopExp_Explorer boundary(face,TopAbs_EDGE);boundary.More();boundary.Next()){
+                BRepExtrema_DistShapeShape distance(target_vertex,boundary.Current());if(distance.IsDone()&&distance.Value()<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Edge(boundary.Current()))))history->AddGenerated(boundary.Current(),target_vertex);
+                for(TopExp_Explorer fv(boundary.Current(),TopAbs_VERTEX);fv.More();fv.Next())if(q.Distance(BRep_Tool::Pnt(TopoDS::Vertex(fv.Current())))<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(fv.Current()))))history->AddGenerated(fv.Current(),target_vertex);
+            }
+        }
+    }
 }
 OperationData op_project(const TopoDS_Shape& source,const TopoDS_Shape& target,rust::Slice<const double> v,bool point,double tolerance,bool untrimmed,bool reject_multiple,bool reject_empty) try {
     if(!BRepCheck_Analyzer(source).IsValid()||!BRepCheck_Analyzer(target).IsValid())throw std::runtime_error("projection: invalid input topology");
+    Handle(BRepTools_History) history=new BRepTools_History;
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> inputs;TopExp::MapShapes(source,inputs);TopExp::MapShapes(target,inputs);
+    for(int i=1;i<=inputs.Extent();++i)if(BRepTools_History::IsSupportedType(inputs(i)))history->Remove(inputs(i));
     TopoDS_Shape result;const gp_Vec direction(v[0],v[1],v[2]);
     if(!point&&target.ShapeType()==TopAbs_FACE&&BRepAdaptor_Surface(TopoDS::Face(target)).GetType()==GeomAbs_Plane){
         const gp_Pln plane=BRepAdaptor_Surface(TopoDS::Face(target)).Plane();if(std::abs(plane.Axis().Direction().Dot(gp_Dir(direction)))<1e-12)throw std::runtime_error("projection direction is parallel to plane");
         Handle(Geom_Plane) surface=new Geom_Plane(plane);BRep_Builder b;TopoDS_Compound projected;b.MakeCompound(projected);
-        for(TopExp_Explorer ex(source,TopAbs_EDGE);ex.More();ex.Next()){double first,last;const auto curve=BRep_Tool::Curve(TopoDS::Edge(ex.Current()),first,last);if(curve.IsNull())throw std::runtime_error("unsupported: projection of degenerate edge");const auto projected_curve=GeomProjLib::ProjectOnPlane(curve,surface,gp_Dir(direction),true);if(projected_curve.IsNull())throw std::runtime_error("planar curve projection failed");BRepBuilderAPI_MakeEdge edge(projected_curve,first,last);if(!edge.IsDone())throw std::runtime_error("projected edge construction failed");b.Add(projected,edge.Edge());}
-        if(untrimmed)result=projected;else{BRepAlgoAPI_Common clip(projected,target);if(!clip.IsDone()||clip.HasErrors())throw std::runtime_error("projection clipping failed");result=clip.Shape();}
+        for(TopExp_Explorer ex(source,TopAbs_EDGE);ex.More();ex.Next()){
+            double first,last;const auto curve=BRep_Tool::Curve(TopoDS::Edge(ex.Current()),first,last);if(curve.IsNull())throw std::runtime_error("unsupported: projection of degenerate edge");
+            const auto projected_curve=GeomProjLib::ProjectOnPlane(curve,surface,gp_Dir(direction),true);if(projected_curve.IsNull())throw std::runtime_error("planar curve projection failed");
+            BRepBuilderAPI_MakeEdge edge(projected_curve,first,last);if(!edge.IsDone())throw std::runtime_error("projected edge construction failed");b.Add(projected,edge.Edge());
+            history->AddGenerated(ex.Current(),edge.Edge());history->AddGenerated(target,edge.Edge());
+            TopoDS_Vertex source_first,source_last,target_first,target_last;TopExp::Vertices(TopoDS::Edge(ex.Current()),source_first,source_last);TopExp::Vertices(edge.Edge(),target_first,target_last);
+            if(!source_first.IsNull()&&!target_first.IsNull())history->AddGenerated(source_first,target_first);
+            if(!source_last.IsNull()&&!target_last.IsNull())history->AddGenerated(source_last,target_last);
+        }
+        if(untrimmed)result=projected;else{
+            BRepAlgoAPI_Common clip;clip.SetNonDestructive(true);clip.SetArguments(NCollection_List<TopoDS_Shape>{projected});clip.SetTools(NCollection_List<TopoDS_Shape>{target});clip.Build();if(!clip.IsDone()||clip.HasErrors())throw std::runtime_error("projection clipping failed");
+            NCollection_List<TopoDS_Shape> arguments;arguments.Append(projected);arguments.Append(target);history->Merge(arguments,clip);result=clip.Shape();
+        }
     }else{
         TopoDS_Shape support=target;if(untrimmed){BRepBuilderAPI_MakeFace face(BRep_Tool::Surface(TopoDS::Face(target)),tolerance);if(!face.IsDone())throw std::runtime_error("untrimmed target construction failed");support=face.Face();}
-        std::unique_ptr<BRepProj_Projection> projection;if(point)projection=std::make_unique<BRepProj_Projection>(source,support,gp_Pnt(v[0],v[1],v[2]));else projection=std::make_unique<BRepProj_Projection>(source,support,gp_Dir(direction));
-        if(!projection->IsDone())throw std::runtime_error("projection kernel failed or reported no intersection");
-        result=projection->Shape();
+        std::unique_ptr<BRepProj_Projection> check;if(point)check=std::make_unique<BRepProj_Projection>(source,support,gp_Pnt(v[0],v[1],v[2]));else check=std::make_unique<BRepProj_Projection>(source,support,gp_Dir(direction));
+        if(!check->IsDone())throw std::runtime_error("projection kernel failed or reported no intersection");
+        BRep_Builder b;TopoDS_Compound projected;b.MakeCompound(projected);NCollection_List<TopoDS_Shape> pieces;
+        for(TopExp_Explorer edge(source,TopAbs_EDGE);edge.More();edge.Next())for(TopExp_Explorer face(target,TopAbs_FACE);face.More();face.Next()){
+            TopoDS_Shape destination=untrimmed?support:face.Current();std::unique_ptr<BRepProj_Projection> projection;
+            if(point)projection=std::make_unique<BRepProj_Projection>(edge.Current(),destination,gp_Pnt(v[0],v[1],v[2]));else projection=std::make_unique<BRepProj_Projection>(edge.Current(),destination,gp_Dir(direction));
+            if(!projection->IsDone())continue;
+            const auto piece=projection->Shape();projected_ancestry(history,TopoDS::Edge(edge.Current()),TopoDS::Face(face.Current()),piece,direction,point,tolerance,untrimmed);
+            for(TopExp_Explorer out(piece,TopAbs_EDGE);out.More();out.Next()){b.Add(projected,out.Current());pieces.Append(out.Current());}
+        }
+        if(pieces.IsEmpty()&&!check->Shape().IsNull()&&TopExp_Explorer(check->Shape(),TopAbs_EDGE).More())throw std::runtime_error("projection ancestry construction failed");
+        result=projected;
+        if(pieces.Extent()>1){BOPAlgo_Builder fuse;for(const auto& piece:pieces)fuse.AddArgument(piece);fuse.SetNonDestructive(true);fuse.SetFuzzyValue(tolerance);fuse.Perform();if(fuse.HasErrors())throw std::runtime_error("projection edge union failed");history->Merge(pieces,fuse);result=fuse.Shape();}
     }
-    size_t count=0;result=connected_projection(result,tolerance,count);if(reject_empty&&count==0)throw std::runtime_error("projection has no hit");if(reject_multiple&&count>1)throw std::runtime_error("projection has multiple results");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;return out;
+    size_t count=0;result=connected_projection(result,tolerance,count,history);
+    if(reject_empty&&count==0)throw std::runtime_error("projection has no hit");
+    if(reject_multiple&&count>1)throw std::runtime_error("projection has multiple results");
+    auto out=collect_history(result,{source,target},[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
+    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> targets;TopExp::MapShapes(result,targets);
+    for(int i=1;i<=targets.Extent();++i)if(targets(i).ShapeType()==TopAbs_EDGE){bool mapped=false;for(const auto& entry:out.history)if(entry.operand==0&&entry.source_kind==TopAbs_EDGE&&entry.target==uint32_t(i))mapped=true;if(!mapped)throw std::runtime_error("projection output edge has no source ancestry");}
+    return out;
 } OP_CATCH
 }
 
