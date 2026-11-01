@@ -483,18 +483,19 @@ assert!(!tessellation.value.mesh.indices.is_empty());
 # Ok::<(), Error>(())
 ```
 
-Verification keeps feature boundaries explicit. PNG export statements in the
-existing examples are feature-gated, and the PNG-dependent gallery is embedded
-in crate documentation when PNG is enabled. This native guide is included in
-all native builds. No README edits are required for these feature combinations.
+Existing examples retain their original PNG behavior. Their PNG calls and output
+messages are unconditional and require the default `png` feature. The new
+`native_features` example supports geometry-only builds separately. This native
+guide is included in native crate documentation; README remains unchanged.
 
 
 ## Verification
 
 Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
 passed 182 tests with two ignored, and the separate documentation run passed 17
-with one ignored. The geometry-only `--no-default-features --offline` run passed
-178 tests with two ignored. The complete `native_features` example also passed.
+with one ignored. Geometry-only checks select native test targets and the new
+example directly because the original examples require PNG. The complete
+`native_features` example also passed.
 
 Windows acceptance tests pass under Wine. The GNU target used POSIX MinGW
 compilers and passed all 24 selected tests for sweeps, history, mesh import,
