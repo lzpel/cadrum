@@ -86,7 +86,7 @@ impl Face {
 			max_degree: options.max_degree,
 			max_segments: options.max_segments,
 		};
-		control.check("surface filling")?;
+		let _operation = control.begin("surface filling")?;
 		let data = ffi::op_fill(&Shape::vector(&inputs), &supports, &boundary.iter().map(|b| b.continuity as u32).collect::<Vec<_>>(), &points.iter().flat_map(|p| p.to_array()).collect::<Vec<_>>(), &config, control);
 		control.check("surface filling")?;
 		let data = data.map_err(|e| kernel("surface filling", e))?;
@@ -123,7 +123,7 @@ impl Shape {
 			return Err(Error::Validation("imprint requires edges or wires".into()));
 		}
 		let inputs: Vec<&Shape> = std::iter::once(self).chain(curves.iter().copied()).collect();
-		control.check("surface imprint")?;
+		let _operation = control.begin("surface imprint")?;
 		let data = ffi::op_imprint(&self.inner, &face.inner, &Shape::vector(curves.iter().copied()), tolerance, control);
 		control.check("surface imprint")?;
 		Ok(Shape::operation(data.map_err(|e| kernel("surface imprint", e))?, &inputs))

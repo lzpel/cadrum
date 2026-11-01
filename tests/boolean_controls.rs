@@ -53,3 +53,33 @@ fn callback_panics_are_reported_without_crossing_native_frames() {
 	let control = OperationControl::with_progress(|_| panic!("callback failure"));
 	assert!(matches!(Shape::boolean_batch(BooleanOp::Union, &[&a], &[&b], BooleanOptions::default(), &control), Err(Error::Operation { .. })));
 }
+
+#[test]
+fn active_control_rejects_concurrent_reuse_before_native_work() {
+	let (started_tx, started_rx) = std::sync::mpsc::channel();
+	let (release_tx, release_rx) = std::sync::mpsc::channel();
+	let mut first = true;
+	let control = Arc::new(OperationControl::with_progress(move |_| {
+		if first {
+			first = false;
+			started_tx.send(()).unwrap();
+			release_rx.recv().unwrap();
+		}
+		true
+	}));
+	let worker_control = control.clone();
+	let worker = std::thread::spawn(move || {
+		let a = Shape::from(&Solid::sphere(1.0));
+		let b = Shape::from(&Solid::sphere(2.0));
+		Shape::boolean_batch(BooleanOp::Union, &[&a], &[&b], BooleanOptions::default(), &worker_control)
+	});
+	started_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+	let a = Shape::from(&Solid::sphere(1.0));
+	let b = Shape::from(&Solid::sphere(2.0));
+	let reuse = Shape::boolean_batch(BooleanOp::Union, &[&a], &[&b], BooleanOptions::default(), &control);
+	release_tx.send(()).unwrap();
+	let original = worker.join().unwrap();
+	assert!(matches!(reuse, Err(Error::Operation { .. })));
+	assert!(original.is_ok(), "rejecting reuse must leave the active operation running: {original:?}");
+	assert!(Shape::boolean_batch(BooleanOp::Union, &[&a], &[&b], BooleanOptions::default(), &control).is_ok());
+}

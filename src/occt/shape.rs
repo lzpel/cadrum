@@ -223,7 +223,7 @@ impl Shape {
 	pub fn tessellate(&self, options: Tessellation, control: &crate::OperationControl) -> Result<crate::OperationResult<super::io::ShapeMesh>, Error> {
 		positive(options.deflection_linear, "linear deflection")?;
 		positive(options.deflection_angular, "angular deflection")?;
-		control.check("tessellate")?;
+		let _operation = control.begin("tessellate")?;
 		let data = ffi::op_tessellate(&self.inner, options.deflection_linear, options.deflection_angular, options.relative_linear, control);
 		control.check("tessellate")?;
 		let data = data.map_err(|e| super::report::kernel("tessellate", e))?;

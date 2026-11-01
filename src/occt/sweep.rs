@@ -151,7 +151,7 @@ impl Wire {
 				return Err(Error::Validation("closed-spine scaling law must have matching endpoint values".into()));
 			}
 		}
-		control.check("sweep")?;
+		let _operation = control.begin("sweep")?;
 		let data = ffi::op_sweep(&Shape::vector(inputs.iter().copied()), sections.len(), &config, control);
 		control.check("sweep")?;
 		let data = data.map_err(|e| kernel("sweep", e))?;

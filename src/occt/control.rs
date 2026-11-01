@@ -22,6 +22,7 @@ type ProgressCallback = Box<dyn FnMut(ProgressUpdate) -> bool + Send>;
 pub struct OperationControl {
 	token: CancellationToken,
 	callback: Mutex<Option<ProgressCallback>>,
+	active: Mutex<()>,
 	failed: AtomicBool,
 }
 impl OperationControl {
@@ -34,6 +35,10 @@ impl OperationControl {
 	}
 	pub fn is_cancelled(&self) -> bool {
 		self.token.is_cancelled()
+	}
+	pub(crate) fn begin(&self, operation: &str) -> Result<std::sync::MutexGuard<'_, ()>, crate::Error> {
+		self.check(operation)?;
+		self.active.try_lock().map_err(|_| crate::Error::Operation { operation: operation.into(), diagnostics: vec!["operation control is already in use".into()], subshapes: vec![] })
 	}
 	pub(crate) fn check(&self, operation: &str) -> Result<(), crate::Error> {
 		if self.failed.load(Ordering::Acquire) {

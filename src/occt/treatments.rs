@@ -53,7 +53,7 @@ impl Shape {
 				}
 			}
 		}
-		control.check("chamfer")?;
+		let _operation = control.begin("chamfer")?;
 		let result = ffi::op_chamfer(&self.inner, &Self::vector(&shapes), &values, control);
 		control.check("chamfer")?;
 		Ok(Self::operation(result.map_err(|e| kernel("chamfer", e))?, &[self]))
@@ -74,7 +74,7 @@ impl Shape {
 			counts.push(spec.radii.len() as u32);
 			values.extend(spec.radii.iter().flatten().copied());
 		}
-		control.check("variable fillet")?;
+		let _operation = control.begin("variable fillet")?;
 		let result = ffi::op_variable_fillet(&self.inner, &Self::vector(&shapes), &values, &counts, control);
 		control.check("variable fillet")?;
 		Ok(Self::operation(result.map_err(|e| kernel("variable fillet", e))?, &[self]))

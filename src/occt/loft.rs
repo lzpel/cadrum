@@ -70,7 +70,7 @@ impl Shape {
 			max_degree: options.max_degree,
 			weights: options.criterion_weights.to_vec(),
 		};
-		control.check("loft")?;
+		let _operation = control.begin("loft")?;
 		let data = ffi::op_loft(&Self::vector(sections.iter().copied()), &config, control);
 		control.check("loft")?;
 		Ok(Self::operation(data.map_err(|e| kernel("loft", e))?, sections))

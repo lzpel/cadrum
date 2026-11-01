@@ -61,7 +61,7 @@ impl Shape {
 		let n = options.neutral_plane.normal;
 		let d = options.pull_direction;
 		let values = [p.x, p.y, p.z, n.x, n.y, n.z, d.x, d.y, d.z, options.angle];
-		control.check("draft")?;
+		let _operation = control.begin("draft")?;
 		let data = ffi::op_draft(&self.inner, &Self::vector(&selected), &values, options.flag, control);
 		control.check("draft")?;
 		let data = data.map_err(|e| kernel("draft", e))?;

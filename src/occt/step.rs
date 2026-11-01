@@ -69,7 +69,7 @@ pub struct StepReadResult {
 	pub report: StepReadReport,
 }
 fn read_native<R: Read>(reader: &mut R, options: StepReadOptions, document: bool, control: &OperationControl) -> Result<ffi::StepReadData, Error> {
-	control.check("STEP read")?;
+	let _operation = control.begin("STEP read")?;
 	let mut bytes = Vec::new();
 	reader.read_to_end(&mut bytes)?;
 	let data = ffi::op_step_read(&bytes, options.normalize_to.millimeters(), options.allow_missing_units, options.allow_partial_transfer, document, control);
@@ -107,7 +107,7 @@ impl Shape {
 				[c.r, c.g, c.b]
 			})
 			.collect();
-		control.check("STEP write")?;
+		let _operation = control.begin("STEP write")?;
 		let data = ffi::op_step_write(&Self::vector([self]), &[], &[], &ids, &rgb, &config(options), control);
 		control.check("STEP write")?;
 		let data = data.map_err(|e| kernel("STEP write", e))?;
@@ -299,7 +299,7 @@ pub mod document {
 					add(instance, i as i32)?;
 				}
 			}
-			control.check("STEP document write")?;
+			let _operation = control.begin("STEP document write")?;
 			let data = ffi::op_step_write(&Shape::vector(geometries), &defs, &instances, &ids, &rgb, &config(options), control);
 			control.check("STEP document write")?;
 			let data = data.map_err(|e| kernel("STEP document write", e))?;

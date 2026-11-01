@@ -87,7 +87,7 @@ impl Shape {
 		if options.fuzzy_tolerance < 0.0 || arguments.is_empty() || tools.is_empty() {
 			return Err(Error::Validation("Boolean requires arguments, tools, and nonnegative tolerance".into()));
 		}
-		control.check("boolean")?;
+		let _operation = control.begin("boolean")?;
 		let inputs: Vec<_> = arguments.iter().chain(tools).copied().collect();
 		let config = ffi::BooleanConfig { fuzzy: options.fuzzy_tolerance, glue: options.glue as u32, non_destructive: options.non_destructive, parallel: options.parallel };
 		let result = ffi::op_boolean(&Self::vector(inputs.iter().copied()), arguments.len(), operation as u32, &config, control);
