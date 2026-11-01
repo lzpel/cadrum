@@ -1,5 +1,5 @@
 //! Native topology ownership, including intentional open and empty results.
-use super::{ffi, solid::Solid};
+use super::{ffi, modeling::ShapeTransform, report::positive, solid::Solid};
 use crate::{Color, DVec3, Edge, Error, Face, Mesh, Tessellation};
 use std::{
 	collections::HashMap,
@@ -45,13 +45,6 @@ pub struct Shape {
 
 fn failure(e: cxx::Exception) -> Error {
 	Error::Shape(e.what().to_owned())
-}
-fn positive(value: f64, name: &str) -> Result<(), Error> {
-	if value.is_finite() && value > 0.0 {
-		Ok(())
-	} else {
-		Err(Error::Validation(format!("{name} must be finite and positive")))
-	}
 }
 
 impl Shape {
@@ -189,27 +182,18 @@ impl Shape {
 	pub fn to_solid(&self) -> Result<Solid, Error> {
 		Ok(Solid::new(ffi::native_solidify(&self.inner).map_err(failure)?, self.colormap.clone(), vec![]))
 	}
-	fn transformed(&self, kind: u32, values: &[f64]) -> Result<Self, Error> {
-		if !values.iter().all(|v| v.is_finite()) {
-			return Err(Error::Validation("transform: non-finite parameter".into()));
-		}
-		Ok(Self::operation(ffi::op_transform(&self.inner, kind, values).map_err(|e| super::report::kernel("transform", e))?, &[self]).value)
-	}
 	pub fn translate(&self, v: DVec3) -> Result<Self, Error> {
-		self.transformed(0, &v.to_array())
+		Ok(self.transform_with_history(ShapeTransform::Translation(v))?.value)
 	}
 	/// Rotate about an explicit axis, with angle in radians.
 	pub fn rotate(&self, origin: DVec3, axis: DVec3, angle: f64) -> Result<Self, Error> {
-		positive(axis.length(), "axis length")?;
-		self.transformed(1, &[origin.x, origin.y, origin.z, axis.x, axis.y, axis.z, angle])
+		Ok(self.transform_with_history(ShapeTransform::Rotation { origin, axis, angle })?.value)
 	}
 	pub fn scale(&self, center: DVec3, factor: f64) -> Result<Self, Error> {
-		positive(factor.abs(), "absolute scale")?;
-		self.transformed(2, &[center.x, center.y, center.z, factor])
+		Ok(self.transform_with_history(ShapeTransform::Scale { origin: center, factor })?.value)
 	}
 	pub fn mirror(&self, origin: DVec3, normal: DVec3) -> Result<Self, Error> {
-		positive(normal.length(), "normal length")?;
-		self.transformed(3, &[origin.x, origin.y, origin.z, normal.x, normal.y, normal.z])
+		Ok(self.transform_with_history(ShapeTransform::Mirror { origin, normal })?.value)
 	}
 	/// Return None for empty topology. Coordinates use the model's length units.
 	pub fn bounding_box(&self) -> Result<Option<[DVec3; 2]>, Error> {

@@ -2,6 +2,7 @@ use super::edge::{wires_from_edges, Edge};
 use super::face::Face;
 use super::{
 	ffi,
+	modeling::ShapeTransform,
 	report::{axis, finite, positive},
 };
 use crate::common::boolean::Boolean;
@@ -486,7 +487,7 @@ impl SolidStruct for Solid {
 
 impl Transform for Solid {
 	fn translate(self, translation: DVec3) -> Self {
-		finite(translation.to_array(), "translate").expect("Solid::translate");
+		ShapeTransform::Translation(translation).validate().expect("Solid::translate");
 		let inner = ffi::transform_translate(&self.inner, translation.x, translation.y, translation.z).expect("Solid::translate");
 		// translate/rotate use shape.Moved() — TShape is shared but Location
 		// changes, so cached edges/faces (which embed Location) would go stale.
@@ -496,8 +497,7 @@ impl Transform for Solid {
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		finite(axis_origin.to_array().into_iter().chain([angle]), "rotate").expect("Solid::rotate");
-		axis(axis_direction, "rotation axis").expect("Solid::rotate");
+		ShapeTransform::Rotation { origin: axis_origin, axis: axis_direction, angle }.validate().expect("Solid::rotate");
 		let inner = ffi::transform_rotate(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Solid::rotate: {}", e.what()));
 		Solid::new(inner, self.colormap, self.history)
 	}
@@ -513,8 +513,7 @@ impl Transform for Solid {
 	//      BRepBuilderAPI_Transform.cxx:48-49 (myUseModif branch)
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
-		finite(center.to_array(), "scale").expect("Solid::scale");
-		positive(factor.abs(), "scale factor").expect("Solid::scale");
+		ShapeTransform::Scale { origin: center, factor }.validate().expect("Solid::scale");
 		let inner = ffi::transform_scale(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Solid::scale: {}", e.what()));
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		// scale/mirror rebuild topology via BRepBuilderAPI_Transform → post_ids
@@ -524,8 +523,7 @@ impl Transform for Solid {
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		finite(plane_origin.to_array(), "mirror").expect("Solid::mirror");
-		axis(plane_normal, "mirror normal").expect("Solid::mirror");
+		ShapeTransform::Mirror { origin: plane_origin, normal: plane_normal }.validate().expect("Solid::mirror");
 		let inner = ffi::transform_mirror(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Solid::mirror: {}", e.what()));
 		let colormap = remap_colormap_by_order(&self.inner, &inner, &self.colormap);
 		Solid::new(inner, colormap, Default::default())

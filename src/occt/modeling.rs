@@ -49,6 +49,25 @@ pub enum ShapeTransform {
 	Scale { origin: DVec3, factor: f64 },
 	Mirror { origin: DVec3, normal: DVec3 },
 }
+impl ShapeTransform {
+	pub(crate) fn validate(self) -> Result<(), Error> {
+		match self {
+			Self::Translation(offset) => finite(offset.to_array(), "translate"),
+			Self::Rotation { origin, axis: direction, angle } => {
+				finite(origin.to_array().into_iter().chain([angle]), "rotate")?;
+				axis(direction, "rotation axis")
+			}
+			Self::Scale { origin, factor } => {
+				finite(origin.to_array(), "scale")?;
+				positive(factor.abs(), "scale factor")
+			}
+			Self::Mirror { origin, normal } => {
+				finite(origin.to_array(), "mirror")?;
+				axis(normal, "mirror normal")
+			}
+		}
+	}
+}
 #[derive(Clone, Copy, Debug)]
 #[repr(u32)]
 pub enum BooleanOp {
@@ -61,22 +80,13 @@ impl Shape {
 		Ok(Self::operation(ffi::op_copy(&self.inner).map_err(|e| kernel("copy", e))?, &[self]))
 	}
 	pub fn transform_with_history(&self, transform: ShapeTransform) -> Result<OperationResult<Self>, Error> {
+		transform.validate()?;
 		let (kind, values) = match transform {
 			ShapeTransform::Translation(v) => (0, v.to_array().to_vec()),
-			ShapeTransform::Rotation { origin, axis: direction, angle } => {
-				axis(direction, "rotation axis")?;
-				(1, vec![origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, angle])
-			}
-			ShapeTransform::Scale { origin, factor } => {
-				positive(factor.abs(), "scale factor")?;
-				(2, vec![origin.x, origin.y, origin.z, factor])
-			}
-			ShapeTransform::Mirror { origin, normal } => {
-				axis(normal, "mirror normal")?;
-				(3, vec![origin.x, origin.y, origin.z, normal.x, normal.y, normal.z])
-			}
+			ShapeTransform::Rotation { origin, axis, angle } => (1, vec![origin.x, origin.y, origin.z, axis.x, axis.y, axis.z, angle]),
+			ShapeTransform::Scale { origin, factor } => (2, vec![origin.x, origin.y, origin.z, factor]),
+			ShapeTransform::Mirror { origin, normal } => (3, vec![origin.x, origin.y, origin.z, normal.x, normal.y, normal.z]),
 		};
-		finite(values.iter().copied(), "transform")?;
 		Ok(Self::operation(ffi::op_transform(&self.inner, kind, &values).map_err(|e| kernel("transform", e))?, &[self]))
 	}
 	pub fn boolean(&self, operation: BooleanOp, tools: &[&Shape]) -> Result<OperationResult<Self>, Error> {

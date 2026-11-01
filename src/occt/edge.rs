@@ -1,6 +1,7 @@
 use super::{
 	ffi,
-	report::{axis, finite, positive},
+	modeling::ShapeTransform,
+	report::{finite, positive},
 };
 use crate::common::error::Error;
 use crate::traits::{BSplineEnd, EdgeStruct, Transform};
@@ -160,27 +161,24 @@ impl EdgeStruct for Edge {
 // on a degenerate axis or plane — a caller bug, so it panics with OCCT's message.
 impl Transform for Edge {
 	fn translate(self, t: DVec3) -> Self {
-		finite(t.to_array(), "translate").expect("Edge::translate");
+		ShapeTransform::Translation(t).validate().expect("Edge::translate");
 		Edge { inner: ffi::translate_edge(&self.inner, t.x, t.y, t.z).unwrap_or_else(|e| panic!("Edge::translate: {}", e.what())) }
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
-		finite(axis_origin.to_array().into_iter().chain([angle]), "rotate").expect("Edge::rotate");
-		axis(axis_direction, "rotate").expect("Edge::rotate");
+		ShapeTransform::Rotation { origin: axis_origin, axis: axis_direction, angle }.validate().expect("Edge::rotate");
 		Edge {
 			inner: ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Edge::rotate: {}", e.what())),
 		}
 	}
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
-		finite(center.to_array(), "scale").expect("Edge::scale");
-		positive(factor.abs(), "scale").expect("Edge::scale");
+		ShapeTransform::Scale { origin: center, factor }.validate().expect("Edge::scale");
 		Edge { inner: ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Edge::scale: {}", e.what())) }
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
-		finite(plane_origin.to_array(), "mirror").expect("Edge::mirror");
-		axis(plane_normal, "mirror").expect("Edge::mirror");
+		ShapeTransform::Mirror { origin: plane_origin, normal: plane_normal }.validate().expect("Edge::mirror");
 		Edge {
 			inner: ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Edge::mirror: {}", e.what())),
 		}
