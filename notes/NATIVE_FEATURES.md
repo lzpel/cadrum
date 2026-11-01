@@ -649,6 +649,8 @@ owners. Scaling-law sweep history remains disabled in the pinned kernel.
 
 Trimming preserves topology orientation. Rebuilding a rectangular surface patch or a trimmed edge now retains the input orientation, including reversed faces whose normals previously flipped.
 
+Native C++ statements use readable blocks. The branch additions now separate statements, expand control flow with braces, and wrap long signatures and expressions. The formatting preserves operation logic and adds no project dependencies; the full Linux suite passes 207 tests with two ignored.
+
 Transform validation is shared across native owners. `ShapeTransform` checks translation, rotation, scale, and mirror inputs for `Shape`, `Solid`, and `Edge`. The `Shape` convenience methods use the history-aware transform path, while the existing solid and edge methods retain their native ownership and styling behavior.
 
 Topology resolution preserves identity and styles. Resolving a history index carries the source color map into the returned view. A single plane-split partition uses an owning view of the result instead of a deep copy, so ancestry lookup retains native identity.

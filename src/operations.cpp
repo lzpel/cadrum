@@ -13,7 +13,10 @@
 #include <Standard_Failure.hxx>
 #include <stdexcept>
 
-#define OP_CATCH catch (const Standard_Failure& e) { throw std::runtime_error(e.what()); }
+#define OP_CATCH                                                                                             \
+    catch (const Standard_Failure& e) {                                                                      \
+        throw std::runtime_error(e.what());                                                                  \
+    }
 
 namespace cadrum {
 ValidationData op_validate(const TopoDS_Shape& shape) try {
@@ -26,19 +29,28 @@ ValidationData op_validate(const TopoDS_Shape& shape) try {
     for (int i = 1; i <= map.Extent(); ++i) {
         const auto& s = map(i);
         const auto& result = analyzer.Result(s);
-        if (result.IsNull()) continue;
+        if (result.IsNull()) {
+            continue;
+        }
         for (const auto status : result->Status()) {
-            if (status != BRepCheck_NoError) out.issues.push_back(ValidationEntry{uint32_t(i), 0, uint32_t(s.ShapeType()), uint32_t(status)});
+            if (status != BRepCheck_NoError) {
+                out.issues.push_back(
+                    ValidationEntry{uint32_t(i), 0, uint32_t(s.ShapeType()), uint32_t(status)});
+            }
         }
         for (result->InitContextIterator(); result->MoreShapeInContext(); result->NextShapeInContext()) {
             const int context = map.FindIndex(result->ContextualShape());
             for (const auto status : result->StatusOnShape()) {
-                if (status != BRepCheck_NoError) out.issues.push_back(ValidationEntry{uint32_t(i), uint32_t(context), uint32_t(s.ShapeType()), uint32_t(status)});
+                if (status != BRepCheck_NoError) {
+                    out.issues.push_back(ValidationEntry{uint32_t(i), uint32_t(context),
+                                                         uint32_t(s.ShapeType()), uint32_t(status)});
+                }
             }
         }
     }
     return out;
-} OP_CATCH
+}
+OP_CATCH
 }
 
 #include <BRepBuilderAPI_Copy.hxx>
@@ -54,20 +66,34 @@ ValidationData op_validate(const TopoDS_Shape& shape) try {
 namespace cadrum {
 static double maximum_tolerance(const TopoDS_Shape& s) {
     double value = 0.0;
-    for (TopExp_Explorer ex(s, TopAbs_VERTEX); ex.More(); ex.Next()) value = std::max(value, BRep_Tool::Tolerance(TopoDS::Vertex(ex.Current())));
-    for (TopExp_Explorer ex(s, TopAbs_EDGE); ex.More(); ex.Next()) value = std::max(value, BRep_Tool::Tolerance(TopoDS::Edge(ex.Current())));
-    for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) value = std::max(value, BRep_Tool::Tolerance(TopoDS::Face(ex.Current())));
+    for (TopExp_Explorer ex(s, TopAbs_VERTEX); ex.More(); ex.Next()) {
+        value = std::max(value, BRep_Tool::Tolerance(TopoDS::Vertex(ex.Current())));
+    }
+    for (TopExp_Explorer ex(s, TopAbs_EDGE); ex.More(); ex.Next()) {
+        value = std::max(value, BRep_Tool::Tolerance(TopoDS::Edge(ex.Current())));
+    }
+    for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) {
+        value = std::max(value, BRep_Tool::Tolerance(TopoDS::Face(ex.Current())));
+    }
     return value;
 }
 static size_t boundary_edges(const TopoDS_Shape& s) {
     NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> map;
     TopExp::MapShapesAndAncestors(s, TopAbs_EDGE, TopAbs_FACE, map);
     size_t count = 0;
-    for (int i = 1; i <= map.Extent(); ++i) if (map.FindFromIndex(i).Extent() == 1 && !BRep_Tool::IsClosed(TopoDS::Edge(map.FindKey(i)), TopoDS::Face(map.FindFromIndex(i).First()))) ++count;
+    for (int i = 1; i <= map.Extent(); ++i) {
+        if (map.FindFromIndex(i).Extent() == 1 &&
+            !BRep_Tool::IsClosed(TopoDS::Edge(map.FindKey(i)), TopoDS::Face(map.FindFromIndex(i).First()))) {
+            ++count;
+        }
+    }
     return count;
 }
-RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, double max_deviation, rust::Slice<const bool> flags) try {
-    if (flags.size() != 5) throw std::runtime_error("repair: invalid flags");
+RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, double max_deviation,
+                     rust::Slice<const bool> flags) try {
+    if (flags.size() != 5) {
+        throw std::runtime_error("repair: invalid flags");
+    }
     BRepBuilderAPI_Copy copier(shape);
     const TopoDS_Shape copy = copier.Shape();
     ShapeFix_Shape fix(copy);
@@ -87,43 +113,67 @@ RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tol
     out.tolerance_after = maximum_tolerance(result);
     out.boundary_before = boundary_edges(shape);
     out.boundary_after = boundary_edges(result);
-    if (out.tolerance_after > max_tolerance * (1.0 + 1e-10)) throw std::runtime_error("repair: maximum tolerance exceeded");
-    if (!flags[4] && out.boundary_after < out.boundary_before) throw std::runtime_error("repair: closing a boundary is not permitted");
+    if (out.tolerance_after > max_tolerance * (1.0 + 1e-10)) {
+        throw std::runtime_error("repair: maximum tolerance exceeded");
+    }
+    if (!flags[4] && out.boundary_after < out.boundary_before) {
+        throw std::runtime_error("repair: closing a boundary is not permitted");
+    }
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> original;
     TopExp::MapShapes(shape, original);
     auto measure = [&](const gp_Pnt& point) {
         BRepExtrema_DistShapeShape distance(BRepBuilderAPI_MakeVertex(point).Vertex(), result);
-        if (!distance.IsDone()) throw std::runtime_error("repair deviation measurement failed");
-        out.maximum_deviation = std::max(out.maximum_deviation, distance.Value()); ++out.sample_count;
-        if (out.maximum_deviation > max_deviation) throw std::runtime_error("repair sampled deviation exceeds limit");
+        if (!distance.IsDone()) {
+            throw std::runtime_error("repair deviation measurement failed");
+        }
+        out.maximum_deviation = std::max(out.maximum_deviation, distance.Value());
+        ++out.sample_count;
+        if (out.maximum_deviation > max_deviation) {
+            throw std::runtime_error("repair sampled deviation exceeds limit");
+        }
     };
-    for (int i=1;i<=original.Extent();++i) {
-        const auto copied=copier.ModifiedShape(original(i));
-        const auto repaired=fix.Context()->Apply(copied);
-        if(original(i).ShapeType()==TopAbs_FACE&&!repaired.IsNull()){
-            for(TopExp_Explorer face(repaired,TopAbs_FACE);face.More();face.Next()){
-                out.face_history.push_back(reinterpret_cast<uint64_t>(original(i).TShape().get()));out.face_history.push_back(reinterpret_cast<uint64_t>(face.Current().TShape().get()));
+    for (int i = 1; i <= original.Extent(); ++i) {
+        const auto copied = copier.ModifiedShape(original(i));
+        const auto repaired = fix.Context()->Apply(copied);
+        if (original(i).ShapeType() == TopAbs_FACE && !repaired.IsNull()) {
+            for (TopExp_Explorer face(repaired, TopAbs_FACE); face.More(); face.Next()) {
+                out.face_history.push_back(reinterpret_cast<uint64_t>(original(i).TShape().get()));
+                out.face_history.push_back(reinterpret_cast<uint64_t>(face.Current().TShape().get()));
             }
         }
-        if (!copied.IsSame(repaired) || maximum_tolerance(original(i)) != maximum_tolerance(repaired)) out.changed_subshapes.push_back(i);
-        if (original(i).ShapeType()==TopAbs_VERTEX) measure(BRep_Tool::Pnt(TopoDS::Vertex(original(i))));
-        if (original(i).ShapeType()==TopAbs_EDGE && !BRep_Tool::Degenerated(TopoDS::Edge(original(i)))) {
+        if (!copied.IsSame(repaired) || maximum_tolerance(original(i)) != maximum_tolerance(repaired)) {
+            out.changed_subshapes.push_back(i);
+        }
+        if (original(i).ShapeType() == TopAbs_VERTEX) {
+            measure(BRep_Tool::Pnt(TopoDS::Vertex(original(i))));
+        }
+        if (original(i).ShapeType() == TopAbs_EDGE && !BRep_Tool::Degenerated(TopoDS::Edge(original(i)))) {
             BRepAdaptor_Curve curve(TopoDS::Edge(original(i)));
-            if (std::isfinite(curve.FirstParameter()) && std::isfinite(curve.LastParameter())) for(int j=0;j<=4;++j) measure(curve.Value(curve.FirstParameter()+(curve.LastParameter()-curve.FirstParameter())*j/4.0));
+            if (std::isfinite(curve.FirstParameter()) && std::isfinite(curve.LastParameter())) {
+                for (int j = 0; j <= 4; ++j) {
+                    measure(curve.Value(curve.FirstParameter() +
+                                        (curve.LastParameter() - curve.FirstParameter()) * j / 4.0));
+                }
+            }
         }
     }
     out.shape = std::make_unique<TopoDS_Shape>(result);
     return out;
-} OP_CATCH
+}
+OP_CATCH
 }
 
 #include <BRepBuilderAPI_GTransform.hxx>
 #include <gp_GTrsf.hxx>
 #include <gp_Mat.hxx>
 namespace cadrum {
-template<class Modified, class Generated, class Deleted>
-static OperationData collect_history(const TopoDS_Shape& result, const std::vector<TopoDS_Shape>& inputs, Modified modified_shapes, Generated generated_shapes, Deleted is_deleted) {
-    if (result.IsNull()) throw std::runtime_error("kernel produced null topology");
+template <class Modified, class Generated, class Deleted>
+static OperationData collect_history(const TopoDS_Shape& result, const std::vector<TopoDS_Shape>& inputs,
+                                     Modified modified_shapes, Generated generated_shapes,
+                                     Deleted is_deleted) {
+    if (result.IsNull()) {
+        throw std::runtime_error("kernel produced null topology");
+    }
     OperationData out{};
     out.shape = std::make_unique<TopoDS_Shape>(result);
     out.complete = true;
@@ -134,41 +184,64 @@ static OperationData collect_history(const TopoDS_Shape& result, const std::vect
         TopExp::MapShapes(inputs[operand], sources);
         for (int i = 1; i <= sources.Extent(); ++i) {
             const auto& source = sources(i);
-            if (source.ShapeType() != TopAbs_VERTEX && source.ShapeType() != TopAbs_EDGE && source.ShapeType() != TopAbs_FACE) continue;
+            if (source.ShapeType() != TopAbs_VERTEX && source.ShapeType() != TopAbs_EDGE &&
+                source.ShapeType() != TopAbs_FACE) {
+                continue;
+            }
             bool found = false;
             auto add = [&](const TopoDS_Shape& target, uint32_t relation) {
                 const int index = targets.FindIndex(target);
-                if (index == 0) return;
-                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), uint32_t(index), relation, uint32_t(source.ShapeType()), uint32_t(target.ShapeType()), reinterpret_cast<uint64_t>(source.TShape().get()), reinterpret_cast<uint64_t>(target.TShape().get())});
+                if (index == 0) {
+                    return;
+                }
+                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), uint32_t(index), relation,
+                                                   uint32_t(source.ShapeType()), uint32_t(target.ShapeType()),
+                                                   reinterpret_cast<uint64_t>(source.TShape().get()),
+                                                   reinterpret_cast<uint64_t>(target.TShape().get())});
                 found = true;
             };
-            for (const auto& modified : modified_shapes(source)) add(modified, 0);
-            for (const auto& generated : generated_shapes(source)) add(generated, 1);
-            if (targets.Contains(source)) add(source, 3);
+            for (const auto& modified : modified_shapes(source)) {
+                add(modified, 0);
+            }
+            for (const auto& generated : generated_shapes(source)) {
+                add(generated, 1);
+            }
+            if (targets.Contains(source)) {
+                add(source, 3);
+            }
             if (!found) {
                 const bool removed = is_deleted(source);
-                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), 0, uint32_t(removed ? 2 : 4), uint32_t(source.ShapeType()), 0, reinterpret_cast<uint64_t>(source.TShape().get()), 0});
-                if (!removed) out.complete = false;
+                out.history.push_back(HistoryEntry{uint32_t(operand), uint32_t(i), 0,
+                                                   uint32_t(removed ? 2 : 4), uint32_t(source.ShapeType()), 0,
+                                                   reinterpret_cast<uint64_t>(source.TShape().get()), 0});
+                if (!removed) {
+                    out.complete = false;
+                }
             }
         }
     }
     return out;
 }
-template<class Builder>
+template <class Builder>
 static OperationData operation_result(Builder& builder, const std::vector<TopoDS_Shape>& inputs) {
-    return collect_history(builder.Shape(), inputs,
-        [&](const TopoDS_Shape& s) { return builder.Modified(s); },
+    return collect_history(
+        builder.Shape(), inputs, [&](const TopoDS_Shape& s) { return builder.Modified(s); },
         [&](const TopoDS_Shape& s) { return builder.Generated(s); },
         [&](const TopoDS_Shape& s) { return builder.IsDeleted(s); });
 }
 
 OperationData op_affine(const TopoDS_Shape& s, rust::Slice<const double> v) try {
-    if (v.size() != 12) throw std::runtime_error("affine: expected 12 matrix coefficients");
-    gp_GTrsf t(gp_Mat(v[0],v[1],v[2],v[4],v[5],v[6],v[8],v[9],v[10]), gp_XYZ(v[3],v[7],v[11]));
+    if (v.size() != 12) {
+        throw std::runtime_error("affine: expected 12 matrix coefficients");
+    }
+    gp_GTrsf t(gp_Mat(v[0], v[1], v[2], v[4], v[5], v[6], v[8], v[9], v[10]), gp_XYZ(v[3], v[7], v[11]));
     BRepBuilderAPI_GTransform builder(s, t, true);
-    if (!builder.IsDone()) throw std::runtime_error("affine: transform failed");
+    if (!builder.IsDone()) {
+        throw std::runtime_error("affine: transform failed");
+    }
     return operation_result(builder, {s});
-} OP_CATCH
+}
+OP_CATCH
 }
 
 #include <Geom_BezierCurve.hxx>
@@ -184,79 +257,228 @@ OperationData op_affine(const TopoDS_Shape& s, rust::Slice<const double> v) try 
 #include <NCollection_Array1.hxx>
 #include <NCollection_Array2.hxx>
 namespace cadrum {
-template<class T> static NCollection_Array1<T> array1(const rust::Vec<T>& v) {
-    NCollection_Array1<T> out(1, int(v.size())); for (int i=1;i<=out.Length();++i) out(i)=v[i-1]; return out;
+template <class T> static NCollection_Array1<T> array1(const rust::Vec<T>& v) {
+    NCollection_Array1<T> out(1, int(v.size()));
+    for (int i = 1; i <= out.Length(); ++i) {
+        out(i) = v[i - 1];
+    }
+    return out;
 }
 static Handle(Geom_Curve) authored_curve(const SplineData& d) {
-    NCollection_Array1<gp_Pnt> p(1,int(d.u_count));
-    for(int i=1;i<=p.Length();++i) p(i)=gp_Pnt(d.poles[3*(i-1)],d.poles[3*(i-1)+1],d.poles[3*(i-1)+2]);
-    if(d.bezier) return new Geom_BezierCurve(p,array1(d.weights));
-    return new Geom_BSplineCurve(p,array1(d.weights),array1(d.u_knots),array1(d.u_mults),int(d.u_degree),d.u_periodic);
+    NCollection_Array1<gp_Pnt> p(1, int(d.u_count));
+    for (int i = 1; i <= p.Length(); ++i) {
+        p(i) = gp_Pnt(d.poles[3 * (i - 1)], d.poles[3 * (i - 1) + 1], d.poles[3 * (i - 1) + 2]);
+    }
+    if (d.bezier) {
+        return new Geom_BezierCurve(p, array1(d.weights));
+    }
+    return new Geom_BSplineCurve(p, array1(d.weights), array1(d.u_knots), array1(d.u_mults), int(d.u_degree),
+                                 d.u_periodic);
 }
-std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData& d,rust::Slice<const double> trim) try {
-    const auto c=authored_curve(d);
-    double a=c->FirstParameter(),b=c->LastParameter();
-    if(trim.size()==2) { if(trim[0]<a || trim[1]>b) throw std::runtime_error("curve trim outside domain"); a=trim[0]; b=trim[1]; }
-    BRepBuilderAPI_MakeEdge builder(c,a,b);
-    if(!builder.IsDone()) throw std::runtime_error("authored curve construction failed");
+std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData& d, rust::Slice<const double> trim) try {
+    const auto c = authored_curve(d);
+    double a = c->FirstParameter(), b = c->LastParameter();
+    if (trim.size() == 2) {
+        if (trim[0] < a || trim[1] > b) {
+            throw std::runtime_error("curve trim outside domain");
+        }
+        a = trim[0];
+        b = trim[1];
+    }
+    BRepBuilderAPI_MakeEdge builder(c, a, b);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("authored curve construction failed");
+    }
     return std::make_unique<TopoDS_Edge>(builder.Edge());
-} OP_CATCH
-std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData& d,rust::Slice<const double> trim) try {
-    NCollection_Array2<gp_Pnt> p(1,int(d.u_count),1,int(d.v_count));
-    NCollection_Array2<double> w(1,int(d.u_count),1,int(d.v_count));
-    for(int i=1;i<=int(d.u_count);++i) for(int j=1;j<=int(d.v_count);++j) {
-        const size_t k=size_t(i-1)*d.v_count+j-1; p(i,j)=gp_Pnt(d.poles[3*k],d.poles[3*k+1],d.poles[3*k+2]); w(i,j)=d.weights[k];
+}
+OP_CATCH
+std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData& d, rust::Slice<const double> trim) try {
+    NCollection_Array2<gp_Pnt> p(1, int(d.u_count), 1, int(d.v_count));
+    NCollection_Array2<double> w(1, int(d.u_count), 1, int(d.v_count));
+    for (int i = 1; i <= int(d.u_count); ++i) {
+        for (int j = 1; j <= int(d.v_count); ++j) {
+            const size_t k = size_t(i - 1) * d.v_count + j - 1;
+            p(i, j) = gp_Pnt(d.poles[3 * k], d.poles[3 * k + 1], d.poles[3 * k + 2]);
+            w(i, j) = d.weights[k];
+        }
     }
     Handle(Geom_Surface) surface;
-    if(d.bezier) surface=new Geom_BezierSurface(p,w);
-    else surface=new Geom_BSplineSurface(p,w,array1(d.u_knots),array1(d.v_knots),array1(d.u_mults),array1(d.v_mults),d.u_degree,d.v_degree,d.u_periodic,d.v_periodic);
-    double a,b,c,e; surface->Bounds(a,b,c,e);
-    if(trim.size()==4) { if(trim[0]<a||trim[1]>b||trim[2]<c||trim[3]>e) throw std::runtime_error("surface trim outside domain"); a=trim[0];b=trim[1];c=trim[2];e=trim[3]; }
-    BRepBuilderAPI_MakeFace builder(surface,a,b,c,e,1e-7);
-    if(!builder.IsDone()) throw std::runtime_error("authored surface construction failed");
+    if (d.bezier) {
+        surface = new Geom_BezierSurface(p, w);
+    } else {
+        surface =
+            new Geom_BSplineSurface(p, w, array1(d.u_knots), array1(d.v_knots), array1(d.u_mults),
+                                    array1(d.v_mults), d.u_degree, d.v_degree, d.u_periodic, d.v_periodic);
+    }
+    double a, b, c, e;
+    surface->Bounds(a, b, c, e);
+    if (trim.size() == 4) {
+        if (trim[0] < a || trim[1] > b || trim[2] < c || trim[3] > e) {
+            throw std::runtime_error("surface trim outside domain");
+        }
+        a = trim[0];
+        b = trim[1];
+        c = trim[2];
+        e = trim[3];
+    }
+    BRepBuilderAPI_MakeFace builder(surface, a, b, c, e, 1e-7);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("authored surface construction failed");
+    }
     return std::make_unique<TopoDS_Face>(builder.Face());
-} OP_CATCH
-std::unique_ptr<TopoDS_Edge> op_ellipse(rust::Slice<const double> f,double major,double minor,rust::Slice<const double> trim) try {
-    Handle(Geom_Ellipse) c=new Geom_Ellipse(gp_Ax2(gp_Pnt(f[0],f[1],f[2]),gp_Dir(f[3],f[4],f[5]),gp_Dir(f[6],f[7],f[8])),major,minor);
-    const double a=trim.empty()?0.0:trim[0],b=trim.empty()?2.0*M_PI:trim[1];
-    if(b-a>2.0*M_PI+1e-12) throw std::runtime_error("ellipse arc exceeds one turn");
-    BRepBuilderAPI_MakeEdge builder(c,a,b);
-    if(!builder.IsDone()) throw std::runtime_error("ellipse construction failed");
+}
+OP_CATCH
+std::unique_ptr<TopoDS_Edge> op_ellipse(rust::Slice<const double> f, double major, double minor,
+                                        rust::Slice<const double> trim) try {
+    Handle(Geom_Ellipse) c = new Geom_Ellipse(
+        gp_Ax2(gp_Pnt(f[0], f[1], f[2]), gp_Dir(f[3], f[4], f[5]), gp_Dir(f[6], f[7], f[8])), major, minor);
+    const double a = trim.empty() ? 0.0 : trim[0], b = trim.empty() ? 2.0 * M_PI : trim[1];
+    if (b - a > 2.0 * M_PI + 1e-12) {
+        throw std::runtime_error("ellipse arc exceeds one turn");
+    }
+    BRepBuilderAPI_MakeEdge builder(c, a, b);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("ellipse construction failed");
+    }
     return std::make_unique<TopoDS_Edge>(builder.Edge());
-} OP_CATCH
-static void append_xyz(rust::Vec<double>& out,const gp_XYZ& p) { out.push_back(p.X());out.push_back(p.Y());out.push_back(p.Z()); }
+}
+OP_CATCH
+static void append_xyz(rust::Vec<double>& out, const gp_XYZ& p) {
+    out.push_back(p.X());
+    out.push_back(p.Y());
+    out.push_back(p.Z());
+}
 SplineData op_curve_control(const TopoDS_Edge& edge) try {
-    double a,b; const Handle(Geom_Curve) c=BRep_Tool::Curve(edge,a,b);
-    const auto bez=Handle(Geom_BezierCurve)::DownCast(c); const auto bs=Handle(Geom_BSplineCurve)::DownCast(c);
-    if(bez.IsNull()&&bs.IsNull()) throw std::runtime_error("curve is neither Bezier nor B-spline");
-    SplineData d{};d.bezier=!bez.IsNull();d.u_count=d.bezier?bez->NbPoles():bs->NbPoles();d.v_count=1;
-    for(int i=1;i<=int(d.u_count);++i) { append_xyz(d.poles,(d.bezier?bez->Pole(i):bs->Pole(i)).XYZ()); d.weights.push_back(d.bezier?bez->Weight(i):bs->Weight(i)); }
-    d.u_degree=d.bezier?bez->Degree():bs->Degree();
-    if(!d.bezier) { d.u_periodic=bs->IsPeriodic(); for(int i=1;i<=bs->NbKnots();++i) {d.u_knots.push_back(bs->Knot(i));d.u_mults.push_back(bs->Multiplicity(i));} }
+    double a, b;
+    const Handle(Geom_Curve) c = BRep_Tool::Curve(edge, a, b);
+    const auto bez = Handle(Geom_BezierCurve)::DownCast(c);
+    const auto bs = Handle(Geom_BSplineCurve)::DownCast(c);
+    if (bez.IsNull() && bs.IsNull()) {
+        throw std::runtime_error("curve is neither Bezier nor B-spline");
+    }
+    SplineData d{};
+    d.bezier = !bez.IsNull();
+    d.u_count = d.bezier ? bez->NbPoles() : bs->NbPoles();
+    d.v_count = 1;
+    for (int i = 1; i <= int(d.u_count); ++i) {
+        append_xyz(d.poles, (d.bezier ? bez->Pole(i) : bs->Pole(i)).XYZ());
+        d.weights.push_back(d.bezier ? bez->Weight(i) : bs->Weight(i));
+    }
+    d.u_degree = d.bezier ? bez->Degree() : bs->Degree();
+    if (!d.bezier) {
+        d.u_periodic = bs->IsPeriodic();
+        for (int i = 1; i <= bs->NbKnots(); ++i) {
+            d.u_knots.push_back(bs->Knot(i));
+            d.u_mults.push_back(bs->Multiplicity(i));
+        }
+    }
     return d;
-} OP_CATCH
+}
+OP_CATCH
 SplineData op_surface_control(const TopoDS_Face& face) try {
-    const auto surface=BRep_Tool::Surface(face); const auto bez=Handle(Geom_BezierSurface)::DownCast(surface);const auto bs=Handle(Geom_BSplineSurface)::DownCast(surface);
-    if(bez.IsNull()&&bs.IsNull()) throw std::runtime_error("surface is neither Bezier nor B-spline");
-    SplineData d{};d.bezier=!bez.IsNull();d.u_count=d.bezier?bez->NbUPoles():bs->NbUPoles();d.v_count=d.bezier?bez->NbVPoles():bs->NbVPoles();
-    for(int i=1;i<=int(d.u_count);++i) for(int j=1;j<=int(d.v_count);++j) {append_xyz(d.poles,(d.bezier?bez->Pole(i,j):bs->Pole(i,j)).XYZ());d.weights.push_back(d.bezier?bez->Weight(i,j):bs->Weight(i,j));}
-    d.u_degree=d.bezier?bez->UDegree():bs->UDegree();d.v_degree=d.bezier?bez->VDegree():bs->VDegree();
-    if(!d.bezier) { d.u_periodic=bs->IsUPeriodic();d.v_periodic=bs->IsVPeriodic();for(int i=1;i<=bs->NbUKnots();++i){d.u_knots.push_back(bs->UKnot(i));d.u_mults.push_back(bs->UMultiplicity(i));}for(int i=1;i<=bs->NbVKnots();++i){d.v_knots.push_back(bs->VKnot(i));d.v_mults.push_back(bs->VMultiplicity(i));} }
+    const auto surface = BRep_Tool::Surface(face);
+    const auto bez = Handle(Geom_BezierSurface)::DownCast(surface);
+    const auto bs = Handle(Geom_BSplineSurface)::DownCast(surface);
+    if (bez.IsNull() && bs.IsNull()) {
+        throw std::runtime_error("surface is neither Bezier nor B-spline");
+    }
+    SplineData d{};
+    d.bezier = !bez.IsNull();
+    d.u_count = d.bezier ? bez->NbUPoles() : bs->NbUPoles();
+    d.v_count = d.bezier ? bez->NbVPoles() : bs->NbVPoles();
+    for (int i = 1; i <= int(d.u_count); ++i) {
+        for (int j = 1; j <= int(d.v_count); ++j) {
+            append_xyz(d.poles, (d.bezier ? bez->Pole(i, j) : bs->Pole(i, j)).XYZ());
+            d.weights.push_back(d.bezier ? bez->Weight(i, j) : bs->Weight(i, j));
+        }
+    }
+    d.u_degree = d.bezier ? bez->UDegree() : bs->UDegree();
+    d.v_degree = d.bezier ? bez->VDegree() : bs->VDegree();
+    if (!d.bezier) {
+        d.u_periodic = bs->IsUPeriodic();
+        d.v_periodic = bs->IsVPeriodic();
+        for (int i = 1; i <= bs->NbUKnots(); ++i) {
+            d.u_knots.push_back(bs->UKnot(i));
+            d.u_mults.push_back(bs->UMultiplicity(i));
+        }
+        for (int i = 1; i <= bs->NbVKnots(); ++i) {
+            d.v_knots.push_back(bs->VKnot(i));
+            d.v_mults.push_back(bs->VMultiplicity(i));
+        }
+    }
     return d;
-} OP_CATCH
-rust::Vec<double> op_curve_range(const TopoDS_Edge& edge) try { BRepAdaptor_Curve c(edge);return {c.FirstParameter(),c.LastParameter()}; } OP_CATCH
-rust::Vec<double> op_curve_evaluate(const TopoDS_Edge& edge,double t) try { BRepAdaptor_Curve c(edge);gp_Pnt p;gp_Vec d1,d2;c.D2(t,p,d1,d2);rust::Vec<double> out;append_xyz(out,p.XYZ());append_xyz(out,d1.XYZ());append_xyz(out,d2.XYZ());return out; } OP_CATCH
-std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge& edge,rust::Slice<const double> trim) try { double a,b;auto c=BRep_Tool::Curve(edge,a,b);BRepBuilderAPI_MakeEdge builder(c,trim[0],trim[1]);if(!builder.IsDone())throw std::runtime_error("edge trim failed");auto result=builder.Edge();result.Orientation(edge.Orientation());return std::make_unique<TopoDS_Edge>(result); } OP_CATCH
-rust::Vec<double> op_surface_range(const TopoDS_Face& face) try {double a,b,c,d;BRepTools::UVBounds(face,a,b,c,d);return {a,b,c,d};} OP_CATCH
-rust::Vec<double> op_surface_evaluate(const TopoDS_Face& face,double u,double v) try {
-    BRepAdaptor_Surface s(face);gp_Pnt p;gp_Vec du,dv,duu,dvv,duv;s.D2(u,v,p,du,dv,duu,dvv,duv);
-    gp_Vec normal=du.Crossed(dv);if(normal.SquareMagnitude()>1e-30) normal.Normalize();if(face.Orientation()==TopAbs_REVERSED)normal.Reverse();
-    rust::Vec<double> out;for(const auto& xyz:{p.XYZ(),du.XYZ(),dv.XYZ(),duu.XYZ(),duv.XYZ(),dvv.XYZ(),normal.XYZ()})append_xyz(out,xyz);return out;
-} OP_CATCH
-std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face,rust::Slice<const double> trim) try {
-    auto s=BRep_Tool::Surface(face);double a,b,c,d;s->Bounds(a,b,c,d);if(trim[0]<a||trim[1]>b||trim[2]<c||trim[3]>d)throw std::runtime_error("surface trim outside domain");
-    BRepBuilderAPI_MakeFace builder(s,trim[0],trim[1],trim[2],trim[3],1e-7);if(!builder.IsDone())throw std::runtime_error("surface trim failed");auto result=builder.Face();result.Orientation(face.Orientation());return std::make_unique<TopoDS_Face>(result);
-} OP_CATCH
+}
+OP_CATCH
+rust::Vec<double> op_curve_range(const TopoDS_Edge& edge) try {
+    BRepAdaptor_Curve c(edge);
+    return {c.FirstParameter(), c.LastParameter()};
+}
+OP_CATCH
+rust::Vec<double> op_curve_evaluate(const TopoDS_Edge& edge, double t) try {
+    BRepAdaptor_Curve c(edge);
+    gp_Pnt p;
+    gp_Vec d1, d2;
+    c.D2(t, p, d1, d2);
+    rust::Vec<double> out;
+    append_xyz(out, p.XYZ());
+    append_xyz(out, d1.XYZ());
+    append_xyz(out, d2.XYZ());
+    return out;
+}
+OP_CATCH
+std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge& edge, rust::Slice<const double> trim) try {
+    double a, b;
+    auto c = BRep_Tool::Curve(edge, a, b);
+    BRepBuilderAPI_MakeEdge builder(c, trim[0], trim[1]);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("edge trim failed");
+    }
+    auto result = builder.Edge();
+    result.Orientation(edge.Orientation());
+    return std::make_unique<TopoDS_Edge>(result);
+}
+OP_CATCH
+rust::Vec<double> op_surface_range(const TopoDS_Face& face) try {
+    double a, b, c, d;
+    BRepTools::UVBounds(face, a, b, c, d);
+    return {a, b, c, d};
+}
+OP_CATCH
+rust::Vec<double> op_surface_evaluate(const TopoDS_Face& face, double u, double v) try {
+    BRepAdaptor_Surface s(face);
+    gp_Pnt p;
+    gp_Vec du, dv, duu, dvv, duv;
+    s.D2(u, v, p, du, dv, duu, dvv, duv);
+    gp_Vec normal = du.Crossed(dv);
+    if (normal.SquareMagnitude() > 1e-30) {
+        normal.Normalize();
+    }
+    if (face.Orientation() == TopAbs_REVERSED) {
+        normal.Reverse();
+    }
+    rust::Vec<double> out;
+    for (const auto& xyz : {p.XYZ(), du.XYZ(), dv.XYZ(), duu.XYZ(), duv.XYZ(), dvv.XYZ(), normal.XYZ()}) {
+        append_xyz(out, xyz);
+    }
+    return out;
+}
+OP_CATCH
+std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face, rust::Slice<const double> trim) try {
+    auto s = BRep_Tool::Surface(face);
+    double a, b, c, d;
+    s->Bounds(a, b, c, d);
+    if (trim[0] < a || trim[1] > b || trim[2] < c || trim[3] > d) {
+        throw std::runtime_error("surface trim outside domain");
+    }
+    BRepBuilderAPI_MakeFace builder(s, trim[0], trim[1], trim[2], trim[3], 1e-7);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("surface trim failed");
+    }
+    auto result = builder.Face();
+    result.Orientation(face.Orientation());
+    return std::make_unique<TopoDS_Face>(result);
+}
+OP_CATCH
 }
 
 #include <BRepBuilderAPI_MakeWire.hxx>
@@ -269,61 +491,146 @@ std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face& face,rust::Slice
 #include <TopoDS_Iterator.hxx>
 #include <gp_Pln.hxx>
 namespace cadrum {
-OperationData op_profile(const std::vector<TopoDS_Shape>& wires,double tolerance,bool explicit_outer) try {
-    if(wires.empty())throw std::runtime_error("profile: no boundary wires");
+OperationData op_profile(const std::vector<TopoDS_Shape>& wires, double tolerance, bool explicit_outer) try {
+    if (wires.empty()) {
+        throw std::runtime_error("profile: no boundary wires");
+    }
     std::vector<TopoDS_Face> disks;
     std::vector<TopoDS_Wire> normalized;
     gp_Pln plane;
-    for(size_t i=0;i<wires.size();++i) {
-        const auto& wire=TopoDS::Wire(wires[i]);
-        if(!BRep_Tool::IsClosed(wire)||!BRepCheck_Analyzer(wire).IsValid())throw std::runtime_error("profile: invalid or open wire");
-        BRepBuilderAPI_MakeFace maker(wire,true);
-        if(!maker.IsDone()||!BRepCheck_Analyzer(maker.Face()).IsValid())throw std::runtime_error("profile: non-planar or self-intersecting wire");
-        const gp_Pln local=BRepAdaptor_Surface(maker.Face()).Plane();
-        if(i==0)plane=local;
-        if(std::abs(local.Axis().Direction().Dot(plane.Axis().Direction()))<1.0-1e-10||plane.Distance(local.Location())>tolerance)throw std::runtime_error("profile: wires are not coplanar");
-        BRepBuilderAPI_MakeFace on_plane(plane,wire,true);
-        disks.push_back(on_plane.Face());normalized.push_back(BRepTools::OuterWire(on_plane.Face()));
+    for (size_t i = 0; i < wires.size(); ++i) {
+        const auto& wire = TopoDS::Wire(wires[i]);
+        if (!BRep_Tool::IsClosed(wire) || !BRepCheck_Analyzer(wire).IsValid()) {
+            throw std::runtime_error("profile: invalid or open wire");
+        }
+        BRepBuilderAPI_MakeFace maker(wire, true);
+        if (!maker.IsDone() || !BRepCheck_Analyzer(maker.Face()).IsValid()) {
+            throw std::runtime_error("profile: non-planar or self-intersecting wire");
+        }
+        const gp_Pln local = BRepAdaptor_Surface(maker.Face()).Plane();
+        if (i == 0) {
+            plane = local;
+        }
+        if (std::abs(local.Axis().Direction().Dot(plane.Axis().Direction())) < 1.0 - 1e-10 ||
+            plane.Distance(local.Location()) > tolerance) {
+            throw std::runtime_error("profile: wires are not coplanar");
+        }
+        BRepBuilderAPI_MakeFace on_plane(plane, wire, true);
+        disks.push_back(on_plane.Face());
+        normalized.push_back(BRepTools::OuterWire(on_plane.Face()));
     }
-    std::vector<std::vector<bool>> inside(wires.size(),std::vector<bool>(wires.size(),false));
-    std::vector<int> depth(wires.size(),0);
-    for(size_t i=0;i<wires.size();++i) for(size_t j=i+1;j<wires.size();++j) {
-        BRepExtrema_DistShapeShape distance(wires[i],wires[j]);
-        if(!distance.IsDone()||distance.Value()<=tolerance)throw std::runtime_error("profile: loops intersect or touch");
+    std::vector<std::vector<bool>> inside(wires.size(), std::vector<bool>(wires.size(), false));
+    std::vector<int> depth(wires.size(), 0);
+    for (size_t i = 0; i < wires.size(); ++i) {
+        for (size_t j = i + 1; j < wires.size(); ++j) {
+            BRepExtrema_DistShapeShape distance(wires[i], wires[j]);
+            if (!distance.IsDone() || distance.Value() <= tolerance) {
+                throw std::runtime_error("profile: loops intersect or touch");
+            }
+        }
     }
-    for(size_t i=0;i<wires.size();++i) {
-        TopExp_Explorer vertex(wires[i],TopAbs_VERTEX);if(!vertex.More())throw std::runtime_error("profile: wire has no vertex");
-        const gp_Pnt point=BRep_Tool::Pnt(TopoDS::Vertex(vertex.Current()));
-        for(size_t j=0;j<wires.size();++j) if(i!=j) { BRepClass_FaceClassifier classifier(disks[j],point,tolerance);inside[i][j]=classifier.State()==TopAbs_IN;if(inside[i][j])++depth[i]; }
+    for (size_t i = 0; i < wires.size(); ++i) {
+        TopExp_Explorer vertex(wires[i], TopAbs_VERTEX);
+        if (!vertex.More()) {
+            throw std::runtime_error("profile: wire has no vertex");
+        }
+        const gp_Pnt point = BRep_Tool::Pnt(TopoDS::Vertex(vertex.Current()));
+        for (size_t j = 0; j < wires.size(); ++j) {
+            if (i != j) {
+                BRepClass_FaceClassifier classifier(disks[j], point, tolerance);
+                inside[i][j] = classifier.State() == TopAbs_IN;
+                if (inside[i][j]) {
+                    ++depth[i];
+                }
+            }
+        }
     }
-    if(explicit_outer) { if(depth[0]!=0)throw std::runtime_error("face: outer wire is inside a hole");for(size_t i=1;i<wires.size();++i)if(depth[i]!=1||!inside[i][0])throw std::runtime_error("face: hole is outside outer wire or nested"); }
-    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0;
-    for(size_t i=0;i<wires.size();++i) if(depth[i]%2==0) {
-        BRepBuilderAPI_MakeFace face(plane,normalized[i],true);
-        for(size_t j=0;j<wires.size();++j)if(depth[j]==depth[i]+1&&inside[j][i])face.Add(TopoDS::Wire(normalized[j].Reversed()));
-        if(!face.IsDone()||!BRepCheck_Analyzer(face.Face()).IsValid())throw std::runtime_error("profile: invalid nested region");
-        only=face.Face();b.Add(compound,only);++count;
+    if (explicit_outer) {
+        if (depth[0] != 0) {
+            throw std::runtime_error("face: outer wire is inside a hole");
+        }
+        for (size_t i = 1; i < wires.size(); ++i) {
+            if (depth[i] != 1 || !inside[i][0]) {
+                throw std::runtime_error("face: hole is outside outer wire or nested");
+            }
+        }
     }
-    const TopoDS_Shape result=count==1?only:compound;
-    return collect_history(result,wires,[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>{};},[&](const TopoDS_Shape& source){
-        NCollection_List<TopoDS_Shape> generated;if(source.ShapeType()!=TopAbs_EDGE)return generated;
-        for(TopExp_Explorer face(result,TopAbs_FACE);face.More();face.Next()){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(face.Current(),members);if(members.Contains(source))generated.Append(face.Current());}
-        return generated;
-    },[](const TopoDS_Shape&){return false;});
-} OP_CATCH
-static void require_profile(const TopoDS_Shape& s) {
-    if(s.ShapeType()==TopAbs_FACE)return;
-    if(s.ShapeType()!=TopAbs_COMPOUND)throw std::runtime_error("unsupported: expected face or compound of faces");
-    for(TopoDS_Iterator it(s);it.More();it.Next())require_profile(it.Value());
+    BRep_Builder b;
+    TopoDS_Compound compound;
+    b.MakeCompound(compound);
+    TopoDS_Shape only;
+    size_t count = 0;
+    for (size_t i = 0; i < wires.size(); ++i) {
+        if (depth[i] % 2 == 0) {
+            BRepBuilderAPI_MakeFace face(plane, normalized[i], true);
+            for (size_t j = 0; j < wires.size(); ++j) {
+                if (depth[j] == depth[i] + 1 && inside[j][i]) {
+                    face.Add(TopoDS::Wire(normalized[j].Reversed()));
+                }
+            }
+            if (!face.IsDone() || !BRepCheck_Analyzer(face.Face()).IsValid()) {
+                throw std::runtime_error("profile: invalid nested region");
+            }
+            only = face.Face();
+            b.Add(compound, only);
+            ++count;
+        }
+    }
+    const TopoDS_Shape result = count == 1 ? only : compound;
+    return collect_history(
+        result, wires, [](const TopoDS_Shape&) { return NCollection_List<TopoDS_Shape>{}; },
+        [&](const TopoDS_Shape& source) {
+            NCollection_List<TopoDS_Shape> generated;
+            if (source.ShapeType() != TopAbs_EDGE) {
+                return generated;
+            }
+            for (TopExp_Explorer face(result, TopAbs_FACE); face.More(); face.Next()) {
+                NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> members;
+                TopExp::MapShapes(face.Current(), members);
+                if (members.Contains(source)) {
+                    generated.Append(face.Current());
+                }
+            }
+            return generated;
+        },
+        [](const TopoDS_Shape&) { return false; });
 }
-OperationData op_prism(const TopoDS_Shape& s,double x,double y,double z) try {
-    require_profile(s);if(!BRepCheck_Analyzer(s).IsValid())throw std::runtime_error("extrude: invalid profile");
-    BRepPrimAPI_MakePrism builder(s,gp_Vec(x,y,z),true);if(!builder.IsDone())throw std::runtime_error("extrude failed");return operation_result(builder,{s});
-} OP_CATCH
-OperationData op_revolution(const TopoDS_Shape& s,rust::Slice<const double> v) try {
-    require_profile(s);if(!BRepCheck_Analyzer(s).IsValid())throw std::runtime_error("revolve: invalid profile");
-    BRepPrimAPI_MakeRevol builder(s,gp_Ax1(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])),v[6],true);if(!builder.IsDone())throw std::runtime_error("revolve failed");return operation_result(builder,{s});
-} OP_CATCH
+OP_CATCH
+static void require_profile(const TopoDS_Shape& s) {
+    if (s.ShapeType() == TopAbs_FACE) {
+        return;
+    }
+    if (s.ShapeType() != TopAbs_COMPOUND) {
+        throw std::runtime_error("unsupported: expected face or compound of faces");
+    }
+    for (TopoDS_Iterator it(s); it.More(); it.Next()) {
+        require_profile(it.Value());
+    }
+}
+OperationData op_prism(const TopoDS_Shape& s, double x, double y, double z) try {
+    require_profile(s);
+    if (!BRepCheck_Analyzer(s).IsValid()) {
+        throw std::runtime_error("extrude: invalid profile");
+    }
+    BRepPrimAPI_MakePrism builder(s, gp_Vec(x, y, z), true);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("extrude failed");
+    }
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_revolution(const TopoDS_Shape& s, rust::Slice<const double> v) try {
+    require_profile(s);
+    if (!BRepCheck_Analyzer(s).IsValid()) {
+        throw std::runtime_error("revolve: invalid profile");
+    }
+    BRepPrimAPI_MakeRevol builder(s, gp_Ax1(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5])), v[6], true);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("revolve failed");
+    }
+    return operation_result(builder, {s});
+}
+OP_CATCH
 }
 
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -331,30 +638,70 @@ OperationData op_revolution(const TopoDS_Shape& s,rust::Slice<const double> v) t
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepLib.hxx>
 namespace cadrum {
-std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> positions,rust::Slice<const uint32_t> indices,double tolerance,bool solid) try {
+std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> positions,
+                                              rust::Slice<const uint32_t> indices, double tolerance,
+                                              bool solid) try {
     BRepBuilderAPI_Sewing sewing(tolerance);
-    for(size_t i=0;i<indices.size();i+=3){
+    for (size_t i = 0; i < indices.size(); i += 3) {
         BRepBuilderAPI_MakePolygon polygon;
-        for(int j=0;j<3;++j){size_t k=size_t(indices[i+j])*3;polygon.Add(gp_Pnt(positions[k],positions[k+1],positions[k+2]));}polygon.Close();
-        BRepBuilderAPI_MakeFace face(polygon.Wire());if(!face.IsDone())throw std::runtime_error("triangle face construction failed");sewing.Add(face.Face());
-    }
-    if(indices.empty())return native_build({},TopAbs_COMPOUND);
-    sewing.Perform();TopoDS_Shape result=sewing.SewedShape();
-    if(result.IsNull())throw std::runtime_error("mesh sewing returned null topology");
-    if(solid){
-        BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0,face_count=0;
-        for(TopExp_Explorer ex(result,TopAbs_SHELL);ex.More();ex.Next()){
-            auto shell=TopoDS::Shell(ex.Current());if(!BRep_Tool::IsClosed(shell))throw std::runtime_error("reconstructed shell is open");
-            TopoDS_Solid body=BRepBuilderAPI_MakeSolid(shell).Solid();if(!BRepLib::OrientClosedSolid(body)||!BRepCheck_Analyzer(body).IsValid())throw std::runtime_error("reconstructed solid is invalid");
-            for(TopExp_Explorer f(body,TopAbs_FACE);f.More();f.Next())++face_count;
-            b.Add(compound,body);only=body;++count;
+        for (int j = 0; j < 3; ++j) {
+            size_t k = size_t(indices[i + j]) * 3;
+            polygon.Add(gp_Pnt(positions[k], positions[k + 1], positions[k + 2]));
         }
-        if(face_count!=indices.size()/3||count==0)throw std::runtime_error("solid reconstruction would lose faces");
-        result=count==1?only:compound;
-    }else if(result.ShapeType()==TopAbs_FACE){BRep_Builder b;TopoDS_Shell shell;b.MakeShell(shell);b.Add(shell,result);result=shell;}
-    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("reconstructed topology is invalid");
+        polygon.Close();
+        BRepBuilderAPI_MakeFace face(polygon.Wire());
+        if (!face.IsDone()) {
+            throw std::runtime_error("triangle face construction failed");
+        }
+        sewing.Add(face.Face());
+    }
+    if (indices.empty()) {
+        return native_build({}, TopAbs_COMPOUND);
+    }
+    sewing.Perform();
+    TopoDS_Shape result = sewing.SewedShape();
+    if (result.IsNull()) {
+        throw std::runtime_error("mesh sewing returned null topology");
+    }
+    if (solid) {
+        BRep_Builder b;
+        TopoDS_Compound compound;
+        b.MakeCompound(compound);
+        TopoDS_Shape only;
+        size_t count = 0, face_count = 0;
+        for (TopExp_Explorer ex(result, TopAbs_SHELL); ex.More(); ex.Next()) {
+            auto shell = TopoDS::Shell(ex.Current());
+            if (!BRep_Tool::IsClosed(shell)) {
+                throw std::runtime_error("reconstructed shell is open");
+            }
+            TopoDS_Solid body = BRepBuilderAPI_MakeSolid(shell).Solid();
+            if (!BRepLib::OrientClosedSolid(body) || !BRepCheck_Analyzer(body).IsValid()) {
+                throw std::runtime_error("reconstructed solid is invalid");
+            }
+            for (TopExp_Explorer f(body, TopAbs_FACE); f.More(); f.Next()) {
+                ++face_count;
+            }
+            b.Add(compound, body);
+            only = body;
+            ++count;
+        }
+        if (face_count != indices.size() / 3 || count == 0) {
+            throw std::runtime_error("solid reconstruction would lose faces");
+        }
+        result = count == 1 ? only : compound;
+    } else if (result.ShapeType() == TopAbs_FACE) {
+        BRep_Builder b;
+        TopoDS_Shell shell;
+        b.MakeShell(shell);
+        b.Add(shell, result);
+        result = shell;
+    }
+    if (!BRepCheck_Analyzer(result).IsValid()) {
+        throw std::runtime_error("reconstructed topology is invalid");
+    }
     return std::make_unique<TopoDS_Shape>(result);
-} OP_CATCH
+}
+OP_CATCH
 }
 
 #include <BRepBuilderAPI_Transform.hxx>
@@ -366,48 +713,163 @@ std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double> position
 #include <sstream>
 #include "progress.h"
 namespace cadrum {
-bool NativeProgress::UserBreak() { return operation_cancelled(control); }
-void NativeProgress::Show(const Message_ProgressScope&, const bool) { operation_progress(control,GetPosition()); }
+bool NativeProgress::UserBreak() {
+    return operation_cancelled(control);
+}
+void NativeProgress::Show(const Message_ProgressScope&, const bool) {
+    operation_progress(control, GetPosition());
+}
 }
 namespace cadrum {
-OperationData op_copy(const TopoDS_Shape& s) try { BRepBuilderAPI_Copy builder(s);return operation_result(builder,{s}); } OP_CATCH
-OperationData op_transform(const TopoDS_Shape& s,uint32_t kind,rust::Slice<const double> v) try {
+OperationData op_copy(const TopoDS_Shape& s) try {
+    BRepBuilderAPI_Copy builder(s);
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_transform(const TopoDS_Shape& s, uint32_t kind, rust::Slice<const double> v) try {
     gp_Trsf t;
-    if(kind==0)t.SetTranslation(gp_Vec(v[0],v[1],v[2]));
-    else if(kind==1)t.SetRotation(gp_Ax1(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])),v[6]);
-    else if(kind==2)t.SetScale(gp_Pnt(v[0],v[1],v[2]),v[3]);
-    else t.SetMirror(gp_Ax2(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5])));
-    BRepBuilderAPI_Transform builder(s,t,true);return operation_result(builder,{s});
-} OP_CATCH
-OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs,size_t argument_count,uint32_t operation,const BooleanConfig& config,const OperationControl& control) try {
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    NCollection_List<TopoDS_Shape> args,tools;for(size_t i=0;i<argument_count;++i)args.Append(inputs[i]);for(size_t i=argument_count;i<inputs.size();++i)tools.Append(inputs[i]);
-    BRepAlgoAPI_BooleanOperation builder;builder.SetArguments(args);builder.SetTools(tools);builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));builder.SetNonDestructive(config.non_destructive);builder.SetRunParallel(config.parallel);builder.SetFuzzyValue(config.fuzzy);builder.SetGlue(static_cast<BOPAlgo_GlueEnum>(config.glue));
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}
-    auto out=operation_result(builder,inputs);if(builder.HasWarnings()){std::ostringstream warnings;builder.DumpWarnings(warnings);out.warnings.push_back(warnings.str());}
-    std::ostringstream effective;effective<<"fuzzy="<<builder.FuzzyValue()<<" glue="<<config.glue<<" non_destructive="<<config.non_destructive<<" parallel="<<config.parallel;out.diagnostics.push_back(effective.str());return out;
-} OP_CATCH
+    if (kind == 0) {
+        t.SetTranslation(gp_Vec(v[0], v[1], v[2]));
+    } else if (kind == 1) {
+        t.SetRotation(gp_Ax1(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5])), v[6]);
+    } else if (kind == 2) {
+        t.SetScale(gp_Pnt(v[0], v[1], v[2]), v[3]);
+    } else {
+        t.SetMirror(gp_Ax2(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5])));
+    }
+    BRepBuilderAPI_Transform builder(s, t, true);
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_boolean(const std::vector<TopoDS_Shape>& inputs, size_t argument_count, uint32_t operation,
+                         const BooleanConfig& config, const OperationControl& control) try {
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    NCollection_List<TopoDS_Shape> args, tools;
+    for (size_t i = 0; i < argument_count; ++i) {
+        args.Append(inputs[i]);
+    }
+    for (size_t i = argument_count; i < inputs.size(); ++i) {
+        tools.Append(inputs[i]);
+    }
+    BRepAlgoAPI_BooleanOperation builder;
+    builder.SetArguments(args);
+    builder.SetTools(tools);
+    builder.SetOperation(static_cast<BOPAlgo_Operation>(operation));
+    builder.SetNonDestructive(config.non_destructive);
+    builder.SetRunParallel(config.parallel);
+    builder.SetFuzzyValue(config.fuzzy);
+    builder.SetGlue(static_cast<BOPAlgo_GlueEnum>(config.glue));
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (builder.HasErrors()) {
+        std::ostringstream error;
+        builder.DumpErrors(error);
+        throw std::runtime_error(error.str());
+    }
+    auto out = operation_result(builder, inputs);
+    if (builder.HasWarnings()) {
+        std::ostringstream warnings;
+        builder.DumpWarnings(warnings);
+        out.warnings.push_back(warnings.str());
+    }
+    std::ostringstream effective;
+    effective << "fuzzy=" << builder.FuzzyValue() << " glue=" << config.glue
+              << " non_destructive=" << config.non_destructive << " parallel=" << config.parallel;
+    out.diagnostics.push_back(effective.str());
+    return out;
+}
+OP_CATCH
 
-OperationData op_blend(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& edges,double radius,bool chamfer) try {
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(s,TopAbs_EDGE,members);
-    for(const auto& edge:edges)if(!members.Contains(edge))throw std::runtime_error("selected edge is not a member of the input shape");
-    if(edges.empty())throw std::runtime_error("no selected edges");
-    if(chamfer){BRepFilletAPI_MakeChamfer builder(s);for(const auto& edge:edges)builder.Add(radius,TopoDS::Edge(edge));builder.Build();if(!builder.IsDone())throw std::runtime_error("chamfer failed");return operation_result(builder,{s});}
-    BRepFilletAPI_MakeFillet builder(s);for(const auto& edge:edges)builder.Add(radius,TopoDS::Edge(edge));builder.Build();if(!builder.IsDone())throw std::runtime_error("fillet failed");return operation_result(builder,{s});
-} OP_CATCH
-OperationData op_unify(const TopoDS_Shape& s,double linear,double angular) try {
-    ShapeUpgrade_UnifySameDomain builder(s,true,true,false);builder.SetLinearTolerance(linear);builder.SetAngularTolerance(angular);builder.Build();const auto& history=builder.History();
-    return collect_history(builder.Shape(),{s},[&](const TopoDS_Shape& v){return history->Modified(v);},[&](const TopoDS_Shape& v){return history->Generated(v);},[&](const TopoDS_Shape& v){return history->IsRemoved(v);});
-} OP_CATCH
-OperationData op_sew_history(const std::vector<TopoDS_Shape>& inputs,double tolerance) try {
-    if(inputs.empty()){OperationData out{};out.shape=native_build({},TopAbs_COMPOUND);out.complete=true;return out;}
-    BRepBuilderAPI_Sewing sewing(tolerance);for(const auto& s:inputs){if(!native_loose(s)->empty())throw std::runtime_error("unsupported: sewing requires face-based topology");sewing.Add(s);}sewing.Perform();
-    auto modified=[&](const TopoDS_Shape& s){NCollection_List<TopoDS_Shape> out;if(sewing.IsModifiedSubShape(s))out.Append(sewing.ModifiedSubShape(s));else if(sewing.IsModified(s))out.Append(sewing.Modified(s));return out;};
-    return collect_history(sewing.SewedShape(),inputs,modified,[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return false;});
-} OP_CATCH
-std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape& s,uint32_t index) try {NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(s,map);if(index<1||index>uint32_t(map.Extent()))throw std::runtime_error("topology index out of bounds");return std::make_unique<TopoDS_Shape>(map(int(index)));} OP_CATCH
+OperationData op_blend(const TopoDS_Shape& s, const std::vector<TopoDS_Shape>& edges, double radius,
+                       bool chamfer) try {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> members;
+    TopExp::MapShapes(s, TopAbs_EDGE, members);
+    for (const auto& edge : edges) {
+        if (!members.Contains(edge)) {
+            throw std::runtime_error("selected edge is not a member of the input shape");
+        }
+    }
+    if (edges.empty()) {
+        throw std::runtime_error("no selected edges");
+    }
+    if (chamfer) {
+        BRepFilletAPI_MakeChamfer builder(s);
+        for (const auto& edge : edges) {
+            builder.Add(radius, TopoDS::Edge(edge));
+        }
+        builder.Build();
+        if (!builder.IsDone()) {
+            throw std::runtime_error("chamfer failed");
+        }
+        return operation_result(builder, {s});
+    }
+    BRepFilletAPI_MakeFillet builder(s);
+    for (const auto& edge : edges) {
+        builder.Add(radius, TopoDS::Edge(edge));
+    }
+    builder.Build();
+    if (!builder.IsDone()) {
+        throw std::runtime_error("fillet failed");
+    }
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_unify(const TopoDS_Shape& s, double linear, double angular) try {
+    ShapeUpgrade_UnifySameDomain builder(s, true, true, false);
+    builder.SetLinearTolerance(linear);
+    builder.SetAngularTolerance(angular);
+    builder.Build();
+    const auto& history = builder.History();
+    return collect_history(
+        builder.Shape(), {s}, [&](const TopoDS_Shape& v) { return history->Modified(v); },
+        [&](const TopoDS_Shape& v) { return history->Generated(v); },
+        [&](const TopoDS_Shape& v) { return history->IsRemoved(v); });
+}
+OP_CATCH
+OperationData op_sew_history(const std::vector<TopoDS_Shape>& inputs, double tolerance) try {
+    if (inputs.empty()) {
+        OperationData out{};
+        out.shape = native_build({}, TopAbs_COMPOUND);
+        out.complete = true;
+        return out;
+    }
+    BRepBuilderAPI_Sewing sewing(tolerance);
+    for (const auto& s : inputs) {
+        if (!native_loose(s)->empty()) {
+            throw std::runtime_error("unsupported: sewing requires face-based topology");
+        }
+        sewing.Add(s);
+    }
+    sewing.Perform();
+    auto modified = [&](const TopoDS_Shape& s) {
+        NCollection_List<TopoDS_Shape> out;
+        if (sewing.IsModifiedSubShape(s)) {
+            out.Append(sewing.ModifiedSubShape(s));
+        } else if (sewing.IsModified(s)) {
+            out.Append(sewing.Modified(s));
+        }
+        return out;
+    };
+    return collect_history(
+        sewing.SewedShape(), inputs, modified,
+        [](const TopoDS_Shape&) { return NCollection_List<TopoDS_Shape>(); },
+        [](const TopoDS_Shape&) { return false; });
+}
+OP_CATCH
+std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape& s, uint32_t index) try {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(s, map);
+    if (index < 1 || index > uint32_t(map.Extent())) {
+        throw std::runtime_error("topology index out of bounds");
+    }
+    return std::make_unique<TopoDS_Shape>(map(int(index)));
+}
+OP_CATCH
 }
 
 #include <BRepAlgoAPI_Section.hxx>
@@ -416,214 +878,776 @@ std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape& s,uint32_t inde
 #include <BRepGProp.hxx>
 #include <GProp_GProps.hxx>
 namespace cadrum {
-std::unique_ptr<TopoDS_Shape> op_plane(rust::Slice<const double> v) try {return std::make_unique<TopoDS_Shape>(BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5]))).Face());} OP_CATCH
-OperationData op_section(const TopoDS_Shape& a,const TopoDS_Shape& b,double tolerance,rust::Slice<const bool> flags) try {
-    BRepAlgoAPI_Section builder(a,b,false);builder.Approximation(flags[0]);builder.ComputePCurveOn1(flags[1]);builder.ComputePCurveOn2(flags[2]);builder.SetFuzzyValue(tolerance);builder.SetNonDestructive(true);builder.Build();
-    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}return operation_result(builder,{a,b});
-} OP_CATCH
-OperationData op_split(const std::vector<TopoDS_Shape>& inputs,double tolerance) try {
-    BOPAlgo_Splitter builder;builder.AddArgument(inputs[0]);for(size_t i=1;i<inputs.size();++i)builder.AddTool(inputs[i]);builder.SetFuzzyValue(tolerance);builder.SetNonDestructive(true);builder.Perform();
-    if(builder.HasErrors()){std::ostringstream error;builder.DumpErrors(error);throw std::runtime_error(error.str());}return operation_result(builder,inputs);
-} OP_CATCH
-std::unique_ptr<std::vector<TopoDS_Shape>> op_children(const TopoDS_Shape& s) try {auto out=native_vec_new();for(TopoDS_Iterator it(s);it.More();it.Next())out->push_back(it.Value());return out;} OP_CATCH
+std::unique_ptr<TopoDS_Shape> op_plane(rust::Slice<const double> v) try {
+    return std::make_unique<TopoDS_Shape>(
+        BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5]))).Face());
+}
+OP_CATCH
+OperationData op_section(const TopoDS_Shape& a, const TopoDS_Shape& b, double tolerance,
+                         rust::Slice<const bool> flags) try {
+    BRepAlgoAPI_Section builder(a, b, false);
+    builder.Approximation(flags[0]);
+    builder.ComputePCurveOn1(flags[1]);
+    builder.ComputePCurveOn2(flags[2]);
+    builder.SetFuzzyValue(tolerance);
+    builder.SetNonDestructive(true);
+    builder.Build();
+    if (builder.HasErrors()) {
+        std::ostringstream error;
+        builder.DumpErrors(error);
+        throw std::runtime_error(error.str());
+    }
+    return operation_result(builder, {a, b});
+}
+OP_CATCH
+OperationData op_split(const std::vector<TopoDS_Shape>& inputs, double tolerance) try {
+    BOPAlgo_Splitter builder;
+    builder.AddArgument(inputs[0]);
+    for (size_t i = 1; i < inputs.size(); ++i) {
+        builder.AddTool(inputs[i]);
+    }
+    builder.SetFuzzyValue(tolerance);
+    builder.SetNonDestructive(true);
+    builder.Perform();
+    if (builder.HasErrors()) {
+        std::ostringstream error;
+        builder.DumpErrors(error);
+        throw std::runtime_error(error.str());
+    }
+    return operation_result(builder, inputs);
+}
+OP_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> op_children(const TopoDS_Shape& s) try {
+    auto out = native_vec_new();
+    for (TopoDS_Iterator it(s); it.More(); it.Next()) {
+        out->push_back(it.Value());
+    }
+    return out;
+}
+OP_CATCH
 rust::Vec<double> op_centroid(const TopoDS_Shape& s) try {
     GProp_GProps p;
-    if(TopExp_Explorer(s,TopAbs_SOLID).More())BRepGProp::VolumeProperties(s,p,1e-9);
-    else if(TopExp_Explorer(s,TopAbs_FACE).More())BRepGProp::SurfaceProperties(s,p,1e-9);
-    else BRepGProp::LinearProperties(s,p);
-    if(std::abs(p.Mass())<1e-30){TopExp_Explorer ex(s,TopAbs_VERTEX);if(!ex.More())return {0.0,0.0,0.0};const auto v=BRep_Tool::Pnt(TopoDS::Vertex(ex.Current()));return {v.X(),v.Y(),v.Z()};}
-    const auto v=p.CentreOfMass();return {v.X(),v.Y(),v.Z()};
-} OP_CATCH
-rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape& parent,const TopoDS_Shape& child) try {
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> all,members;TopExp::MapShapes(parent,all);TopExp::MapShapes(child,members);rust::Vec<uint32_t> out;
-    for(int i=1;i<=members.Extent();++i){const int index=all.FindIndex(members(i));if(index>0)out.push_back(index);}return out;
-} OP_CATCH
-OperationData op_surface_offset(const TopoDS_Shape& s,double distance,double tolerance,bool intersection_join,bool intersect_all,bool thicken) try {
-    BRepOffset_MakeOffset builder;builder.Initialize(s,distance,tolerance,BRepOffset_Skin,intersect_all,false,intersection_join?GeomAbs_Intersection:GeomAbs_Arc,thicken);builder.MakeOffsetShape();
-    if(!builder.IsDone()||builder.Shape().IsNull())throw std::runtime_error("offset failed");
-    TopoDS_Shape result=builder.Shape();
-    if(thicken){if(result.ShapeType()!=TopAbs_SOLID)throw std::runtime_error("thickening did not produce a solid");auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient thickened solid");result=solid;}
-    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid offset result");
-    return collect_history(result,{s},[&](const TopoDS_Shape& v){return builder.Modified(v);},[&](const TopoDS_Shape& v){return builder.Generated(v);},[&](const TopoDS_Shape& v){return builder.IsDeleted(v);});
-} OP_CATCH
+    if (TopExp_Explorer(s, TopAbs_SOLID).More()) {
+        BRepGProp::VolumeProperties(s, p, 1e-9);
+    } else if (TopExp_Explorer(s, TopAbs_FACE).More()) {
+        BRepGProp::SurfaceProperties(s, p, 1e-9);
+    } else {
+        BRepGProp::LinearProperties(s, p);
+    }
+    if (std::abs(p.Mass()) < 1e-30) {
+        TopExp_Explorer ex(s, TopAbs_VERTEX);
+        if (!ex.More()) {
+            return {0.0, 0.0, 0.0};
+        }
+        const auto v = BRep_Tool::Pnt(TopoDS::Vertex(ex.Current()));
+        return {v.X(), v.Y(), v.Z()};
+    }
+    const auto v = p.CentreOfMass();
+    return {v.X(), v.Y(), v.Z()};
+}
+OP_CATCH
+rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape& parent, const TopoDS_Shape& child) try {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all, members;
+    TopExp::MapShapes(parent, all);
+    TopExp::MapShapes(child, members);
+    rust::Vec<uint32_t> out;
+    for (int i = 1; i <= members.Extent(); ++i) {
+        const int index = all.FindIndex(members(i));
+        if (index > 0) {
+            out.push_back(index);
+        }
+    }
+    return out;
+}
+OP_CATCH
+OperationData op_surface_offset(const TopoDS_Shape& s, double distance, double tolerance,
+                                bool intersection_join, bool intersect_all, bool thicken) try {
+    BRepOffset_MakeOffset builder;
+    builder.Initialize(s, distance, tolerance, BRepOffset_Skin, intersect_all, false,
+                       intersection_join ? GeomAbs_Intersection : GeomAbs_Arc, thicken);
+    builder.MakeOffsetShape();
+    if (!builder.IsDone() || builder.Shape().IsNull()) {
+        throw std::runtime_error("offset failed");
+    }
+    TopoDS_Shape result = builder.Shape();
+    if (thicken) {
+        if (result.ShapeType() != TopAbs_SOLID) {
+            throw std::runtime_error("thickening did not produce a solid");
+        }
+        auto solid = TopoDS::Solid(result);
+        if (!BRepLib::OrientClosedSolid(solid)) {
+            throw std::runtime_error("cannot orient thickened solid");
+        }
+        result = solid;
+    }
+    if (!BRepCheck_Analyzer(result).IsValid()) {
+        throw std::runtime_error("invalid offset result");
+    }
+    return collect_history(
+        result, {s}, [&](const TopoDS_Shape& v) { return builder.Modified(v); },
+        [&](const TopoDS_Shape& v) { return builder.Generated(v); },
+        [&](const TopoDS_Shape& v) { return builder.IsDeleted(v); });
+}
+OP_CATCH
 }
 
 #include <GCPnts_AbscissaPoint.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
 namespace cadrum {
-static void append_frame(rust::Vec<double>& out,const gp_Ax2& f){append_xyz(out,f.Location().XYZ());append_xyz(out,f.Direction().XYZ());append_xyz(out,f.XDirection().XYZ());}
+static void append_frame(rust::Vec<double>& out, const gp_Ax2& f) {
+    append_xyz(out, f.Location().XYZ());
+    append_xyz(out, f.Direction().XYZ());
+    append_xyz(out, f.XDirection().XYZ());
+}
 GeometryInfoData op_curve_info(const TopoDS_Edge& edge) try {
-    BRepAdaptor_Curve c(edge);GeometryInfoData d{};d.kind=c.GetType();d.range={c.FirstParameter(),c.LastParameter()};d.u_periodic=c.IsPeriodic();if(d.u_periodic)d.u_period=c.Period();
-    switch(c.GetType()){
-    case GeomAbs_Line:append_xyz(d.frame,c.Line().Location().XYZ());append_xyz(d.frame,c.Line().Direction().XYZ());break;
-    case GeomAbs_Circle:append_frame(d.frame,c.Circle().Position());d.parameters.push_back(c.Circle().Radius());break;
-    case GeomAbs_Ellipse:append_frame(d.frame,c.Ellipse().Position());d.parameters={c.Ellipse().MajorRadius(),c.Ellipse().MinorRadius()};break;
-    default:break;}return d;
-} OP_CATCH
+    BRepAdaptor_Curve c(edge);
+    GeometryInfoData d{};
+    d.kind = c.GetType();
+    d.range = {c.FirstParameter(), c.LastParameter()};
+    d.u_periodic = c.IsPeriodic();
+    if (d.u_periodic) {
+        d.u_period = c.Period();
+    }
+    switch (c.GetType()) {
+    case GeomAbs_Line:
+        append_xyz(d.frame, c.Line().Location().XYZ());
+        append_xyz(d.frame, c.Line().Direction().XYZ());
+        break;
+    case GeomAbs_Circle:
+        append_frame(d.frame, c.Circle().Position());
+        d.parameters.push_back(c.Circle().Radius());
+        break;
+    case GeomAbs_Ellipse:
+        append_frame(d.frame, c.Ellipse().Position());
+        d.parameters = {c.Ellipse().MajorRadius(), c.Ellipse().MinorRadius()};
+        break;
+    default:
+        break;
+    }
+    return d;
+}
+OP_CATCH
 GeometryInfoData op_surface_info(const TopoDS_Face& face) try {
-    BRepAdaptor_Surface s(face);GeometryInfoData d{};d.kind=s.GetType();double a,b,c,e;BRepTools::UVBounds(face,a,b,c,e);d.range={a,b,c,e};d.u_periodic=s.IsUPeriodic();d.v_periodic=s.IsVPeriodic();if(d.u_periodic)d.u_period=s.UPeriod();if(d.v_periodic)d.v_period=s.VPeriod();
-    switch(s.GetType()){
-    case GeomAbs_Plane:append_frame(d.frame,s.Plane().Position().Ax2());break;
-    case GeomAbs_Cylinder:append_frame(d.frame,s.Cylinder().Position().Ax2());d.parameters={s.Cylinder().Radius()};break;
-    case GeomAbs_Cone:append_frame(d.frame,s.Cone().Position().Ax2());d.parameters={s.Cone().RefRadius(),s.Cone().SemiAngle()};break;
-    case GeomAbs_Sphere:append_frame(d.frame,s.Sphere().Position().Ax2());d.parameters={s.Sphere().Radius()};break;
-    case GeomAbs_Torus:append_frame(d.frame,s.Torus().Position().Ax2());d.parameters={s.Torus().MajorRadius(),s.Torus().MinorRadius()};break;
-    default:break;}return d;
-} OP_CATCH
-double op_curve_length(const TopoDS_Edge& edge,double tolerance) try {BRepAdaptor_Curve c(edge);return GCPnts_AbscissaPoint::Length(c,c.FirstParameter(),c.LastParameter(),tolerance);} OP_CATCH
-rust::Vec<double> op_curve_abscissae(const TopoDS_Edge& edge,uint32_t count,double tolerance) try {
-    BRepAdaptor_Curve c(edge);const double length=GCPnts_AbscissaPoint::Length(c,tolerance);rust::Vec<double> out;out.push_back(c.FirstParameter());
-    for(uint32_t i=1;i+1<count;++i){GCPnts_AbscissaPoint point(tolerance,c,length*double(i)/double(count-1),c.FirstParameter());if(!point.IsDone())throw std::runtime_error("arc-length inversion failed");out.push_back(point.Parameter());}out.push_back(c.LastParameter());return out;
-} OP_CATCH
-uint32_t op_classify_uv(const TopoDS_Face& face,double u,double v,double tolerance) try {BRepClass_FaceClassifier classifier(face,gp_Pnt2d(u,v),tolerance);return classifier.State();} OP_CATCH
+    BRepAdaptor_Surface s(face);
+    GeometryInfoData d{};
+    d.kind = s.GetType();
+    double a, b, c, e;
+    BRepTools::UVBounds(face, a, b, c, e);
+    d.range = {a, b, c, e};
+    d.u_periodic = s.IsUPeriodic();
+    d.v_periodic = s.IsVPeriodic();
+    if (d.u_periodic) {
+        d.u_period = s.UPeriod();
+    }
+    if (d.v_periodic) {
+        d.v_period = s.VPeriod();
+    }
+    switch (s.GetType()) {
+    case GeomAbs_Plane:
+        append_frame(d.frame, s.Plane().Position().Ax2());
+        break;
+    case GeomAbs_Cylinder:
+        append_frame(d.frame, s.Cylinder().Position().Ax2());
+        d.parameters = {s.Cylinder().Radius()};
+        break;
+    case GeomAbs_Cone:
+        append_frame(d.frame, s.Cone().Position().Ax2());
+        d.parameters = {s.Cone().RefRadius(), s.Cone().SemiAngle()};
+        break;
+    case GeomAbs_Sphere:
+        append_frame(d.frame, s.Sphere().Position().Ax2());
+        d.parameters = {s.Sphere().Radius()};
+        break;
+    case GeomAbs_Torus:
+        append_frame(d.frame, s.Torus().Position().Ax2());
+        d.parameters = {s.Torus().MajorRadius(), s.Torus().MinorRadius()};
+        break;
+    default:
+        break;
+    }
+    return d;
+}
+OP_CATCH
+double op_curve_length(const TopoDS_Edge& edge, double tolerance) try {
+    BRepAdaptor_Curve c(edge);
+    return GCPnts_AbscissaPoint::Length(c, c.FirstParameter(), c.LastParameter(), tolerance);
+}
+OP_CATCH
+rust::Vec<double> op_curve_abscissae(const TopoDS_Edge& edge, uint32_t count, double tolerance) try {
+    BRepAdaptor_Curve c(edge);
+    const double length = GCPnts_AbscissaPoint::Length(c, tolerance);
+    rust::Vec<double> out;
+    out.push_back(c.FirstParameter());
+    for (uint32_t i = 1; i + 1 < count; ++i) {
+        GCPnts_AbscissaPoint point(tolerance, c, length * double(i) / double(count - 1), c.FirstParameter());
+        if (!point.IsDone()) {
+            throw std::runtime_error("arc-length inversion failed");
+        }
+        out.push_back(point.Parameter());
+    }
+    out.push_back(c.LastParameter());
+    return out;
+}
+OP_CATCH
+uint32_t op_classify_uv(const TopoDS_Face& face, double u, double v, double tolerance) try {
+    BRepClass_FaceClassifier classifier(face, gp_Pnt2d(u, v), tolerance);
+    return classifier.State();
+}
+OP_CATCH
 std::unique_ptr<std::vector<TopoDS_Shape>> op_boundary_wires(const TopoDS_Face& face) try {
-    auto out=native_vec_new();const auto outer=BRepTools::OuterWire(face);if(!outer.IsNull())out->push_back(outer);
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(face,TopAbs_WIRE,map);for(int i=1;i<=map.Extent();++i)if(!map(i).IsSame(outer))out->push_back(map(i));return out;
-} OP_CATCH
-rust::Vec<double> op_properties(const TopoDS_Shape& s,uint32_t kind,double accuracy) try {
-    GProp_GProps p;double error=0.0;
-    if(kind==0)BRepGProp::LinearProperties(s,p);
-    else if(kind==1)error=BRepGProp::SurfaceProperties(s,p,accuracy);
-    else {if(!TopExp_Explorer(s,TopAbs_SOLID).More()&&!native_empty(s))throw std::runtime_error("unsupported: volume requires solid topology");error=BRepGProp::VolumeProperties(s,p,accuracy,true);}
-    const auto c=p.CentreOfMass();const auto i=p.MatrixOfInertia();return {p.Mass(),c.X(),c.Y(),c.Z(),i(1,1),i(1,2),i(1,3),i(2,1),i(2,2),i(2,3),i(3,1),i(3,2),i(3,3),error};
-} OP_CATCH
-uint32_t op_classify_point(const TopoDS_Shape& s,double x,double y,double z,double tolerance) try {
-    bool found=false,boundary=false;for(TopExp_Explorer ex(s,TopAbs_SOLID);ex.More();ex.Next()){found=true;BRepClass3d_SolidClassifier classifier(ex.Current(),gp_Pnt(x,y,z),tolerance);if(classifier.State()==TopAbs_IN)return TopAbs_IN;if(classifier.State()==TopAbs_ON)boundary=true;}
-    if(!found)throw std::runtime_error("unsupported: point containment requires solids");
-    return boundary?TopAbs_ON:TopAbs_OUT;
-} OP_CATCH
-DistanceData op_distance(const TopoDS_Shape& a,const TopoDS_Shape& b,double tolerance) try {
-    if(native_empty(a)||native_empty(b))throw std::runtime_error("unsupported: distance to empty topology");
-    BRepExtrema_DistShapeShape distance(a,b,tolerance);if(!distance.IsDone())throw std::runtime_error("closest-point search failed");
-    DistanceData out{};out.distance=distance.Value();out.inner_solution=distance.InnerSolution();out.first=native_vec_new();out.second=native_vec_new();
-    for(int i=1;i<=distance.NbSolution();++i){append_xyz(out.points,distance.PointOnShape1(i).XYZ());append_xyz(out.points,distance.PointOnShape2(i).XYZ());out.first->push_back(distance.SupportOnShape1(i));out.second->push_back(distance.SupportOnShape2(i));}return out;
-} OP_CATCH
-std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape& parent,const TopoDS_Shape& subshape,uint32_t kind) try {
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> all;TopExp::MapShapes(parent,all);if(!all.Contains(subshape))throw std::runtime_error("foreign subshape in adjacency query");
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> ancestors;TopExp::MapShapes(parent,static_cast<TopAbs_ShapeEnum>(kind),ancestors);auto out=native_vec_new();
-    for(int i=1;i<=ancestors.Extent();++i){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(ancestors(i),members);if(members.Contains(subshape))out->push_back(ancestors(i));}return out;
-} OP_CATCH
+    auto out = native_vec_new();
+    const auto outer = BRepTools::OuterWire(face);
+    if (!outer.IsNull()) {
+        out->push_back(outer);
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(face, TopAbs_WIRE, map);
+    for (int i = 1; i <= map.Extent(); ++i) {
+        if (!map(i).IsSame(outer)) {
+            out->push_back(map(i));
+        }
+    }
+    return out;
+}
+OP_CATCH
+rust::Vec<double> op_properties(const TopoDS_Shape& s, uint32_t kind, double accuracy) try {
+    GProp_GProps p;
+    double error = 0.0;
+    if (kind == 0) {
+        BRepGProp::LinearProperties(s, p);
+    } else if (kind == 1) {
+        error = BRepGProp::SurfaceProperties(s, p, accuracy);
+    } else {
+        if (!TopExp_Explorer(s, TopAbs_SOLID).More() && !native_empty(s)) {
+            throw std::runtime_error("unsupported: volume requires solid topology");
+        }
+        error = BRepGProp::VolumeProperties(s, p, accuracy, true);
+    }
+    const auto c = p.CentreOfMass();
+    const auto i = p.MatrixOfInertia();
+    return {p.Mass(), c.X(),   c.Y(),   c.Z(),   i(1, 1), i(1, 2), i(1, 3),
+            i(2, 1),  i(2, 2), i(2, 3), i(3, 1), i(3, 2), i(3, 3), error};
+}
+OP_CATCH
+uint32_t op_classify_point(const TopoDS_Shape& s, double x, double y, double z, double tolerance) try {
+    bool found = false, boundary = false;
+    for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
+        found = true;
+        BRepClass3d_SolidClassifier classifier(ex.Current(), gp_Pnt(x, y, z), tolerance);
+        if (classifier.State() == TopAbs_IN) {
+            return TopAbs_IN;
+        }
+        if (classifier.State() == TopAbs_ON) {
+            boundary = true;
+        }
+    }
+    if (!found) {
+        throw std::runtime_error("unsupported: point containment requires solids");
+    }
+    return boundary ? TopAbs_ON : TopAbs_OUT;
+}
+OP_CATCH
+DistanceData op_distance(const TopoDS_Shape& a, const TopoDS_Shape& b, double tolerance) try {
+    if (native_empty(a) || native_empty(b)) {
+        throw std::runtime_error("unsupported: distance to empty topology");
+    }
+    BRepExtrema_DistShapeShape distance(a, b, tolerance);
+    if (!distance.IsDone()) {
+        throw std::runtime_error("closest-point search failed");
+    }
+    DistanceData out{};
+    out.distance = distance.Value();
+    out.inner_solution = distance.InnerSolution();
+    out.first = native_vec_new();
+    out.second = native_vec_new();
+    for (int i = 1; i <= distance.NbSolution(); ++i) {
+        append_xyz(out.points, distance.PointOnShape1(i).XYZ());
+        append_xyz(out.points, distance.PointOnShape2(i).XYZ());
+        out.first->push_back(distance.SupportOnShape1(i));
+        out.second->push_back(distance.SupportOnShape2(i));
+    }
+    return out;
+}
+OP_CATCH
+std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape& parent,
+                                                        const TopoDS_Shape& subshape, uint32_t kind) try {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all;
+    TopExp::MapShapes(parent, all);
+    if (!all.Contains(subshape)) {
+        throw std::runtime_error("foreign subshape in adjacency query");
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> ancestors;
+    TopExp::MapShapes(parent, static_cast<TopAbs_ShapeEnum>(kind), ancestors);
+    auto out = native_vec_new();
+    for (int i = 1; i <= ancestors.Extent(); ++i) {
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> members;
+        TopExp::MapShapes(ancestors(i), members);
+        if (members.Contains(subshape)) {
+            out->push_back(ancestors(i));
+        }
+    }
+    return out;
+}
+OP_CATCH
 }
 
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <Law_Interpol.hxx>
 namespace cadrum {
-static std::unique_ptr<BRepOffsetAPI_MakePipeShell> make_pipe(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) {
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    const auto spine=TopoDS::Wire(inputs[0]);auto pipe=std::make_unique<BRepOffsetAPI_MakePipeShell>(spine);auto& builder=*pipe;builder.SetIsBuildHistory(config.law.empty());
-    builder.SetTransitionMode(static_cast<BRepBuilderAPI_TransitionMode>(config.transition));builder.SetTolerance(config.tolerance,config.boundary_tolerance,config.angular_tolerance);builder.SetForceApproxC1(config.force_c1);builder.SetMaxDegree(config.max_degree);builder.SetMaxSegments(config.max_segments);
-    switch(config.mode){
-    case 0:builder.SetMode(false);break;case 1:builder.SetMode(true);break;
-    case 2:builder.SetMode(gp_Ax2(gp_Pnt(config.frame[0],config.frame[1],config.frame[2]),gp_Dir(config.frame[3],config.frame[4],config.frame[5]),gp_Dir(config.frame[6],config.frame[7],config.frame[8])));break;
-    case 3:builder.SetMode(gp_Dir(config.frame[0],config.frame[1],config.frame[2]));break;
-    case 4:builder.SetDiscreteMode();break;
-    case 5:if(!builder.SetMode(inputs[config.guide]))throw std::runtime_error("unsupported: spine lacks pcurves on the selected support");break;
-    case 6:builder.SetMode(TopoDS::Wire(inputs[config.guide]),config.curvilinear,static_cast<BRepFill_TypeOfContact>(config.auxiliary_contact));break;
+static std::unique_ptr<BRepOffsetAPI_MakePipeShell> make_pipe(const std::vector<TopoDS_Shape>& inputs,
+                                                              size_t section_count, const SweepConfig& config,
+                                                              const OperationControl& control) {
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
     }
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> vertices;TopExp::MapShapes(spine,TopAbs_VERTEX,vertices);
-    for(size_t i=0;i<section_count;++i){
-        const auto& profile=inputs[i+1];const int location=config.locations[i];if(location>=0&&!vertices.Contains(inputs[location]))throw std::runtime_error("sweep: explicit section location is not a spine vertex");
-        if(!config.law.empty()){
-            NCollection_Array1<gp_Pnt2d> samples(1,int(config.law.size()/2));for(int j=1;j<=samples.Length();++j)samples(j)=gp_Pnt2d(config.law[2*(j-1)],config.law[2*(j-1)+1]);Handle(Law_Interpol) law=new Law_Interpol;law->Set(samples,spine.Closed());
-            if(location>=0)builder.SetLaw(profile,law,TopoDS::Vertex(inputs[location]),config.contact[i],config.correction[i]);else builder.SetLaw(profile,law,config.contact[i],config.correction[i]);
-        }else if(location>=0)builder.Add(profile,TopoDS::Vertex(inputs[location]),config.contact[i],config.correction[i]);else builder.Add(profile,config.contact[i],config.correction[i]);
+    const auto spine = TopoDS::Wire(inputs[0]);
+    auto pipe = std::make_unique<BRepOffsetAPI_MakePipeShell>(spine);
+    auto& builder = *pipe;
+    builder.SetIsBuildHistory(config.law.empty());
+    builder.SetTransitionMode(static_cast<BRepBuilderAPI_TransitionMode>(config.transition));
+    builder.SetTolerance(config.tolerance, config.boundary_tolerance, config.angular_tolerance);
+    builder.SetForceApproxC1(config.force_c1);
+    builder.SetMaxDegree(config.max_degree);
+    builder.SetMaxSegments(config.max_segments);
+    switch (config.mode) {
+    case 0:
+        builder.SetMode(false);
+        break;
+    case 1:
+        builder.SetMode(true);
+        break;
+    case 2:
+        builder.SetMode(gp_Ax2(gp_Pnt(config.frame[0], config.frame[1], config.frame[2]),
+                               gp_Dir(config.frame[3], config.frame[4], config.frame[5]),
+                               gp_Dir(config.frame[6], config.frame[7], config.frame[8])));
+        break;
+    case 3:
+        builder.SetMode(gp_Dir(config.frame[0], config.frame[1], config.frame[2]));
+        break;
+    case 4:
+        builder.SetDiscreteMode();
+        break;
+    case 5:
+        if (!builder.SetMode(inputs[config.guide])) {
+            throw std::runtime_error("unsupported: spine lacks pcurves on the selected support");
+        }
+        break;
+    case 6:
+        builder.SetMode(TopoDS::Wire(inputs[config.guide]), config.curvilinear,
+                        static_cast<BRepFill_TypeOfContact>(config.auxiliary_contact));
+        break;
     }
-    if(!builder.IsReady())throw std::runtime_error("sweep: pipe is not ready");
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+    TopExp::MapShapes(spine, TopAbs_VERTEX, vertices);
+    for (size_t i = 0; i < section_count; ++i) {
+        const auto& profile = inputs[i + 1];
+        const int location = config.locations[i];
+        if (location >= 0 && !vertices.Contains(inputs[location])) {
+            throw std::runtime_error("sweep: explicit section location is not a spine vertex");
+        }
+        if (!config.law.empty()) {
+            NCollection_Array1<gp_Pnt2d> samples(1, int(config.law.size() / 2));
+            for (int j = 1; j <= samples.Length(); ++j) {
+                samples(j) = gp_Pnt2d(config.law[2 * (j - 1)], config.law[2 * (j - 1) + 1]);
+            }
+            Handle(Law_Interpol) law = new Law_Interpol;
+            law->Set(samples, spine.Closed());
+            if (location >= 0) {
+                builder.SetLaw(profile, law, TopoDS::Vertex(inputs[location]), config.contact[i],
+                               config.correction[i]);
+            } else {
+                builder.SetLaw(profile, law, config.contact[i], config.correction[i]);
+            }
+        } else if (location >= 0) {
+            builder.Add(profile, TopoDS::Vertex(inputs[location]), config.contact[i], config.correction[i]);
+        } else {
+            builder.Add(profile, config.contact[i], config.correction[i]);
+        }
+    }
+    if (!builder.IsReady()) {
+        throw std::runtime_error("sweep: pipe is not ready");
+    }
     return pipe;
 }
-SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs,size_t section_count,const SweepConfig& config,const OperationControl& control) try {
-    SweepData out{};out.sections=native_vec_new();if(config.simulation>0){auto simulator=make_pipe(inputs,section_count,config,control);NCollection_List<TopoDS_Shape> result;simulator->Simulate(config.simulation,result);for(const auto& shape:result)out.sections->push_back(shape);}
-    auto pipe=make_pipe(inputs,section_count,config,control);auto& builder=*pipe;
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    if(!builder.IsDone())throw std::runtime_error("sweep: pipe status "+std::to_string(int(builder.GetStatus())));
-    if(config.solid&&!builder.MakeSolid())throw std::runtime_error("sweep: open profile cannot produce a solid");
-    if(!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("sweep: invalid result");
-    if(config.law.empty())out.operation=operation_result(builder,inputs);else{out.operation.shape=std::make_unique<TopoDS_Shape>(builder.Shape());out.operation.complete=false;out.operation.warnings.push_back("OCCT scaling-law history is unavailable; native history building is disabled to avoid its kernel crash");}
-    out.status=builder.GetStatus();out.error=builder.ErrorOnSurface();return out;
-} OP_CATCH
+SweepData op_sweep(const std::vector<TopoDS_Shape>& inputs, size_t section_count, const SweepConfig& config,
+                   const OperationControl& control) try {
+    SweepData out{};
+    out.sections = native_vec_new();
+    if (config.simulation > 0) {
+        auto simulator = make_pipe(inputs, section_count, config, control);
+        NCollection_List<TopoDS_Shape> result;
+        simulator->Simulate(config.simulation, result);
+        for (const auto& shape : result) {
+            out.sections->push_back(shape);
+        }
+    }
+    auto pipe = make_pipe(inputs, section_count, config, control);
+    auto& builder = *pipe;
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (!builder.IsDone()) {
+        throw std::runtime_error("sweep: pipe status " + std::to_string(int(builder.GetStatus())));
+    }
+    if (config.solid && !builder.MakeSolid()) {
+        throw std::runtime_error("sweep: open profile cannot produce a solid");
+    }
+    if (!BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("sweep: invalid result");
+    }
+    if (config.law.empty()) {
+        out.operation = operation_result(builder, inputs);
+    } else {
+        out.operation.shape = std::make_unique<TopoDS_Shape>(builder.Shape());
+        out.operation.complete = false;
+        out.operation.warnings.push_back("OCCT scaling-law history is unavailable; native history building "
+                                         "is disabled to avoid its kernel crash");
+    }
+    out.status = builder.GetStatus();
+    out.error = builder.ErrorOnSurface();
+    return out;
+}
+OP_CATCH
 }
 
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 namespace cadrum {
-static std::unique_ptr<BRepOffsetAPI_ThruSections> loft_piece(const std::vector<TopoDS_Shape>& sections,const LoftConfig& config,const OperationControl& control){
-    auto builder=std::make_unique<BRepOffsetAPI_ThruSections>(config.solid,config.ruled,config.tolerance);builder->CheckCompatibility(config.compatibility);builder->SetMutableInput(false);builder->SetSmoothing(config.smoothing);builder->SetParType(static_cast<Approx_ParametrizationType>(config.parametrization));builder->SetContinuity(static_cast<GeomAbs_Shape>(config.continuity));builder->SetMaxDegree(config.max_degree);builder->SetCriteriumWeight(config.weights[0],config.weights[1],config.weights[2]);
-    bool has_wire=false;for(const auto& s:sections){if(s.ShapeType()==TopAbs_VERTEX)builder->AddVertex(TopoDS::Vertex(s));else{has_wire=true;if(config.solid&&!BRep_Tool::IsClosed(s))throw std::runtime_error("solid loft requires closed wires");builder->AddWire(TopoDS::Wire(s));}}
-    if(!has_wire)throw std::runtime_error("loft requires at least one wire section");
-    Handle(NativeProgress) progress=new NativeProgress(control);builder->Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    if(!builder->IsDone()||builder->Shape().IsNull())throw std::runtime_error("loft construction failed");
+static std::unique_ptr<BRepOffsetAPI_ThruSections> loft_piece(const std::vector<TopoDS_Shape>& sections,
+                                                              const LoftConfig& config,
+                                                              const OperationControl& control) {
+    auto builder = std::make_unique<BRepOffsetAPI_ThruSections>(config.solid, config.ruled, config.tolerance);
+    builder->CheckCompatibility(config.compatibility);
+    builder->SetMutableInput(false);
+    builder->SetSmoothing(config.smoothing);
+    builder->SetParType(static_cast<Approx_ParametrizationType>(config.parametrization));
+    builder->SetContinuity(static_cast<GeomAbs_Shape>(config.continuity));
+    builder->SetMaxDegree(config.max_degree);
+    builder->SetCriteriumWeight(config.weights[0], config.weights[1], config.weights[2]);
+    bool has_wire = false;
+    for (const auto& s : sections) {
+        if (s.ShapeType() == TopAbs_VERTEX) {
+            builder->AddVertex(TopoDS::Vertex(s));
+        } else {
+            has_wire = true;
+            if (config.solid && !BRep_Tool::IsClosed(s)) {
+                throw std::runtime_error("solid loft requires closed wires");
+            }
+            builder->AddWire(TopoDS::Wire(s));
+        }
+    }
+    if (!has_wire) {
+        throw std::runtime_error("loft requires at least one wire section");
+    }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder->Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (!builder->IsDone() || builder->Shape().IsNull()) {
+        throw std::runtime_error("loft construction failed");
+    }
     return builder;
 }
-OperationData op_loft(const std::vector<TopoDS_Shape>& sections,const LoftConfig& config,const OperationControl& control) try {
-    bool simple=true;for(const auto& s:sections)if(s.ShapeType()!=TopAbs_WIRE&&s.ShapeType()!=TopAbs_VERTEX)simple=false;
-    if(simple){auto builder=loft_piece(sections,config,control);if(!BRepCheck_Analyzer(builder->Shape()).IsValid())throw std::runtime_error("invalid loft result");return operation_result(*builder,sections);}
-    std::vector<std::vector<TopoDS_Face>> profiles;
-    for(const auto& s:sections){require_profile(s);std::vector<TopoDS_Face> faces;for(TopExp_Explorer ex(s,TopAbs_FACE);ex.More();ex.Next())faces.push_back(TopoDS::Face(ex.Current()));if(faces.empty()||(!profiles.empty()&&faces.size()!=profiles[0].size()))throw std::runtime_error("loft profiles have incompatible region counts");profiles.push_back(faces);}
-    Handle(BRepTools_History) history=new BRepTools_History;
-    BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0;
-    for(size_t region=0;region<profiles[0].size();++region){
-        std::vector<std::vector<TopoDS_Shape>> loops;
-        for(const auto& profile:profiles){auto wires=op_boundary_wires(profile[region]);if(!loops.empty()&&wires->size()!=loops[0].size())throw std::runtime_error("loft profiles have incompatible hole counts");loops.push_back(*wires);}
-        for(const auto& profile:profiles)history->Remove(profile[region]);
-        TopoDS_Shape body;
-        for(size_t loop=0;loop<loops[0].size();++loop){std::vector<TopoDS_Shape> wires;for(const auto& section:loops)wires.push_back(section[loop]);auto builder=loft_piece(wires,config,control);TopoDS_Shape result=builder->Shape();
-            NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> sources;
-            for(const auto& wire:wires)TopExp::MapShapes(wire,sources);
-            for(int i=1;i<=sources.Extent();++i){const auto& source=sources(i);if(!BRepTools_History::IsSupportedType(source))continue;
-                if(builder->IsDeleted(source))history->Remove(source);
-                for(const auto& modified:builder->Modified(source))history->AddModified(source,modified);
-                for(const auto& generated:builder->Generated(source))history->AddGenerated(source,generated);
-            }
-            for(size_t section=0;section<wires.size();++section){const auto& face=profiles[section][region];
-                if(config.solid&&loop==0){if(section==0&&!builder->FirstShape().IsNull())history->AddModified(face,builder->FirstShape());if(section+1==wires.size()&&!builder->LastShape().IsNull())history->AddModified(face,builder->LastShape());}
-                for(TopExp_Explorer edge(wires[section],TopAbs_EDGE);edge.More();edge.Next())for(const auto& generated:builder->Generated(edge.Current()))if(generated.ShapeType()==TopAbs_FACE)history->AddGenerated(face,generated);
-            }
-            if(config.solid){auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient profile loft");result=solid;if(loop==0)body=result;else{BRepAlgoAPI_Cut cut;cut.SetNonDestructive(true);cut.SetArguments(NCollection_List<TopoDS_Shape>{body});cut.SetTools(NCollection_List<TopoDS_Shape>{result});Handle(NativeProgress) progress=new NativeProgress(control);cut.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!cut.IsDone()||cut.HasErrors())throw std::runtime_error("hole loft subtraction failed");NCollection_List<TopoDS_Shape> arguments;arguments.Append(body);arguments.Append(result);history->Merge(arguments,cut);body=cut.Shape();}}
-            else{if(loop>0)result.Reverse();b.Add(compound,result);only=result;++count;}
+OperationData op_loft(const std::vector<TopoDS_Shape>& sections, const LoftConfig& config,
+                      const OperationControl& control) try {
+    bool simple = true;
+    for (const auto& s : sections) {
+        if (s.ShapeType() != TopAbs_WIRE && s.ShapeType() != TopAbs_VERTEX) {
+            simple = false;
         }
-        if(config.solid){b.Add(compound,body);only=body;++count;}
     }
-    const TopoDS_Shape result=count==1?only:compound;if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid composite loft");return collect_history(result,sections,[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
-} OP_CATCH
+    if (simple) {
+        auto builder = loft_piece(sections, config, control);
+        if (!BRepCheck_Analyzer(builder->Shape()).IsValid()) {
+            throw std::runtime_error("invalid loft result");
+        }
+        return operation_result(*builder, sections);
+    }
+    std::vector<std::vector<TopoDS_Face>> profiles;
+    for (const auto& s : sections) {
+        require_profile(s);
+        std::vector<TopoDS_Face> faces;
+        for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) {
+            faces.push_back(TopoDS::Face(ex.Current()));
+        }
+        if (faces.empty() || (!profiles.empty() && faces.size() != profiles[0].size())) {
+            throw std::runtime_error("loft profiles have incompatible region counts");
+        }
+        profiles.push_back(faces);
+    }
+    Handle(BRepTools_History) history = new BRepTools_History;
+    BRep_Builder b;
+    TopoDS_Compound compound;
+    b.MakeCompound(compound);
+    TopoDS_Shape only;
+    size_t count = 0;
+    for (size_t region = 0; region < profiles[0].size(); ++region) {
+        std::vector<std::vector<TopoDS_Shape>> loops;
+        for (const auto& profile : profiles) {
+            auto wires = op_boundary_wires(profile[region]);
+            if (!loops.empty() && wires->size() != loops[0].size()) {
+                throw std::runtime_error("loft profiles have incompatible hole counts");
+            }
+            loops.push_back(*wires);
+        }
+        for (const auto& profile : profiles) {
+            history->Remove(profile[region]);
+        }
+        TopoDS_Shape body;
+        for (size_t loop = 0; loop < loops[0].size(); ++loop) {
+            std::vector<TopoDS_Shape> wires;
+            for (const auto& section : loops) {
+                wires.push_back(section[loop]);
+            }
+            auto builder = loft_piece(wires, config, control);
+            TopoDS_Shape result = builder->Shape();
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> sources;
+            for (const auto& wire : wires) {
+                TopExp::MapShapes(wire, sources);
+            }
+            for (int i = 1; i <= sources.Extent(); ++i) {
+                const auto& source = sources(i);
+                if (!BRepTools_History::IsSupportedType(source)) {
+                    continue;
+                }
+                if (builder->IsDeleted(source)) {
+                    history->Remove(source);
+                }
+                for (const auto& modified : builder->Modified(source)) {
+                    history->AddModified(source, modified);
+                }
+                for (const auto& generated : builder->Generated(source)) {
+                    history->AddGenerated(source, generated);
+                }
+            }
+            for (size_t section = 0; section < wires.size(); ++section) {
+                const auto& face = profiles[section][region];
+                if (config.solid && loop == 0) {
+                    if (section == 0 && !builder->FirstShape().IsNull()) {
+                        history->AddModified(face, builder->FirstShape());
+                    }
+                    if (section + 1 == wires.size() && !builder->LastShape().IsNull()) {
+                        history->AddModified(face, builder->LastShape());
+                    }
+                }
+                for (TopExp_Explorer edge(wires[section], TopAbs_EDGE); edge.More(); edge.Next()) {
+                    for (const auto& generated : builder->Generated(edge.Current())) {
+                        if (generated.ShapeType() == TopAbs_FACE) {
+                            history->AddGenerated(face, generated);
+                        }
+                    }
+                }
+            }
+            if (config.solid) {
+                auto solid = TopoDS::Solid(result);
+                if (!BRepLib::OrientClosedSolid(solid)) {
+                    throw std::runtime_error("cannot orient profile loft");
+                }
+                result = solid;
+                if (loop == 0) {
+                    body = result;
+                } else {
+                    BRepAlgoAPI_Cut cut;
+                    cut.SetNonDestructive(true);
+                    cut.SetArguments(NCollection_List<TopoDS_Shape>{body});
+                    cut.SetTools(NCollection_List<TopoDS_Shape>{result});
+                    Handle(NativeProgress) progress = new NativeProgress(control);
+                    cut.Build(progress->Start());
+                    if (operation_cancelled(control)) {
+                        throw std::runtime_error("cancelled");
+                    }
+                    if (!cut.IsDone() || cut.HasErrors()) {
+                        throw std::runtime_error("hole loft subtraction failed");
+                    }
+                    NCollection_List<TopoDS_Shape> arguments;
+                    arguments.Append(body);
+                    arguments.Append(result);
+                    history->Merge(arguments, cut);
+                    body = cut.Shape();
+                }
+            } else {
+                if (loop > 0) {
+                    result.Reverse();
+                }
+                b.Add(compound, result);
+                only = result;
+                ++count;
+            }
+        }
+        if (config.solid) {
+            b.Add(compound, body);
+            only = body;
+            ++count;
+        }
+    }
+    const TopoDS_Shape result = count == 1 ? only : compound;
+    if (!BRepCheck_Analyzer(result).IsValid()) {
+        throw std::runtime_error("invalid composite loft");
+    }
+    return collect_history(
+        result, sections, [&](const TopoDS_Shape& s) { return history->Modified(s); },
+        [&](const TopoDS_Shape& s) { return history->Generated(s); },
+        [&](const TopoDS_Shape& s) { return history->IsRemoved(s); });
+}
+OP_CATCH
 }
 
 #include <BRepFilletAPI_MakeFillet2d.hxx>
 namespace cadrum {
-static void require_member(const TopoDS_Shape& parent,const TopoDS_Shape& child){NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> map;TopExp::MapShapes(parent,map);if(!map.Contains(child))throw std::runtime_error("selected topology is not a member of its input");}
-OperationData op_chamfer(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& selected,rust::Slice<const double> values,const OperationControl& control) try {
-    BRepFilletAPI_MakeChamfer builder(s);
-    for(size_t i=0;i<selected.size()/2;++i){const auto edge=TopoDS::Edge(selected[2*i]);const auto face=TopoDS::Face(selected[2*i+1]);require_member(s,face);require_member(face,edge);if(values[3*i]==0.0)builder.Add(values[3*i+1],values[3*i+2],edge,face);else builder.AddDA(values[3*i+1],values[3*i+2],edge,face);}
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("chamfer rejected local dimensions or geometry");return operation_result(builder,{s});
-} OP_CATCH
-OperationData op_variable_fillet(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& edges,rust::Slice<const double> values,rust::Slice<const uint32_t> counts,const OperationControl& control) try {
-    BRepFilletAPI_MakeFillet builder(s);size_t offset=0;for(size_t i=0;i<edges.size();++i){require_member(s,edges[i]);NCollection_Array1<gp_Pnt2d> samples(1,int(counts[i]));for(int j=1;j<=samples.Length();++j){samples(j)=gp_Pnt2d(values[offset],values[offset+1]);offset+=2;}builder.Add(samples,TopoDS::Edge(edges[i]));}
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("variable fillet rejected local radii or geometry");return operation_result(builder,{s});
-} OP_CATCH
-OperationData op_reversed(const TopoDS_Shape& s) try {return collect_history(s.Reversed(),{s},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>();},[](const TopoDS_Shape&){return false;});} OP_CATCH
-OperationData op_planar_blend(const TopoDS_Face& face,const std::vector<TopoDS_Shape>& selected,rust::Slice<const double> values,bool chamfer) try {
-    BRepAdaptor_Surface surface(face);if(surface.GetType()!=GeomAbs_Plane)throw std::runtime_error("unsupported: planar corner treatments require a planar face");
-    for(const auto& selection:selected)require_member(face,selection);
-    auto wires=op_boundary_wires(face);std::vector<TopoDS_Wire> boundaries;Handle(BRepTools_History) history=new BRepTools_History;
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> source;TopExp::MapShapes(face,source);
-    for(const auto& wire:*wires){
-        BRepBuilderAPI_MakeFace disk(surface.Plane(),TopoDS::Wire(wire),true);BRepFilletAPI_MakeFillet2d builder(disk.Face());bool changed=false;
-        NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> members;TopExp::MapShapes(wire,members);
-        if(chamfer){for(size_t i=0;i<selected.size()/2;++i)if(members.Contains(selected[2*i])){
-            if(!members.Contains(selected[2*i+1]))throw std::runtime_error("planar chamfer edges belong to different loops");
-            const auto edge=builder.AddChamfer(TopoDS::Edge(selected[2*i]),TopoDS::Edge(selected[2*i+1]),values[2*i],values[2*i+1]);if(builder.Status()!=ChFi2d_IsDone)throw std::runtime_error("planar chamfer status "+std::to_string(int(builder.Status())));
-            history->AddGenerated(selected[2*i],edge);history->AddGenerated(selected[2*i+1],edge);changed=true;
-        }}else for(const auto& vertex:selected)if(members.Contains(vertex)){
-            const auto edge=builder.AddFillet(TopoDS::Vertex(vertex),values[0]);if(builder.Status()!=ChFi2d_IsDone)throw std::runtime_error("planar fillet status "+std::to_string(int(builder.Status())));history->AddGenerated(vertex,edge);changed=true;
-        }
-        if(changed){builder.Build();if(!builder.IsDone())throw std::runtime_error("planar treatment failed");const auto result=TopoDS::Face(builder.Shape());if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid planar boundary treatment");boundaries.push_back(BRepTools::OuterWire(result));
-            for(int i=1;i<=source.Extent();++i)if(source(i).ShapeType()==TopAbs_EDGE&&members.Contains(source(i))&&builder.IsModified(TopoDS::Edge(source(i))))for(const auto& modified:builder.Modified(source(i)))history->AddModified(source(i),modified);
-        }else boundaries.push_back(BRepTools::OuterWire(disk.Face()));
+static void require_member(const TopoDS_Shape& parent, const TopoDS_Shape& child) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(parent, map);
+    if (!map.Contains(child)) {
+        throw std::runtime_error("selected topology is not a member of its input");
     }
-    BRepBuilderAPI_MakeFace combined(surface.Plane(),boundaries[0],true);for(size_t i=1;i<boundaries.size();++i)combined.Add(TopoDS::Wire(boundaries[i].Reversed()));
-    if(!combined.IsDone()||!BRepCheck_Analyzer(combined.Face()).IsValid())throw std::runtime_error("invalid planar corner treatment");
-    history->AddModified(face,combined.Face());
-    return collect_history(combined.Face(),{face},[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
-} OP_CATCH
+}
+OperationData op_chamfer(const TopoDS_Shape& s, const std::vector<TopoDS_Shape>& selected,
+                         rust::Slice<const double> values, const OperationControl& control) try {
+    BRepFilletAPI_MakeChamfer builder(s);
+    for (size_t i = 0; i < selected.size() / 2; ++i) {
+        const auto edge = TopoDS::Edge(selected[2 * i]);
+        const auto face = TopoDS::Face(selected[2 * i + 1]);
+        require_member(s, face);
+        require_member(face, edge);
+        if (values[3 * i] == 0.0) {
+            builder.Add(values[3 * i + 1], values[3 * i + 2], edge, face);
+        } else {
+            builder.AddDA(values[3 * i + 1], values[3 * i + 2], edge, face);
+        }
+    }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (!builder.IsDone() || !BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("chamfer rejected local dimensions or geometry");
+    }
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_variable_fillet(const TopoDS_Shape& s, const std::vector<TopoDS_Shape>& edges,
+                                 rust::Slice<const double> values, rust::Slice<const uint32_t> counts,
+                                 const OperationControl& control) try {
+    BRepFilletAPI_MakeFillet builder(s);
+    size_t offset = 0;
+    for (size_t i = 0; i < edges.size(); ++i) {
+        require_member(s, edges[i]);
+        NCollection_Array1<gp_Pnt2d> samples(1, int(counts[i]));
+        for (int j = 1; j <= samples.Length(); ++j) {
+            samples(j) = gp_Pnt2d(values[offset], values[offset + 1]);
+            offset += 2;
+        }
+        builder.Add(samples, TopoDS::Edge(edges[i]));
+    }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (!builder.IsDone() || !BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("variable fillet rejected local radii or geometry");
+    }
+    return operation_result(builder, {s});
+}
+OP_CATCH
+OperationData op_reversed(const TopoDS_Shape& s) try {
+    return collect_history(
+        s.Reversed(), {s}, [](const TopoDS_Shape&) { return NCollection_List<TopoDS_Shape>(); },
+        [](const TopoDS_Shape&) { return NCollection_List<TopoDS_Shape>(); },
+        [](const TopoDS_Shape&) { return false; });
+}
+OP_CATCH
+OperationData op_planar_blend(const TopoDS_Face& face, const std::vector<TopoDS_Shape>& selected,
+                              rust::Slice<const double> values, bool chamfer) try {
+    BRepAdaptor_Surface surface(face);
+    if (surface.GetType() != GeomAbs_Plane) {
+        throw std::runtime_error("unsupported: planar corner treatments require a planar face");
+    }
+    for (const auto& selection : selected) {
+        require_member(face, selection);
+    }
+    auto wires = op_boundary_wires(face);
+    std::vector<TopoDS_Wire> boundaries;
+    Handle(BRepTools_History) history = new BRepTools_History;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> source;
+    TopExp::MapShapes(face, source);
+    for (const auto& wire : *wires) {
+        BRepBuilderAPI_MakeFace disk(surface.Plane(), TopoDS::Wire(wire), true);
+        BRepFilletAPI_MakeFillet2d builder(disk.Face());
+        bool changed = false;
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> members;
+        TopExp::MapShapes(wire, members);
+        if (chamfer) {
+            for (size_t i = 0; i < selected.size() / 2; ++i) {
+                if (members.Contains(selected[2 * i])) {
+                    if (!members.Contains(selected[2 * i + 1])) {
+                        throw std::runtime_error("planar chamfer edges belong to different loops");
+                    }
+                    const auto edge =
+                        builder.AddChamfer(TopoDS::Edge(selected[2 * i]), TopoDS::Edge(selected[2 * i + 1]),
+                                           values[2 * i], values[2 * i + 1]);
+                    if (builder.Status() != ChFi2d_IsDone) {
+                        throw std::runtime_error("planar chamfer status " +
+                                                 std::to_string(int(builder.Status())));
+                    }
+                    history->AddGenerated(selected[2 * i], edge);
+                    history->AddGenerated(selected[2 * i + 1], edge);
+                    changed = true;
+                }
+            }
+        } else {
+            for (const auto& vertex : selected) {
+                if (members.Contains(vertex)) {
+                    const auto edge = builder.AddFillet(TopoDS::Vertex(vertex), values[0]);
+                    if (builder.Status() != ChFi2d_IsDone) {
+                        throw std::runtime_error("planar fillet status " +
+                                                 std::to_string(int(builder.Status())));
+                    }
+                    history->AddGenerated(vertex, edge);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            builder.Build();
+            if (!builder.IsDone()) {
+                throw std::runtime_error("planar treatment failed");
+            }
+            const auto result = TopoDS::Face(builder.Shape());
+            if (!BRepCheck_Analyzer(result).IsValid()) {
+                throw std::runtime_error("invalid planar boundary treatment");
+            }
+            boundaries.push_back(BRepTools::OuterWire(result));
+            for (int i = 1; i <= source.Extent(); ++i) {
+                if (source(i).ShapeType() == TopAbs_EDGE && members.Contains(source(i)) &&
+                    builder.IsModified(TopoDS::Edge(source(i)))) {
+                    for (const auto& modified : builder.Modified(source(i))) {
+                        history->AddModified(source(i), modified);
+                    }
+                }
+            }
+        } else {
+            boundaries.push_back(BRepTools::OuterWire(disk.Face()));
+        }
+    }
+    BRepBuilderAPI_MakeFace combined(surface.Plane(), boundaries[0], true);
+    for (size_t i = 1; i < boundaries.size(); ++i) {
+        combined.Add(TopoDS::Wire(boundaries[i].Reversed()));
+    }
+    if (!combined.IsDone() || !BRepCheck_Analyzer(combined.Face()).IsValid()) {
+        throw std::runtime_error("invalid planar corner treatment");
+    }
+    history->AddModified(face, combined.Face());
+    return collect_history(
+        combined.Face(), {face}, [&](const TopoDS_Shape& s) { return history->Modified(s); },
+        [&](const TopoDS_Shape& s) { return history->Generated(s); },
+        [&](const TopoDS_Shape& s) { return history->IsRemoved(s); });
+}
+OP_CATCH
 }
 
 #include <BRepOffsetAPI_DraftAngle.hxx>
@@ -635,94 +1659,317 @@ OperationData op_planar_blend(const TopoDS_Face& face,const std::vector<TopoDS_S
 #include <ShapeAnalysis_FreeBounds.hxx>
 #include <NCollection_HSequence.hxx>
 namespace cadrum {
-DraftData op_draft(const TopoDS_Shape& s,const std::vector<TopoDS_Shape>& faces,rust::Slice<const double> v,bool flag,const OperationControl& control) try {
-    BRepOffsetAPI_DraftAngle builder(s);DraftData out{};const gp_Dir direction(v[6],v[7],v[8]);const gp_Pln plane(gp_Pnt(v[0],v[1],v[2]),gp_Dir(v[3],v[4],v[5]));
-    for(size_t i=0;i<faces.size();++i){require_member(s,faces[i]);builder.Add(TopoDS::Face(faces[i]),direction,v[9],plane,flag);if(!builder.AddDone())throw std::runtime_error("subshape["+std::to_string(op_member_indices(s,faces[i])[0])+"] draft selection "+std::to_string(i)+" status "+std::to_string(int(builder.Status())));out.statuses.push_back(0);}
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("draft build failed");out.operation=operation_result(builder,{s});return out;
-} OP_CATCH
-static TopoDS_Shape connected_projection(const TopoDS_Shape& s,double tolerance,size_t& count,const Handle(BRepTools_History)& history){
-    Handle(NCollection_HSequence<TopoDS_Shape>) single_wires=new NCollection_HSequence<TopoDS_Shape>,wires=new NCollection_HSequence<TopoDS_Shape>;
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> sources;TopExp::MapShapes(s,sources);
-    BRep_Builder builder;
-    for(int i=1;i<=sources.Extent();++i)if(sources(i).ShapeType()==TopAbs_EDGE){TopoDS_Wire wire;builder.MakeWire(wire);builder.Add(wire,sources(i));single_wires->Append(wire);}
-    NCollection_DataMap<TopoDS_Shape,TopoDS_Shape,TopTools_ShapeMapHasher> vertices;
-    if(!single_wires->IsEmpty())wires=ShapeAnalysis_FreeBounds::ConnectWiresToWires(single_wires,tolerance,false,vertices);
-    TopoDS_Compound compound;builder.MakeCompound(compound);for(int i=1;i<=wires->Length();++i)builder.Add(compound,wires->Value(i));count=wires->Length();
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> targets;TopExp::MapShapes(compound,targets);Handle(BRepTools_History) connection=new BRepTools_History;
-    for(int i=1;i<=sources.Extent();++i){const auto& source=sources(i);if(targets.Contains(source))continue;
-        if(source.ShapeType()==TopAbs_VERTEX){TopoDS_Shape next=source;bool mapped=false;for(int step=0;step<=vertices.Extent()&&vertices.IsBound(next);++step){next=vertices(next);if(targets.Contains(next)){connection->AddModified(source,next);mapped=true;break;}}if(!mapped)throw std::runtime_error("projection connector lost vertex correspondence");}
-        // Joining retains the native curve handle and parameter range, even when it rebuilds vertices.
-        if(source.ShapeType()==TopAbs_EDGE){double a,b;TopLoc_Location location;const auto curve=BRep_Tool::Curve(TopoDS::Edge(source),location,a,b);bool mapped=false;
-            for(int j=1;j<=targets.Extent();++j)if(targets(j).ShapeType()==TopAbs_EDGE){double c,d;TopLoc_Location other;const auto candidate=BRep_Tool::Curve(TopoDS::Edge(targets(j)),other,c,d);if(curve==candidate&&location==other&&a==c&&b==d){connection->AddModified(source,targets(j));mapped=true;}}
-            if(!mapped)throw std::runtime_error("projection connector lost edge correspondence");
+DraftData op_draft(const TopoDS_Shape& s, const std::vector<TopoDS_Shape>& faces, rust::Slice<const double> v,
+                   bool flag, const OperationControl& control) try {
+    BRepOffsetAPI_DraftAngle builder(s);
+    DraftData out{};
+    const gp_Dir direction(v[6], v[7], v[8]);
+    const gp_Pln plane(gp_Pnt(v[0], v[1], v[2]), gp_Dir(v[3], v[4], v[5]));
+    for (size_t i = 0; i < faces.size(); ++i) {
+        require_member(s, faces[i]);
+        builder.Add(TopoDS::Face(faces[i]), direction, v[9], plane, flag);
+        if (!builder.AddDone()) {
+            throw std::runtime_error("subshape[" + std::to_string(op_member_indices(s, faces[i])[0]) +
+                                     "] draft selection " + std::to_string(i) + " status " +
+                                     std::to_string(int(builder.Status())));
         }
+        out.statuses.push_back(0);
     }
-    history->Merge(connection);return compound;
-}
-static void projected_ancestry(const Handle(BRepTools_History)& history,const TopoDS_Edge& source,const TopoDS_Face& face,const TopoDS_Shape& result,const gp_Vec& vector,bool point,double tolerance,bool untrimmed){
-    for(TopExp_Explorer ex(result,TopAbs_EDGE);ex.More();ex.Next()){
-        const auto& edge=ex.Current();history->AddGenerated(source,edge);history->AddGenerated(face,edge);
-        for(TopExp_Explorer vertex(edge,TopAbs_VERTEX);vertex.More();vertex.Next()){
-            const auto& target_vertex=vertex.Current();const auto q=BRep_Tool::Pnt(TopoDS::Vertex(target_vertex));const double vertex_tolerance=std::max(tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(target_vertex)));
-            for(TopExp_Explorer sv(source,TopAbs_VERTEX);sv.More();sv.Next()){
-                const auto p=BRep_Tool::Pnt(TopoDS::Vertex(sv.Current()));gp_Vec axis=point?gp_Vec(gp_Pnt(vector.XYZ()),p):vector;
-                if(axis.Magnitude()<=Precision::Confusion())throw std::runtime_error("projection center coincides with an input vertex");
-                axis.Normalize();
-                if(gp_Vec(p,q).Crossed(axis).Magnitude()<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(sv.Current())))&&(!point||gp_Vec(gp_Pnt(vector.XYZ()),q).Dot(axis)>=-vertex_tolerance))history->AddGenerated(sv.Current(),target_vertex);
-            }
-            if(!untrimmed)for(TopExp_Explorer boundary(face,TopAbs_EDGE);boundary.More();boundary.Next()){
-                BRepExtrema_DistShapeShape distance(target_vertex,boundary.Current());if(distance.IsDone()&&distance.Value()<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Edge(boundary.Current()))))history->AddGenerated(boundary.Current(),target_vertex);
-                for(TopExp_Explorer fv(boundary.Current(),TopAbs_VERTEX);fv.More();fv.Next())if(q.Distance(BRep_Tool::Pnt(TopoDS::Vertex(fv.Current())))<=std::max(vertex_tolerance,BRep_Tool::Tolerance(TopoDS::Vertex(fv.Current()))))history->AddGenerated(fv.Current(),target_vertex);
-            }
-        }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
     }
-}
-OperationData op_project(const TopoDS_Shape& source,const TopoDS_Shape& target,rust::Slice<const double> v,bool point,double tolerance,bool untrimmed,bool reject_multiple,bool reject_empty) try {
-    if(!BRepCheck_Analyzer(source).IsValid()||!BRepCheck_Analyzer(target).IsValid())throw std::runtime_error("projection: invalid input topology");
-    Handle(BRepTools_History) history=new BRepTools_History;
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> inputs;TopExp::MapShapes(source,inputs);TopExp::MapShapes(target,inputs);
-    for(int i=1;i<=inputs.Extent();++i)if(BRepTools_History::IsSupportedType(inputs(i)))history->Remove(inputs(i));
-    TopoDS_Shape result;const gp_Vec direction(v[0],v[1],v[2]);
-    if(!point&&target.ShapeType()==TopAbs_FACE&&BRepAdaptor_Surface(TopoDS::Face(target)).GetType()==GeomAbs_Plane){
-        const gp_Pln plane=BRepAdaptor_Surface(TopoDS::Face(target)).Plane();if(std::abs(plane.Axis().Direction().Dot(gp_Dir(direction)))<1e-12)throw std::runtime_error("projection direction is parallel to plane");
-        Handle(Geom_Plane) surface=new Geom_Plane(plane);BRep_Builder b;TopoDS_Compound projected;b.MakeCompound(projected);
-        for(TopExp_Explorer ex(source,TopAbs_EDGE);ex.More();ex.Next()){
-            double first,last;const auto curve=BRep_Tool::Curve(TopoDS::Edge(ex.Current()),first,last);if(curve.IsNull())throw std::runtime_error("unsupported: projection of degenerate edge");
-            const auto projected_curve=GeomProjLib::ProjectOnPlane(curve,surface,gp_Dir(direction),true);if(projected_curve.IsNull())throw std::runtime_error("planar curve projection failed");
-            BRepBuilderAPI_MakeEdge edge(projected_curve,first,last);if(!edge.IsDone())throw std::runtime_error("projected edge construction failed");b.Add(projected,edge.Edge());
-            history->AddGenerated(ex.Current(),edge.Edge());history->AddGenerated(target,edge.Edge());
-            TopoDS_Vertex source_first,source_last,target_first,target_last;TopExp::Vertices(TopoDS::Edge(ex.Current()),source_first,source_last);TopExp::Vertices(edge.Edge(),target_first,target_last);
-            if(!source_first.IsNull()&&!target_first.IsNull())history->AddGenerated(source_first,target_first);
-            if(!source_last.IsNull()&&!target_last.IsNull())history->AddGenerated(source_last,target_last);
-        }
-        if(untrimmed)result=projected;else{
-            BRepAlgoAPI_Common clip;clip.SetNonDestructive(true);clip.SetArguments(NCollection_List<TopoDS_Shape>{projected});clip.SetTools(NCollection_List<TopoDS_Shape>{target});clip.Build();if(!clip.IsDone()||clip.HasErrors())throw std::runtime_error("projection clipping failed");
-            NCollection_List<TopoDS_Shape> arguments;arguments.Append(projected);arguments.Append(target);history->Merge(arguments,clip);result=clip.Shape();
-        }
-    }else{
-        TopoDS_Shape support=target;if(untrimmed){BRepBuilderAPI_MakeFace face(BRep_Tool::Surface(TopoDS::Face(target)),tolerance);if(!face.IsDone())throw std::runtime_error("untrimmed target construction failed");support=face.Face();}
-        std::unique_ptr<BRepProj_Projection> check;if(point)check=std::make_unique<BRepProj_Projection>(source,support,gp_Pnt(v[0],v[1],v[2]));else check=std::make_unique<BRepProj_Projection>(source,support,gp_Dir(direction));
-        if(!check->IsDone())throw std::runtime_error("projection kernel failed or reported no intersection");
-        BRep_Builder b;TopoDS_Compound projected;b.MakeCompound(projected);NCollection_List<TopoDS_Shape> pieces;
-        for(TopExp_Explorer edge(source,TopAbs_EDGE);edge.More();edge.Next())for(TopExp_Explorer face(target,TopAbs_FACE);face.More();face.Next()){
-            TopoDS_Shape destination=untrimmed?support:face.Current();std::unique_ptr<BRepProj_Projection> projection;
-            if(point)projection=std::make_unique<BRepProj_Projection>(edge.Current(),destination,gp_Pnt(v[0],v[1],v[2]));else projection=std::make_unique<BRepProj_Projection>(edge.Current(),destination,gp_Dir(direction));
-            if(!projection->IsDone())continue;
-            const auto piece=projection->Shape();projected_ancestry(history,TopoDS::Edge(edge.Current()),TopoDS::Face(face.Current()),piece,direction,point,tolerance,untrimmed);
-            for(TopExp_Explorer out(piece,TopAbs_EDGE);out.More();out.Next()){b.Add(projected,out.Current());pieces.Append(out.Current());}
-        }
-        if(pieces.IsEmpty()&&!check->Shape().IsNull()&&TopExp_Explorer(check->Shape(),TopAbs_EDGE).More())throw std::runtime_error("projection ancestry construction failed");
-        result=projected;
-        if(pieces.Extent()>1){BOPAlgo_Builder fuse;for(const auto& piece:pieces)fuse.AddArgument(piece);fuse.SetNonDestructive(true);fuse.SetFuzzyValue(tolerance);fuse.Perform();if(fuse.HasErrors())throw std::runtime_error("projection edge union failed");history->Merge(pieces,fuse);result=fuse.Shape();}
+    if (!builder.IsDone() || !BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("draft build failed");
     }
-    size_t count=0;result=connected_projection(result,tolerance,count,history);
-    if(reject_empty&&count==0)throw std::runtime_error("projection has no hit");
-    if(reject_multiple&&count>1)throw std::runtime_error("projection has multiple results");
-    auto out=collect_history(result,{source,target},[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
-    NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> targets;TopExp::MapShapes(result,targets);
-    for(int i=1;i<=targets.Extent();++i)if(targets(i).ShapeType()==TopAbs_EDGE){bool mapped=false;for(const auto& entry:out.history)if(entry.operand==0&&entry.source_kind==TopAbs_EDGE&&entry.target==uint32_t(i))mapped=true;if(!mapped)throw std::runtime_error("projection output edge has no source ancestry");}
+    out.operation = operation_result(builder, {s});
     return out;
-} OP_CATCH
+}
+OP_CATCH
+static TopoDS_Shape connected_projection(const TopoDS_Shape& s, double tolerance, size_t& count,
+                                         const Handle(BRepTools_History) & history) {
+    Handle(NCollection_HSequence<TopoDS_Shape>) single_wires = new NCollection_HSequence<TopoDS_Shape>,
+                                                wires = new NCollection_HSequence<TopoDS_Shape>;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> sources;
+    TopExp::MapShapes(s, sources);
+    BRep_Builder builder;
+    for (int i = 1; i <= sources.Extent(); ++i) {
+        if (sources(i).ShapeType() == TopAbs_EDGE) {
+            TopoDS_Wire wire;
+            builder.MakeWire(wire);
+            builder.Add(wire, sources(i));
+            single_wires->Append(wire);
+        }
+    }
+    NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+    if (!single_wires->IsEmpty()) {
+        wires = ShapeAnalysis_FreeBounds::ConnectWiresToWires(single_wires, tolerance, false, vertices);
+    }
+    TopoDS_Compound compound;
+    builder.MakeCompound(compound);
+    for (int i = 1; i <= wires->Length(); ++i) {
+        builder.Add(compound, wires->Value(i));
+    }
+    count = wires->Length();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> targets;
+    TopExp::MapShapes(compound, targets);
+    Handle(BRepTools_History) connection = new BRepTools_History;
+    for (int i = 1; i <= sources.Extent(); ++i) {
+        const auto& source = sources(i);
+        if (targets.Contains(source)) {
+            continue;
+        }
+        if (source.ShapeType() == TopAbs_VERTEX) {
+            TopoDS_Shape next = source;
+            bool mapped = false;
+            for (int step = 0; step <= vertices.Extent() && vertices.IsBound(next); ++step) {
+                next = vertices(next);
+                if (targets.Contains(next)) {
+                    connection->AddModified(source, next);
+                    mapped = true;
+                    break;
+                }
+            }
+            if (!mapped) {
+                throw std::runtime_error("projection connector lost vertex correspondence");
+            }
+        }
+        // Joining retains the native curve handle and parameter range, even when it rebuilds vertices.
+        if (source.ShapeType() == TopAbs_EDGE) {
+            double a, b;
+            TopLoc_Location location;
+            const auto curve = BRep_Tool::Curve(TopoDS::Edge(source), location, a, b);
+            bool mapped = false;
+            for (int j = 1; j <= targets.Extent(); ++j) {
+                if (targets(j).ShapeType() == TopAbs_EDGE) {
+                    double c, d;
+                    TopLoc_Location other;
+                    const auto candidate = BRep_Tool::Curve(TopoDS::Edge(targets(j)), other, c, d);
+                    if (curve == candidate && location == other && a == c && b == d) {
+                        connection->AddModified(source, targets(j));
+                        mapped = true;
+                    }
+                }
+            }
+            if (!mapped) {
+                throw std::runtime_error("projection connector lost edge correspondence");
+            }
+        }
+    }
+    history->Merge(connection);
+    return compound;
+}
+static void projected_ancestry(const Handle(BRepTools_History) & history, const TopoDS_Edge& source,
+                               const TopoDS_Face& face, const TopoDS_Shape& result, const gp_Vec& vector,
+                               bool point, double tolerance, bool untrimmed) {
+    for (TopExp_Explorer ex(result, TopAbs_EDGE); ex.More(); ex.Next()) {
+        const auto& edge = ex.Current();
+        history->AddGenerated(source, edge);
+        history->AddGenerated(face, edge);
+        for (TopExp_Explorer vertex(edge, TopAbs_VERTEX); vertex.More(); vertex.Next()) {
+            const auto& target_vertex = vertex.Current();
+            const auto q = BRep_Tool::Pnt(TopoDS::Vertex(target_vertex));
+            const double vertex_tolerance =
+                std::max(tolerance, BRep_Tool::Tolerance(TopoDS::Vertex(target_vertex)));
+            for (TopExp_Explorer sv(source, TopAbs_VERTEX); sv.More(); sv.Next()) {
+                const auto p = BRep_Tool::Pnt(TopoDS::Vertex(sv.Current()));
+                gp_Vec axis = point ? gp_Vec(gp_Pnt(vector.XYZ()), p) : vector;
+                if (axis.Magnitude() <= Precision::Confusion()) {
+                    throw std::runtime_error("projection center coincides with an input vertex");
+                }
+                axis.Normalize();
+                if (gp_Vec(p, q).Crossed(axis).Magnitude() <=
+                        std::max(vertex_tolerance, BRep_Tool::Tolerance(TopoDS::Vertex(sv.Current()))) &&
+                    (!point || gp_Vec(gp_Pnt(vector.XYZ()), q).Dot(axis) >= -vertex_tolerance)) {
+                    history->AddGenerated(sv.Current(), target_vertex);
+                }
+            }
+            if (!untrimmed) {
+                for (TopExp_Explorer boundary(face, TopAbs_EDGE); boundary.More(); boundary.Next()) {
+                    BRepExtrema_DistShapeShape distance(target_vertex, boundary.Current());
+                    if (distance.IsDone() &&
+                        distance.Value() <= std::max(vertex_tolerance, BRep_Tool::Tolerance(TopoDS::Edge(
+                                                                           boundary.Current())))) {
+                        history->AddGenerated(boundary.Current(), target_vertex);
+                    }
+                    for (TopExp_Explorer fv(boundary.Current(), TopAbs_VERTEX); fv.More(); fv.Next()) {
+                        if (q.Distance(BRep_Tool::Pnt(TopoDS::Vertex(fv.Current()))) <=
+                            std::max(vertex_tolerance, BRep_Tool::Tolerance(TopoDS::Vertex(fv.Current())))) {
+                            history->AddGenerated(fv.Current(), target_vertex);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+OperationData op_project(const TopoDS_Shape& source, const TopoDS_Shape& target, rust::Slice<const double> v,
+                         bool point, double tolerance, bool untrimmed, bool reject_multiple,
+                         bool reject_empty) try {
+    if (!BRepCheck_Analyzer(source).IsValid() || !BRepCheck_Analyzer(target).IsValid()) {
+        throw std::runtime_error("projection: invalid input topology");
+    }
+    Handle(BRepTools_History) history = new BRepTools_History;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> inputs;
+    TopExp::MapShapes(source, inputs);
+    TopExp::MapShapes(target, inputs);
+    for (int i = 1; i <= inputs.Extent(); ++i) {
+        if (BRepTools_History::IsSupportedType(inputs(i))) {
+            history->Remove(inputs(i));
+        }
+    }
+    TopoDS_Shape result;
+    const gp_Vec direction(v[0], v[1], v[2]);
+    if (!point && target.ShapeType() == TopAbs_FACE &&
+        BRepAdaptor_Surface(TopoDS::Face(target)).GetType() == GeomAbs_Plane) {
+        const gp_Pln plane = BRepAdaptor_Surface(TopoDS::Face(target)).Plane();
+        if (std::abs(plane.Axis().Direction().Dot(gp_Dir(direction))) < 1e-12) {
+            throw std::runtime_error("projection direction is parallel to plane");
+        }
+        Handle(Geom_Plane) surface = new Geom_Plane(plane);
+        BRep_Builder b;
+        TopoDS_Compound projected;
+        b.MakeCompound(projected);
+        for (TopExp_Explorer ex(source, TopAbs_EDGE); ex.More(); ex.Next()) {
+            double first, last;
+            const auto curve = BRep_Tool::Curve(TopoDS::Edge(ex.Current()), first, last);
+            if (curve.IsNull()) {
+                throw std::runtime_error("unsupported: projection of degenerate edge");
+            }
+            const auto projected_curve = GeomProjLib::ProjectOnPlane(curve, surface, gp_Dir(direction), true);
+            if (projected_curve.IsNull()) {
+                throw std::runtime_error("planar curve projection failed");
+            }
+            BRepBuilderAPI_MakeEdge edge(projected_curve, first, last);
+            if (!edge.IsDone()) {
+                throw std::runtime_error("projected edge construction failed");
+            }
+            b.Add(projected, edge.Edge());
+            history->AddGenerated(ex.Current(), edge.Edge());
+            history->AddGenerated(target, edge.Edge());
+            TopoDS_Vertex source_first, source_last, target_first, target_last;
+            TopExp::Vertices(TopoDS::Edge(ex.Current()), source_first, source_last);
+            TopExp::Vertices(edge.Edge(), target_first, target_last);
+            if (!source_first.IsNull() && !target_first.IsNull()) {
+                history->AddGenerated(source_first, target_first);
+            }
+            if (!source_last.IsNull() && !target_last.IsNull()) {
+                history->AddGenerated(source_last, target_last);
+            }
+        }
+        if (untrimmed) {
+            result = projected;
+        } else {
+            BRepAlgoAPI_Common clip;
+            clip.SetNonDestructive(true);
+            clip.SetArguments(NCollection_List<TopoDS_Shape>{projected});
+            clip.SetTools(NCollection_List<TopoDS_Shape>{target});
+            clip.Build();
+            if (!clip.IsDone() || clip.HasErrors()) {
+                throw std::runtime_error("projection clipping failed");
+            }
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(projected);
+            arguments.Append(target);
+            history->Merge(arguments, clip);
+            result = clip.Shape();
+        }
+    } else {
+        TopoDS_Shape support = target;
+        if (untrimmed) {
+            BRepBuilderAPI_MakeFace face(BRep_Tool::Surface(TopoDS::Face(target)), tolerance);
+            if (!face.IsDone()) {
+                throw std::runtime_error("untrimmed target construction failed");
+            }
+            support = face.Face();
+        }
+        std::unique_ptr<BRepProj_Projection> check;
+        if (point) {
+            check = std::make_unique<BRepProj_Projection>(source, support, gp_Pnt(v[0], v[1], v[2]));
+        } else {
+            check = std::make_unique<BRepProj_Projection>(source, support, gp_Dir(direction));
+        }
+        if (!check->IsDone()) {
+            throw std::runtime_error("projection kernel failed or reported no intersection");
+        }
+        BRep_Builder b;
+        TopoDS_Compound projected;
+        b.MakeCompound(projected);
+        NCollection_List<TopoDS_Shape> pieces;
+        for (TopExp_Explorer edge(source, TopAbs_EDGE); edge.More(); edge.Next()) {
+            for (TopExp_Explorer face(target, TopAbs_FACE); face.More(); face.Next()) {
+                TopoDS_Shape destination = untrimmed ? support : face.Current();
+                std::unique_ptr<BRepProj_Projection> projection;
+                if (point) {
+                    projection = std::make_unique<BRepProj_Projection>(edge.Current(), destination,
+                                                                       gp_Pnt(v[0], v[1], v[2]));
+                } else {
+                    projection =
+                        std::make_unique<BRepProj_Projection>(edge.Current(), destination, gp_Dir(direction));
+                }
+                if (!projection->IsDone()) {
+                    continue;
+                }
+                const auto piece = projection->Shape();
+                projected_ancestry(history, TopoDS::Edge(edge.Current()), TopoDS::Face(face.Current()), piece,
+                                   direction, point, tolerance, untrimmed);
+                for (TopExp_Explorer out(piece, TopAbs_EDGE); out.More(); out.Next()) {
+                    b.Add(projected, out.Current());
+                    pieces.Append(out.Current());
+                }
+            }
+        }
+        if (pieces.IsEmpty() && !check->Shape().IsNull() &&
+            TopExp_Explorer(check->Shape(), TopAbs_EDGE).More()) {
+            throw std::runtime_error("projection ancestry construction failed");
+        }
+        result = projected;
+        if (pieces.Extent() > 1) {
+            BOPAlgo_Builder fuse;
+            for (const auto& piece : pieces) {
+                fuse.AddArgument(piece);
+            }
+            fuse.SetNonDestructive(true);
+            fuse.SetFuzzyValue(tolerance);
+            fuse.Perform();
+            if (fuse.HasErrors()) {
+                throw std::runtime_error("projection edge union failed");
+            }
+            history->Merge(pieces, fuse);
+            result = fuse.Shape();
+        }
+    }
+    size_t count = 0;
+    result = connected_projection(result, tolerance, count, history);
+    if (reject_empty && count == 0) {
+        throw std::runtime_error("projection has no hit");
+    }
+    if (reject_multiple && count > 1) {
+        throw std::runtime_error("projection has multiple results");
+    }
+    auto out = collect_history(
+        result, {source, target}, [&](const TopoDS_Shape& s) { return history->Modified(s); },
+        [&](const TopoDS_Shape& s) { return history->Generated(s); },
+        [&](const TopoDS_Shape& s) { return history->IsRemoved(s); });
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> targets;
+    TopExp::MapShapes(result, targets);
+    for (int i = 1; i <= targets.Extent(); ++i) {
+        if (targets(i).ShapeType() == TopAbs_EDGE) {
+            bool mapped = false;
+            for (const auto& entry : out.history) {
+                if (entry.operand == 0 && entry.source_kind == TopAbs_EDGE && entry.target == uint32_t(i)) {
+                    mapped = true;
+                }
+            }
+            if (!mapped) {
+                throw std::runtime_error("projection output edge has no source ancestry");
+            }
+        }
+    }
+    return out;
+}
+OP_CATCH
 }
 
 #include <BRepOffsetAPI_MakeFilling.hxx>
@@ -733,77 +1980,265 @@ OperationData op_project(const TopoDS_Shape& source,const TopoDS_Shape& target,r
 #include <ShapeFix_Edge.hxx>
 
 namespace cadrum {
-static OperationData rebuilt_surface(const TopoDS_Face& result,const std::vector<TopoDS_Shape>& inputs) {
-    auto out=collect_history(result,inputs,[&](const TopoDS_Shape& s){NCollection_List<TopoDS_Shape> list;if(s.IsSame(inputs[0]))list.Append(result);return list;},[](const TopoDS_Shape&){return NCollection_List<TopoDS_Shape>{};},[](const TopoDS_Shape&){return false;});
-    out.complete=false;out.warnings.push_back("rebuilt surface boundary correspondence is unavailable; face correspondence is retained");return out;
+static OperationData rebuilt_surface(const TopoDS_Face& result, const std::vector<TopoDS_Shape>& inputs) {
+    auto out = collect_history(
+        result, inputs,
+        [&](const TopoDS_Shape& s) {
+            NCollection_List<TopoDS_Shape> list;
+            if (s.IsSame(inputs[0])) {
+                list.Append(result);
+            }
+            return list;
+        },
+        [](const TopoDS_Shape&) { return NCollection_List<TopoDS_Shape>{}; },
+        [](const TopoDS_Shape&) { return false; });
+    out.complete = false;
+    out.warnings.push_back(
+        "rebuilt surface boundary correspondence is unavailable; face correspondence is retained");
+    return out;
 }
-static void check_surface_curves(const TopoDS_Shape& curves,const TopoDS_Face& face,double tolerance,bool trimmed) {
-    const auto surface=BRep_Tool::Surface(face);
-    for(TopExp_Explorer ex(curves,TopAbs_EDGE);ex.More();ex.Next()) {
-        BRepAdaptor_Curve curve(TopoDS::Edge(ex.Current()));const double a=curve.FirstParameter(),b=curve.LastParameter();
-        if(!std::isfinite(a)||!std::isfinite(b))throw std::runtime_error("surface boundary requires finite curves");
-        for(int i=0;i<=32;++i){const auto p=curve.Value(a+(b-a)*i/32.0);
+static void check_surface_curves(const TopoDS_Shape& curves, const TopoDS_Face& face, double tolerance,
+                                 bool trimmed) {
+    const auto surface = BRep_Tool::Surface(face);
+    for (TopExp_Explorer ex(curves, TopAbs_EDGE); ex.More(); ex.Next()) {
+        BRepAdaptor_Curve curve(TopoDS::Edge(ex.Current()));
+        const double a = curve.FirstParameter(), b = curve.LastParameter();
+        if (!std::isfinite(a) || !std::isfinite(b)) {
+            throw std::runtime_error("surface boundary requires finite curves");
+        }
+        for (int i = 0; i <= 32; ++i) {
+            const auto p = curve.Value(a + (b - a) * i / 32.0);
             double distance;
-            if(trimmed){BRepExtrema_DistShapeShape test(BRepBuilderAPI_MakeVertex(p).Shape(),face);if(!test.IsDone())throw std::runtime_error("surface boundary distance failed");distance=test.Value();}
-            else{GeomAPI_ProjectPointOnSurf test(p,surface);if(test.NbPoints()==0)throw std::runtime_error("surface boundary projection failed");distance=test.LowerDistance();}
-            if(distance>tolerance)throw std::runtime_error("surface boundary sample lies outside the supported surface/domain");
+            if (trimmed) {
+                BRepExtrema_DistShapeShape test(BRepBuilderAPI_MakeVertex(p).Shape(), face);
+                if (!test.IsDone()) {
+                    throw std::runtime_error("surface boundary distance failed");
+                }
+                distance = test.Value();
+            } else {
+                GeomAPI_ProjectPointOnSurf test(p, surface);
+                if (test.NbPoints() == 0) {
+                    throw std::runtime_error("surface boundary projection failed");
+                }
+                distance = test.LowerDistance();
+            }
+            if (distance > tolerance) {
+                throw std::runtime_error("surface boundary sample lies outside the supported surface/domain");
+            }
         }
     }
 }
-FillingData op_fill(const std::vector<TopoDS_Shape>& inputs,rust::Slice<const int32_t> supports,rust::Slice<const uint32_t> orders,rust::Slice<const double> points,const FillingConfig& config,const OperationControl& control) try {
-    if(supports.empty()||supports.size()!=orders.size()||inputs.size()<supports.size()||points.size()%3)throw std::runtime_error("invalid filling constraints");
-    if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    BRep_Builder batch_builder;TopoDS_Compound batch;batch_builder.MakeCompound(batch);for(const auto& input:inputs)batch_builder.Add(batch,input);BRepBuilderAPI_Copy copy(batch);std::vector<TopoDS_Shape> work;for(const auto& input:inputs)work.push_back(copy.ModifiedShape(input));
-    BRepBuilderAPI_MakeWire wire;for(size_t i=0;i<supports.size();++i)wire.Add(TopoDS::Edge(work[i]));
-    if(!wire.IsDone()||!BRep_Tool::IsClosed(wire.Wire()))throw std::runtime_error("filling requires one connected closed boundary");
-    BRepOffsetAPI_MakeFilling builder(4,15,2,false,config.tolerance,config.tolerance,config.angular_tolerance,config.curvature_tolerance,config.max_degree,config.max_segments);
-    if(config.initial>=0)builder.LoadInitSurface(TopoDS::Face(work.at(config.initial)));
-    bool tangent=false,curvature=false;
-    for(size_t i=0;i<supports.size();++i){
-        if(orders[i]>2)throw std::runtime_error("invalid filling continuity");
-        const auto edge=TopoDS::Edge(work[i]);
+FillingData op_fill(const std::vector<TopoDS_Shape>& inputs, rust::Slice<const int32_t> supports,
+                    rust::Slice<const uint32_t> orders, rust::Slice<const double> points,
+                    const FillingConfig& config, const OperationControl& control) try {
+    if (supports.empty() || supports.size() != orders.size() || inputs.size() < supports.size() ||
+        points.size() % 3) {
+        throw std::runtime_error("invalid filling constraints");
+    }
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    BRep_Builder batch_builder;
+    TopoDS_Compound batch;
+    batch_builder.MakeCompound(batch);
+    for (const auto& input : inputs) {
+        batch_builder.Add(batch, input);
+    }
+    BRepBuilderAPI_Copy copy(batch);
+    std::vector<TopoDS_Shape> work;
+    for (const auto& input : inputs) {
+        work.push_back(copy.ModifiedShape(input));
+    }
+    BRepBuilderAPI_MakeWire wire;
+    for (size_t i = 0; i < supports.size(); ++i) {
+        wire.Add(TopoDS::Edge(work[i]));
+    }
+    if (!wire.IsDone() || !BRep_Tool::IsClosed(wire.Wire())) {
+        throw std::runtime_error("filling requires one connected closed boundary");
+    }
+    BRepOffsetAPI_MakeFilling builder(4, 15, 2, false, config.tolerance, config.tolerance,
+                                      config.angular_tolerance, config.curvature_tolerance, config.max_degree,
+                                      config.max_segments);
+    if (config.initial >= 0) {
+        builder.LoadInitSurface(TopoDS::Face(work.at(config.initial)));
+    }
+    bool tangent = false, curvature = false;
+    for (size_t i = 0; i < supports.size(); ++i) {
+        if (orders[i] > 2) {
+            throw std::runtime_error("invalid filling continuity");
+        }
+        const auto edge = TopoDS::Edge(work[i]);
         // OCCT 8.0.1 forwards the enum as a derivative count; GeomAbs_G2 is 3.
         // Its plate solver accepts only counts 0, 1, and 2.
-        const auto order=static_cast<GeomAbs_Shape>(orders[i]);
-        if(supports[i]>=0&&orders[i]>0){const auto face=TopoDS::Face(work.at(supports[i]));double a,b;if(orders[i]>0&&BRep_Tool::CurveOnSurface(edge,face,a,b).IsNull())throw std::runtime_error("filling support requires an existing pcurve");builder.Add(edge,face,order);}
-        else builder.Add(edge,order);
-        tangent=tangent||orders[i]>0;curvature=curvature||orders[i]==2;
+        const auto order = static_cast<GeomAbs_Shape>(orders[i]);
+        if (supports[i] >= 0 && orders[i] > 0) {
+            const auto face = TopoDS::Face(work.at(supports[i]));
+            double a, b;
+            if (orders[i] > 0 && BRep_Tool::CurveOnSurface(edge, face, a, b).IsNull()) {
+                throw std::runtime_error("filling support requires an existing pcurve");
+            }
+            builder.Add(edge, face, order);
+        } else {
+            builder.Add(edge, order);
+        }
+        tangent = tangent || orders[i] > 0;
+        curvature = curvature || orders[i] == 2;
     }
-    for(size_t i=0;i<points.size();i+=3)builder.Add(gp_Pnt(points[i],points[i+1],points[i+2]));
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");
-    if(!builder.IsDone()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("surface filling failed or produced invalid topology");
-    FillingData out{};out.distance_error=builder.G0Error();out.angle_error=tangent?builder.G1Error():0.0;out.curvature_error=curvature?builder.G2Error():0.0;
-    if(!std::isfinite(out.distance_error)||!std::isfinite(out.angle_error)||!std::isfinite(out.curvature_error)||out.distance_error>config.tolerance||out.angle_error>config.angular_tolerance||out.curvature_error>config.curvature_tolerance)throw std::runtime_error("surface filling did not meet requested constraint tolerances: distance="+std::to_string(out.distance_error)+", angle="+std::to_string(out.angle_error)+", curvature="+std::to_string(out.curvature_error));
-    out.operation=collect_history(builder.Shape(),inputs,[&](const TopoDS_Shape& s){return builder.Modified(copy.ModifiedShape(s));},[&](const TopoDS_Shape& s){return builder.Generated(copy.ModifiedShape(s));},[&](const TopoDS_Shape& s){return builder.IsDeleted(copy.ModifiedShape(s));});return out;
-} OP_CATCH
-OperationData op_retrim(const TopoDS_Face& face,const std::vector<TopoDS_Shape>& wires,double tolerance) try {
-    if(wires.empty())throw std::runtime_error("surface trimming requires an outer wire");
-    const auto surface=BRep_Tool::Surface(face);std::vector<TopoDS_Wire> copied;
-    for(const auto& wire:wires){if(!BRep_Tool::IsClosed(wire))throw std::runtime_error("surface trimming requires closed wires");check_surface_curves(wire,face,tolerance,false);BRepBuilderAPI_Copy copy(wire);auto w=TopoDS::Wire(copy.Shape());
-        for(TopExp_Explorer ex(w,TopAbs_EDGE);ex.More();ex.Next())ShapeFix_Edge{}.FixAddPCurve(TopoDS::Edge(ex.Current()),surface,TopLoc_Location{},false,tolerance);
+    for (size_t i = 0; i < points.size(); i += 3) {
+        builder.Add(gp_Pnt(points[i], points[i + 1], points[i + 2]));
+    }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Build(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (!builder.IsDone() || !BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("surface filling failed or produced invalid topology");
+    }
+    FillingData out{};
+    out.distance_error = builder.G0Error();
+    out.angle_error = tangent ? builder.G1Error() : 0.0;
+    out.curvature_error = curvature ? builder.G2Error() : 0.0;
+    if (!std::isfinite(out.distance_error) || !std::isfinite(out.angle_error) ||
+        !std::isfinite(out.curvature_error) || out.distance_error > config.tolerance ||
+        out.angle_error > config.angular_tolerance || out.curvature_error > config.curvature_tolerance) {
+        throw std::runtime_error("surface filling did not meet requested constraint tolerances: distance=" +
+                                 std::to_string(out.distance_error) +
+                                 ", angle=" + std::to_string(out.angle_error) +
+                                 ", curvature=" + std::to_string(out.curvature_error));
+    }
+    out.operation = collect_history(
+        builder.Shape(), inputs,
+        [&](const TopoDS_Shape& s) { return builder.Modified(copy.ModifiedShape(s)); },
+        [&](const TopoDS_Shape& s) { return builder.Generated(copy.ModifiedShape(s)); },
+        [&](const TopoDS_Shape& s) { return builder.IsDeleted(copy.ModifiedShape(s)); });
+    return out;
+}
+OP_CATCH
+OperationData op_retrim(const TopoDS_Face& face, const std::vector<TopoDS_Shape>& wires,
+                        double tolerance) try {
+    if (wires.empty()) {
+        throw std::runtime_error("surface trimming requires an outer wire");
+    }
+    const auto surface = BRep_Tool::Surface(face);
+    std::vector<TopoDS_Wire> copied;
+    for (const auto& wire : wires) {
+        if (!BRep_Tool::IsClosed(wire)) {
+            throw std::runtime_error("surface trimming requires closed wires");
+        }
+        check_surface_curves(wire, face, tolerance, false);
+        BRepBuilderAPI_Copy copy(wire);
+        auto w = TopoDS::Wire(copy.Shape());
+        for (TopExp_Explorer ex(w, TopAbs_EDGE); ex.More(); ex.Next()) {
+            ShapeFix_Edge{}.FixAddPCurve(TopoDS::Edge(ex.Current()), surface, TopLoc_Location{}, false,
+                                         tolerance);
+        }
         copied.push_back(w);
     }
-    BRepBuilderAPI_MakeFace builder(surface,copied[0],true);for(size_t i=1;i<copied.size();++i)builder.Add(copied[i]);
-    if(!builder.IsDone())throw std::runtime_error("surface trimming failed");
-    ShapeFix_Face fix(builder.Face());fix.SetPrecision(tolerance);fix.FixOrientation();auto result=fix.Face();result.Orientation(face.Orientation());
-    if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid surface trims");
-    std::vector<TopoDS_Shape> inputs{face};inputs.insert(inputs.end(),wires.begin(),wires.end());return rebuilt_surface(result,inputs);
-} OP_CATCH
-OperationData op_extend_surface(const TopoDS_Face& face,uint32_t boundary,double length,uint32_t continuity,double tolerance) try {
-    const auto original=BRep_Tool::Surface(face);const auto bounded=Handle(Geom_BoundedSurface)::DownCast(original);
-    if(bounded.IsNull()||(!original->IsKind(STANDARD_TYPE(Geom_BSplineSurface))&&!original->IsKind(STANDARD_TYPE(Geom_BezierSurface)))||original->IsUPeriodic()||original->IsVPeriodic())throw std::runtime_error("unsupported: extension requires a nonperiodic natural Bezier/BSpline patch");
-    double a,b,c,d;original->Bounds(a,b,c,d);double x,y,z,w;BRepTools::UVBounds(face,x,y,z,w);
-    if(std::abs(a-x)>1e-9||std::abs(b-y)>1e-9||std::abs(c-z)>1e-9||std::abs(d-w)>1e-9)throw std::runtime_error("unsupported: extension does not preserve existing trims");
-    int edges=0,wires=0;for(TopExp_Explorer ex(face,TopAbs_WIRE);ex.More();ex.Next())++wires;
-    for(TopExp_Explorer ex(face,TopAbs_EDGE);ex.More();ex.Next()){++edges;double f,l;auto pcurve=BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()),face,f,l);if(pcurve.IsNull()||Geom2dAdaptor_Curve(pcurve).GetType()!=GeomAbs_Line)throw std::runtime_error("unsupported: extension requires rectangular natural boundaries");const auto p=pcurve->Value(f),q=pcurve->Value(l);if(!((std::abs(p.X()-q.X())<1e-9&&(std::abs(p.X()-a)<1e-9||std::abs(p.X()-b)<1e-9))||(std::abs(p.Y()-q.Y())<1e-9&&(std::abs(p.Y()-c)<1e-9||std::abs(p.Y()-d)<1e-9))))throw std::runtime_error("unsupported: extension requires natural isoparametric boundaries");}
-    if(edges!=4||wires!=1)throw std::runtime_error("unsupported: extension requires a rectangular patch without holes");
-    auto extended=Handle(Geom_BoundedSurface)::DownCast(bounded->Copy());GeomLib::ExtendSurfByLength(extended,length,continuity,boundary<2,boundary%2==1);
-    extended->Bounds(x,y,z,w);if(x>=a&&y<=b&&z>=c&&w<=d)throw std::runtime_error("surface extension did not extend its parameter domain");
-    BRepBuilderAPI_MakeFace builder(extended,tolerance);if(!builder.IsDone())throw std::runtime_error("surface extension failed");auto result=builder.Face();result.Orientation(face.Orientation());if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid extended surface");return rebuilt_surface(result,{face});
-} OP_CATCH
-OperationData op_imprint(const TopoDS_Shape& shape,const TopoDS_Face& face,const std::vector<TopoDS_Shape>& curves,double tolerance,const OperationControl& control) try {
-    require_member(shape,face);for(const auto& curve:curves)check_surface_curves(curve,face,tolerance,true);
-    BOPAlgo_Splitter builder;builder.SetNonDestructive(true);builder.SetFuzzyValue(tolerance);builder.AddArgument(shape);for(const auto& curve:curves)builder.AddTool(curve);
-    Handle(NativeProgress) progress=new NativeProgress(control);builder.Perform(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(builder.HasErrors()||!BRepCheck_Analyzer(builder.Shape()).IsValid())throw std::runtime_error("surface imprint failed");std::vector<TopoDS_Shape> inputs{shape};inputs.insert(inputs.end(),curves.begin(),curves.end());return operation_result(builder,inputs);
-} OP_CATCH
+    BRepBuilderAPI_MakeFace builder(surface, copied[0], true);
+    for (size_t i = 1; i < copied.size(); ++i) {
+        builder.Add(copied[i]);
+    }
+    if (!builder.IsDone()) {
+        throw std::runtime_error("surface trimming failed");
+    }
+    ShapeFix_Face fix(builder.Face());
+    fix.SetPrecision(tolerance);
+    fix.FixOrientation();
+    auto result = fix.Face();
+    result.Orientation(face.Orientation());
+    if (!BRepCheck_Analyzer(result).IsValid()) {
+        throw std::runtime_error("invalid surface trims");
+    }
+    std::vector<TopoDS_Shape> inputs{face};
+    inputs.insert(inputs.end(), wires.begin(), wires.end());
+    return rebuilt_surface(result, inputs);
+}
+OP_CATCH
+OperationData op_extend_surface(const TopoDS_Face& face, uint32_t boundary, double length,
+                                uint32_t continuity, double tolerance) try {
+    const auto original = BRep_Tool::Surface(face);
+    const auto bounded = Handle(Geom_BoundedSurface)::DownCast(original);
+    if (bounded.IsNull() ||
+        (!original->IsKind(STANDARD_TYPE(Geom_BSplineSurface)) &&
+         !original->IsKind(STANDARD_TYPE(Geom_BezierSurface))) ||
+        original->IsUPeriodic() || original->IsVPeriodic()) {
+        throw std::runtime_error(
+            "unsupported: extension requires a nonperiodic natural Bezier/BSpline patch");
+    }
+    double a, b, c, d;
+    original->Bounds(a, b, c, d);
+    double x, y, z, w;
+    BRepTools::UVBounds(face, x, y, z, w);
+    if (std::abs(a - x) > 1e-9 || std::abs(b - y) > 1e-9 || std::abs(c - z) > 1e-9 ||
+        std::abs(d - w) > 1e-9) {
+        throw std::runtime_error("unsupported: extension does not preserve existing trims");
+    }
+    int edges = 0, wires = 0;
+    for (TopExp_Explorer ex(face, TopAbs_WIRE); ex.More(); ex.Next()) {
+        ++wires;
+    }
+    for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+        ++edges;
+        double f, l;
+        auto pcurve = BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()), face, f, l);
+        if (pcurve.IsNull() || Geom2dAdaptor_Curve(pcurve).GetType() != GeomAbs_Line) {
+            throw std::runtime_error("unsupported: extension requires rectangular natural boundaries");
+        }
+        const auto p = pcurve->Value(f), q = pcurve->Value(l);
+        if (!((std::abs(p.X() - q.X()) < 1e-9 &&
+               (std::abs(p.X() - a) < 1e-9 || std::abs(p.X() - b) < 1e-9)) ||
+              (std::abs(p.Y() - q.Y()) < 1e-9 &&
+               (std::abs(p.Y() - c) < 1e-9 || std::abs(p.Y() - d) < 1e-9)))) {
+            throw std::runtime_error("unsupported: extension requires natural isoparametric boundaries");
+        }
+    }
+    if (edges != 4 || wires != 1) {
+        throw std::runtime_error("unsupported: extension requires a rectangular patch without holes");
+    }
+    auto extended = Handle(Geom_BoundedSurface)::DownCast(bounded->Copy());
+    GeomLib::ExtendSurfByLength(extended, length, continuity, boundary < 2, boundary % 2 == 1);
+    extended->Bounds(x, y, z, w);
+    if (x >= a && y <= b && z >= c && w <= d) {
+        throw std::runtime_error("surface extension did not extend its parameter domain");
+    }
+    BRepBuilderAPI_MakeFace builder(extended, tolerance);
+    if (!builder.IsDone()) {
+        throw std::runtime_error("surface extension failed");
+    }
+    auto result = builder.Face();
+    result.Orientation(face.Orientation());
+    if (!BRepCheck_Analyzer(result).IsValid()) {
+        throw std::runtime_error("invalid extended surface");
+    }
+    return rebuilt_surface(result, {face});
+}
+OP_CATCH
+OperationData op_imprint(const TopoDS_Shape& shape, const TopoDS_Face& face,
+                         const std::vector<TopoDS_Shape>& curves, double tolerance,
+                         const OperationControl& control) try {
+    require_member(shape, face);
+    for (const auto& curve : curves) {
+        check_surface_curves(curve, face, tolerance, true);
+    }
+    BOPAlgo_Splitter builder;
+    builder.SetNonDestructive(true);
+    builder.SetFuzzyValue(tolerance);
+    builder.AddArgument(shape);
+    for (const auto& curve : curves) {
+        builder.AddTool(curve);
+    }
+    Handle(NativeProgress) progress = new NativeProgress(control);
+    builder.Perform(progress->Start());
+    if (operation_cancelled(control)) {
+        throw std::runtime_error("cancelled");
+    }
+    if (builder.HasErrors() || !BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        throw std::runtime_error("surface imprint failed");
+    }
+    std::vector<TopoDS_Shape> inputs{shape};
+    inputs.insert(inputs.end(), curves.begin(), curves.end());
+    return operation_result(builder, inputs);
+}
+OP_CATCH
 }
