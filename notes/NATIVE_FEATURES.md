@@ -644,3 +644,15 @@ thread transfers also pass without PNG and on Windows GNU under Wine. These
 checks cover one-to-many clipping descendants, target-face ancestry, connector
 vertex substitutions, coincident targets, hole cuts, and transferred native
 owners. Scaling-law sweep history remains disabled in the pinned kernel.
+
+## Branch review corrections
+
+Trimming preserves topology orientation. Rebuilding a rectangular surface patch or a trimmed edge now retains the input orientation, including reversed faces whose normals previously flipped.
+
+Topology resolution preserves identity and styles. Resolving a history index carries the source color map into the returned view. A single plane-split partition uses an owning view of the result instead of a deep copy, so ancestry lookup retains native identity.
+
+Progress controls permit one active operation. Concurrent or callback-reentrant reuse returns an operation error before native execution without cancelling the active operation. Sequential reuse remains available until cancellation or a callback failure.
+
+STEP convenience methods preserve colors. They share the options-based transfer implementation instead of maintaining separate native readers and writers. The convenience reader continues to permit missing units and partial transfers, reporting warnings through its operation result.
+
+Review regression checks pass on Linux. The full suite passes 207 tests with two ignored, and 17 doctests pass with one ignored. The 28 focused tests also pass without PNG support on Linux and Windows GNU under Wine. Clippy completes with warnings; these include existing code and suggestions for the new bridge and slice conversions.
