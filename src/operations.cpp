@@ -584,18 +584,31 @@ OperationData op_loft(const std::vector<TopoDS_Shape>& sections,const LoftConfig
     if(simple){auto builder=loft_piece(sections,config,control);if(!BRepCheck_Analyzer(builder->Shape()).IsValid())throw std::runtime_error("invalid loft result");return operation_result(*builder,sections);}
     std::vector<std::vector<TopoDS_Face>> profiles;
     for(const auto& s:sections){require_profile(s);std::vector<TopoDS_Face> faces;for(TopExp_Explorer ex(s,TopAbs_FACE);ex.More();ex.Next())faces.push_back(TopoDS::Face(ex.Current()));if(faces.empty()||(!profiles.empty()&&faces.size()!=profiles[0].size()))throw std::runtime_error("loft profiles have incompatible region counts");profiles.push_back(faces);}
+    Handle(BRepTools_History) history=new BRepTools_History;
     BRep_Builder b;TopoDS_Compound compound;b.MakeCompound(compound);TopoDS_Shape only;size_t count=0;
     for(size_t region=0;region<profiles[0].size();++region){
         std::vector<std::vector<TopoDS_Shape>> loops;
         for(const auto& profile:profiles){auto wires=op_boundary_wires(profile[region]);if(!loops.empty()&&wires->size()!=loops[0].size())throw std::runtime_error("loft profiles have incompatible hole counts");loops.push_back(*wires);}
+        for(const auto& profile:profiles)history->Remove(profile[region]);
         TopoDS_Shape body;
         for(size_t loop=0;loop<loops[0].size();++loop){std::vector<TopoDS_Shape> wires;for(const auto& section:loops)wires.push_back(section[loop]);auto builder=loft_piece(wires,config,control);TopoDS_Shape result=builder->Shape();
-            if(config.solid){auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient profile loft");result=solid;if(loop==0)body=result;else{BRepAlgoAPI_Cut cut(body,result);if(!cut.IsDone()||cut.HasErrors())throw std::runtime_error("hole loft subtraction failed");body=cut.Shape();}}
+            NCollection_IndexedMap<TopoDS_Shape,TopTools_ShapeMapHasher> sources;
+            for(const auto& wire:wires)TopExp::MapShapes(wire,sources);
+            for(int i=1;i<=sources.Extent();++i){const auto& source=sources(i);if(!BRepTools_History::IsSupportedType(source))continue;
+                if(builder->IsDeleted(source))history->Remove(source);
+                for(const auto& modified:builder->Modified(source))history->AddModified(source,modified);
+                for(const auto& generated:builder->Generated(source))history->AddGenerated(source,generated);
+            }
+            for(size_t section=0;section<wires.size();++section){const auto& face=profiles[section][region];
+                if(config.solid&&loop==0){if(section==0&&!builder->FirstShape().IsNull())history->AddModified(face,builder->FirstShape());if(section+1==wires.size()&&!builder->LastShape().IsNull())history->AddModified(face,builder->LastShape());}
+                for(TopExp_Explorer edge(wires[section],TopAbs_EDGE);edge.More();edge.Next())for(const auto& generated:builder->Generated(edge.Current()))if(generated.ShapeType()==TopAbs_FACE)history->AddGenerated(face,generated);
+            }
+            if(config.solid){auto solid=TopoDS::Solid(result);if(!BRepLib::OrientClosedSolid(solid))throw std::runtime_error("cannot orient profile loft");result=solid;if(loop==0)body=result;else{BRepAlgoAPI_Cut cut;cut.SetNonDestructive(true);cut.SetArguments(NCollection_List<TopoDS_Shape>{body});cut.SetTools(NCollection_List<TopoDS_Shape>{result});Handle(NativeProgress) progress=new NativeProgress(control);cut.Build(progress->Start());if(operation_cancelled(control))throw std::runtime_error("cancelled");if(!cut.IsDone()||cut.HasErrors())throw std::runtime_error("hole loft subtraction failed");NCollection_List<TopoDS_Shape> arguments;arguments.Append(body);arguments.Append(result);history->Merge(arguments,cut);body=cut.Shape();}}
             else{if(loop>0)result.Reverse();b.Add(compound,result);only=result;++count;}
         }
         if(config.solid){b.Add(compound,body);only=body;++count;}
     }
-    const TopoDS_Shape result=count==1?only:compound;if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid composite loft");OperationData out{};out.shape=std::make_unique<TopoDS_Shape>(result);out.complete=false;out.warnings.push_back("composite profile loft history is incomplete");return out;
+    const TopoDS_Shape result=count==1?only:compound;if(!BRepCheck_Analyzer(result).IsValid())throw std::runtime_error("invalid composite loft");return collect_history(result,sections,[&](const TopoDS_Shape& s){return history->Modified(s);},[&](const TopoDS_Shape& s){return history->Generated(s);},[&](const TopoDS_Shape& s){return history->IsRemoved(s);});
 } OP_CATCH
 }
 

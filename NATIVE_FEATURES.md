@@ -285,8 +285,11 @@ Profile correspondence is explicit by order. Face and compound-profile sections
 must have matching region and hole counts; regions and hole loops correspond in
 native traversal order. Solid construction lofts each outer region and subtracts
 its corresponding hole lofts. Shell construction retains outer and reversed inner
-shells separately. Incompatible topology is rejected, and composite profile lofts
-report incomplete history rather than claiming correspondence through subtraction.
+shells separately. Incompatible topology is rejected. Composite loft history
+combines each boundary loft's native correspondence with the hole-cut histories,
+retains section-edge/vertex ancestry, and maps profile faces to generated lateral
+faces and modified end caps. These relations also propagate face styles; middle
+sections, reversed inner shells, and disconnected regions retain their ancestry.
 
 Healing reports measured changes. Repair reports now include context-replaced or
 tolerance-changed subshape indices, boundary counts, tolerance maxima, sample count,
