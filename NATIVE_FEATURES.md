@@ -594,7 +594,7 @@ guide is included in native crate documentation; README remains unchanged.
 ## Verification
 
 Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
-passed 191 tests with two ignored, and the separate documentation run passed 17
+passed 202 tests with two ignored, and the separate documentation run passed 17
 with one ignored. Geometry-only checks select native test targets and the new
 example directly because the original examples require PNG. The complete
 `native_features` example also passed.
@@ -635,3 +635,12 @@ G0/G1/G2 filling, a nonplanar point constraint, curved support, all extension
 boundaries with C1/C2/C3, reversed orientation, hole-bearing and cylindrical trims,
 closed-loop imprints, preserved volume/styles, invalid input, and cancellation.
 The `surface_modeling` example also runs successfully and saves local PNGs.
+
+
+History and ownership regression checks pass. The full Linux suite passes 202
+tests with two ignored, and all 17 enabled doctests pass. The 29 focused tests for
+profiles, composite lofts, projection, sweeps, history composition, and owned
+thread transfers also pass without PNG and on Windows GNU under Wine. These
+checks cover one-to-many clipping descendants, target-face ancestry, connector
+vertex substitutions, coincident targets, hole cuts, and transferred native
+owners. Scaling-law sweep history remains disabled in the pinned kernel.
