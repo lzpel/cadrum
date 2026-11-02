@@ -43,3 +43,7 @@ cmake = { version = "0.1", optional = true }
 cc = "1"
 
 [dev-dependencies]
+
+[[example]]
+name = "native_features"
+required-features = ["png"]

@@ -2,6 +2,17 @@
 
 `Shape` owns native topology. It retains the exact root category and every component, including intentional open shells, loose edges and vertices, and empty compounds. Typed owners `Vertex`, `Wire`, `Shell`, and `Compound` expose the same inspection methods. Converting to `Solid`, `Face`, or `Edge` requires the matching category and never discards other geometry.
 
+The gallery shows the foundation's visible results. Open topology, validation, and tessellation retain their PNG previews from the full feature branch. The copy-history preview uses only foundation APIs, with the copy moved apart using the existing `Solid` translation method for display.
+
+| Foundation item | Preview |
+| --- | --- |
+| **Open topology and BRep boundaries.** Cube shell with its top face removed. | ![Open cube shell](../figure/native_features/01-open-topology.png) |
+| **Basic validation.** Validated solid; validation leaves its geometry unchanged. | ![Validated cube](../figure/native_features/02-validation.png) |
+| **Ownership and copy history.** Source cube and independent copy, separated for display. | ![Source cube and independent copy](../figure/native_features/07-copy-history.png) |
+| **Native meshing.** Tessellated sphere used for the mesh and UV queries. | ![Tessellated sphere](../figure/native_features/10-tessellation.png) |
+
+The previews are reproducible on this branch. Run `cargo run --example native_features` to regenerate the four PNGs, or append an output directory to write them elsewhere. The example requires the `png` feature, enabled by default, and writes only PNG previews.
+
 Views retain native ownership. Subshape views survive the parent wrapper, while `clone` and `copied` deep-copy topology and geometry. Converting a styled solid expands its whole-solid color onto faces, and copied shapes retain styles through native correspondence. BRep serialization preserves topology and geometry but omits colors, meshes, and operation history.
 
 Open and empty results are valid outcomes. Face extraction and removal preserve disconnected shells and loose topology, and sewing returns the natural output category. `to_solid` accepts exactly one valid closed shell and orients it outward; an open shell remains an error for this conversion.
