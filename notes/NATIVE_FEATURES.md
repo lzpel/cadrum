@@ -44,7 +44,7 @@ Progress controls support cooperative cancellation. `OperationControl` serialize
 
 Owning wrappers preserve `Send`. Existing `Solid`, `Face`, and `Edge` owners and the new topology owners can move to a worker, remain worker-local, and return results. `Sync` is not implemented. Related native aliases must remain serialized on one worker because native queries and operations can mutate shared geometry and caches; use independent deep copies for concurrent geometry work.
 
-The foundation adds no dependencies or native libraries. Existing modeling signatures, README content, and original examples are retained. The new `Error::Shape`, `Error::Operation`, `Error::Unsupported`, and `Error::Cancelled` variants require downstream exhaustive matches to be updated.
+The foundation adds no dependencies or native libraries. Existing modeling signatures and numbered example programs are retained. The new `Error::Shape`, `Error::Operation`, `Error::Unsupported`, and `Error::Cancelled` variants require downstream exhaustive matches to be updated.
 
 The example exercises open topology without generated files. Run `cargo run --example open_shape` to remove one cube face, tessellate the shell, and round-trip it through an in-memory BRep buffer.
 
@@ -57,4 +57,6 @@ require_sync::<cadrum::Shape>();
 
 The foundation is extracted independently from the original base. Branch `native-shape-foundation` starts at `8506a89` and selects the ownership work from `94f4649`, basic validation from `9693e4e`, meshing boundaries from `607768e`, and the `Send` fix from `2652677`. The extraction retains the reviewed formatting, copy-history composition, topology styling, and progress-control reuse fixes.
 
-Independent validation passes. Linux runs pass 137 tests with defaults and 135 without PNG, with two ignored in each run. Doctests pass 18 tests with defaults and two without PNG, with one ignored only in the default run. All 18 focused foundation tests pass on Windows GNU under Wine. The `open_shape` example runs with and without PNG, package contents include this guide, and formatting and whitespace checks pass.
+Independent validation passes. Linux runs pass 137 tests with defaults and 135 without PNG, with two ignored in each run. Doctests pass 18 tests with and without PNG, with one ignored in each run. All 18 focused foundation tests pass on Windows GNU under Wine. The `open_shape` example runs with and without PNG, package contents include this guide, and formatting and whitespace checks pass.
+
+README documentation remains visible without PNG. Only the PNG export statements in its doctests are conditional, using hidden Rustdoc attributes that are omitted from generated API documentation. The documentation generator preserves these attributes while leaving the numbered example programs unchanged.

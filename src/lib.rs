@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "png", doc = include_str!("../README.md"))]
+#![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "pure"), doc = include_str!("../notes/NATIVE_FEATURES.md"))]
 
 pub mod common;

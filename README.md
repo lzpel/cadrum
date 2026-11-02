@@ -178,6 +178,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&solids, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -233,6 +234,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&all, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
@@ -291,6 +293,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&solids, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -351,6 +354,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&shapes, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -425,6 +429,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -493,6 +498,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -598,6 +604,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -736,6 +743,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&all, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(-1.0, 1.0, 0.5), hidden_edges: false, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -807,6 +815,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), shading: true, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -875,6 +884,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&objects, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(0.05, 0.05, 1.0), up: DVec3::Y, hidden_edges: false, shading: true });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -937,6 +947,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), shading: true, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -999,6 +1010,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(cadrum::SceneOption { view: DVec3::new(1.0, 1.0, 2.0), shading: true, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -1043,6 +1055,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let mesh = Solid::mesh(&solids, Default::default())?;
 	let scene = mesh.scene(Default::default());
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -1118,6 +1131,7 @@ fn main() -> Result<(), Error> {
 	let mesh = Solid::mesh(&result, Default::default())?;
 	let scene = mesh.scene(SceneOption { view: DVec3::X + DVec3::Y + DVec3::Z * 1.5, ..Default::default() });
 	scene.write_svg(&mut std::fs::File::create(format!("{example_name}.svg")).unwrap())?;
+# #[cfg(feature = "png")]
 	scene.write_png([640, 640], &mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
 	mesh.write_gltf_binary(&mut std::fs::File::create(format!("{example_name}.glb")).unwrap())?;
@@ -1159,6 +1173,7 @@ fn main() -> Result<(), cadrum::Error> {
 	let corner_cut = Solid::sphere(10.0).translate(DVec3::new(20.0, 15.0, 10.0));
 	let part: Solid = (&block - &hole - &corner_cut).build()?;
 
+# #[cfg(feature = "png")]
 	part.write_multiview_png(&mut std::fs::File::create(format!("{example_name}.png")).unwrap())?;
 	let mesh = Solid::mesh([&part], Default::default())?;
 	mesh.write_stl(&mut std::fs::File::create(format!("{example_name}.stl")).unwrap())?;
