@@ -43,3 +43,7 @@ Shared access remains restricted at compile time. A `Shape` can be transferred b
 fn require_sync<T: Sync>() {}
 require_sync::<cadrum::Shape>();
 ```
+
+The foundation is extracted independently from the original base. Branch `native-shape-foundation` starts at `8506a89` and selects the ownership work from `94f4649`, basic validation from `9693e4e`, meshing boundaries from `607768e`, and the `Send` fix from `2652677`. The extraction retains the reviewed formatting, copy-history composition, topology styling, and progress-control reuse fixes.
+
+Independent validation passes. Linux runs pass 137 tests with defaults and 135 without PNG, with two ignored in each run. Doctests pass 18 tests with defaults and two without PNG, with one ignored only in the default run. All 18 focused foundation tests pass on Windows GNU under Wine. The `open_shape` example runs with and without PNG, package contents include this guide, and formatting and whitespace checks pass.
