@@ -187,7 +187,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	}
 
 	let mut build = cxx_build::bridge("src/ffi.rs");
-	build.file("src/ffi.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
+	build.file("src/ffi.cpp").file("src/operations.cpp").include(occt_include).std("c++17").define("_USE_MATH_DEFINES", None);
 
 	apply_compiler_flags(|s| {
 		build.flag(s);
@@ -197,6 +197,8 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=src/ffi.h");
 	println!("cargo:rerun-if-changed=src/ffi.cpp");
+	println!("cargo:rerun-if-changed=src/operations.cpp");
+	println!("cargo:rerun-if-changed=src/progress.h");
 }
 
 /// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.

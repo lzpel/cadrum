@@ -1,4 +1,5 @@
-#![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "png", doc = include_str!("../README.md"))]
+#![cfg_attr(not(feature = "pure"), doc = include_str!("../notes/NATIVE_FEATURES.md"))]
 
 pub mod common;
 #[cfg(not(feature = "pure"))]
@@ -10,7 +11,18 @@ pub mod occt;
 // #[cfg(feature = "pure")]
 // pub mod pure;
 #[cfg(not(feature = "pure"))]
-pub use occt::{edge::Edge, face::Face, solid::Solid};
+pub use occt::control::{CancellationToken, OperationControl, ProgressUpdate};
+#[cfg(not(feature = "pure"))]
+pub use occt::io::ShapeMesh;
+#[cfg(not(feature = "pure"))]
+pub use occt::report::{Diagnostic, History, OperationResult, RelationKind, TopologyRef, TopologyRelation, ValidationIssue, ValidationReport};
+#[cfg(not(feature = "pure"))]
+pub use occt::{
+	edge::Edge,
+	face::Face,
+	shape::{Compound, Shape, ShapeKind, Shell, Vertex, Wire},
+	solid::Solid,
+};
 pub(crate) mod traits;
 // wasm32: no-op WASI/`env` import shims (self-contained wasm). Kept alive by the
 // consumer's wasm init calling `__anchor_wasi_stub` (see its docs).

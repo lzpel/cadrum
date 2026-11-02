@@ -1,3 +1,4 @@
+use super::control::{operation_cancelled, operation_progress, OperationControl};
 use std::io::{Read, Write};
 
 #[cxx::bridge(namespace = "cadrum")]
@@ -9,11 +10,47 @@ mod ffi_bridge {
 		normals: Vec<f64>,  // flat xyz, one per vertex
 		indices: Vec<u32>,
 		face_tshape_ids: Vec<u64>, // per-triangle TShape* address
+		uvs: Vec<f64>,
+		uv_valid: Vec<bool>,
+		status: u32,
 		success: bool,
+	}
+
+	struct HistoryEntry {
+		operand: u32,
+		source: u32,
+		target: u32,
+		relation: u32,
+		source_kind: u32,
+		target_kind: u32,
+		source_id: u64,
+		target_id: u64,
+	}
+	struct OperationData {
+		shape: UniquePtr<TopoDS_Shape>,
+		history: Vec<HistoryEntry>,
+		complete: bool,
+		warnings: Vec<String>,
+		diagnostics: Vec<String>,
+	}
+
+	struct ValidationEntry {
+		subshape: u32,
+		context: u32,
+		kind: u32,
+		status: u32,
+	}
+	struct ValidationData {
+		valid: bool,
+		closed: bool,
+		issues: Vec<ValidationEntry>,
 	}
 
 	// Expose Rust stream types to C++ for streambuf callbacks
 	extern "Rust" {
+		type OperationControl;
+		fn operation_cancelled(control: &OperationControl) -> bool;
+		fn operation_progress(control: &OperationControl, fraction: f64);
 		type RustReader;
 		type RustWriter;
 
@@ -29,6 +66,35 @@ mod ffi_bridge {
 		type TopoDS_Face;
 		type TopoDS_Edge;
 		type TopoDS_Wire;
+		type TopoDS_Shape;
+		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_face(shape: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_edge(shape: &TopoDS_Edge) -> UniquePtr<TopoDS_Shape>;
+		fn native_as_solid(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_as_face(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Face>>;
+		fn native_as_edge(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn native_same_face(a: &TopoDS_Face, b: &TopoDS_Face) -> bool;
+		fn native_empty(shape: &TopoDS_Shape) -> bool;
+		fn native_kind(shape: &TopoDS_Shape) -> u32;
+		fn native_valid(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_closed(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_loose(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_subshapes(shape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_take(shapes: &CxxVector<TopoDS_Shape>, index: usize) -> UniquePtr<TopoDS_Shape>;
+		fn native_vec_new() -> UniquePtr<CxxVector<TopoDS_Shape>>;
+		fn native_vec_push(shapes: Pin<&mut CxxVector<TopoDS_Shape>>, shape: &TopoDS_Shape);
+		fn native_vertex(x: f64, y: f64, z: f64) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_point(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn native_build(shapes: &CxxVector<TopoDS_Shape>, kind: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_sew(faces: &CxxVector<TopoDS_Face>, tolerance: f64, history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_solidify(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_bounds(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn op_tessellate(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool, control: &OperationControl) -> Result<MeshData>;
+		fn native_write_brep(shape: &TopoDS_Shape) -> Result<Vec<u8>>;
+		fn native_read_brep(data: &[u8]) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
+		fn op_topology_at(shape: &TopoDS_Shape, index: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;
 
 		// ==================== Shape I/O (streambuf callback) ====================
 
@@ -99,7 +165,7 @@ mod ffi_bridge {
 
 		// ==================== Meshing ====================
 
-		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> MeshData;
+		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
 
 		// ==================== Topology enumeration ====================
 
@@ -234,3 +300,7 @@ pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 unsafe impl Send for TopoDS_Solid {}
 unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
+
+// New owning topology wrappers follow the existing Send contract; Sync remains disabled.
+unsafe impl Send for TopoDS_Shape {}
+unsafe impl Send for TopoDS_Wire {}

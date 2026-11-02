@@ -6,3 +6,7 @@ pub mod face;
 mod ffi;
 pub mod io;
 pub mod solid;
+
+pub mod control;
+pub mod report;
+pub mod shape;

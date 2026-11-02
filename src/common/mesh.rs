@@ -282,10 +282,11 @@ impl Mesh {
 		let SceneOption { view, up, hidden_edges, shading } = option;
 		let (u, v, dir) = projection_basis(view, up);
 
+		if self.indices.is_empty() {
+			return Scene2D { triangles: vec![], color: vec![], edges_visible: self.edges.iter().map(|p| DVec2::new(p.dot(u), p.dot(v))).collect(), edges_hidden: vec![] };
+		}
 		let (triangles, color) = project_and_sort_triangles(self, dir, u, v, shading);
 
-		// `self.edges` holds topological edges for glTF export only; the 2D
-		// scene derives its own view-dependent silhouette set.
 		let silhouette_edges = detect_silhouette_edges(self, dir);
 		let all_edges: Vec<&Vec<DVec3>> = silhouette_edges.iter().collect();
 
@@ -653,13 +654,11 @@ struct Layout {
 }
 
 impl Scene2D {
-	/// Bounding box `[min, max]` of all projected triangle vertices.
-	/// Falls back to `[0,1]×[0,1]` when the scene is empty. Edges always
-	/// lie on the projected surface (= union of front-facing triangles),
-	/// so they don't extend the bbox and are not scanned here.
+	/// Bounding box of projected triangles and finite polyline points.
+	/// Falls back to `[0,1]×[0,1]` when the scene is empty.
 	pub fn viewbox(&self) -> [DVec2; 2] {
 		let init = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
-		let (min, max) = self.triangles.iter().flatten().copied().fold(init, |(mn, mx), p| (mn.min(p), mx.max(p)));
+		let (min, max) = self.triangles.iter().flatten().chain(&self.edges_visible).chain(&self.edges_hidden).copied().filter(|p| p.is_finite()).fold(init, |(mn, mx), p| (mn.min(p), mx.max(p)));
 		if min.x > max.x {
 			[DVec2::ZERO, DVec2::ONE]
 		} else {

@@ -14,6 +14,7 @@ namespace cadrum {
 
 // Type aliases to bring OCCT global types into cadrum namespace.
 // Required because the cxx bridge uses namespace = "cadrum".
+using TopoDS_Shape = ::TopoDS_Shape;
 using TopoDS_Solid = ::TopoDS_Solid;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
@@ -25,6 +26,40 @@ struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+
+struct OperationControl;
+struct OperationData;
+struct ValidationData;
+OperationData op_copy(const TopoDS_Shape&);
+std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape&, uint32_t);
+ValidationData op_validate(const TopoDS_Shape&);
+
+std::unique_ptr<TopoDS_Shape> native_from_solid(const TopoDS_Solid& shape);
+std::unique_ptr<TopoDS_Shape> native_from_face(const TopoDS_Face& shape);
+std::unique_ptr<TopoDS_Shape> native_from_edge(const TopoDS_Edge& shape);
+std::unique_ptr<TopoDS_Solid> native_as_solid(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Face> native_as_face(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Edge> native_as_edge(const TopoDS_Shape& shape);
+bool native_same_face(const TopoDS_Face& a, const TopoDS_Face& b);
+bool native_empty(const TopoDS_Shape& shape);
+uint32_t native_kind(const TopoDS_Shape& shape);
+bool native_valid(const TopoDS_Shape& shape);
+bool native_closed(const TopoDS_Shape& shape);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_loose(const TopoDS_Shape& shape);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_subshapes(const TopoDS_Shape& shape, uint32_t kind);
+std::unique_ptr<TopoDS_Shape> native_take(const std::vector<TopoDS_Shape>& shapes, size_t index);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_vec_new();
+void native_vec_push(std::vector<TopoDS_Shape>& shapes, const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_vertex(double x, double y, double z);
+rust::Vec<double> native_point(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_build(const std::vector<TopoDS_Shape>& shapes, uint32_t kind);
+std::unique_ptr<TopoDS_Shape> native_sew(const std::vector<TopoDS_Face>& faces, double tolerance,
+                                         rust::Vec<uint64_t>& history);
+std::unique_ptr<TopoDS_Solid> native_solidify(const TopoDS_Shape& shape);
+rust::Vec<double> native_bounds(const TopoDS_Shape& shape);
+MeshData op_tessellate(const TopoDS_Shape&, double, double, bool, const OperationControl&);
+rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_read_brep(rust::Slice<const uint8_t> data);
 
 // ==================== Shape I/O (streambuf callback) ====================
 

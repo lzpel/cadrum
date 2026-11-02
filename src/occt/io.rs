@@ -130,6 +130,8 @@ pub(super) fn write_brep<'a, W: Write>(solids: impl IntoIterator<Item = &'a Soli
 }
 
 pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: crate::traits::Tessellation) -> Result<crate::common::mesh::Mesh, Error> {
+	super::report::positive(options.deflection_linear, "linear deflection")?;
+	super::report::positive(options.deflection_angular, "angular deflection")?;
 	use crate::common::mesh::Mesh;
 	use glam::DVec3;
 
@@ -150,7 +152,7 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 		map
 	};
 
-	let data = ffi::mesh_shape(&Solid::to_ffi(solids.iter().copied()), options.deflection_linear, options.deflection_angular, options.relative_linear);
+	let data = ffi::mesh_shape(&Solid::to_ffi(solids.iter().copied()), options.deflection_linear, options.deflection_angular, options.relative_linear).map_err(|e| super::report::kernel("solid mesh", e))?;
 	if !data.success {
 		return Err(Error::Tesselation);
 	}
@@ -190,4 +192,12 @@ pub(super) fn mesh<'a>(solids: impl IntoIterator<Item = &'a Solid>, options: cra
 	};
 
 	Ok(Mesh { vertices, normals, indices, face_ids, colormap, edges })
+}
+
+/// Disposable tessellation with per-vertex UV availability and OCCT mesh status flags.
+#[derive(Debug)]
+pub struct ShapeMesh {
+	pub mesh: crate::Mesh,
+	pub uvs: Vec<Option<crate::DVec2>>,
+	pub status: u32,
 }

@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/lzpel/cadrum"
 keywords = ["opencascade", "cad", "step", "gltf", "geometry"]
 categories = ["graphics", "science"]
-exclude = ["/figure", "/notes", "/steps", "/sandbox*", "/.github"]
+exclude = ["/figure", "/notes/*", "!/notes/NATIVE_FEATURES.md", "/steps", "/sandbox*", "/.github"]
 
 [features]
 default = ["png"]
