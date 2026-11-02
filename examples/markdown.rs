@@ -216,14 +216,7 @@ fn render_gallery(entries: &[Entry], outputs: &[Output]) -> String {
 /// Render the `## Example` section: every entry listed with `#### Title`.
 fn render_example_section(entries: &[Entry], outputs: &[Output]) -> String {
 	fn render_example(entry: &Entry, outputs: &[Output]) -> String {
-		let mut content = String::new();
-		for line in entry.content.split_inclusive('\n') {
-			if !line.trim_start().starts_with("//") && (line.contains(".write_png(") || line.contains(".write_multiview_png(")) {
-				content.push_str("# #[cfg(feature = \"png\")]\n");
-			}
-			content.push_str(line);
-		}
-		let header = format!("\n{}\n\n```sh\ncargo run --example {}\n```\n\n```rust,no_run\n{}\n```\n", entry.description(), entry.stem(), content);
+		let header = format!("\n{}\n\n```sh\ncargo run --example {}\n```\n\n```rust,no_run\n{}\n```\n", entry.description(), entry.stem(), entry.content);
 		let asset = render_assets(entry, outputs);
 		format!("{}\n{}", header, asset)
 	}
