@@ -110,9 +110,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # 11.0 is the oldest macOS on Apple Silicon and rustc's default for aarch64-apple-darwin;
+      # CMake and cc both honour this variable, so the tarball runs on every 11.0+ Mac.
       - name: build
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: make occt
 
       - uses: actions/upload-artifact@v4
