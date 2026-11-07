@@ -133,7 +133,8 @@ fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>> {
 	// our Linux/wasm cross builds (OCCT CMakeLists.txt INSTALL_DIR_DOC).
 	let contains = |parents: &[PathBuf], prefx: &str| -> Option<PathBuf> { parents.iter().find_map(|parent| std::fs::read_dir(parent).ok()?.filter_map(Result::ok).find_map(|e| e.file_name().to_string_lossy().contains(prefx).then_some(e.path()))) };
 	let doc_dir = occt_root.join("share").join("doc").join("opencascade");
-	Some([pick(&[occt_root.join("include").join("opencascade"), occt_root.join("inc"), occt_root.join("include")])?, pick(&[occt_root.join("lib"), occt_root.join("win64").join("gcc").join("lib"), occt_root.join("win64").join("clang").join("lib"), occt_root.join("win64").join("vc14").join("lib")])?, contains(&[occt_root.to_path_buf()], "OCCT")?, contains(&[occt_root.to_path_buf(), doc_dir.clone()], "LICENSE")?, contains(&[occt_root.to_path_buf(), doc_dir], "EXCEPTION")?].to_vec())
+	// "OCCT-" so the source dir wins over OCCT_LGPL_EXCEPTION.txt whatever order read_dir yields.
+	Some([pick(&[occt_root.join("include").join("opencascade"), occt_root.join("inc"), occt_root.join("include")])?, pick(&[occt_root.join("lib"), occt_root.join("win64").join("gcc").join("lib"), occt_root.join("win64").join("clang").join("lib"), occt_root.join("win64").join("vc14").join("lib")])?, contains(&[occt_root.to_path_buf()], "OCCT-")?, contains(&[occt_root.to_path_buf(), doc_dir.clone()], "LICENSE")?, contains(&[occt_root.to_path_buf(), doc_dir], "EXCEPTION")?].to_vec())
 }
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
