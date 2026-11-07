@@ -1,3 +1,4 @@
+use super::control::{operation_cancelled, operation_progress, OperationControl};
 use std::io::{Read, Write};
 
 #[cxx::bridge(namespace = "cadrum")]
@@ -9,11 +10,196 @@ mod ffi_bridge {
 		normals: Vec<f64>,  // flat xyz, one per vertex
 		indices: Vec<u32>,
 		face_tshape_ids: Vec<u64>, // per-triangle TShape* address
+		uvs: Vec<f64>,
+		uv_valid: Vec<bool>,
+		status: u32,
 		success: bool,
+	}
+
+	struct StepDefinitionData {
+		id: String,
+		name: String,
+		shape: i32,
+	}
+	struct StepInstanceData {
+		id: String,
+		name: String,
+		reference: String,
+		has_reference: bool,
+		parent: i32,
+		definition: u32,
+		transform: Vec<f64>,
+	}
+	struct StepReadData {
+		operation: OperationData,
+		units: Vec<String>,
+		normalized_unit: f64,
+		roots: usize,
+		transferred: usize,
+		geometry: UniquePtr<CxxVector<TopoDS_Shape>>,
+		definitions: Vec<StepDefinitionData>,
+		instances: Vec<StepInstanceData>,
+		color_ids: Vec<u64>,
+		rgb: Vec<f32>,
+	}
+	struct StepWriteConfig {
+		model_unit: f64,
+		write_unit: u32,
+		schema: u32,
+		assembly: bool,
+	}
+	struct StepWriteData {
+		bytes: Vec<u8>,
+		warnings: Vec<String>,
+	}
+
+	struct FillingConfig {
+		initial: i32,
+		tolerance: f64,
+		angular_tolerance: f64,
+		curvature_tolerance: f64,
+		max_degree: u32,
+		max_segments: u32,
+	}
+	struct FillingData {
+		operation: OperationData,
+		distance_error: f64,
+		angle_error: f64,
+		curvature_error: f64,
+	}
+	struct DraftData {
+		operation: OperationData,
+		statuses: Vec<u32>,
+	}
+
+	struct LoftConfig {
+		solid: bool,
+		ruled: bool,
+		compatibility: bool,
+		tolerance: f64,
+		smoothing: bool,
+		parametrization: u32,
+		continuity: u32,
+		max_degree: u32,
+		weights: Vec<f64>,
+	}
+
+	struct SweepConfig {
+		mode: u32,
+		frame: Vec<f64>,
+		transition: u32,
+		tolerance: f64,
+		boundary_tolerance: f64,
+		angular_tolerance: f64,
+		force_c1: bool,
+		max_degree: u32,
+		max_segments: u32,
+		solid: bool,
+		contact: Vec<bool>,
+		correction: Vec<bool>,
+		locations: Vec<i32>,
+		law: Vec<f64>,
+		guide: i32,
+		curvilinear: bool,
+		auxiliary_contact: u32,
+		simulation: u32,
+	}
+	struct SweepData {
+		operation: OperationData,
+		sections: UniquePtr<CxxVector<TopoDS_Shape>>,
+		status: u32,
+		error: f64,
+	}
+
+	struct GeometryInfoData {
+		kind: u32,
+		range: Vec<f64>,
+		u_periodic: bool,
+		v_periodic: bool,
+		u_period: f64,
+		v_period: f64,
+		frame: Vec<f64>,
+		parameters: Vec<f64>,
+	}
+	struct DistanceData {
+		distance: f64,
+		inner_solution: bool,
+		points: Vec<f64>,
+		first: UniquePtr<CxxVector<TopoDS_Shape>>,
+		second: UniquePtr<CxxVector<TopoDS_Shape>>,
+	}
+
+	struct BooleanConfig {
+		fuzzy: f64,
+		glue: u32,
+		non_destructive: bool,
+		parallel: bool,
+	}
+
+	#[derive(Default)]
+	struct SplineData {
+		bezier: bool,
+		poles: Vec<f64>,
+		weights: Vec<f64>,
+		u_count: u32,
+		v_count: u32,
+		u_degree: u32,
+		v_degree: u32,
+		u_knots: Vec<f64>,
+		v_knots: Vec<f64>,
+		u_mults: Vec<i32>,
+		v_mults: Vec<i32>,
+		u_periodic: bool,
+		v_periodic: bool,
+	}
+
+	struct HistoryEntry {
+		operand: u32,
+		source: u32,
+		target: u32,
+		relation: u32,
+		source_kind: u32,
+		target_kind: u32,
+		source_id: u64,
+		target_id: u64,
+	}
+	struct OperationData {
+		shape: UniquePtr<TopoDS_Shape>,
+		history: Vec<HistoryEntry>,
+		complete: bool,
+		warnings: Vec<String>,
+		diagnostics: Vec<String>,
+	}
+
+	struct RepairData {
+		shape: UniquePtr<TopoDS_Shape>,
+		changed: bool,
+		tolerance_before: f64,
+		tolerance_after: f64,
+		boundary_before: usize,
+		boundary_after: usize,
+		changed_subshapes: Vec<u32>,
+		face_history: Vec<u64>,
+		maximum_deviation: f64,
+		sample_count: usize,
+	}
+	struct ValidationEntry {
+		subshape: u32,
+		context: u32,
+		kind: u32,
+		status: u32,
+	}
+	struct ValidationData {
+		valid: bool,
+		closed: bool,
+		issues: Vec<ValidationEntry>,
 	}
 
 	// Expose Rust stream types to C++ for streambuf callbacks
 	extern "Rust" {
+		type OperationControl;
+		fn operation_cancelled(control: &OperationControl) -> bool;
+		fn operation_progress(control: &OperationControl, fraction: f64);
 		type RustReader;
 		type RustWriter;
 
@@ -30,6 +216,93 @@ mod ffi_bridge {
 		type TopoDS_Edge;
 		type TopoDS_Wire;
 
+		type TopoDS_Shape;
+		fn op_fill(inputs: &CxxVector<TopoDS_Shape>, supports: &[i32], orders: &[u32], points: &[f64], config: &FillingConfig, control: &OperationControl) -> Result<FillingData>;
+		fn op_retrim(face: &TopoDS_Face, wires: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_extend_surface(face: &TopoDS_Face, boundary: u32, length: f64, continuity: u32, tolerance: f64) -> Result<OperationData>;
+		fn op_imprint(shape: &TopoDS_Shape, face: &TopoDS_Face, curves: &CxxVector<TopoDS_Shape>, tolerance: f64, control: &OperationControl) -> Result<OperationData>;
+		fn op_authored_curve(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_authored_surface(data: &SplineData, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
+		fn op_ellipse(frame: &[f64], major: f64, minor: f64, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_curve_control(edge: &TopoDS_Edge) -> Result<SplineData>;
+		fn op_surface_control(face: &TopoDS_Face) -> Result<SplineData>;
+		fn op_curve_range(edge: &TopoDS_Edge) -> Result<Vec<f64>>;
+		fn op_curve_evaluate(edge: &TopoDS_Edge, parameter: f64) -> Result<Vec<f64>>;
+		fn op_trim_edge(edge: &TopoDS_Edge, trim: &[f64]) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn op_surface_range(face: &TopoDS_Face) -> Result<Vec<f64>>;
+		fn op_surface_evaluate(face: &TopoDS_Face, u: f64, v: f64) -> Result<Vec<f64>>;
+		fn op_trim_surface(face: &TopoDS_Face, trim: &[f64]) -> Result<UniquePtr<TopoDS_Face>>;
+
+		fn op_faceted_mesh(positions: &[f64], indices: &[u32], tolerance: f64, solid: bool) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_step_read(data: &[u8], unit: f64, allow_missing: bool, allow_partial: bool, document: bool, control: &OperationControl) -> Result<StepReadData>;
+		fn op_step_write(geometry: &CxxVector<TopoDS_Shape>, definitions: &[StepDefinitionData], instances: &[StepInstanceData], ids: &[u64], rgb: &[f32], config: &StepWriteConfig, control: &OperationControl) -> Result<StepWriteData>;
+		fn op_draft(shape: &TopoDS_Shape, faces: &CxxVector<TopoDS_Shape>, values: &[f64], flag: bool, control: &OperationControl) -> Result<DraftData>;
+		fn op_project(source: &TopoDS_Shape, target: &TopoDS_Shape, vector: &[f64], point: bool, tolerance: f64, untrimmed: bool, reject_multiple: bool, reject_empty: bool) -> Result<OperationData>;
+		fn op_chamfer(shape: &TopoDS_Shape, selected: &CxxVector<TopoDS_Shape>, values: &[f64], control: &OperationControl) -> Result<OperationData>;
+		fn op_variable_fillet(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, values: &[f64], counts: &[u32], control: &OperationControl) -> Result<OperationData>;
+		fn op_reversed(shape: &TopoDS_Shape) -> Result<OperationData>;
+		fn op_planar_blend(face: &TopoDS_Face, selected: &CxxVector<TopoDS_Shape>, values: &[f64], chamfer: bool) -> Result<OperationData>;
+		fn op_loft(sections: &CxxVector<TopoDS_Shape>, config: &LoftConfig, control: &OperationControl) -> Result<OperationData>;
+		fn op_sweep(inputs: &CxxVector<TopoDS_Shape>, section_count: usize, config: &SweepConfig, control: &OperationControl) -> Result<SweepData>;
+		fn op_curve_info(edge: &TopoDS_Edge) -> Result<GeometryInfoData>;
+		fn op_surface_info(face: &TopoDS_Face) -> Result<GeometryInfoData>;
+		fn op_curve_length(edge: &TopoDS_Edge, tolerance: f64) -> Result<f64>;
+		fn op_curve_abscissae(edge: &TopoDS_Edge, count: u32, tolerance: f64) -> Result<Vec<f64>>;
+		fn op_classify_uv(face: &TopoDS_Face, u: f64, v: f64, tolerance: f64) -> Result<u32>;
+		fn op_boundary_wires(face: &TopoDS_Face) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn op_properties(shape: &TopoDS_Shape, kind: u32, accuracy: f64) -> Result<Vec<f64>>;
+		fn op_classify_point(shape: &TopoDS_Shape, x: f64, y: f64, z: f64, tolerance: f64) -> Result<u32>;
+		fn op_distance(a: &TopoDS_Shape, b: &TopoDS_Shape, tolerance: f64) -> Result<DistanceData>;
+		fn op_ancestors(parent: &TopoDS_Shape, subshape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+
+		fn op_plane(values: &[f64]) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn op_section(a: &TopoDS_Shape, b: &TopoDS_Shape, tolerance: f64, flags: &[bool]) -> Result<OperationData>;
+		fn op_split(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_children(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn op_centroid(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn op_member_indices(parent: &TopoDS_Shape, child: &TopoDS_Shape) -> Result<Vec<u32>>;
+		fn op_surface_offset(shape: &TopoDS_Shape, distance: f64, tolerance: f64, intersection_join: bool, intersect_all: bool, thicken: bool) -> Result<OperationData>;
+
+		fn op_copy(shape: &TopoDS_Shape) -> Result<OperationData>;
+		fn op_transform(shape: &TopoDS_Shape, kind: u32, values: &[f64]) -> Result<OperationData>;
+		fn op_boolean(inputs: &CxxVector<TopoDS_Shape>, argument_count: usize, operation: u32, config: &BooleanConfig, control: &OperationControl) -> Result<OperationData>;
+		fn op_blend(shape: &TopoDS_Shape, edges: &CxxVector<TopoDS_Shape>, radius: f64, chamfer: bool) -> Result<OperationData>;
+		fn op_unify(shape: &TopoDS_Shape, linear: f64, angular: f64) -> Result<OperationData>;
+		fn op_sew_history(inputs: &CxxVector<TopoDS_Shape>, tolerance: f64) -> Result<OperationData>;
+		fn op_topology_at(shape: &TopoDS_Shape, index: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+
+		fn op_profile(wires: &CxxVector<TopoDS_Shape>, tolerance: f64, explicit_outer: bool) -> Result<OperationData>;
+		fn op_prism(shape: &TopoDS_Shape, x: f64, y: f64, z: f64) -> Result<OperationData>;
+		fn op_revolution(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
+		fn op_affine(shape: &TopoDS_Shape, values: &[f64]) -> Result<OperationData>;
+		fn op_repair(shape: &TopoDS_Shape, precision: f64, max_tolerance: f64, max_deviation: f64, flags: &[bool]) -> Result<RepairData>;
+		fn op_validate(shape: &TopoDS_Shape) -> Result<ValidationData>;
+		fn native_from_solid(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_face(shape: &TopoDS_Face) -> UniquePtr<TopoDS_Shape>;
+		fn native_from_edge(shape: &TopoDS_Edge) -> UniquePtr<TopoDS_Shape>;
+		fn native_as_solid(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_as_face(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Face>>;
+		fn native_as_edge(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Edge>>;
+		fn native_same_face(a: &TopoDS_Face, b: &TopoDS_Face) -> bool;
+		fn native_empty(shape: &TopoDS_Shape) -> bool;
+		fn native_kind(shape: &TopoDS_Shape) -> u32;
+		fn native_valid(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_closed(shape: &TopoDS_Shape) -> Result<bool>;
+		fn native_loose(shape: &TopoDS_Shape) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_subshapes(shape: &TopoDS_Shape, kind: u32) -> Result<UniquePtr<CxxVector<TopoDS_Shape>>>;
+		fn native_take(shapes: &CxxVector<TopoDS_Shape>, index: usize) -> UniquePtr<TopoDS_Shape>;
+		fn native_vec_new() -> UniquePtr<CxxVector<TopoDS_Shape>>;
+		fn native_vec_push(shapes: Pin<&mut CxxVector<TopoDS_Shape>>, shape: &TopoDS_Shape);
+		fn native_vertex(x: f64, y: f64, z: f64) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_point(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn native_build(shapes: &CxxVector<TopoDS_Shape>, kind: u32) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_sew(faces: &CxxVector<TopoDS_Face>, tolerance: f64, history: &mut Vec<u64>) -> Result<UniquePtr<TopoDS_Shape>>;
+		fn native_solidify(shape: &TopoDS_Shape) -> Result<UniquePtr<TopoDS_Solid>>;
+		fn native_bounds(shape: &TopoDS_Shape) -> Result<Vec<f64>>;
+		fn op_tessellate(shape: &TopoDS_Shape, linear: f64, angular: f64, relative: bool, control: &OperationControl) -> Result<MeshData>;
+		fn native_write_brep(shape: &TopoDS_Shape) -> Result<Vec<u8>>;
+		fn native_read_brep(data: &[u8]) -> Result<UniquePtr<TopoDS_Shape>>;
+
 		// ==================== Shape I/O (streambuf callback) ====================
 
 		// `out_consumed` = payload length, where the color trailer begins. Written only
@@ -39,22 +312,22 @@ mod ffi_bridge {
 
 		// ==================== Shape Constructors ====================
 
-		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_half_space(ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn make_face(kind: u32, ox: f64, oy: f64, oz: f64, zx: f64, zy: f64, zz: f64, xx: f64, xy: f64, xz: f64, p1: f64, p2: f64, wires: &CxxVector<TopoDS_Wire>) -> Result<UniquePtr<TopoDS_Face>>;
 		fn wires_from_edges(edges: &CxxVector<TopoDS_Edge>, tolerance: f64) -> Result<UniquePtr<CxxVector<TopoDS_Wire>>>;
 
-		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_box(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cylinder(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, radius: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_sphere(cx: f64, cy: f64, cz: f64, radius: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_cone(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64, height: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> UniquePtr<TopoDS_Solid>;
+		fn make_torus(px: f64, py: f64, pz: f64, dx: f64, dy: f64, dz: f64, r1: f64, r2: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
-		fn deep_copy(shape: &TopoDS_Solid) -> UniquePtr<TopoDS_Solid>;
+		fn deep_copy(shape: &TopoDS_Solid) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		// ==================== STEP I/O ====================
 
@@ -82,7 +355,7 @@ mod ffi_bridge {
 
 		// ==================== Transforms (solid → solid, no history) ====================
 
-		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> UniquePtr<TopoDS_Solid>;
+		fn transform_translate(shape: &TopoDS_Solid, tx: f64, ty: f64, tz: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
 		fn transform_rotate(shape: &TopoDS_Solid, ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64, angle: f64) -> Result<UniquePtr<TopoDS_Solid>>;
 
@@ -99,7 +372,7 @@ mod ffi_bridge {
 
 		// ==================== Meshing ====================
 
-		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> MeshData;
+		fn mesh_shape(shape: &CxxVector<TopoDS_Solid>, linear: f64, angular: f64, relative: bool) -> Result<MeshData>;
 
 		// ==================== Topology enumeration ====================
 
@@ -231,6 +504,13 @@ pub fn rust_writer_write(writer: &mut RustWriter, buf: &[u8]) -> usize {
 //   - `Sync` is intentionally NOT implemented: OCC's `Handle<Geom_XXX>`
 //     reference counts are non-atomic, so concurrent `&T` access across
 //     threads would be unsound.
+// cxx opaque types default to !Send + !Sync. Send lets owning UniquePtr wrappers
+// move between threads, preserving the existing Solid, Face, and Edge contract.
 unsafe impl Send for TopoDS_Solid {}
 unsafe impl Send for TopoDS_Face {}
 unsafe impl Send for TopoDS_Edge {}
+unsafe impl Send for TopoDS_Shape {}
+unsafe impl Send for TopoDS_Wire {}
+
+// Sync remains disabled because native queries and operations can mutate caches.
+// Shared native aliases must stay on one worker; deep copies can be independent.

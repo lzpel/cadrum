@@ -1,6 +1,14 @@
 /// Errors that can occur during CAD operations.
 #[derive(Debug)]
 pub enum Error {
+	/// A named native operation failed with kernel diagnostics.
+	Operation { operation: String, diagnostics: Vec<String>, subshapes: Vec<usize> },
+	/// The operation does not support the supplied topology or geometry.
+	Unsupported { operation: String, kind: String },
+	/// Cooperative cancellation completed without returning partial geometry.
+	Cancelled { operation: String },
+	/// General native topology operation failed.
+	Shape(String),
 	/// Caller-side misuse: an argument that cannot be interpreted, such as an invalid color string.
 	Validation(String),
 
@@ -56,6 +64,10 @@ pub enum Error {
 impl std::fmt::Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
+			Error::Operation { operation, diagnostics, .. } => write!(f, "{operation}: {}", diagnostics.join("; ")),
+			Error::Unsupported { operation, kind } => write!(f, "{operation}: unsupported {kind}"),
+			Error::Cancelled { operation } => write!(f, "{operation}: cancelled"),
+			Error::Shape(msg) => write!(f, "Shape operation failed: {msg}"),
 			Error::Validation(msg) => write!(f, "Validation failed: {msg}"),
 			Error::Io(e) => write!(f, "IO failed: {e}"),
 			Error::Tesselation => write!(f, "Tesselation failed"),

@@ -1,0 +1,662 @@
+# Open native topology
+
+`Shape` owns native geometry of any topology category. Convert existing `Solid`,
+`Face`, or `Edge` values with `Shape::from(&value)`, then use typed `vertices`,
+`edges`, `wires`, `faces`, `shells`, `solids`, and `compounds` accessors.
+`Vertex::new`, `Wire::new`, `Face::face`, `Shell::new`, existing solid builders,
+and `Shape::compound` construct these categories without intermediate files.
+
+Open results remain open. `Shape::sew`, `extract_faces`, and `remove_faces`
+preserve faces, open or closed shells, and disconnected compound results.
+`Shape::to_solid` requires exactly one valid closed shell and orients it outward;
+`as_solid` only accepts existing solid topology. `Shell::new` requires faces
+that already share native edges; sewing connects independent faces within an
+explicit positive tolerance in model length units.
+
+Empty results are successful values. Empty sewing, empty compounds, and removal
+of all faces return an empty compound; `is_empty` distinguishes it from an open
+shape, while errors use `Error::Validation` or `Error::Shape`. Empty bounds are
+`None`, and meshing empty topology produces no triangles. Subshape traversal
+includes the root when its category matches and returns unique native subshapes.
+
+Open geometry supports native feature chains. Translation, rotation in radians,
+uniform signed scaling, reflection, bounds, validity checks, tessellation, and
+binary BRep I/O accept every supported category. Meshing faces emits oriented
+normals and triangle face IDs; wires and edges emit polylines. `thicken` accepts
+valid faces or open shells and uses signed offsets with intersection joins and
+boundary walls, at OCCT’s `Precision::Confusion()` coincidence tolerance. Kernel
+failures and invalid output return errors; arbitrary self-intersections are not
+guaranteed to be detected.
+
+Ownership follows native topology lifetimes. Views own shared subshape handles,
+so dropping a parent does not invalidate them; cloning copies geometry
+independently. `Shape`, `Vertex`, `Wire`, `Shell`, and `Compound` implement `Send`
+but not `Sync`. Native results remain directly usable through typed accessors
+and the existing convenience APIs.
+
+Styles follow existing faces in memory. Conversion from `Solid` expands whole-body
+colors onto faces, and copying, transforms, extraction, and removal retain face
+colors through topology correspondence. Generated thickening faces inherit available
+styled face ancestry; other generated faces remain unassigned. Shape BRep I/O stores exact geometry and the root category but
+omits colors, history, and triangulation; binary compatibility follows the linked
+OCCT version. Existing `Solid` color-aware I/O remains available.
+
+The open-box example exercises the full chain. Run
+`cargo run --example open_shape` to construct, open, transform, mesh, serialize,
+restore, and thicken a box shell entirely through native shapes.
+
+## 2. Validation and operation outcomes
+
+Validation separates geometric validity from category expectations. `Shape::validate`
+returns validity, closure, empty state, expected category matching, and indexed
+BRepCheck status codes including contextual subshape errors and orientation issues.
+Indices refer to the native traversal of the shape supplied to validation.
+
+New operations report named errors. `Error::Operation` carries kernel diagnostics
+and available implicated indices, `Unsupported` identifies unsupported categories,
+and `Cancelled` identifies cooperative cancellation. `OperationResult` separates
+successful values from warnings and diagnostics; empty geometry remains a value.
+Legacy convenience APIs retain their existing error variants and signatures.
+
+Repair is explicit. `Shape::repair` copies geometry before running permitted
+ShapeFix tools, measures maximum topology tolerances and boundary counts, and
+rejects tolerance overruns or unrequested closure. Its report includes validation
+before and after repair; repair does not silently certify an invalid result.
+
+## 3. General affine transforms
+
+Affine matrices use column vectors. `Shape::affine` computes `M * [x,y,z,1]`,
+accepts glam's column-major `DMat4`, and rejects perspective, non-finite, and
+singular matrices before FFI. `A * B` applies B first; translation entries and
+scaling origins use model length units. `scale_xyz` scales around an explicit origin.
+
+General transforms may change geometry representation. OCCT's GTransform can
+convert analytic geometry to B-splines while preserving native trim boundaries.
+Results include indexed vertex, edge, and face correspondence and inherited face
+styles; missing correspondence is explicitly unknown rather than deleted.
+
+## 4. Authored curves and surfaces
+
+Control data defines geometry directly. `CurveControlData::Bezier` and `BSpline`
+construct edges from poles, optional positive weights, degree, strictly increasing
+knots, multiplicities, and periodicity; `SurfaceControlData` does the same for
+independent U/V axes. Empty weights mean all ones. Control nets use U-major order:
+`poles[u * v_count + v]`. These APIs do not interpolate their poles.
+
+Trims use native parameters. `edge(Some([first,last]))` and
+`face(Some([umin,umax,vmin,vmax]))` preserve exact underlying native geometry.
+`Edge::ellipse` uses a perpendicular right-handed `Frame`, major/minor radii, and
+optional increasing angular bounds in radians; its frame directions are normalized.
+`Edge::trimmed` restricts an existing edge, while `Face::surface_patch` creates a
+rectangular patch of its underlying surface rather than retaining old trim wires.
+
+Authored data remains inspectable. `control_data`, `parameter_range`, `evaluate`,
+and `evaluate_uv` read poles, weights, spline axes, positions, and first/second
+derivatives. Surface normals follow face orientation. Existing native profile and
+solid operations accept these edges and faces; BRep round trips preserve authored data.
+
+## 5. Reusable profiles
+
+Profiles normalize planar loop nesting. `Shape::profile` accepts wires in either
+winding and constructs faces for outer loops and islands, with direct child loops
+as holes. It rejects open, non-planar, crossing, touching, and coincident contours.
+`Face::from_wires` additionally requires the designated outer loop to contain every
+hole and rejects nested holes or disconnected outer regions.
+
+Native faces remain reusable. `Shape::extrude` retains holes and disconnected
+regions under oblique displacement; `revolve` takes an explicit axis and signed
+angle in radians, limited to one full turn. Both operations return native output
+and builder-provided vertex/edge/face history, including profile-edge to side-face
+relations. Profile construction retains vertex/edge identity through loop
+orientation changes and records each boundary edge's generated region face,
+including holes, islands, and disconnected regions.
+
+## 6. Faceted mesh and STL import
+
+Mesh validation precedes reconstruction. `TriangleMesh::import` checks finite
+positions, index bounds, area, duplicate triangles, edge incidence, winding,
+orientability, components, and signed component volumes. Its report records
+boundary/non-manifold edges, removed triangles, weld counts, orientation changes,
+and component volumes. Invalid index and resource inputs return named errors.
+
+Reconstruction is an explicit outcome. `MeshOnly` retains triangle data and
+reports topology defects; `OpenShell` builds sewn faceted BRep, while `ClosedSolid`
+requires closed manifold components with outward winding. Every disconnected
+component survives in a compound. Sewing tolerance is explicit; attaching a
+triangulation alone never establishes a solid or reconstructs analytic surfaces.
+
+Repair is opt-in. Welding, duplicate/degenerate removal, and component orientation
+have separate flags. Welding uses a spatial grid and the selected tolerance;
+closed components are oriented outward only when requested. Import limits bound
+vertices, triangles, and STL bytes before native construction.
+
+STL units require an explicit scale. `TriangleMesh::read_stl(reader, scale,
+options)` accepts ASCII and binary files, validates complete facets, and converts
+file coordinates into model length units. Exact repeated STL coordinates become
+shared indexed vertices; tolerance-based welding remains an explicit repair.
+Reconstructed solids support existing native Booleans and STEP export.
+
+## 7. Topology correspondence
+
+History describes explicit relations. Operation results carry modified, generated,
+removed, unchanged, and unknown relations for vertices, edges, and faces; unknown
+relations make `complete` false. Native deletion reports and explicit construction
+correspondence establish `Removed` when no retained descendant remains in the
+result; missing correspondence stays unknown. Copies, restricted/affine
+transforms, profile operations, Booleans,
+blends, sewing, and face unification expose available builder correspondence.
+
+References identify their operand and traversal index. `topology_at` resolves a
+one-based index against the original operand or result; references are runtime
+operation data, not durable document names or serialized labels. Relations retain
+one-to-many descendants and separate operand ancestry. `operand_count` retains inputs
+even when no subshape relations are available. `History::compose` joins relations
+across an intermediate operand, preserves unrelated next operands, and confirms
+deletion only when every known descendant is removed.
+
+Styles propagate through available ancestry. Split descendants inherit source
+face styles and generated faces inherit available styled ancestors; when multiple
+styled ancestors merge, the last input operand wins. Missing history is exposed
+rather than treated as deletion. Existing `Solid::iter_history` remains available
+with its original face-pair contract; the general APIs expose the richer history.
+
+## 8. Section, split, and surface operations
+
+Sections remain native curves. `Shape::section` computes intersection topology with
+explicit tolerance, approximation, and pcurve policies; disjoint or tangent inputs
+may produce valid empty or lower-dimensional results. `Plane::face` constructs an
+unbounded positioned plane without moving the requested origin or normal.
+
+Splitting retains every partition. `Shape::split` accepts native face, shell, and
+solid tools and returns native partitions plus history. `split_by_plane` additionally
+classifies partition centroids into positive/negative/on-plane sides and records
+available ancestor references against its combined result. `children` traverses
+direct children, while typed accessors traverse all matching subshapes.
+
+Offsets and thickening are distinct operations. `offset_surface` constructs a
+parallel face/shell; `thicken_with_options` adds boundary walls and requires a solid
+result. Both expose signed distance, intersection/arc joins, and coincidence
+tolerance. Face removal stays separate; existing solid hollowing remains available.
+Kernel limitations on excessive offsets and self-intersections still apply.
+
+## 9. Boolean controls and cancellation
+
+Boolean execution policies are explicit. `Shape::boolean_batch` accepts argument
+and tool lists, fuzzy tolerance, glue policy, non-destructive mode, and native
+parallel execution. Defaults preserve inputs, disable glue and parallelism, and
+use the kernel's default numerical floor; diagnostics record effective options.
+Native errors, warnings, empty output, and history remain separate.
+
+Progress callbacks are synchronous and serialized. `OperationControl` owns a
+`Send + 'static` callback that may execute on an OCCT worker thread; it must return
+promptly and must not reuse its active control. Returning false requests
+cancellation. A cloneable `CancellationToken` can also cancel from another thread.
+Callback panics are caught in Rust and reported as operation errors without
+unwinding across native frames. No callback survives the synchronous call.
+
+Cancellation is cooperative. The native progress indicator polls the token during
+supported kernel phases and discards partial results on cancellation. The error
+is `Cancelled`, rather than a valid empty result; callback failures remain errors.
+Callback reentrancy or concurrent reuse of one active control is rejected.
+
+## 10. Tessellation and native data boundaries
+
+Tessellation is disposable output. `Shape::tessellate` returns the existing mesh,
+per-vertex optional UVs, OCCT status flags, warnings, and cooperative progress or
+cancellation. Linear and angular deflection retain the existing absolute/relative
+policy. Face orientation determines normals and winding, including reflections;
+native triangulation is cleaned on completion and failure.
+
+Native I/O preserves open geometry. `Shape::read_step` and `write_step` operate on
+memory buffers without solid filtering, retaining open surfaces and disconnected
+components. They support the same operation control and report partial transfer.
+Geometry-only STEP and binary BRep omit styles and history; existing color-aware
+Solid I/O remains available. Binary BRep compatibility follows the linked OCCT
+format version rather than a portable cross-version serialization guarantee.
+
+Owned native handles can move between threads. `Shape`, `Solid`, `Face`, `Edge`,
+and typed topology views implement `Send` but not `Sync`, preserving the original
+transfer contract and extending it to the new owning wrappers. Workers may create,
+receive, retain, return, and drop owned shapes. Meshes and operation results also
+remain transferable.
+
+Native aliases require serialized use. Extracted topology and shallow native
+conversions can share geometry with a parent; `Send` does not make simultaneous
+operations on those aliases safe. Keep related aliases on one worker, or use
+independent deep copies when operating in parallel. `Sync` is not implemented
+because native evaluation and meshing can mutate geometry and caches.
+
+## 11. Measurements and geometric frames
+
+Geometry classification preserves analytic parameters. `curve_info` and
+`surface_info` identify elementary, Bezier, B-spline, and other native families,
+parameter domains, periodicity, and available analytic frames/radii. Ellipse
+parameters are major/minor radii; cone parameters are reference radius and signed
+semi-angle. Curve evaluation supplies tangents through its first derivative.
+
+Measurements use native geometry. `Edge::length` and `sample_by_length` accept
+absolute integration/inversion tolerances; samples include trimmed endpoints.
+`mass_properties` integrates lengths, trimmed areas, or closed-solid volumes and
+returns center, inertia, and the native relative-error estimate. Surface/volume
+accuracy controls adaptive Gauss integration; length properties use OCCT's native
+linear-properties integration. Empty measurements have zero mass.
+
+Differential queries respect orientation and trimming. `curvature` evaluates curve
+curvature, while `curvature_uv` returns principal curvatures/directions, mean, and
+Gaussian curvature using the oriented face normal and first/second fundamental
+forms. Singular parameterizations return errors. `classify_uv` checks the actual
+trimmed domain, including holes; `boundary_wires` identifies outer/hole loops.
+
+Closest-point reports retain supporting topology. `distance` returns all minimum
+solutions reported by OCCT, their point pairs, native support shapes, and inner
+solution status; continuous families are represented by the kernel's finite set.
+`classify_point` supports solids, and `ancestors` traverses native adjacency while
+rejecting foreign subshapes. Existing convenience measurements remain available.
+
+## 12. Advanced sweeps
+
+Sweep controls map to native pipe-shell settings. `Wire::sweep` accepts ordered
+wire/endpoint-vertex sections with optional spine-vertex locations and per-section
+contact/correction flags. Options expose transition policy, three tolerances, C1
+approximation requests, maximum degree/segments, simulation count, and explicit
+shell/solid output. Results include pipe status, approximation error, history, and
+simulated section wires, with cooperative cancellation during native building.
+
+Orientation policies remain distinct. Corrected Frenet, Frenet, fixed frame,
+fixed binormal, discrete, support-surface, and auxiliary-spine modes are available.
+Support mode requires native pcurves on the supplied support; auxiliary mode
+exposes curvilinear matching and no-contact/contact/boundary contact choices.
+Round corners work best with section correction; transformed sharp corners may
+self-intersect, and right-corner intersections retain kernel limitations.
+
+Scaling laws are homothetic. Positive scale samples interpolate over normalized
+spine position from zero to one, with matching endpoint values on closed spines.
+A scaling law requires one section and is incompatible with auxiliary-spine mode.
+It does not represent arbitrary twist. Invalid combinations return errors before
+native evaluation; incompatible geometry reports the native pipe status.
+
+Scaling-law history is unavailable in the pinned kernel. OCCT 8.0.1 crashes while
+building that history, so scaling sweeps disable native history and return an
+explicit incomplete-history warning. Legacy `Solid::volume` retains its original
+integration policy; `Shape::mass_properties` accepts an accuracy target and reports
+the native estimate for callers needing controlled integration.
+
+## 13. Loft controls and healing reports
+
+Lofts expose their approximation policy. `Shape::loft` accepts shell/solid choice,
+ruled/smooth construction, compatibility/orientation normalization, tolerance,
+smoothing, parameterization, requested continuity, maximum degree, and optimization
+weights. Native input topology is kept immutable. Point vertices are permitted at
+ends when at least one wire section exists; direct wire lofts expose native history.
+
+Profile correspondence is explicit by order. Face and compound-profile sections
+must have matching region and hole counts; regions and hole loops correspond in
+native traversal order. Solid construction lofts each outer region and subtracts
+its corresponding hole lofts. Shell construction retains outer and reversed inner
+shells separately. Incompatible topology is rejected. Composite loft history
+combines each boundary loft's native correspondence with the hole-cut histories,
+retains section-edge/vertex ancestry, and maps profile faces to generated lateral
+faces and modified end caps. These relations also propagate face styles; middle
+sections, reversed inner shells, and disconnected regions retain their ancestry.
+
+Healing reports measured changes. Repair reports now include context-replaced or
+tolerance-changed subshape indices, boundary counts, tolerance maxima, sample count,
+and maximum sampled deviation. Vertices and five curve samples per edge are checked
+against repaired geometry, and exceeding the requested sampled limit rejects the
+repair. This measure is not a continuous Hausdorff bound on surface interiors.
+Intentional openings remain unless closure is explicitly allowed.
+
+## 14. Additional edge treatments
+
+Chamfers identify their reference side. `Shape::chamfer` accepts selected edge/face
+pairs with two distances or a distance and angle in radians; the first distance is
+measured on the reference face. Foreign or non-adjacent topology and invalid local
+dimensions return named errors. `Shape::reversed` exposes explicit orientation
+reversal while retaining native topology identity.
+
+Variable fillets use normalized radius laws. `variable_fillet` interpolates positive
+radii at strictly increasing relative spine parameters from zero to one and returns
+native generated/modified history. Native building supports cancellation and reports
+excessive radii or incompatible local geometry without returning partial results.
+
+Planar corner treatments preserve hole topology. `Face::fillet_corners` selects
+vertices, while `chamfer_corners` selects adjacent edges and their distances. The
+native planar algorithm supports line/circular-arc boundaries and reports its
+status on failure. Generated arc/chamfer edges have explicit provenance. Fillets
+provide tangential G1 joins where the kernel succeeds; C2 continuity is not promised,
+and chamfers introduce C0 corners.
+
+## 15. Draft and projection
+
+Draft uses an explicit neutral plane and pull direction. `Shape::draft` applies a
+signed angle in radians to selected faces and returns per-selection success codes
+and native history; rejected additions identify their selection and kernel status.
+`Face::tapered_extrude` is a separate planar-profile construction that extrudes,
+drafts generated side faces, and composes provenance through both operations.
+
+Projection returns reusable native wires. `project_onto` supports infinite
+parallel-line projection or central projection from a point onto faces, shells,
+solids, and compounds. Options choose trimmed clipping versus the underlying face,
+retain or reject multiple connected results, and select empty/error no-hit policy.
+Planar directional projection preserves curve parameters and clips exact topology.
+General projection retains the native kernel's intersection limitations; an
+undifferentiated kernel failure/no-intersection status remains an error.
+
+Projection policies preserve all retained hits. Results are connected into wires
+within the explicit tolerance, and no first-hit ordering is implied. Projection
+history records each source edge and supporting target face for every output edge.
+Planar clipping composes native Boolean history; central and curved projection
+construct per-edge/per-face results, then compose edge-union and connector
+correspondence. Coincident output edges are unified while retaining every source
+and target-face ancestor. Curve-handle identity, exact parameter ranges, and the
+connector's native vertex substitutions track topology through wire joining.
+An output edge without source ancestry is an operation error.
+
+Projection references describe the projected result. Surviving endpoint images
+and target-boundary intersections carry vertex ancestry within the larger of the
+requested and native topological tolerances. Clipped-out source endpoints and
+unused target topology have no descendants and are marked removed from the
+result; the source and support models themselves are not deleted. Curved target
+trimming is enforced by the native projector; untrimmed mode requires one face.
+
+## 16. STEP units, products, and assemblies
+
+STEP units are explicit at both boundaries. `read_step_with_options` reports
+source length-unit names, selected normalization, candidate roots, and transferred
+roots. Missing units and partial transfers are errors unless explicitly allowed;
+allowed fallback and partial transfer produce warnings. `write_step_with_options`
+separates model units from export units and selects AP203, AP214, or AP242.
+Millimetres, metres, inches, feet, kilometres, micrometres, and centimetres are supported.
+
+Supported styling survives controlled STEP I/O. Solid and face RGB colors use the
+existing style machinery. AP214/AP242 preserve those styles, while AP203 export
+omits them with a warning. Instance-specific style flattening and unsupported
+transparency are reported. Geometry-only `Shape` and existing `Solid` streams stay
+available without product-document APIs or extra document-oriented native libraries.
+
+Assembly documents are optional. Enable `step-document` to use `StepDocument`,
+`StepDefinition`, and `StepInstance`; the implementation uses the existing STEP
+toolkit and adds no OCAF/XCAF libraries. Definitions retain product IDs, names,
+native leaf geometry, and component links. Repeated components reference the same
+definition, while each occurrence retains its ID, name, reference designator, and
+proper rigid transform. Nested assemblies and independent roots round-trip.
+
+Unresolved metadata stays explicit. Imported placements that cannot be represented
+are `None` with warnings and cannot be re-exported until resolved. Cycles, invalid
+references, non-rigid placements, and mixed geometry/component definitions are
+rejected. Regions correspond to STEP product definitions and NAUO links; arbitrary
+OCAF attributes, external references, layers, materials, and mapped-item-only
+assembly conventions are outside this document representation.
+
+Root products have no assembly occurrence link. Root placements may be absorbed
+into their representation geometry, and root-only occurrence labels are omitted
+with a warning; product IDs/names remain. Repeated root definitions must instead
+be represented as components of an assembly. Unreferenced definitions are omitted
+with warnings. Import preserves the full transferred native result even when
+some metadata or placement is unavailable.
+
+## 17. Native surface modeling
+
+Four native operations are available. They add checked Rust/C++ entry points
+without new Rust dependencies or linked OCCT toolkits.
+
+- `Face::fill` binds `BRepOffsetAPI_MakeFilling` for one ordered, connected,
+  closed boundary, optional interior points, and optional initial/support faces.
+  `FillContinuity` selects position, tangent, or curvature constraints; tangent
+  and curvature constraints require existing pcurves on explicit support faces.
+  `FillingOptions` controls distance, angular, curvature, degree, and segment
+  limits. An initial surface must have orthogonal local U/V directions, as
+  required by OCCT. Inputs are copied before native construction.
+- `Face::retrim_surface` rebuilds trims on the underlying surface using an outer
+  wire and optional holes, constructs missing pcurves on copied edges, and
+  validates the result. It replaces original trims rather than intersecting
+  them. Curves must lie on the support surface; ambiguous periodic/seam cases
+  can fail rather than being resolved automatically.
+- `Face::extend_surface` binds `GeomLib::ExtendSurfByLength` for a natural,
+  rectangular, nonperiodic Bezier/BSpline face. `SurfaceBoundary` selects U/V
+  minimum/maximum; extension length uses model units and continuity selects
+  parametric C1, C2, or C3. Existing trims and holes are rejected. The result
+  preserves orientation and reports incomplete boundary correspondence.
+- `Shape::imprint` splits a member face using on-face edges or wires through the
+  existing `BOPAlgo_Splitter` toolkit. It preserves native operation history and
+  face styles where mapped, without adding material.
+
+Filling returns native constraint estimates. `FillingResult.maximum_errors`
+contains distance, normal-angle, and curvature errors; exceeding a requested
+limit produces an operation error with the measured values. These are OCCT
+solver estimates, not a certified global deviation bound for the final
+approximated surface. The pinned OCCT 8.0.1 filling implementation forwards its
+continuity enum directly as a derivative count, so the bridge supplies counts
+0/1/2 explicitly to avoid its G2 enum mismatch. See the
+[constraint dispatch](https://github.com/Open-Cascade-SAS/OCCT/blob/V8_0_1/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_Filling.cxx)
+and [derivative-order check](https://github.com/Open-Cascade-SAS/OCCT/blob/V8_0_1/src/ModelingAlgorithms/TKBool/BRepFill/BRepFill_CurveConstraint.cxx).
+
+Native checks have explicit limits. Trimming and imprinting check 33 samples per
+edge against the support surface or trimmed face; this is not an exhaustive
+containment proof. The finished topology is checked with `BRepCheck_Analyzer`.
+Filling checks cancellation before and after the solve: OCCT 8.0.1 ignores its
+progress range inside filling and cannot interrupt that solve. Imprinting uses
+the splitter's cooperative native progress range. Retrimming and extension are
+synchronous operations without progress callbacks.
+
+The surface example exercises all four bindings. Run
+`cargo run --example surface_modeling` for filling, extension, a hole-bearing
+trim, and imprint previews in `out/surface_modeling/`, or supply another output
+directory after `--`. PNGs require the default PNG feature; geometry construction
+and printed bounds also run without it. The four PNG previews below are checked
+in; other generated output stays local. Existing examples remain unchanged.
+
+### Visual examples
+
+The previews show the native operation results. Filling raises a surface through
+an interior point, trimming creates a hole, and imprinting divides one face into
+two without removing material. The extension comparison uses the same scale for
+the original 2-by-2 patch on the left and the extended 3-by-2 patch on the right.
+
+| Operation | Native preview |
+| --- | --- |
+| **Filling.** A closed square boundary and an interior point at height 0.5 constrain the curved patch. | ![Surface filling through an interior point](../figure/native_features/17-filling.png) |
+| **Extension.** The right-hand patch extends UMax by length 1 with C2 continuity; the left-hand patch is the original. | ![Original and extended surface at the same scale](../figure/native_features/17-extension.png) |
+| **Trimming.** A circular inner wire cuts a radius-0.3 hole from the support face. | ![Surface trim with a circular hole](../figure/native_features/17-hole-trim.png) |
+| **Imprint.** The line becomes a shared edge between two coplanar faces, preserving the surface area. | ![Surface imprint dividing one face into two](../figure/native_features/17-imprint.png) |
+
+The checked-in images can be regenerated. Run
+`cargo run --example surface_modeling -- figure/native_features` with PNG enabled
+to update these four files. This example writes PNGs only.
+
+## Checked legacy boundaries and runnable examples
+
+Checked primitive construction is available. `Solid::primitive(Primitive)` returns
+typed validation or kernel errors for boxes, spheres, cylinders, cones, tori, and
+half-spaces. Existing infallible convenience constructors use this checked path
+and retain their signatures, panicking in Rust on invalid input. Legacy transforms,
+meshing, spline tangents, surface frames, and blend sizes also reject non-finite
+parameters before native evaluation; fallible native entry points catch exceptions.
+
+The feature example runs every family. Use
+`cargo run --example native_features --features step-document` to exercise items
+1–16, or pass an item number after `--` to run that family in isolation. Each run
+prints first/repeat operation times and Linux process high-water memory when
+available. Timings exclude common fixture construction and artifact export, and do
+not flush OS caches;
+peak memory includes the process, fixtures, and native kernel. Run one family per
+process when comparing peaks. `open_shape` remains the item-1 acceptance example.
+
+## Visual gallery
+
+Every feature has a saved visual example. The previews below are rendered from
+the native example results, with additional curve/surface and projection views.
+Validation, history, controls, and measurement examples show the geometry being
+inspected or operated on; the reports themselves remain structured data.
+
+PNG previews are checked in. The gallery contains representative images for
+all 16 features, including extra authored-surface and projection views. Other
+generated output formats remain local artifacts and are excluded from Git.
+
+The example regenerates this gallery. With the default PNG feature and
+`step-document`, the following commands write the complete gallery or one item
+to an alternate directory. Existing files with the same names are overwritten.
+
+```sh
+cargo run --example native_features --features step-document -- all
+cargo run --example native_features --features step-document -- 8 target/feature-preview
+```
+
+PNG output is optional. With `--no-default-features`, the example still writes
+STEP, STL where applicable, and SVG, but skips PNG. Without `step-document`, item
+16 exports a single geometry round trip instead of the two-instance assembly.
+
+| Feature and visible result | Preview |
+| --- | --- |
+| **1. Open topology.** Open shell with the top face removed. | ![1. Open topology](../figure/native_features/01-open-topology.png) |
+| **2. Validation.** Validated solid; the report does not change its geometry. | ![2. Validation](../figure/native_features/02-validation.png) |
+| **3. Affine transforms.** Sphere scaled independently along three axes. | ![3. Affine transforms](../figure/native_features/03-affine.png) |
+| **4. Authored curve.** Exact rational Bezier quarter-circle, shown in isometric view. | ![4. Authored curve](../figure/native_features/04-authored.png) |
+| **4. Authored surface.** Bezier patch with a raised central control pole. | ![4. Authored surface](../figure/native_features/04-authored-surface.png) |
+| **5. Profiles.** Oblique extrusion of a circular profile with a through-hole. | ![5. Profiles](../figure/native_features/05-profiles.png) |
+| **6. Mesh import.** Indexed tetrahedron reconstructed as a faceted solid. | ![6. Mesh import](../figure/native_features/06-faceted.png) |
+| **7. History.** Source cube and mirrored descendant, separated for display. | ![7. History](../figure/native_features/07-history.png) |
+| **8. Splitting.** Oblique sphere partitions, moved apart to reveal the cut. | ![8. Splitting](../figure/native_features/08-split.png) |
+| **9. Boolean controls.** Spherical subtraction from a cube with a visible opening. | ![9. Boolean controls](../figure/native_features/09-boolean.png) |
+| **10. Tessellation.** Triangulated sphere used for the mesh/UV query. | ![10. Tessellation](../figure/native_features/10-tessellation.png) |
+| **11. Measurements.** Separated cube and sphere used for distance and mass queries. | ![11. Measurements](../figure/native_features/11-measurements.png) |
+| **12. Sweeps.** Circular profile swept with a growing radius law. | ![12. Sweeps](../figure/native_features/12-sweep.png) |
+| **13. Loft and repair.** Loft from a circle to an offset elliptical section; repair is exercised separately. | ![13. Loft and repair](../figure/native_features/13-loft-repair.png) |
+| **14. Edge treatments.** Cube with a radius-law fillet along one edge. | ![14. Edge treatments](../figure/native_features/14-edge-treatments.png) |
+| **15. Draft.** Cube with a drafted side face. | ![15. Draft](../figure/native_features/15-draft-projection.png) |
+| **15. Projection.** Source edge above its projection onto the profile plane. | ![15. Projection](../figure/native_features/15-projected-curves.png) |
+| **16. STEP assemblies.** Two placed instances of one shared cube definition. | ![16. STEP assemblies](../figure/native_features/16-step.png) |
+
+Curve-only previews use projected polylines. The scene renderer includes their
+finite points in image bounds, preserving line visibility without adding fake
+surfaces. PNG gallery backgrounds are white so black curves remain readable in
+both light and dark document viewers.
+
+## Original timing sample
+
+These timings describe the original acceptance fixtures. The gallery later added
+visible placements, varying sweep/loft sections, and assembly instances, so current
+example runs measure different demonstration workloads.
+
+Each family was measured in a fresh Linux x86-64 process. The debug build used
+Rust 1.99.1, OCCT 8.0.1 revision 3, and `step-document`; values are first-call
+microseconds, repeated-call microseconds, and process peak KiB. They are local
+measurements rather than performance guarantees and include the fixture/process
+memory described above.
+
+```text
+item family             first_us repeat_us peak_KiB
+2    validation              534       440    27428
+3    affine                  806       622    27496
+4    authored                 50         8    27448
+5    profiles                335       208    27528
+6    faceted                1580      1468    27692
+7    history                 271       235    27532
+8    split                  5351      4758    28344
+9    boolean                2986      2716    28348
+10   tessellation          13433     12510    31184
+11   measurements           1087      1027    27476
+12   sweep                   781       651    27600
+13   loft-repair            7913      7925    27416
+14   edge-treatments        11131     10408    37408
+15   draft-projection       1346      1096    27756
+16   STEP                  16786     13423    29224
+```
+
+Compatibility changes are explicit. Existing modeling method signatures are
+preserved, and owning native handles retain `Send` without `Sync`. New variants
+in the public `Error` enum require updates to exhaustive downstream matches.
+Legacy entry points now validate more inputs, including finite parameters,
+positive meshing deflections, and positive sewing tolerance; this can change error
+variants or panic behavior for invalid input. Curve-only rendering and scene
+bounds include polylines, and README-based crate documentation requires PNG.
+
+Checked native chains stay in memory. This example validates a sphere, constructs
+an ellipsoid, and tessellates it without intermediate files.
+
+```rust
+use cadrum::{DVec3, Error, OperationControl, Primitive, Shape, ShapeKind, Solid, Tessellation};
+let sphere = Solid::primitive(Primitive::Sphere { radius: 2.0 })?;
+let shape = Shape::from(&sphere);
+assert!(shape.validate(Some(ShapeKind::Solid))?.valid);
+let ellipsoid = shape.scale_xyz(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0))?;
+let tessellation = ellipsoid.value.tessellate(Tessellation::default(), &OperationControl::default())?;
+assert!(!tessellation.value.mesh.indices.is_empty());
+# Ok::<(), Error>(())
+```
+
+Existing examples retain their original PNG behavior. Their PNG calls and output
+messages are unconditional and require the default `png` feature. The new
+`native_features` example supports geometry-only builds separately. This native
+guide is included in native crate documentation; README remains unchanged.
+
+
+## Verification
+
+Linux acceptance tests pass. With `step-document`, `cargo test --all-targets`
+passed 202 tests with two ignored, and the separate documentation run passed 17
+with one ignored. Geometry-only checks select native test targets and the new
+example directly because the original examples require PNG. The complete
+`native_features` example also passed.
+
+Windows acceptance tests pass under Wine. The GNU target used POSIX MinGW
+compilers and passed all 24 selected tests for sweeps, history, mesh import,
+STEP assemblies and units, and validation. These include rotated component
+placements, coincident disconnected mesh components, and retained repair styles.
+
+The source feature accepts a prepared OCCT installation. An offline
+`cargo check --features source,step-document` passed with `OCCT_ROOT` pointing at
+the existing Linux OCCT cache; this check does not establish a fresh source build.
+macOS remains unverified because this host has no Apple SDK.
+
+
+WebAssembly compilation and a runtime smoke test pass. The repository's published
+cross-build image compiled the library with `--no-default-features` and
+`step-document`. A separate linked module instantiated in Node with zero external
+imports and exercised checked box construction, affine scaling, validation, and
+tessellation, returning the expected volume of 24. This is a smoke test rather
+than the complete native acceptance suite.
+
+The pure Rust backend remains unavailable. Checks with `--features pure` fail
+because the existing backend is unimplemented and native concrete types are
+configured out; these OCCT additions do not supply that backend.
+
+
+Gallery generation passes with and without PNG. The full native acceptance suite
+includes the curve-only preview regression, and all 22 PNG previews are nonblank.
+Every PNG gallery link was checked. Other generated output files remain local
+and are ignored by Git. The renderer's 10 geometry-only tests and all 17 enabled
+doctests also pass.
+
+
+Surface bindings pass native acceptance checks. All nine focused tests pass on
+Linux with and without PNG and on the Windows GNU target under Wine. They cover
+G0/G1/G2 filling, a nonplanar point constraint, curved support, all extension
+boundaries with C1/C2/C3, reversed orientation, hole-bearing and cylindrical trims,
+closed-loop imprints, preserved volume/styles, invalid input, and cancellation.
+The `surface_modeling` example also runs successfully and saves local PNGs.
+
+
+History and ownership regression checks pass. The full Linux suite passes 202
+tests with two ignored, and all 17 enabled doctests pass. The 29 focused tests for
+profiles, composite lofts, projection, sweeps, history composition, and owned
+thread transfers also pass without PNG and on Windows GNU under Wine. These
+checks cover one-to-many clipping descendants, target-face ancestry, connector
+vertex substitutions, coincident targets, hole cuts, and transferred native
+owners. Scaling-law sweep history remains disabled in the pinned kernel.
+
+## Branch review corrections
+
+Trimming preserves topology orientation. Rebuilding a rectangular surface patch or a trimmed edge now retains the input orientation, including reversed faces whose normals previously flipped.
+
+Native C++ statements use readable blocks. The branch additions now separate statements, expand control flow with braces, and wrap long signatures and expressions. The formatting preserves operation logic and adds no project dependencies; the full Linux suite passes 207 tests with two ignored.
+
+Transform validation is shared across native owners. `ShapeTransform` checks translation, rotation, scale, and mirror inputs for `Shape`, `Solid`, and `Edge`. The `Shape` convenience methods use the history-aware transform path, while the existing solid and edge methods retain their native ownership and styling behavior.
+
+Topology resolution preserves identity and styles. Resolving a history index carries the source color map into the returned view. A single plane-split partition uses an owning view of the result instead of a deep copy, so ancestry lookup retains native identity.
+
+Progress controls permit one active operation. Concurrent or callback-reentrant reuse returns an operation error before native execution without cancelling the active operation. Sequential reuse remains available until cancellation or a callback failure.
+
+STEP convenience methods preserve colors. They share the options-based transfer implementation instead of maintaining separate native readers and writers. The convenience reader continues to permit missing units and partial transfers, reporting warnings through its operation result.
+
+Review regression checks pass on Linux. The full suite passes 207 tests with two ignored, and 17 doctests pass with one ignored. The 28 focused tests also pass without PNG support on Linux and Windows GNU under Wine. Clippy completes with warnings; these include existing code and suggestions for the new bridge and slice conversions.

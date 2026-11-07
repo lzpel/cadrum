@@ -14,17 +14,134 @@ namespace cadrum {
 
 // Type aliases to bring OCCT global types into cadrum namespace.
 // Required because the cxx bridge uses namespace = "cadrum".
+using TopoDS_Shape = ::TopoDS_Shape;
 using TopoDS_Solid = ::TopoDS_Solid;
 using TopoDS_Face = ::TopoDS_Face;
 using TopoDS_Edge = ::TopoDS_Edge;
 using TopoDS_Wire = ::TopoDS_Wire;
 
 // Forward-declare the Rust opaque types (defined by cxx in ffi.rs.h)
+struct OperationControl;
+struct BooleanConfig;
 struct RustReader;
 struct RustWriter;
 
 // Forward-declare shared structs (defined by cxx in ffi.rs.h)
 struct MeshData;
+struct OperationData;
+struct StepDefinitionData;
+struct StepInstanceData;
+struct StepReadData;
+struct StepWriteConfig;
+struct StepWriteData;
+StepReadData op_step_read(rust::Slice<const uint8_t>, double, bool, bool, bool, const OperationControl&);
+StepWriteData op_step_write(const std::vector<TopoDS_Shape>&, rust::Slice<const StepDefinitionData>,
+                            rust::Slice<const StepInstanceData>, rust::Slice<const uint64_t>,
+                            rust::Slice<const float>, const StepWriteConfig&, const OperationControl&);
+struct FillingConfig;
+struct FillingData;
+FillingData op_fill(const std::vector<TopoDS_Shape>&, rust::Slice<const int32_t>, rust::Slice<const uint32_t>,
+                    rust::Slice<const double>, const FillingConfig&, const OperationControl&);
+OperationData op_retrim(const TopoDS_Face&, const std::vector<TopoDS_Shape>&, double);
+OperationData op_extend_surface(const TopoDS_Face&, uint32_t, double, uint32_t, double);
+OperationData op_imprint(const TopoDS_Shape&, const TopoDS_Face&, const std::vector<TopoDS_Shape>&, double,
+                         const OperationControl&);
+struct DraftData;
+DraftData op_draft(const TopoDS_Shape&, const std::vector<TopoDS_Shape>&, rust::Slice<const double>, bool,
+                   const OperationControl&);
+OperationData op_project(const TopoDS_Shape&, const TopoDS_Shape&, rust::Slice<const double>, bool, double,
+                         bool, bool, bool);
+struct LoftConfig;
+OperationData op_chamfer(const TopoDS_Shape&, const std::vector<TopoDS_Shape>&, rust::Slice<const double>,
+                         const OperationControl&);
+OperationData op_variable_fillet(const TopoDS_Shape&, const std::vector<TopoDS_Shape>&,
+                                 rust::Slice<const double>, rust::Slice<const uint32_t>,
+                                 const OperationControl&);
+OperationData op_reversed(const TopoDS_Shape&);
+OperationData op_planar_blend(const TopoDS_Face&, const std::vector<TopoDS_Shape>&, rust::Slice<const double>,
+                              bool);
+OperationData op_loft(const std::vector<TopoDS_Shape>&, const LoftConfig&, const OperationControl&);
+struct SweepConfig;
+struct SweepData;
+SweepData op_sweep(const std::vector<TopoDS_Shape>&, size_t, const SweepConfig&, const OperationControl&);
+struct GeometryInfoData;
+struct DistanceData;
+GeometryInfoData op_curve_info(const TopoDS_Edge&);
+GeometryInfoData op_surface_info(const TopoDS_Face&);
+double op_curve_length(const TopoDS_Edge&, double);
+rust::Vec<double> op_curve_abscissae(const TopoDS_Edge&, uint32_t, double);
+uint32_t op_classify_uv(const TopoDS_Face&, double, double, double);
+std::unique_ptr<std::vector<TopoDS_Shape>> op_boundary_wires(const TopoDS_Face&);
+rust::Vec<double> op_properties(const TopoDS_Shape&, uint32_t, double);
+uint32_t op_classify_point(const TopoDS_Shape&, double, double, double, double);
+DistanceData op_distance(const TopoDS_Shape&, const TopoDS_Shape&, double);
+std::unique_ptr<std::vector<TopoDS_Shape>> op_ancestors(const TopoDS_Shape&, const TopoDS_Shape&, uint32_t);
+struct SplineData;
+std::unique_ptr<TopoDS_Edge> op_authored_curve(const SplineData&, rust::Slice<const double>);
+std::unique_ptr<TopoDS_Face> op_authored_surface(const SplineData&, rust::Slice<const double>);
+std::unique_ptr<TopoDS_Edge> op_ellipse(rust::Slice<const double>, double, double, rust::Slice<const double>);
+SplineData op_curve_control(const TopoDS_Edge&);
+SplineData op_surface_control(const TopoDS_Face&);
+rust::Vec<double> op_curve_range(const TopoDS_Edge&);
+rust::Vec<double> op_curve_evaluate(const TopoDS_Edge&, double);
+std::unique_ptr<TopoDS_Edge> op_trim_edge(const TopoDS_Edge&, rust::Slice<const double>);
+rust::Vec<double> op_surface_range(const TopoDS_Face&);
+rust::Vec<double> op_surface_evaluate(const TopoDS_Face&, double, double);
+std::unique_ptr<TopoDS_Face> op_trim_surface(const TopoDS_Face&, rust::Slice<const double>);
+struct OperationData;
+std::unique_ptr<TopoDS_Shape> op_faceted_mesh(rust::Slice<const double>, rust::Slice<const uint32_t>, double,
+                                              bool);
+std::unique_ptr<TopoDS_Shape> op_plane(rust::Slice<const double>);
+OperationData op_section(const TopoDS_Shape&, const TopoDS_Shape&, double, rust::Slice<const bool>);
+OperationData op_split(const std::vector<TopoDS_Shape>&, double);
+std::unique_ptr<std::vector<TopoDS_Shape>> op_children(const TopoDS_Shape&);
+rust::Vec<double> op_centroid(const TopoDS_Shape&);
+rust::Vec<uint32_t> op_member_indices(const TopoDS_Shape&, const TopoDS_Shape&);
+OperationData op_surface_offset(const TopoDS_Shape&, double, double, bool, bool, bool);
+OperationData op_copy(const TopoDS_Shape&);
+OperationData op_transform(const TopoDS_Shape&, uint32_t, rust::Slice<const double>);
+OperationData op_boolean(const std::vector<TopoDS_Shape>&, size_t, uint32_t, const BooleanConfig&,
+                         const OperationControl&);
+OperationData op_blend(const TopoDS_Shape&, const std::vector<TopoDS_Shape>&, double, bool);
+OperationData op_unify(const TopoDS_Shape&, double, double);
+OperationData op_sew_history(const std::vector<TopoDS_Shape>&, double);
+std::unique_ptr<TopoDS_Shape> op_topology_at(const TopoDS_Shape&, uint32_t);
+OperationData op_profile(const std::vector<TopoDS_Shape>&, double, bool);
+OperationData op_prism(const TopoDS_Shape&, double, double, double);
+OperationData op_revolution(const TopoDS_Shape&, rust::Slice<const double>);
+OperationData op_affine(const TopoDS_Shape& shape, rust::Slice<const double> values);
+struct ValidationData;
+struct RepairData;
+RepairData op_repair(const TopoDS_Shape& shape, double precision, double max_tolerance, double max_deviation,
+                     rust::Slice<const bool> flags);
+ValidationData op_validate(const TopoDS_Shape& shape);
+
+std::unique_ptr<TopoDS_Shape> native_from_solid(const TopoDS_Solid& shape);
+std::unique_ptr<TopoDS_Shape> native_from_face(const TopoDS_Face& shape);
+std::unique_ptr<TopoDS_Shape> native_from_edge(const TopoDS_Edge& shape);
+std::unique_ptr<TopoDS_Solid> native_as_solid(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Face> native_as_face(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Edge> native_as_edge(const TopoDS_Shape& shape);
+bool native_same_face(const TopoDS_Face& a, const TopoDS_Face& b);
+bool native_empty(const TopoDS_Shape& shape);
+uint32_t native_kind(const TopoDS_Shape& shape);
+bool native_valid(const TopoDS_Shape& shape);
+bool native_closed(const TopoDS_Shape& shape);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_loose(const TopoDS_Shape& shape);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_subshapes(const TopoDS_Shape& shape, uint32_t kind);
+std::unique_ptr<TopoDS_Shape> native_take(const std::vector<TopoDS_Shape>& shapes, size_t index);
+std::unique_ptr<std::vector<TopoDS_Shape>> native_vec_new();
+void native_vec_push(std::vector<TopoDS_Shape>& shapes, const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_vertex(double x, double y, double z);
+rust::Vec<double> native_point(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_build(const std::vector<TopoDS_Shape>& shapes, uint32_t kind);
+std::unique_ptr<TopoDS_Shape> native_sew(const std::vector<TopoDS_Face>& faces, double tolerance,
+                                         rust::Vec<uint64_t>& history);
+std::unique_ptr<TopoDS_Solid> native_solidify(const TopoDS_Shape& shape);
+rust::Vec<double> native_bounds(const TopoDS_Shape& shape);
+MeshData op_tessellate(const TopoDS_Shape&, double, double, bool, const OperationControl&);
+rust::Vec<uint8_t> native_write_brep(const TopoDS_Shape& shape);
+std::unique_ptr<TopoDS_Shape> native_read_brep(rust::Slice<const uint8_t> data);
 
 // ==================== Shape I/O (streambuf callback) ====================
 

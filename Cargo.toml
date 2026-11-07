@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/lzpel/cadrum"
 keywords = ["opencascade", "cad", "step", "gltf", "geometry"]
 categories = ["graphics", "science"]
-exclude = ["/figure", "/notes", "/steps", "/sandbox*", "/.github"]
+exclude = ["/figure", "/notes/*", "!/notes/NATIVE_FEATURES.md", "/steps", "/sandbox*", "/.github"]
 
 [features]
 default = ["png"]
@@ -20,6 +20,8 @@ source = ["dep:cmake"]
 png = ["dep:tiny-skia"]
 # Pure Rust CAD backend (no OCCT dependency)
 pure = []
+# Product and assembly documents use the existing STEP toolkit, without OCAF.
+step-document = []
 
 [dependencies]
 cxx = "1"

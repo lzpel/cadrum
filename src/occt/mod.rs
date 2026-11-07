@@ -6,3 +6,29 @@ pub mod face;
 mod ffi;
 pub mod io;
 pub mod solid;
+
+pub mod shape;
+
+pub mod report;
+
+pub mod geometry;
+
+pub mod modeling;
+
+pub mod mesh_import;
+
+pub mod control;
+
+pub mod query;
+
+pub mod sweep;
+
+pub mod loft;
+
+pub mod treatments;
+
+pub mod draft;
+
+pub mod step;
+
+pub mod surface_modeling;

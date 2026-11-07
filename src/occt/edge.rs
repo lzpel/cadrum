@@ -1,4 +1,8 @@
-use super::ffi;
+use super::{
+	ffi,
+	modeling::ShapeTransform,
+	report::{finite, positive},
+};
 use crate::common::error::Error;
 use crate::traits::{BSplineEnd, EdgeStruct, Transform};
 use glam::DVec3;
@@ -73,34 +77,43 @@ impl EdgeStruct for Edge {
 	}
 
 	fn helix(radius: f64, pitch: f64, height: f64, axis: DVec3, x_ref: DVec3) -> Result<Self, Error> {
+		finite([radius, pitch, height], "helix")?;
+		super::report::axis(axis, "helix axis")?;
+		super::report::axis(x_ref, "helix X direction")?;
 		let inner = ffi::make_helix_edge(axis.x, axis.y, axis.z, x_ref.x, x_ref.y, x_ref.z, radius, pitch, height).map_err(|e| Error::Edge(format!("helix: radius={radius}, pitch={pitch}, height={height}, axis={axis:?}, x_ref={x_ref:?}: {}", e.what())))?;
 		Ok(Edge { inner })
 	}
 
 	fn polygon<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Result<Vec<Self>, Error> {
 		let coords: Vec<f64> = points.into_iter().flat_map(|p| [p.x, p.y, p.z]).collect();
+		finite(coords.iter().copied(), "polygon")?;
 		let edges = ffi::make_polygon_edges(&coords).map_err(|e| Error::Edge(format!("polygon: {} point(s): {}", coords.len() / 3, e.what())))?;
 		// deep_copy_edge so each Edge owns its topology instead of borrowing the vector.
 		Ok(edges.iter().map(|e| Edge { inner: ffi::deep_copy_edge(e).unwrap_or_else(|err| panic!("polygon: {}", err.what())) }).collect())
 	}
 
 	fn circle(radius: f64, axis: DVec3) -> Result<Self, Error> {
+		positive(radius, "circle radius")?;
+		super::report::axis(axis, "circle axis")?;
 		let inner = ffi::make_circle_edge(axis.x, axis.y, axis.z, radius).map_err(|e| Error::Edge(format!("circle: radius={radius}, axis={axis:?}: {}", e.what())))?;
 		Ok(Edge { inner })
 	}
 
 	fn line(a: DVec3, b: DVec3) -> Result<Self, Error> {
+		finite(a.to_array().into_iter().chain(b.to_array()), "line")?;
 		let inner = ffi::make_line_edge(a.x, a.y, a.z, b.x, b.y, b.z).map_err(|e| Error::Edge(format!("line: a={a:?}, b={b:?}: {}", e.what())))?;
 		Ok(Edge { inner })
 	}
 
 	fn arc_3pts(start: DVec3, mid: DVec3, end: DVec3) -> Result<Self, Error> {
+		finite(start.to_array().into_iter().chain(mid.to_array()).chain(end.to_array()), "arc")?;
 		let inner = ffi::make_arc_edge(start.x, start.y, start.z, mid.x, mid.y, mid.z, end.x, end.y, end.z).map_err(|e| Error::Edge(format!("arc_3pts: start={start:?}, mid={mid:?}, end={end:?}: {}", e.what())))?;
 		Ok(Edge { inner })
 	}
 
 	fn bspline<'a>(points: impl IntoIterator<Item = &'a DVec3>, end: BSplineEnd) -> Result<Self, Error> {
 		let pts: Vec<DVec3> = points.into_iter().copied().collect();
+		finite(pts.iter().flat_map(|p| p.to_array()), "bspline")?;
 
 		// 最低点数チェック: Periodic は cubic 周期 spline の構造上 ≥ 3、その他は ≥ 2。
 		let min_required = match end {
@@ -134,6 +147,7 @@ impl EdgeStruct for Edge {
 			BSplineEnd::Clamped { start: s, end: e } => (2u32, s.x, s.y, s.z, e.x, e.y, e.z),
 		};
 
+		finite([sx, sy, sz, ex, ey, ez], "bspline end tangents")?;
 		let inner = ffi::make_bspline_edge(&coords, kind, sx, sy, sz, ex, ey, ez).map_err(|e| Error::Edge(format!("bspline: {} points, end={end:?}: {}", pts.len(), e.what())))?;
 		Ok(Edge { inner })
 	}
@@ -147,20 +161,24 @@ impl EdgeStruct for Edge {
 // on a degenerate axis or plane — a caller bug, so it panics with OCCT's message.
 impl Transform for Edge {
 	fn translate(self, t: DVec3) -> Self {
+		ShapeTransform::Translation(t).validate().expect("Edge::translate");
 		Edge { inner: ffi::translate_edge(&self.inner, t.x, t.y, t.z).unwrap_or_else(|e| panic!("Edge::translate: {}", e.what())) }
 	}
 
 	fn rotate(self, axis_origin: DVec3, axis_direction: DVec3, angle: f64) -> Self {
+		ShapeTransform::Rotation { origin: axis_origin, axis: axis_direction, angle }.validate().expect("Edge::rotate");
 		Edge {
 			inner: ffi::rotate_edge(&self.inner, axis_origin.x, axis_origin.y, axis_origin.z, axis_direction.x, axis_direction.y, axis_direction.z, angle).unwrap_or_else(|e| panic!("Edge::rotate: {}", e.what())),
 		}
 	}
 
 	fn scale(self, center: DVec3, factor: f64) -> Self {
+		ShapeTransform::Scale { origin: center, factor }.validate().expect("Edge::scale");
 		Edge { inner: ffi::scale_edge(&self.inner, center.x, center.y, center.z, factor).unwrap_or_else(|e| panic!("Edge::scale: {}", e.what())) }
 	}
 
 	fn mirror(self, plane_origin: DVec3, plane_normal: DVec3) -> Self {
+		ShapeTransform::Mirror { origin: plane_origin, normal: plane_normal }.validate().expect("Edge::mirror");
 		Edge {
 			inner: ffi::mirror_edge(&self.inner, plane_origin.x, plane_origin.y, plane_origin.z, plane_normal.x, plane_normal.y, plane_normal.z).unwrap_or_else(|e| panic!("Edge::mirror: {}", e.what())),
 		}
