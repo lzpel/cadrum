@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 const OCCT_VERSION: &str = "V8_0_1";
 
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
-const BUILD_REVISION: &str = "rev3";
+const BUILD_REVISION: &str = "rev4";
 
 /// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
 /// characters within a field by `_`, so the name parses by splitting on `-` (the
@@ -316,7 +316,7 @@ mod source {
 		}
 
 		let source_dir = std::fs::read_dir(effective_root).expect("Failed to read effective_root directory").flatten().find(|e| e.file_name().to_string_lossy().starts_with("OCCT") && e.path().is_dir()).map(|e| e.path()).expect("OCCT source directory not found after extraction");
-		let mut patches = patch_from_files(&source_dir, &[include_str!("patches/pr1.patch"), include_str!("patches/pr2.patch")]);
+		let mut patches = patch_from_files(&source_dir, &[include_str!("patches/pr1.patch"), include_str!("patches/pr2.patch"), include_str!("patches/pr3.patch")]);
 		walk_occt_sources(&source_dir, |path| {
 			if let Some(patched) = patch_or_none(path) {
 				patches.insert(path.strip_prefix(&source_dir).expect("walked path escapes source_dir").to_path_buf(), patched);

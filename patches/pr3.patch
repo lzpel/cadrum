@@ -1,0 +1,17 @@
+diff --git a/src/ModelingAlgorithms/TKFillet/ChFi3d/ChFi3d_Builder_C1.cxx b/src/ModelingAlgorithms/TKFillet/ChFi3d/ChFi3d_Builder_C1.cxx
+--- a/src/ModelingAlgorithms/TKFillet/ChFi3d/ChFi3d_Builder_C1.cxx
++++ b/src/ModelingAlgorithms/TKFillet/ChFi3d/ChFi3d_Builder_C1.cxx
+@@ -3901,11 +3901,11 @@
+   int indSurface;
+   if (is1stCP1OnArc)
+   {
+-    indSurface = myListStripe.First()->SetOfSurfData()->Value(anInd)->IndexOfS1();
++    indSurface = aStripe->SetOfSurfData()->Value(anInd)->IndexOfS1();
+   }
+   else
+   {
+-    indSurface = myListStripe.First()->SetOfSurfData()->Value(anInd)->IndexOfS2();
++    indSurface = aStripe->SetOfSurfData()->Value(anInd)->IndexOfS2();
+   }
+ 
+   aNeighborFace = TopoDS::Face(myDS->Shape(indSurface));
