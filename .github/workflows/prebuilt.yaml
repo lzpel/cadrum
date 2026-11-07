@@ -87,7 +87,7 @@ jobs:
   # Apple's SDK + clang are simplest (and license-clean) on real Apple hardware,
   # which GitHub provides as free runners. macOS libc++ has a stable ABI, so this
   # is NOT the ABI-forced choice that windows-msvc is.
-  # macos-14 = Apple Silicon (aarch64); macos-15-intel = Intel (x86_64).
+  # macos-15 = Apple Silicon (aarch64); macos-15-intel = Intel (x86_64). macos-14 was retired.
   # NOTE: macos-13 (the old Intel label) was retired on 2025-12-04, so we use its
   #       successor macos-15-intel. https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
   # cmake / make / clang are preinstalled on the GitHub macOS runner.
@@ -99,7 +99,7 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            runs-on: macos-14
+            runs-on: macos-15
           - target: x86_64-apple-darwin
             runs-on: macos-15-intel
     runs-on: ${{ matrix.runs-on }}
@@ -113,6 +113,7 @@ jobs:
       - name: build
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
+          MACOSX_DEPLOYMENT_TARGET: "11.0" # 11.0 is the oldest macOS on Apple Silicon and rustc's default for aarch64-apple-darwin;
         run: make occt
 
       - uses: actions/upload-artifact@v4
@@ -136,6 +137,6 @@ jobs:
       # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: occt-8_0_1_rev3
-          name: OCCT prebuilt v8.0.1 (rev3)
+          tag_name: occt-8_0_1_rev4
+          name: OCCT prebuilt v8.0.1 (rev4)
           files: dist/*.tar.gz
