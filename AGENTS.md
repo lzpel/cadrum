@@ -8,5 +8,5 @@
 
 - For implementation instructions, run tests to verify after implementation
 - run "cargo fmt" to all new changes.
-- Remove comments that the code already says and keep a comment within two lines.
+- Remove comments that the code already says and keep a comment inline.
 - For documents, open each paragraph with a short sentence that states the claim, then support it in the following sentences. e.g. "Boolean operations use disjunctive normal form for normalization, efficiency and lazy evaluation." followed by how.
