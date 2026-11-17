@@ -77,16 +77,16 @@ fn main() {
 
 /// Derive the cargo target directory from `OUT_DIR`.
 ///
-/// `OUT_DIR` layout:
-///   `<target_dir>/<profile>/build/<pkg>-<hash>/out`            (no `--target`)
-///   `<target_dir>/<triple>/<profile>/build/<pkg>-<hash>/out`   (with `--target`)
+/// `OUT_DIR` is `<target_dir>/[<triple>/]<profile>/build/...`, with `<triple>/` present
+/// under `--target`. The depth below `build/` grew in Rust 1.100, so anchor on `build`.
 fn cargo_target_dir(target: &str) -> PathBuf {
 	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-	let above_profile = out_dir.ancestors().nth(4).expect("unexpected OUT_DIR layout");
-	if above_profile.file_name().map_or(false, |n| n == target) {
-		above_profile.parent().unwrap().to_path_buf()
+	let build = out_dir.ancestors().find(|p| p.file_name().is_some_and(|n| n == "build")).expect("unexpected OUT_DIR layout");
+	let path_above_release_or_debug = build.parent().and_then(Path::parent).expect("unexpected OUT_DIR layout");
+	if path_above_release_or_debug.file_name().is_some_and(|n| n == target) {
+		path_above_release_or_debug.parent().unwrap().to_path_buf()
 	} else {
-		above_profile.to_path_buf()
+		path_above_release_or_debug.to_path_buf()
 	}
 }
 
