@@ -138,7 +138,7 @@ fn find_occt_whitelist(occt_root: &Path) -> Option<Vec<PathBuf>> {
 }
 
 /// OCCT toolkits to link against (OCCT 7.8+ / 8.x naming).
-const OCC_LIBS: &[&str] = &["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim", "TKBO", "TKBool", "TKShHealing", "TKMesh", "TKGeomBase", "TKGeomAlgo", "TKG3d", "TKG2d", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKFillet", "TKDESTEP"];
+const OCC_LIBS: &[&str] = &["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim", "TKBO", "TKBool", "TKShHealing", "TKMesh", "TKGeomBase", "TKGeomAlgo", "TKG3d", "TKG2d", "TKXSBase", "TKDE", "TKDECascade", "TKOffset", "TKFillet", "TKFeat", "TKDESTEP"];
 
 /// Apply target-conditional C++ compiler flags through `apply`, which forwards each flag
 /// to the concrete builder (`cc::Build::flag` for the wrapper, `cmake::Config::cxxflag` for
