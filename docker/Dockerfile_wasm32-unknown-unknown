@@ -25,7 +25,8 @@ ENV CC=gcc CXX=g++ AR=ar RANLIB=ranlib LD=ld
 # (--experimental-wasm-exnref). Only the sysroot is rebuilt — the image's clang is reused
 # through its toolchain file, so LLVM is NOT rebuilt. DUAL keeps the eh/noeh layout clang
 # resolves under -fwasm-exceptions; wasm32-wasip1 is the only triple cadrum links against.
-RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
+# src/config (git.savannah.gnu.org) is only used by the toolchain build, so skip it.
+RUN git clone --depth 1 --recurse-submodules=. --recurse-submodules=':(exclude)src/config' --shallow-submodules \
       --branch wasi-sdk-33 https://github.com/WebAssembly/wasi-sdk /tmp/src \
  && sed -i 's/-wasm-use-legacy-eh=false/-wasm-use-legacy-eh=true/' /tmp/src/cmake/wasi-sdk-sysroot.cmake \
  && rm -rf /opt/wasi-sdk/share/wasi-sysroot \
