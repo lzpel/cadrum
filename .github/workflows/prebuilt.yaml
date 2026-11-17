@@ -132,11 +132,14 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # NOTE: tag_name must match build.rs `release_name(None, false)` =
-      # `occt-<occt_version>_<BUILD_REVISION>` (e.g. `occt-8_0_1_rev1`). Bump this in
-      # lockstep with OCCT_VERSION / BUILD_REVISION in build.rs.
+      - id: tag
+        run: |
+          tags=$(ls dist/*.tar.gz | sed -E 's#^.*/([^-]+-[^-]+)-.*#\1#' | sort -u)
+          echo "$tags" | sed 2q1
+          echo "name=$tags" >> "$GITHUB_OUTPUT"
+
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: occt-8_0_1_rev4
-          name: OCCT prebuilt v8.0.1 (rev4)
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: OCCT prebuilt ${{ steps.tag.outputs.name }}
           files: dist/*.tar.gz
