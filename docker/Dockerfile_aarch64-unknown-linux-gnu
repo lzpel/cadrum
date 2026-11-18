@@ -11,7 +11,8 @@ FROM quay.io/pypa/manylinux_2_28_aarch64
 
 # Base gcc-c++ (g++ 8.5). The image has /usr/bin/gcc but no base /usr/bin/g++;
 # without this, CXX=/usr/bin/g++ would be missing and cmake's C++ compiler probe fails.
-RUN dnf install -y gcc-c++ && dnf clean all
+# xz: compresses the prebuilt tarball (makefile `occt`).
+RUN dnf install -y gcc-c++ xz && dnf clean all
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH=/root/.cargo/bin:$PATH

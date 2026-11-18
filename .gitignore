@@ -11,6 +11,7 @@ linkedin.md
 *.png
 *.glb
 *.tar.gz
+*.tar.xz
 uv.lock
 *.dockerignore
 .DS_Store

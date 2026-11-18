@@ -12,8 +12,9 @@ FROM ghcr.io/webassembly/wasi-sdk:wasi-sdk-33
 # git/python3: required by the wasi-sysroot rebuild below.
 # gcc/g++: HOST toolchain — rustc links build scripts with `cc`, and the `ring`
 # build-dependency (minreq -> rustls) compiles C for the host.
+# xz-utils: compresses the prebuilt tarball (makefile `occt`).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git python3 gcc g++ \
+    curl ca-certificates git python3 gcc g++ xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # The base image points these at the wasm cross tools, which would break the host
