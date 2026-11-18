@@ -47,7 +47,7 @@ jobs:
   # `std::_Variant_storage_<...>` unresolved symbols at the user's link step
   # (issue #73). A native build does not cross that ABI boundary.
   # Both CRTs are shipped because cadrum follows `crt-static` like every cc-built C++ crate:
-  # a /MT tarball breaks /MD users and vice versa (#337). build.rs names them `-MD` / `-MT`.
+  # a /MT tarball breaks /MD users and vice versa (#337). build.rs names them `_MD` / `_MT`.
   build-windows-msvc:
     strategy:
       matrix:

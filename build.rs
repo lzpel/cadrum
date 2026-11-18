@@ -10,13 +10,14 @@ const OCCT_VERSION: &str = "V8_0_1";
 const BUILD_REVISION: &str = "rev4";
 
 fn release_name() -> String {
-	let release_name_raw = format!("occt-{}_{}-{}", OCCT_VERSION.trim_start_matches(['V', 'v']), BUILD_REVISION, env::var("TARGET").unwrap().replace('-', "_"));
-	let crt_static = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default().split(',').any(|f| f == "crt-static");
-	match (env::var("CARGO_CFG_TARGET_ENV").as_deref(), crt_static) {
-		(Ok("msvc"), true) => format!("{}-MT", release_name_raw),
-		(Ok("msvc"), false) => format!("{}-MD", release_name_raw),
-		_ => release_name_raw,
-	}
+	let target = env::var("TARGET").unwrap();
+	let crt_static = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default().contains("crt-static");
+	let target = match (env::var("CARGO_CFG_TARGET_ENV").as_deref(), crt_static) {
+		(Ok("msvc"), true) => format!("{target}-MT"),
+		(Ok("msvc"), false) => format!("{target}-MD"),
+		_ => target,
+	};
+	format!("occt-{}_{}-{}", OCCT_VERSION.trim_start_matches(['V', 'v']), BUILD_REVISION, target.replace('-', "_"))
 }
 
 fn main() {
