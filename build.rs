@@ -9,22 +9,14 @@ const OCCT_VERSION: &str = "V8_0_1";
 /// Build revision for prebuilt tarballs. Update this when making non-OCCT-breaking changes that require cache invalidation (e.g. patch updates, build script changes, EH encoding changes, etc).
 const BUILD_REVISION: &str = "rev4";
 
-/// Release tag / tarball / cache-dir name (#203). Fields are separated by `-` and
-/// characters within a field by `_`, so the name parses by splitting on `-` (the
-/// target's hyphens are underscored too). `has_version` appends the cadrum crate
-/// version for the per-crate FFI artifact.
-///
-/// - `release_name(None, false)`    → `occt-8_0_1_rev1`                              (GitHub Release タグ)
-/// - `release_name(Some(t), false)` → `occt-8_0_1_rev1-wasm32_unknown_unknown`       (OCCT tarball / cache dir)
-/// - `release_name(Some(t), true)`  → `occt-8_0_1_rev1-wasm32_unknown_unknown-cadrum-0_8_13` (FFI tarball)
-fn release_name(target: Option<&str>) -> String {
-	let occt = OCCT_VERSION.trim_start_matches(['V', 'v']);
-	let mut name = format!("occt-{}_{}", occt, BUILD_REVISION);
-	if let Some(target) = target {
-		name.push('-');
-		name.push_str(&target.replace('-', "_"));
+fn release_name() -> String {
+	let release_name_raw = format!("occt-{}_{}-{}", OCCT_VERSION.trim_start_matches(['V', 'v']), BUILD_REVISION, env::var("TARGET").unwrap().replace('-', "_"));
+	let crt_static = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default().split(',').any(|f| f == "crt-static");
+	match (env::var("CARGO_CFG_TARGET_ENV").as_deref(), crt_static) {
+		(Ok("msvc"), true) => format!("{}-MT", release_name_raw),
+		(Ok("msvc"), false) => format!("{}-MD", release_name_raw),
+		_ => release_name_raw,
 	}
-	name
 }
 
 fn main() {
@@ -48,7 +40,7 @@ fn main() {
 				p
 			}
 		})
-		.unwrap_or(cargo_target_dir(&target).join(release_name(Some(&target))));
+		.unwrap_or(cargo_target_dir(&target).join(release_name()));
 
 	let occt = resolve_occt(&effective_root, &target);
 	let [occt_include, occt_lib] = [&occt[0], &occt[1]];
@@ -72,7 +64,7 @@ fn main() {
 		}
 	}
 
-	link_occt_libraries(&occt_include, &occt_lib, &target);
+	link_occt_libraries(&occt_include, &occt_lib);
 }
 
 /// Derive the cargo target directory from `OUT_DIR`.
@@ -114,7 +106,7 @@ fn resolve_occt(effective_root: &Path, target: &str) -> Vec<PathBuf> {
 			}
 			#[cfg(not(feature = "source"))]
 			{
-				return occt_from_prebuilt(effective_root, target).expect(&format!(
+				return occt_from_prebuilt(effective_root).expect(&format!(
 					"\nFailed to download prebuilt OCCT for target `{}`.\n\
 					 See README for the list of supported prebuilt targets, or enable\n\
 					 the `source` feature to build OCCT from upstream sources:\n\
@@ -164,7 +156,7 @@ fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
 	}
 }
 
-fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
+fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path) {
 	println!("cargo:rustc-link-search=native={}", occt_lib_dir.display());
 	for lib in OCC_LIBS {
 		println!("cargo:rustc-link-lib=static={}", lib);
@@ -199,19 +191,18 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 		build.flag(s);
 	});
 
-	build.compile(&release_name(Some(target)));
+	build.compile(&release_name());
 	println!("cargo:rerun-if-changed=src/ffi.rs");
 	println!("cargo:rerun-if-changed=src/ffi.h");
 	println!("cargo:rerun-if-changed=src/ffi.cpp");
 }
 
-/// Provide OCCT into `effective_root` by downloading a prebuilt tarball for `target`.
+/// Provide OCCT into `effective_root` by downloading the prebuilt tarball for `TARGET`.
 /// Paired with `occt_from_source` (selected by the `source` feature) in `resolve_occt`.
 #[cfg(not(feature = "source"))]
-fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf>> {
-	let top_name = release_name(Some(target));
-	let tarball_name = format!("{}.tar.xz", top_name);
-	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None), tarball_name));
+fn occt_from_prebuilt(effective_root: &Path) -> Option<Vec<PathBuf>> {
+	// release tag = release_name() before its second `-` (target has no `-`)
+	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}.tar.xz", &release_name()[..release_name().match_indices('-').nth(1).unwrap().0], release_name()));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
 
@@ -223,9 +214,9 @@ fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf
 		return None;
 	}
 
-	let extracted = parent.join(&top_name);
+	let extracted = parent.join(release_name());
 	if !extracted.is_dir() {
-		eprintln!("cargo:warning=prebuilt tarball missing expected top-level dir `{}`", top_name);
+		eprintln!("cargo:warning=prebuilt tarball missing expected top-level dir `{}`", release_name());
 		return None;
 	}
 
