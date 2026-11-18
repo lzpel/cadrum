@@ -37,7 +37,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: occt-${{ matrix.target }}
-          path: out/${{ matrix.target }}/occt-*.tar.gz
+          path: out/${{ matrix.target }}/occt-*.tar.xz
 
   # The following prebuilt OCCT tarball is built on a native Windows runner with
   # native cl.exe (make occt):
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: occt-x86_64-pc-windows-msvc
-          path: out/occt-*.tar.gz
+          path: out/occt-*.tar.xz
 
   # The following prebuilt OCCT tarballs are built on native macOS runners with Apple
   # clang/libc++ (make occt):
@@ -119,7 +119,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: occt-${{ matrix.target }}
-          path: out/occt-*.tar.gz
+          path: out/occt-*.tar.xz
 
   release:
     needs: [build, build-windows-msvc, build-macos]
@@ -134,7 +134,7 @@ jobs:
 
       - id: tag
         run: |
-          tags=$(ls dist/*.tar.gz | sed -E 's#^.*/([^-]+-[^-]+)-.*#\1#' | sort -u)
+          tags=$(ls dist/*.tar.xz | sed -E 's#^.*/([^-]+-[^-]+)-.*#\1#' | sort -u)
           echo "$tags" | sed 2q1
           echo "name=$tags" >> "$GITHUB_OUTPUT"
 
@@ -142,4 +142,4 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: OCCT prebuilt ${{ steps.tag.outputs.name }}
-          files: dist/*.tar.gz
+          files: dist/*.tar.xz

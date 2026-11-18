@@ -26,12 +26,12 @@ publish: update publish-ready # publish to crates.io
 	docker push ghcr.io/lzpel/cross-wasm32-unknown-unknown:latest
 	# publish the crate sources to crates.io
 	cargo publish
-occt: generate # output out/occt-<rev>-<target>.tar.gz from source natively
+occt: generate # output out/occt-<rev>-<target>.tar.xz from source natively
 	cargo clean
-	# CADRUM_BUNDLE_RUNTIME=1 は windows-gnu / wasm でのみランタイムを同梱する (#89)。native linux-gnu は base gcc ビルドで古いシンボルのみ参照し消費者の system libstdc++ に動的リンクするので no-op (#147)。
 	# pipefail is required so tee's exit code does not mask a cargo build failure
 	bash -c "set -o pipefail && CADRUM_BUNDLE_RUNTIME=1 cargo build --example 01_primitives --release --features source 2>&1 | tee out/log.txt"
-	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -IX sh -c 'tar -czf out/$$(basename X).tar.gz -C $$(dirname X) $$(basename X)'
+	# xz -9e single-threaded for max ratio (#336); macOS bsdtar ignores XZ_OPT and uses its default level.
+	find $(or $(CARGO_TARGET_DIR),target) -maxdepth 1 -type d -name 'occt*' | xargs -I% sh -c 'XZ_OPT="-9e -T1" tar -cJf out/$$(basename %).tar.xz -C $$(dirname %) $$(basename %)'
 sample-wasm: # write out the throwaway cdylib (CHECK_WASM_* at the end of this file) and build it for wasm. Must run inside the cross image: only it has the legacy-EH wasi-sysroot the prebuilt was built against. --target-dir points at cadrum's own target/ (overriding the container's CARGO_TARGET_DIR), which both puts the .wasm where the host can see it and lets build.rs find the extracted prebuilt OCCT at its default location -- no OCCT_ROOT needed.
 	mkdir -p target/check-wasm/src
 	printf '%s\n' "$$CHECK_WASM_CARGO_TOML" > target/check-wasm/Cargo.toml
@@ -44,7 +44,7 @@ cross-%: # run `make $(GOAL)` for target % inside its Docker cross env. GOAL is 
 check-%: # validate the cross-built prebuilt OCCT runs on the host (extract -> run example / wasm check)
 	$(MAKE) cross-$* GOAL=occt
 	mkdir -p target
-	find out -maxdepth 2 -type f -name '*.tar.gz' | xargs -IX tar -xzf X -C target
+	find out -maxdepth 2 -type f -name '*.tar.xz' | xargs -IX tar -xJf X -C target
 	# wasm: link inside the image (only it has the legacy-EH sysroot), run here. Passing no import
 	# object is the point: a leftover WASI import fails instantiation. legacy EH needs no node flag.
 	if [ "$*" = "wasm32-unknown-unknown" ]; then \
