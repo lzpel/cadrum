@@ -205,7 +205,7 @@ fn link_occt_libraries(occt_include: &Path, occt_lib_dir: &Path, target: &str) {
 #[cfg(not(feature = "source"))]
 fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf>> {
 	let top_name = release_name(Some(target));
-	let tarball_name = format!("{}.tar.gz", top_name);
+	let tarball_name = format!("{}.tar.xz", top_name);
 	let url = env::var("CADRUM_PREBUILT_URL").unwrap_or_else(|_| format!("https://github.com/lzpel/cadrum/releases/download/{}/{}", release_name(None), tarball_name));
 
 	eprintln!("cargo:warning=Downloading prebuilt OCCT from {}", url);
@@ -235,9 +235,16 @@ fn occt_from_prebuilt(effective_root: &Path, target: &str) -> Option<Vec<PathBuf
 	find_occt_whitelist(effective_root)
 }
 
+/// Extract a `.tar.xz` (prebuilt) or `.tar.gz` (upstream OCCT source, `source` feature only) chosen by the URL suffix.
 fn download_and_extract_tar_gz(url: &str, dest: &Path) -> Result<(), String> {
-	let gz = flate2::read::GzDecoder::new(fetch(url)?);
-	tar::Archive::new(gz).unpack(dest).map_err(|e| format!("tar unpack failed: {e}"))
+	let fetched = fetch(url)?;
+	let decoded: Box<dyn std::io::Read> = match url.rsplit('.').next() {
+		Some("xz") => Box::new(lzma_rust2::XzReader::new(std::io::BufReader::new(fetched), true)),
+		#[cfg(feature = "source")]
+		Some("gz") => Box::new(flate2::read::GzDecoder::new(fetched)),
+		_ => return Err(format!("unsupported archive suffix: {url}")),
+	};
+	tar::Archive::new(decoded).unpack(dest).map_err(|e| format!("tar unpack failed: {e}"))
 }
 
 fn fetch(url: &str) -> Result<Box<dyn std::io::Read>, String> {
