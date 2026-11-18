@@ -147,10 +147,13 @@ const OCC_LIBS: &[&str] = &["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKPrim"
 fn apply_compiler_flags(mut apply: impl FnMut(&str)) {
 	// MSVC: compile sources as UTF-8, and keep std::min/max off the STL vectorized helpers
 	// (__std_min_4i etc.) in msvcp140, which impose a toolset floor on prebuilt consumers (#276).
-	// /Zc:inline drops unreferenced inline COMDATs from each .obj, cutting the OCCT libs ~40% (#337).
+	// /O2 /DNDEBUG: cmake-rs overwrites CMAKE_<LANG>_FLAGS_RELEASE on MSVC with opt-level-0 flags, so
+	// OCCT was built /Od. /Zc:inline (a no-op under /Od) then drops unreferenced inline COMDATs (#337).
 	if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
 		apply("/utf-8");
 		apply("/D_USE_STD_VECTOR_ALGORITHMS=0");
+		apply("/O2");
+		apply("/DNDEBUG");
 		apply("/Zc:inline");
 	}
 	// wasm: force the legacy EH encoding, matching the legacy eh sysroot the cross image
