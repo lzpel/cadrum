@@ -54,7 +54,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cadrum = "^0.8"
+cadrum = "^0.9"
 ```
 
 `cargo build` automatically downloads a prebuilt OCCT 8.0.1 binary for these targets:

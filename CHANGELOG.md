@@ -1,5 +1,24 @@
 Format: ^(### \d+\.\d+\.\d+)|(- #\d+ .*)$
 
+### 0.9.2
+
+- #341 Name MSVC prebuilt with _MD/_MT to keep three dash-separated fields
+- #340 Ship MSVC prebuilt for both /MD and /MT
+- #339 Build MSVC OCCT with /O2, which cmake-rs drops
+- #338 Ship prebuilt OCCT as xz and extract it with lzma-rust2
+- #335 Skip wasi-sdk's src/config submodule hosted on git.savannah.gnu.org
+- #334 Add sandbox-diff1: holed sphere for differentiable CAD
+- #333 Derive the prebuilt release tag from the tarball names
+- #332 Anchor cargo_target_dir on build/ for the Rust 1.100 build-dir layout
+- #331 Link TKFeat for BRepFeat local features
+- #330 Match the OCCT source dir as OCCT- so OCCT_LGPL_EXCEPTION.txt cannot shadow it
+- #329 Publish prebuilt tarballs under the occt-8_0_1_rev4 release
+- #328 Patch ChFi3d PerformMoreSurfdata to index the vertex stripe
+- #322 Chain edges into wires in C++ and pass wires to every builder
+- #321 Breaking: Face::face is bounded by edge loops instead of a parameter rectangle; profile edges may run either way
+- #319 Clean the triangulation after Solid::mesh so it leaves none on the solid
+- #316 Write BRep without triangulation so a read-back shape meshes after the request
+
 ### 0.9.1
 
 - #315 Share wire splitting and shell-to-solid upgrading across ffi.cpp; make_pipe_shell skips empty sections and make_offset takes the first solid instead of throwing
