@@ -49,7 +49,7 @@ check-%: # validate the cross-built prebuilt OCCT runs on the host (extract -> r
 	# object is the point: a leftover WASI import fails instantiation. legacy EH needs no node flag.
 	if [ "$*" = "wasm32-unknown-unknown" ]; then \
 		$(MAKE) cross-$* GOAL=sample-wasm; \
-		node -e "const fs=require('fs');WebAssembly.instantiate(fs.readFileSync('target/wasm32-unknown-unknown/release/check_wasm.wasm')).then(({instance})=>{instance.exports.start();const v=instance.exports.volume();console.log('Solid volume:',v);process.exit(v===6000?0:1)})"; \
+		node -e "const fs=require('fs');WebAssembly.instantiate(fs.readFileSync('target/wasm32-unknown-unknown/release/check_wasm.wasm')).then(({instance})=>{instance.exports.start();const v=instance.exports.volume();const e=instance.exports.read_brep_garbage_is_err();console.log('Solid volume:',v,'read_brep(garbage) is Err:',e);process.exit(v===6000&&e===1?0:1)})"; \
 	else \
 		timeout 300 cargo run --example 01_primitives; \
 	fi
@@ -104,6 +104,12 @@ pub extern "C" fn volume() -> f64 {
 	let mut cursor = std::io::Cursor::new(&bytes);
 	let solids = Solid::read_step(&mut cursor).expect("read_step from memory failed");
 	solids.first().expect("no solid after round-trip").volume()
+}
+
+// OCCT prints a warning to std::cout on this input; it must come back as Err, not hang (#295).
+#[unsafe(no_mangle)]
+pub extern "C" fn read_brep_garbage_is_err() -> bool {
+	Solid::read_brep(&mut std::io::Cursor::new(b"garbage")).is_err()
 }
 endef
 export CHECK_WASM_LIB_RS
