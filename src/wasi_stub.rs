@@ -36,10 +36,11 @@ use core::ffi::c_void;
 const ERRNO_BADF: i32 = 8; // invalid file descriptor
 const ERRNO_NOENT: i32 = 44; // no such file or directory
 
-// stdio (iostream static init). Normal runs never write to stdout/stderr, so no-op.
+// OCCT writes some warnings straight to std::cout (e.g. BinTools on a non-BRep input).
+// BADF makes libc drop the output; success with nwritten untouched made stdio retry forever (#295).
 #[no_mangle]
 pub extern "C" fn __imported_wasi_snapshot_preview1_fd_write(_fd: i32, _iovs: i32, _iovs_len: i32, _nwritten: i32) -> i32 {
-	0
+	ERRNO_BADF
 }
 #[no_mangle]
 pub extern "C" fn __imported_wasi_snapshot_preview1_fd_seek(_fd: i32, _offset: i64, _whence: i32, _newoffset: i32) -> i32 {
